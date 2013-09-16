@@ -158,3 +158,13 @@ class Assignment(object):
     
     def get_volume(self):
         return self._volume
+    
+    def get_blockdevice(self):
+        return self._blockdevice
+    
+    def get_node_id(self):
+        return self._node_id
+    
+    def get_state(self):
+        return self._state
+
