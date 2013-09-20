@@ -68,7 +68,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
         return node
     
-    def create_volume(self, name, size):
+    def create_volume(self, name, size, minor):
         """
         Registers a new volume that can subsequently be deployed on
         DRBD cluster nodes
@@ -82,11 +82,17 @@ class DrbdManageServer(object):
             if volume is not None:
                 return DM_EEXIST
             try:
-                # TODO: generate the minor number
-                volume = DrbdVolume(name, size, MinorNr(1))
+                if minor == MinorNr.MINOR_AUTO:
+                    # TODO: generate the minor number
+                    pass
+                volume = DrbdVolume(name, size, MinorNr(minor))
                 self._volumes[volume.get_name()] = volume
             except InvalidNameException:
                 return DM_ENAME
+            except InvalidMinorNrException:
+                return DM_EMINOR
+            except VolSizeRangeException:
+                return DM_EVOLSZ
         except Exception as exc:
                 DrbdManageServer.catch_internal_error(exc)
                 return DM_DEBUG

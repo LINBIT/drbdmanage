@@ -5,7 +5,7 @@ __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
 from drbdmanage.exceptions import *
 from drbdmanage.storage.storagecore import GenericStorage
-
+from drbdmanage.exceptions import *
 
 class DrbdManager(object):
     def __init__(self):
@@ -57,6 +57,8 @@ class DrbdVolume(GenericStorage):
     _assignments = None
         
     def __init__(self, name, size_MiB, minor):
+        if not size_MiB > 0:
+            raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_MiB)
         self._name  = self.name_check(name)
         self._minor = minor

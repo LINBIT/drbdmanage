@@ -4,31 +4,11 @@ __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:13 AM$"
 
 import drbdmanage.storage.lvm
+import drbdmanage.utils
+from drbdmanage.exceptions import *
 
 class GenericStorage(object):
     _size_MiB = None
-    
-    _base_2  = 0x0200
-    _base_10 = 0x0A00
-    
-    UNIT_B   =  0 | _base_2
-    UNIT_KiB = 10 | _base_2
-    UNIT_MiB = 20 | _base_2
-    UNIT_GiB = 30 | _base_2
-    UNIT_TiB = 40 | _base_2
-    UNIT_PiB = 50 | _base_2
-    UNIT_EiB = 60 | _base_2
-    UNIT_ZiB = 70 | _base_2
-    UNIT_YiB = 80 | _base_2
-    
-    UNIT_KB =   3 | _base_10
-    UNIT_MB =   6 | _base_10
-    UNIT_GB =   9 | _base_10
-    UNIT_TB =  12 | _base_10
-    UNIT_PB =  15 | _base_10
-    UNIT_EB =  18 | _base_10
-    UNIT_ZB =  21 | _base_10
-    UNIT_YB =  24 | _base_10
     
     def __init__(self, size_MiB):
         self._size_MiB = int(size_MiB)
@@ -37,14 +17,8 @@ class GenericStorage(object):
         return self._size_MiB
 
     def get_size(self, unit):
-        pow  = unit & 0xff
-        base = (unit & 0xffffff00) >> 8
-        fac  = (base ** pow)
-        
-        size_b    = self._size_MiB * 0x100000
-        size_unit = size_b / fac
-        
-        return size_unit
+        return drbdmanage.utils.SizeCalc.convert(self._size_MiB,
+          drbdmanage.utils.SizeCalc.UNIT_MiB, unit)
 
 
 class BlockDevice(GenericStorage):
@@ -108,6 +82,9 @@ class MinorNr(object):
     _minor = None
     MINOR_MAX = 0xfffff
     
+    MINOR_AUTO     = -1
+    MINOR_AUTODRBD = -2
+    
     def __init__(self, nr):
         self._minor = MinorNr.minor_check(nr)
     
@@ -116,10 +93,10 @@ class MinorNr(object):
     
     @classmethod
     def minor_check(cls, nr):
-        if nr < 0 or nr > cls.MINOR_MAX:
-            raise InvalidMinorNrException
+        if nr != cls.MINOR_AUTO and nr != cls.MINOR_AUTODRBD:
+            if nr < 0 or nr > cls.MINOR_MAX:
+                raise InvalidMinorNrException
         return nr
-
 
 class MajorNr(object):
     """

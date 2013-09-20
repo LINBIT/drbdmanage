@@ -81,3 +81,33 @@ class CmdLineReader(object):
                 cmdline_b = cmdline_b[idx:]
                 self._cmdline = str(cmdline_b)
                 break
+
+class SizeCalc(object):
+    _base_2  = 0x0200
+    _base_10 = 0x0A00
+    
+    UNIT_B   =  0 | _base_2
+    UNIT_KiB = 10 | _base_2
+    UNIT_MiB = 20 | _base_2
+    UNIT_GiB = 30 | _base_2
+    UNIT_TiB = 40 | _base_2
+    UNIT_PiB = 50 | _base_2
+    UNIT_EiB = 60 | _base_2
+    UNIT_ZiB = 70 | _base_2
+    UNIT_YiB = 80 | _base_2
+    
+    UNIT_KB =   3 | _base_10
+    UNIT_MB =   6 | _base_10
+    UNIT_GB =   9 | _base_10
+    UNIT_TB =  12 | _base_10
+    UNIT_PB =  15 | _base_10
+    UNIT_EB =  18 | _base_10
+    UNIT_ZB =  21 | _base_10
+    UNIT_YB =  24 | _base_10
+    
+    @classmethod
+    def convert(self, size, unit_in, unit_out):
+        fac_in   = ((unit_in & 0xffffff00) >> 8) ** (unit_in & 0xff)
+        div_out  = ((unit_out & 0xffffff00) >> 8) ** (unit_out & 0xff)
+        return (size * fac_in / div_out)
+    

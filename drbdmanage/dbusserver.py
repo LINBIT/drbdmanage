@@ -48,9 +48,9 @@ class DBusServer(dbus.service.Object):
         return self._server.remove_node(name)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="sx", out_signature="i")
-    def create_volume(self, name, size_MiB):
-        return self._server.create_volume(name, size_MiB)
+      in_signature="sxi", out_signature="i")
+    def create_volume(self, name, size_MiB, minor):
+        return self._server.create_volume(name, size_MiB, minor)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="s", out_signature="i")

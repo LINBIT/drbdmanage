@@ -26,6 +26,12 @@ DM_EEXIST   = 102
 # invalid IP type (not 4=IPv4 or 6=IPv6)
 DM_EIPTYPE  = 103
 
+# invalid minor number
+DM_EMINOR   = 104
+
+# Volume size out of range
+DM_EVOLSZ   = 105
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -33,6 +39,9 @@ _DM_EXC_TEXTS = dict()
 _DM_EXC_TEXTS[DM_ENAME]    = "Invalid name"
 _DM_EXC_TEXTS[DM_ENOENT]   = "Object not found"
 _DM_EXC_TEXTS[DM_EEXIST]   = "Object already exists"
+_DM_EXC_TEXTS[DM_EIPTYPE]  = "Invalid IP protocol type"
+_DM_EXC_TEXTS[DM_EMINOR]   = "Minor number out of range"
+_DM_EXC_TEXTS[DM_EVOLSZ]   = "Volume size out of range"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
 
 def dm_exc_text(id):
@@ -47,5 +56,17 @@ class InvalidNameException(Exception):
         pass
 
 class InvalidIpTypeException(Exception):
+    def __init__(self):
+        pass
+
+class VolSizeRangeException(Exception):
+    def __init__(self):
+        pass
+
+class InvalidMinorNrException(Exception):
+    def __init__(self):
+        pass
+
+class InvalidMajorNrException(Exception):
     def __init__(self):
         pass
