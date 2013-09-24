@@ -15,6 +15,7 @@ __date__ ="$Sep 16, 2013 1:11:20 PM$"
 
 class DrbdManage(object):
     _server = None
+    _interactive = False
     
     def __init__(self):
         self.dbus_init()
@@ -36,8 +37,8 @@ class DrbdManage(object):
         rc = 1
         try:
             self._debug_tests()
-            interactive = False
             args = ArgvReader(sys.argv)
+            script = False
             while True:
                 arg = args.peek_arg()
                 if arg is None:
@@ -45,15 +46,28 @@ class DrbdManage(object):
                 if not arg.startswith("-"):
                     # begin of drbdmanage command
                     rc = self.exec_cmd(args, False)
+                    if rc != 0:
+                        sys.stderr.write(chr(0x1b) \
+                          + "[0;91m  Operation failed" + chr(0x1b) + "[0m\n")
                     break
                 else:
                     if arg == "-i":
-                        interactive = True
+                        self._interactive = True
+                    elif arg == "-s":
+                        script = True
                     else:
-                        sys.stderr.write("Error: Invalid option '" + arg + "'\n")
+                        sys.stderr.write("Error: Invalid option '" + arg \
+                          + "'\n")
                         exit(1)
                 args.next()
-            if interactive:
+            if self._interactive and script:
+                sys.stderr.write("Error: Interactive mode " \
+                  + "(--interactive, -i) and script mode (--script, -s) "
+                  + "are mutually exclusive options\n")
+                exit(1)
+            if self._interactive:
+                rc = self.cli()
+            elif script:
                 rc = self.cli()
         except dbus.exceptions.DBusException as exc:
             sys.stderr.write("Error: The DBus connection to the drbdmanaged "
@@ -65,12 +79,14 @@ class DrbdManage(object):
     
     def cli(self):
         while True:
-            sys.stdout.write("drbdmanage> ")
-            sys.stdout.flush()
+            if self._interactive:
+                sys.stdout.write("drbdmanage> ")
+                sys.stdout.flush()
             cmdline = sys.stdin.readline()
             if len(cmdline) == 0:
                 # end of file
-                sys.stdout.write("\n")
+                if self._interactive:
+                    sys.stdout.write("\n")
                 break
             if cmdline.endswith("\n"):
                 cmdline = cmdline[:len(cmdline) - 1]
@@ -84,10 +100,12 @@ class DrbdManage(object):
                 continue
             else:
                 rc = self.exec_cmd(args, True)
-                sys.stdout.write("  rc=" + str(rc) + "\n")
-            # TODO: if input is not a terminal, and return code is error,
-            #       stop processing
-        return 0
+                if rc != 0 and self._interactive:
+                    sys.stderr.write(chr(0x1b) + "[0;91m  Operation failed" \
+                      + chr(0x1b) + "[0m\n")
+                if rc != 0 and not self._interactive:
+                    return rc
+        return 0   
     
     def exec_cmd(self, args, interactive):
         rc = 1
@@ -98,12 +116,18 @@ class DrbdManage(object):
             rc = self.cmd_list(args)
         elif arg == "new-node":
             rc = self.cmd_new_node(args)
+        elif arg == "remove-node":
+            rc = self.cmd_remove_node(args)
         elif arg == "new-volume":
             rc = self.cmd_new_volume(args)
+        elif arg == "remove-volume":
+            rc = self.cmd_remove_volume(args)
         elif arg == "assign":
             rc = self.cmd_assign(args)
         elif arg == "unassign":
             rc = self.cmd_unassign(args)
+        elif arg == "reconfigure":
+            rc = self.cmd_reconfigure()
         elif arg == "shutdown":
             rc = self.cmd_shutdown(args)
         elif arg == "debug":
@@ -241,7 +265,8 @@ class DrbdManage(object):
                 size = None
         if unit is not None and size is not None:
             if unit != SizeCalc.UNIT_MiB:
-                size = SizeCalc.convert(size, unit, SizeCalc.UNIT_MiB)
+                size = SizeCalc.convert_round_up(size, unit, \
+                  SizeCalc.UNIT_MiB)
         if name is not None and size is not None and minor is not None:
             server_rc = self._server.create_volume(name, size, minor, \
               signature="sxi")
@@ -251,8 +276,93 @@ class DrbdManage(object):
                 self.error_msg_text(server_rc)
         else:
             self.syntax_new_volume()
-            arg = args.next_arg()
         return rc
+    
+    def cmd_remove_node(self, args):
+        rc = 1
+        node_name = None
+        quiet = False
+        force = False
+        arg = args.next_arg()
+        while arg is not None:
+            if arg.startswith("-"):
+                if arg == "--quiet" or arg == "-q":
+                    quiet = True
+                elif arg == "--force" or arg == "-f":
+                    force == True
+                else:
+                    node_name = None
+                    break
+            else:
+                if node_name is None:
+                    node_name = arg
+                else:
+                    node_name = None
+                    break
+            arg = args.next_arg()
+        if node_name is not None:
+            if not quiet:
+                quiet = self.user_confirm("You are going to remove a node from " \
+                  + "the cluster. This will remove all resources from the " \
+                  + "node.\nPlease confirm:")
+            if quiet:
+                server_rc = self._server.remove_node(node_name, force, \
+                  signature="sb")
+                if server_rc == 0:
+                    rc = 0
+                else:
+                    self.error_msg_text(server_rc)
+            else:
+                rc = 0
+        else:
+            self.syntax_remove_node()
+        return rc
+    
+    def syntax_remove_node(self):
+        sys.stderr.write("Syntax: remove-node [ --quiet | -q ] <name>\n")
+    
+    def cmd_remove_volume(self, args):
+        rc = 1
+        vol_name = None
+        quiet = False
+        force = False
+        arg = args.next_arg()
+        while arg is not None:
+            if arg.startswith("-"):
+                if arg == "--quiet" or arg == "-q":
+                    quiet = True
+                elif arg == "--force" or arg == "-f":
+                    force = True
+                else:
+                    vol_name = None
+                    break
+            else:
+                if vol_name is None:
+                    vol_name = arg
+                else:
+                    vol_name = None
+                    break
+            arg = args.next_arg()
+        if vol_name is not None:
+            if not quiet:
+                quiet = self.user_confirm("You are going to remove a volume from " \
+                  + "all nodes of the cluster.\n" \
+                  + "Please confirm:")
+            if quiet:
+                server_rc = self._server.remove_volume(vol_name, force, \
+                  signature="sb")
+                if server_rc == 0:
+                    rc = 0
+                else:
+                    self.error_msg_text(server_rc)
+            else:
+                rc = 0
+        else:
+            self.syntax_remove_volume()
+        return rc
+    
+    def syntax_remove_volume(self):
+        sys.stderr.write("Syntax: remove-volume [ --quiet | -q ] <name>\n")
     
     def syntax_new_volume(self):
         sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
@@ -262,29 +372,121 @@ class DrbdManage(object):
           + "The default size unit is GiB.\n")
     
     def cmd_assign(self, args):
-        self.debug_args(args)
-        return 0
+        rc = 1
+        node_name = None
+        vol_name  = None
+        state     = []
+        client    = False
+        overwrite = False
+        discard   = False
+        arg = args.next_arg()
+        while arg is not None:
+            if arg.startswith("-"):
+                if arg == "--client":
+                    if overwrite:
+                        node_name = None
+                        break
+                    client = True
+                elif arg == "--overwrite":
+                    if client:
+                        node_name = None
+                        break
+                    overwrite = True
+                elif arg == "--discard":
+                    if overwrite:
+                        node_name = None
+                        break
+                    discard = True
+                else:
+                    node_name = None
+                    break
+            else:
+                if node_name is None:
+                    node_name = arg
+                elif vol_name is None:
+                    vol_name = arg
+                else:
+                    node_name = None
+                    break
+            arg = args.next_arg()
+        if client:
+            state.append("client")
+        if overwrite:
+            state.append("overwrite")
+        if discard:
+            state.append("discard")
+        if node_name is not None and vol_name is not None:
+            server_rc = self._server.assign(node_name, vol_name, state,\
+              signature="ssas")
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        else:
+            self.syntax_assign()
+        return rc
+    
+    def syntax_assign(self):
+        sys.stderr.write("Syntax: assign [ options ] <node> <volume>\n")
+        sys.stderr.write("  Options:\n" \
+          + "    --client      make this node a DRBD client only\n" \
+          + "    --overwrite   copy this node's data to all other nodes\n" \
+          + "    --discard     discard this node's data upon connect\n")
+        sys.stderr.write("The following options are mutually exclusive:\n" \
+          + "  --client and --overwrite\n"
+          + "  --overwrite and --discard\n")
+    
+    def cmd_reconfigure(self):
+        rc = 1
+        server_rc = self._server.reconfigure()
+        if server_rc == 0:
+            rc = 0
+        else:
+            self.error_msg_text(server_rc)
+        return rc
     
     def cmd_unassign(self, args):
-        self.debug_args(args)
-        return 0
+        rc = 1
+        node_name = None
+        vol_name  = None
+        arg = args.next_arg()
+        while arg is not None:
+            if node_name is None:
+                node_name = arg
+            elif vol_name is None:
+                vol_name = arg
+            else:
+                node_name = None
+                break
+            arg = args.next_arg()
+        if node_name is not None and vol_name is not None:
+            server_rc = self._server.unassign(node_name, vol_name)
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        else:
+            self.syntax_unassign()
+        return rc
+
+    def syntax_unassign(self):
+        sys.stderr.write("Syntax: unassign [ options ] <node> <volume>\n")
+        sys.stderr.write("  Options:\n" \
+          + "    --quiet | -q  disable the safety question\n")
     
     def cmd_shutdown(self, args):
-        force = False
+        quiet = False
         arg  = args.next_arg()
         if arg is not None:
-            if arg == "--force" or arg == "-f":
-                force = True
+            if arg == "--quiet" or arg == "-q":
+                quiet = True
             else:
-                # passing a zero-length string argument is allowed for 
-                # easier shell scripting
-                if arg != "":
-                    sys.stderr.write("Syntax: shutdown [ --force | -f ]\n")
-                    return 1
-        if not force:
-            force = self.user_confirm("You are going to shut down the " \
+                sys.stderr.write("Syntax: shutdown [ --quiet | -q ]\n")
+                return 1
+        if not quiet:
+            quiet = self.user_confirm("You are going to shut down the " \
               + "drbdmanaged server process on this node.\nPlease confirm:")
-        if force:
+        if quiet:
             try:
                 self._server.shutdown()
             except dbus.exceptions.DBusException:
@@ -349,7 +551,7 @@ class DrbdManage(object):
         return rc
     
     def error_msg_text(self, error):
-        sys.stderr.write("Error: Operation failed: " + dm_exc_text(error) + "\n")
+        sys.stderr.write("Error: " + dm_exc_text(error) + "\n")
     
     def _debug_tests(self):
         # rc = self._server.create_node("remus", "10.43.5.208", "ipv4")

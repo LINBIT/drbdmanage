@@ -8,6 +8,7 @@ import dbus.service
 import dbus.mainloop.glib
 import gobject
 import drbdmanage.drbd.drbdcore
+from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.exceptions import *
 
 __author__="raltnoeder"
@@ -43,9 +44,9 @@ class DBusServer(dbus.service.Object):
             sys.stderr.write("Oops, " + str(exc))
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="s", out_signature="i")
-    def remove_node(self, name):
-        return self._server.remove_node(name)
+      in_signature="sb", out_signature="i")
+    def remove_node(self, name, force):
+        return self._server.remove_node(name, force)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sxi", out_signature="i")
@@ -53,15 +54,27 @@ class DBusServer(dbus.service.Object):
         return self._server.create_volume(name, size_MiB, minor)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="s", out_signature="i")
-    def remove_volume(self, name):
-        return self._server.remove_volume(name)
+      in_signature="sb", out_signature="i")
+    def remove_volume(self, name, force):
+        return self._server.remove_volume(name, force)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="ss", out_signature="i")
-    def assign(self, node_name, volume_name):
-        # TODO: state for assignment
-        return self._server.assign(node_name, volume_name, 0)
+      in_signature="ssas", out_signature="i")
+    def assign(self, node_name, volume_name, state):
+        tstate = 0
+        for opt in state:
+            if opt == "client":
+                tstate = tstate | Assignment.FLAG_DISKLESS
+            elif opt == "overwrite":
+                tstate = tstate | Assignment.FLAG_OVERWRITE
+            elif opt == "discard":
+                tstate = tstate | Assignment.FLAG_DISCARD
+            else:
+                return DM_EINVAL
+        tstate = tstate | Assignment.FLAG_DEPLOY
+        if tstate & Assignment.FLAG_DISKLESS == 0:
+            tstate = tstate | Assignment.FLAG_ATTACH
+        return self._server.assign(node_name, volume_name, tstate)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="ss", out_signature="i")
@@ -74,7 +87,7 @@ class DBusServer(dbus.service.Object):
         return DM_ENOTIMPL
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="", out_signature="i")
+      in_signature="", out_signature="")
     def shutdown(self):
         self._server.shutdown()
     
@@ -86,10 +99,11 @@ class DBusServer(dbus.service.Object):
                 cmd = cmd[:len(cmd) - 1]
             if cmd == "list-nodes":
                 sys.stdout.write( \
-                  string.ljust("Node name", 17) \
+                  chr(0x1b) + "[0;93m"
+                  + string.ljust("Node name", 17) \
                   + string.ljust("type", 5) \
                   + string.ljust("IP address", 16) \
-                  + "\n")
+                  + chr(0x1b) + "[0m\n")
                 sys.stdout.write(("-" * 60) + "\n")
                 for node in self._server._nodes.itervalues():
                     ip_type = "unkn"
@@ -106,9 +120,10 @@ class DBusServer(dbus.service.Object):
                       + "\n")
             elif cmd == "list-volumes":
                 sys.stdout.write( \
-                  string.ljust("Volume name", 17) \
+                  chr(0x1b) + "[0;93m"
+                  + string.ljust("Volume name", 17) \
                   + string.rjust("size MiB", 17) \
-                  + "\n")
+                  + chr(0x1b) + "[0m\n")
                 sys.stdout.write(("-" * 60) + "\n")
                 for volume in self._server._volumes.itervalues():
                     sys.stdout.write( \
@@ -117,9 +132,10 @@ class DBusServer(dbus.service.Object):
                       + "\n")
             elif cmd == "list-assignments":
                 sys.stdout.write( \
-                  string.ljust("Node name", 17) \
+                  chr(0x1b) + "[0;93m"
+                  + string.ljust("Node name", 17) \
                   + string.ljust("Volume name", 17) \
-                  + "\n")
+                  + chr(0x1b) + "[0m\n")
                 sys.stdout.write(("-" * 60) + "\n")
                 for node in self._server._nodes.itervalues():
                     node_name = node.get_name()
@@ -127,12 +143,15 @@ class DBusServer(dbus.service.Object):
                         vol_name = assg.get_volume().get_name()
                         sys.stdout.write( \
                           string.ljust(node_name, 17) \
-                          + string.ljust(vol_name, 17) \
-                          + "\n")
+                          + string.ljust(vol_name, 17))
+                        if assg.is_deployed():
+                            sys.stdout.write(" (deployed)")
+                        sys.stdout.write(" " + str(assg.get_cstate()) + "\n")
                         # print the node name in the first line only
                         node_name = ""
             else:
                 sys.stderr.write("No such debug command: " + cmd + "\n")
+            sys.stdout.write("\n")
         except Exception:
             sys.stderr.write("Caught exception:\n" \
               + traceback.format_exc() + "\n")

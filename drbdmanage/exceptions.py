@@ -32,6 +32,9 @@ DM_EMINOR   = 104
 # Volume size out of range
 DM_EVOLSZ   = 105
 
+# Invalid option value
+DM_EINVAL   = 106
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -42,7 +45,9 @@ _DM_EXC_TEXTS[DM_EEXIST]   = "Object already exists"
 _DM_EXC_TEXTS[DM_EIPTYPE]  = "Invalid IP protocol type"
 _DM_EXC_TEXTS[DM_EMINOR]   = "Minor number out of range"
 _DM_EXC_TEXTS[DM_EVOLSZ]   = "Volume size out of range"
+_DM_EXC_TEXTS[DM_EINVAL]   = "Invalid option"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
+_DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 
 def dm_exc_text(id):
     try:

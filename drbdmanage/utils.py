@@ -16,9 +16,11 @@ class ArgvReader(object):
     def next_arg(self):
         cur_idx = self._idx
         arg = None
-        if self._idx < self._max:
+        while self._idx < self._max:
             self._idx += 1
-            arg = self._argv[cur_idx]
+            if self._argv[cur_idx] != "":
+                arg = self._argv[cur_idx]
+                break
         return arg
     
     def peek_arg(self):
@@ -109,5 +111,15 @@ class SizeCalc(object):
     def convert(self, size, unit_in, unit_out):
         fac_in   = ((unit_in & 0xffffff00) >> 8) ** (unit_in & 0xff)
         div_out  = ((unit_out & 0xffffff00) >> 8) ** (unit_out & 0xff)
-        return (size * fac_in / div_out)
+        return (size * fac_in // div_out)
     
+    @classmethod
+    def convert_round_up(self, size, unit_in, unit_out):
+        fac_in   = ((unit_in & 0xffffff00) >> 8) ** (unit_in & 0xff)
+        div_out  = ((unit_out & 0xffffff00) >> 8) ** (unit_out & 0xff)
+        bytes    = size * fac_in
+        if bytes % div_out != 0:
+            result = (bytes / div_out) + 1
+        else:
+            result = bytes / div_out
+        return result

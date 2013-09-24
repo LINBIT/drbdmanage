@@ -53,15 +53,20 @@ class DrbdVolume(GenericStorage):
     
     _name     = None
     _minor    = None
+    _state    = None
     
     _assignments = None
-        
+    
+    FLAG_REMOVE = 0x1
+    FLAG_NEW    = 0x2
+    
     def __init__(self, name, size_MiB, minor):
         if not size_MiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_MiB)
-        self._name  = self.name_check(name)
-        self._minor = minor
+        self._name   = self.name_check(name)
+        self._minor  = minor
+        self._state = 0
         self._assignments = dict()
         
     def get_name(self):
@@ -88,6 +93,21 @@ class DrbdVolume(GenericStorage):
     def remove_assignment(self, assignment):
         node = assignment.get_node()
         del self._assignments[node.get_name()]
+    
+    def has_assignments(self):
+        return len(self._assignments) > 0
+    
+    def iterate_assignments(self):
+        return self._assignments.itervalues()
+    
+    def get_state(self):
+        return self._state
+    
+    def set_state(self, state):
+        self._state = state
+    
+    def mark_remove(self):
+        self._state |= self.FLAG_REMOVE
 
 
 class DrbdNode(object):
@@ -96,22 +116,30 @@ class DrbdNode(object):
     IPV4_TYPE = 4
     IPV6_TYPE = 6
     
-    _name    = None
-    _ip      = None
-    _ip_type = None
+    _name     = None
+    _ip       = None
+    _ip_type  = None
+    _state    = None
+    _poolsize = None
+    _poolfree = None
     
     _assignments = None
     
+    FLAG_REMOVE = 0x1
+    
     def __init__(self, name, ip, ip_type):
         self._name    = self.name_check(name)
-        # TODO: there should be sanity checks on ip and ip_type
-        self._ip      = ip
+        # TODO: there should be sanity checks on ip
         type = int(ip_type)
         if type == self.IPV4_TYPE or type == self.IPV6_TYPE:
             self._ip_type = type
         else:
             raise InvalidIpTypeException
+        self._ip          = ip
         self._assignments = dict()
+        self._state       = 0
+        self._poolfree    = -1
+        self._poolsize    = -1
     
     def get_name(self):
         return self._name
@@ -121,6 +149,15 @@ class DrbdNode(object):
     
     def get_ip_type(self):
         return self._ip_type
+    
+    def get_state(self):
+        return self._state
+    
+    def set_state(self, state):
+        self._state = state
+    
+    def mark_remove(self):
+        self._state |= self.FLAG_REMOVE
     
     def name_check(self, name):
         return DrbdManager.name_check(name, self.NAME_MAXLEN)
@@ -140,20 +177,44 @@ class DrbdNode(object):
         volume = assignment.get_volume()
         del self._assignments[volume.get_name()]
     
+    def has_assignments(self):
+        return len(self._assignments) > 0
+    
+    def iterate_assignments(self):
+        return self._assignments.itervalues()
 
 class Assignment(object):
     _node        = None
     _volume      = None
     _blockdevice = None
     _node_id     = None
-    _state       = 0
+    _cstate      = 0
+    _tstate      = 0
+    # return code of operations
+    _rc          = 0
 
-    def __init__(self, node, volume, blockdevice, node_id, state):
+    FLAG_DEPLOY    = 0x1
+    FLAG_ATTACH    = 0x2
+    FLAG_CONNECT   = 0x4
+    FLAG_DISKLESS  = 0x8
+    
+    FLAG_UPD_CON   = 0x10000
+    FLAG_RECONNECT = 0x20000
+    # --overwrite-data-of-peer / primary --force
+    FLAG_OVERWRITE = 0x40000
+    # --discard-my-data upon connect / resolve split-brain
+    FLAG_DISCARD   = 0x80000
+
+    def __init__(self, node, volume, blockdevice, node_id, cstate, tstate):
         self._node        = node
         self._volume      = volume
         self._blockdevice = blockdevice
         self._node_id     = int(node_id)
-        self._state       = state
+        # current state
+        self._cstate      = cstate
+        # target state
+        self._tstate      = tstate
+        self._rc          = 0
     
     def get_node(self):
         return self._node
@@ -161,12 +222,66 @@ class Assignment(object):
     def get_volume(self):
         return self._volume
     
+    def remove(self):
+        self._node.remove_assignment(self)
+        self._volume.remove_assignment(self)
+    
     def get_blockdevice(self):
         return self._blockdevice
     
     def get_node_id(self):
         return self._node_id
     
-    def get_state(self):
-        return self._state
-
+    def get_cstate(self):
+        return self._cstate
+    
+    def set_cstate(self, cstate):
+        self._cstate = cstate
+    
+    def get_tstate(self):
+        return self._tstate
+    
+    def set_tstate(self, tstate):
+        self._tstate = tstate
+    
+    def deploy(self):
+        self._tstate = self._tstate | self.FLAG_DEPLOY
+    
+    def undeploy(self):
+        self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+    
+    def connect(self):
+        self._tstate = self._tstate | self.FLAG_CONNECT
+    
+    def reconnect(self):
+        self._tstate = self._tstate | self.FLAG_RECONNECT
+    
+    def disconnect(self):
+        self._tstate = (self._tstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
+    
+    def attach(self):
+        self._tstate = self._tstate | self.FLAG_ATTACH
+    
+    def detach(self):
+        self._tstate = (self._tstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
+    
+    def deploy_client(self):
+        self._tstate = self._tstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
+    
+    def update_connections(self):
+        self._tstate = self._tstate | self.FLAG_UPD_CON
+    
+    def set_rc(self, rc):
+        self._rc = rc
+    
+    def get_rc(self):
+        return self._rc
+    
+    def is_deployed(self):
+        return (self._cstate & self.FLAG_DEPLOY) != 0
+    
+    def is_connected(self):
+        return (self._cstate & self.FLAG_CONNECT) != 0
+    
+    def is_attached(self):
+        return (self._cstate & self.FLAG_ATTACH) != 0
