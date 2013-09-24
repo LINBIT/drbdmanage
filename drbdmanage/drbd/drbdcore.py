@@ -3,7 +3,6 @@
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
-from drbdmanage.exceptions import *
 from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.exceptions import *
 
@@ -113,12 +112,15 @@ class DrbdVolume(GenericStorage):
 class DrbdNode(object):
     NAME_MAXLEN = 16
     
-    IPV4_TYPE = 4
-    IPV6_TYPE = 6
+    AF_IPV4 = 4
+    AF_IPV6 = 6
+    
+    AF_IPV4_LABEL = "ipv4"
+    AF_IPV6_LABEL = "ipv6"
     
     _name     = None
     _ip       = None
-    _ip_type  = None
+    _af       = None
     _state    = None
     _poolsize = None
     _poolfree = None
@@ -127,12 +129,12 @@ class DrbdNode(object):
     
     FLAG_REMOVE = 0x1
     
-    def __init__(self, name, ip, ip_type):
+    def __init__(self, name, ip, af):
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on ip
-        type = int(ip_type)
-        if type == self.IPV4_TYPE or type == self.IPV6_TYPE:
-            self._ip_type = type
+        af_n = int(af)
+        if af_n == self.AF_IPV4 or af_n == self.AF_IPV6:
+            self._af = af_n
         else:
             raise InvalidIpTypeException
         self._ip          = ip
@@ -147,14 +149,34 @@ class DrbdNode(object):
     def get_ip(self):
         return self._ip
     
-    def get_ip_type(self):
-        return self._ip_type
+    def get_af(self):
+        return self._af
+    
+    def get_af_label(self):
+        label = "unknown"
+        if self._af == self.AF_IPV4:
+            label = self.AF_IPV4_LABEL
+        elif self._af == self.AF_IPV6:
+            label = self.AF_IPV6_LABEL
+        return label
     
     def get_state(self):
         return self._state
     
     def set_state(self, state):
         self._state = state
+    
+    def get_poolsize(self):
+        return self._poolsize
+    
+    def get_poolfree(self):
+        return self._poolfree
+    
+    def set_poolsize(self, size):
+        self._poolsize = size
+    
+    def set_poolfree(self, size):
+        self._poolfree = size
     
     def mark_remove(self):
         self._state |= self.FLAG_REMOVE

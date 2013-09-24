@@ -112,8 +112,10 @@ class DrbdManage(object):
         arg = args.next_arg()
         if arg is None:
             arg = ""
-        if arg == "list":
-            rc = self.cmd_list(args)
+        if arg == "list-volumes":
+            rc = self.cmd_list_volumes(args)
+        elif arg == "list-nodes":
+            rc = self.cmd_list_nodes(args)
         elif arg == "new-node":
             rc = self.cmd_new_node(args)
         elif arg == "remove-node":
@@ -134,6 +136,8 @@ class DrbdManage(object):
             rc = self._server.debug_cmd("list-nodes")
             rc = self._server.debug_cmd("list-volumes")
             rc = self._server.debug_cmd("list-assignments")
+        elif arg == "safe":
+            rc = self._server.debug_cmd("safe")
         elif arg == "exit":
             exit(0)
         else:
@@ -144,33 +148,17 @@ class DrbdManage(object):
                 sys.stderr.write("Error: unknown command '" + arg + "'\n")
         return rc
     
-    def cmd_list(self, args):
-        rc = 1
-        type = args.next_arg()
-        if type is None:
-            type = ""
-        if type == "nodes":
-            rc = list_nodes()
-        elif type == "volumes":
-            rc = list_volumes()
-        elif type == "assignments":
-            rc = list_assignments()
-        else:
-            sys.stderr.write("Syntax: list { nodes | volumes | assignments }"
-              + "\n")
-        return rc
-    
     def cmd_new_node(self, args):
         rc      = 1
         name    = None
         ip      = None
-        ip_type = "ipv4"
+        af      = "ipv4"
         # TODO: ip type recognition
         arg = args.next_arg()
         while arg is not None:
-            if arg == "--ip-type" or arg == "-i":
-                ip_type = args.next_arg()
-                if ip_type is None:
+            if arg == "--addrfmly" or arg == "-a":
+                af = args.next_arg()
+                if af is None:
                     ip = None
                     break
                 # Server checks ip type
@@ -184,7 +172,7 @@ class DrbdManage(object):
                     break
             arg = args.next_arg()
         if name is not None and ip is not None:
-            server_rc = self._server.create_node(name, ip, ip_type)
+            server_rc = self._server.create_node(name, ip, af)
             if server_rc == 0:
                 rc = 0
             else:
@@ -497,13 +485,25 @@ class DrbdManage(object):
             exit(0)
         return 0
     
-    def list_nodes(self):
+    def cmd_list_nodes(self, args):
+        node_list = self._server.node_list()
+        # TODO: DEBUG: this is debug code only
+        for properties in node_list:
+            for item in properties:
+                sys.stdout.write(item + ", ")
+            sys.stdout.write("\n")
         return 0
     
-    def list_volumes(self):
+    def cmd_list_volumes(self, args):
+        volume_list = self._server.volume_list()
+        # TODO: DEBUG: this is debug code only
+        for properties in volume_list:
+            for item in properties:
+                sys.stdout.write(item + ", ")
+            sys.stdout.write("\n")
         return 0
     
-    def list_assignments(self):
+    def cmd_list_assignments(self):
         return 0
     
     def debug_args(self, args):

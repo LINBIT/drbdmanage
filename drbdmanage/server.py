@@ -6,6 +6,7 @@ import traceback
 from drbdmanage.dbusserver import *
 from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import *
+from drbdmanage.drbd.persistence import *
 from drbdmanage.storage.storagecore import *
 
 __author__="raltnoeder"
@@ -22,7 +23,7 @@ class DrbdManageServer(object):
         self._volumes = dict()
         self._bd_mgr  = BlockDeviceManager()
 
-    def create_node(self, name, ip, ip_type):
+    def create_node(self, name, ip, af):
         """
         Registers a DRBD cluster node
         """
@@ -35,7 +36,7 @@ class DrbdManageServer(object):
             if node is not None:
                 return DM_EEXIST
             try:
-                node = DrbdNode(name, ip, ip_type)
+                node = DrbdNode(name, ip, af)
                 self._nodes[node.get_name()] = node
             except InvalidNameException:
                 return DM_ENAME
@@ -279,6 +280,30 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    def node_list(self):
+        node_list = []
+        for node in self._nodes.itervalues():
+            properties = []
+            properties.append(node.get_name())
+            properties.append(node.get_af_label())
+            properties.append(node.get_ip())
+            properties.append(str(node.get_poolsize()))
+            properties.append(str(node.get_poolfree()))
+            properties.append(str(node.get_state()))
+            node_list.append(properties)
+        return node_list
+    
+    def volume_list(self):
+        volume_list = []
+        for volume in self._volumes.itervalues():
+            properties = []
+            properties.append(volume.get_name())
+            properties.append(str(volume.get_size_MiB()))
+            properties.append(str(volume.get_minor().get_value()))
+            properties.append(str(volume.get_state()))
+            volume_list.append(properties)
+        return volume_list
+        
     def reconfigure(self):
         return DM_ENOTIMPL
     

@@ -11,6 +11,9 @@ import drbdmanage.drbd.drbdcore
 from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.exceptions import *
 
+# TODO: DEBUG: used for debug code only
+from drbdmanage.drbd.persistence import *
+
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 4:43:41 PM$"
 
@@ -33,13 +36,13 @@ class DBusServer(dbus.service.Object):
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sss", out_signature="i")
-    def create_node(self, name, ip, ip_type):
+    def create_node(self, name, ip, af):
         try:
-            if ip_type == "ipv6":
-                ip_type_n = drbdmanage.drbd.drbdcore.DrbdNode.IPV6_TYPE
+            if af == "ipv6":
+                af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6
             else:
-                ip_type_n = drbdmanage.drbd.drbdcore.DrbdNode.IPV4_TYPE
-            return self._server.create_node(name, ip, ip_type_n)
+                af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4
+            return self._server.create_node(name, ip, af_n)
         except Exception as exc:
             sys.stderr.write("Oops, " + str(exc))
     
@@ -82,9 +85,19 @@ class DBusServer(dbus.service.Object):
         return self._server.unassign(node_name, volume_name)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
+      in_signature="", out_signature="aas")
+    def node_list(self):
+        return self._server.node_list()
+    
+    @dbus.service.method(DBUS_DRBDMANAGED, \
+      in_signature="", out_signature="aas")
+    def volume_list(self):
+        return self._server.volume_list()
+    
+    @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="i")
     def reconfigure(self):
-        return DM_ENOTIMPL
+        return self._server.reconfigure()
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="")
@@ -106,16 +119,16 @@ class DBusServer(dbus.service.Object):
                   + chr(0x1b) + "[0m\n")
                 sys.stdout.write(("-" * 60) + "\n")
                 for node in self._server._nodes.itervalues():
-                    ip_type = "unkn"
-                    if node.get_ip_type() \
-                      == drbdmanage.drbd.drbdcore.DrbdNode.IPV4_TYPE:
-                        ip_type = "ipv4"
-                    elif node.get_ip_type() \
-                      == drbdmanage.drbd.drbdcore.DrbdNode.IPV6_TYPE:
-                        ip_type = "ipv6"
+                    af = "unkn"
+                    if node.get_af() \
+                      == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4:
+                        af = "ipv4"
+                    elif node.get_af() \
+                      == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6:
+                        af = "ipv6"
                     sys.stdout.write( \
                       string.ljust(node.get_name(), 17) \
-                      + string.ljust(ip_type, 5) \
+                      + string.ljust(af, 5) \
                       + string.ljust(node.get_ip(), 16) \
                       + "\n")
             elif cmd == "list-volumes":
@@ -149,6 +162,19 @@ class DBusServer(dbus.service.Object):
                         sys.stdout.write(" " + str(assg.get_cstate()) + "\n")
                         # print the node name in the first line only
                         node_name = ""
+            elif cmd == "safe":
+                assignments = []
+                for node in self._server._nodes.itervalues():
+                    for assg in node.iterate_assignments():
+                        assignments.append(assg)
+                    pnode = DrbdNodePersistence(node)
+                    pnode.safe()
+                for volume in self._server._volumes.itervalues():
+                    pvol = DrbdVolumePersistence(volume)
+                    pvol.safe()
+                for assg in assignments:
+                    passg = AssignmentPersistence(assg)
+                    passg.safe()
             else:
                 sys.stderr.write("No such debug command: " + cmd + "\n")
             sys.stdout.write("\n")
