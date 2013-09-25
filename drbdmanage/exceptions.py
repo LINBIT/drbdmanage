@@ -75,3 +75,11 @@ class InvalidMinorNrException(Exception):
 class InvalidMajorNrException(Exception):
     def __init__(self):
         pass
+
+class IncompatibleDataException(Exception):
+    def __init__(self):
+        pass
+
+class SyntaxException(Exception):
+    def __init__(self):
+        pass

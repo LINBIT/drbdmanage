@@ -4,6 +4,7 @@ __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
 from drbdmanage.storage.storagecore import GenericStorage
+from drbdmanage.storage.storagecore import BlockDevice
 from drbdmanage.exceptions import *
 
 class DrbdManager(object):
@@ -67,7 +68,7 @@ class DrbdVolume(GenericStorage):
         self._minor  = minor
         self._state = 0
         self._assignments = dict()
-        
+            
     def get_name(self):
         return self._name
     
@@ -108,6 +109,72 @@ class DrbdVolume(GenericStorage):
     def mark_remove(self):
         self._state |= self.FLAG_REMOVE
 
+class DrbdVolumeView(object):
+    
+    _name  = None
+    _size  = None
+    _minor = None
+    _state = None
+    
+    _machine_readable = False
+    
+    def __init__(self, properties, machine_readable):
+        if len(properties) < 4:
+            raise IncompatibleDataException
+        self._name = properties[0]
+        self._size = properties[1]
+        try:
+            self._minor = int(properties[2])
+            self._state = int(properties[3])
+        except Exception:
+            raise IncompatibleDataException
+        self._machine_readable = machine_readable
+    
+    @classmethod
+    def get_name_maxlen(self):
+        return DrbdVolume.NAME_MAXLEN
+    
+    @classmethod
+    def get_properties(self, volume):
+        properties = []
+        minor = volume.get_minor()
+        properties.append(volume.get_name())
+        properties.append(str(volume.get_size_MiB()))
+        properties.append(str(minor.get_value()))
+        properties.append(str(volume.get_state()))
+        return properties
+    
+    def get_name(self):
+        return self._name
+    
+    def get_size(self):
+        return self._size
+    
+    def get_minor(self):
+        if self._minor == -1:
+            return "auto"
+        elif self._minor == -2:
+            return "auto-drbd"
+        else:
+            return str(self._minor)
+    
+    def get_state(self):
+        text = "-"
+        if self._machine_readable:
+            if self._state & DrbdVolume.FLAG_NEW != 0:
+                text = "NEW"
+            if self._state & DrbdVolume.FLAG_REMOVE != 0:
+                if len(text) > 0:
+                    text +="|"
+                text += "REMOVE"
+        else:
+            if self._state & DrbdVolume.FLAG_NEW != 0:
+                text = "new"
+            if self._state & DrbdVolume.FLAG_REMOVE != 0:
+                if len(text) > 0:
+                    text += ","
+                text += "remove"
+        return text
 
 class DrbdNode(object):
     NAME_MAXLEN = 16
@@ -204,6 +271,71 @@ class DrbdNode(object):
     
     def iterate_assignments(self):
         return self._assignments.itervalues()
+
+class DrbdNodeView(object):
+    
+    _name     = None
+    _af       = None
+    _ip       = None
+    _poolsize = None
+    _poolfree = None
+    _state    = None
+    
+    _machine_readable = False
+    
+    def __init__(self, properties, machine_readable):
+        if len(properties) < 6:
+            raise IncompatibleDataException
+        self._name     = properties[0]
+        self._af       = properties[1]
+        self._ip       = properties[2]
+        self._poolsize = properties[3]
+        self._poolfree = properties[4]
+        try:
+            self._state    = int(properties[5])
+        except Exception:
+            raise IncompatibleDataException
+        self._machine_readable = machine_readable
+    
+    @classmethod
+    def get_name_maxlen(self):
+        return DrbdNode.NAME_MAXLEN
+    
+    @classmethod
+    def get_properties(self, node):
+        properties = []
+        properties.append(node.get_name())
+        properties.append(node.get_af_label())
+        properties.append(node.get_ip())
+        properties.append(str(node.get_poolsize()))
+        properties.append(str(node.get_poolfree()))
+        properties.append(str(node.get_state()))
+        return properties
+    
+    def get_name(self):
+        return self._name
+    
+    def get_af(self):
+        return self._af
+    
+    def get_ip(self):
+        return self._ip
+    
+    def get_poolsize(self):
+        return self._poolsize
+    
+    def get_poolfree(self):
+        return self._poolfree
+    
+    def get_state(self):
+        text = "-"
+        if self._machine_readable:
+            if self._state & DrbdNode.FLAG_REMOVE != 0:
+                text = "REMOVE"
+        else:
+            if self._state & DrbdNode.FLAG_REMOVE != 0:
+                text = "remove"
+        return text
 
 class Assignment(object):
     _node        = None
@@ -307,3 +439,66 @@ class Assignment(object):
     
     def is_attached(self):
         return (self._cstate & self.FLAG_ATTACH) != 0
+
+class AssignmentView(object):
+    _node        = None
+    _volume      = None
+    _blockdevice = None
+    _node_id     = None
+    _cstate      = None
+    _tstate      = None
+    
+    _machine_readable = False
+    
+    def __init__(self, properties, machine_readable):
+        if len(properties) < 6:
+            raise IncompatibleDataException
+        self._machine_readable = machine_readable
+        self._node        = properties[0]
+        self._volume      = properties[1]
+        self._blockdevice = properties[2]
+        self._node_id     = properties[3]
+        self._cstate      = properties[4]
+        self._tstate      = properties[5]
+    
+    @classmethod
+    def get_properties(self, assg):
+        bd = assg.get_blockdevice()
+        if bd is None:
+            bd_str = "-"
+        else:
+            bd_str = bd.get_path()
+        properties = []
+        node   = assg.get_node()
+        volume = assg.get_volume()
+        properties.append(node.get_name())
+        properties.append(volume.get_name())
+        properties.append(bd_str)
+        properties.append(str(assg.get_node_id()))
+        properties.append(str(assg.get_cstate()))
+        properties.append(str(assg.get_tstate()))
+        return properties
+
+    def get_node(self):
+        return self._node
+    
+    def get_volume(self):
+        return self._volume
+    
+    def get_blockdevice(self):
+        return self._blockdevice
+    
+    def get_node_id(self):
+        return self._node_id
+    
+    def get_cstate(self):
+        # TODO: state parser
+        return self._cstate
+    
+    def get_tstate(self):
+        # TODO: state parser
+        return self._tstate
+    
+    def get_state(self):
+        # TODO: state parser
+        return "<not implemented>"

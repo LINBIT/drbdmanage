@@ -38,7 +38,7 @@ class DBusServer(dbus.service.Object):
       in_signature="sss", out_signature="i")
     def create_node(self, name, ip, af):
         try:
-            if af == "ipv6":
+            if af == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6_LABEL:
                 af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6
             else:
                 af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4
@@ -80,9 +80,9 @@ class DBusServer(dbus.service.Object):
         return self._server.assign(node_name, volume_name, tstate)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
-      in_signature="ss", out_signature="i")
-    def unassign(self, node_name, volume_name):
-        return self._server.unassign(node_name, volume_name)
+      in_signature="ssb", out_signature="i")
+    def unassign(self, node_name, volume_name, force):
+        return self._server.unassign(node_name, volume_name, force)
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="aas")
@@ -93,6 +93,11 @@ class DBusServer(dbus.service.Object):
       in_signature="", out_signature="aas")
     def volume_list(self):
         return self._server.volume_list()
+    
+    @dbus.service.method(DBUS_DRBDMANAGED, \
+      in_signature="", out_signature="aas")
+    def assignment_list(self):
+        return self._server.assignment_list()
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="i")

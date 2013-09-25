@@ -22,7 +22,7 @@ class DrbdManageServer(object):
         self._nodes   = dict()
         self._volumes = dict()
         self._bd_mgr  = BlockDeviceManager()
-
+    
     def create_node(self, name, ip, af):
         """
         Registers a DRBD cluster node
@@ -82,9 +82,10 @@ class DrbdManageServer(object):
         try:
             node = self._nodes[name]
         except KeyError:
-            return None
+            pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
         return node
     
     def create_volume(self, name, size, minor):
@@ -139,6 +140,7 @@ class DrbdManageServer(object):
             return DM_ENOENT
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
         return DM_SUCCESS
     
     def get_volume(self, name):
@@ -146,7 +148,7 @@ class DrbdManageServer(object):
         try:
             volume = self._volumes[name]
         except KeyError:
-            return None
+            pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
         return volume
@@ -174,20 +176,13 @@ class DrbdManageServer(object):
             return self._assign(node, volume, tstate)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
+        return DM_DEBUG
     
-    def unassign(self, node_name, volume_name):
+    def unassign(self, node_name, volume_name, force):
         """
         Removes the assignment of a volume to a node
         * Orders the node to undeploy the volume
         """
-        try:
-            node = self._nodes["remus"]
-            assg = node.get_assignment("homes")
-            assg.set_cstate(assg.get_cstate() | Assignment.FLAG_DEPLOY \
-              | Assignment.FLAG_ATTACH | Assignment.FLAG_CONNECT)
-        except Exception:
-            sys.stderr.write("Oops.")
         try:
             try:
                 node   = self._nodes[node_name]
@@ -197,10 +192,10 @@ class DrbdManageServer(object):
             assignment = node.get_assignment(volume.get_name())
             if assignment is None:
                 return DM_ENOENT
-            return self._unassign(assignment)
+            return self._unassign(assignment, force)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
+        return DM_DEBUG
     
     
     def _assign(self, node, volume, tstate):
@@ -220,14 +215,14 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
-    def _unassign(self, assignment):
+    def _unassign(self, assignment, force):
         """
         Implementation - see unassign()
         """
         try:
             node   = assignment.get_node()
             volume = assignment.get_volume()
-            if assignment.is_deployed():
+            if (not force) and assignment.is_deployed():
                 assignment.undeploy()
                 for assignment in node.iterate_assignments():
                     if assignment.get_node() != node \
@@ -281,28 +276,42 @@ class DrbdManageServer(object):
         return DM_SUCCESS
     
     def node_list(self):
-        node_list = []
-        for node in self._nodes.itervalues():
-            properties = []
-            properties.append(node.get_name())
-            properties.append(node.get_af_label())
-            properties.append(node.get_ip())
-            properties.append(str(node.get_poolsize()))
-            properties.append(str(node.get_poolfree()))
-            properties.append(str(node.get_state()))
-            node_list.append(properties)
-        return node_list
+        try:
+            node_list = []
+            for node in self._nodes.itervalues():
+                properties = DrbdNodeView.get_properties(node)
+                node_list.append(properties)
+            return node_list
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
+        return DM_SUCCESS
     
     def volume_list(self):
-        volume_list = []
-        for volume in self._volumes.itervalues():
-            properties = []
-            properties.append(volume.get_name())
-            properties.append(str(volume.get_size_MiB()))
-            properties.append(str(volume.get_minor().get_value()))
-            properties.append(str(volume.get_state()))
-            volume_list.append(properties)
-        return volume_list
+        try:
+            volume_list = []
+            for volume in self._volumes.itervalues():
+                properties = DrbdVolumeView.get_properties(volume)
+                volume_list.append(properties)
+            return volume_list
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
+        return DM_SUCCESS
+    
+    def assignment_list(self):
+        try:
+            assignment_list = []
+            for node in self._nodes.itervalues():
+                for assignment in node.iterate_assignments():
+                    properties = AssignmentView.get_properties(assignment)
+                    assignment_list.append(properties)
+            return assignment_list
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
+        return DM_SUCCESS
+                
         
     def reconfigure(self):
         return DM_ENOTIMPL

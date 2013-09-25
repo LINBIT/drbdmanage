@@ -3,6 +3,26 @@
 __author__="raltnoeder"
 __date__ ="$Sep 16, 2013 1:40:12 PM$"
 
+import sys
+
+COLOR_BLACK     = chr(0x1b) + "[0;30m"
+COLOR_DARKRED   = chr(0x1b) + "[0;31m"
+COLOR_DARKGREEN = chr(0x1b) + "[0;32m"
+COLOR_BROWN     = chr(0x1b) + "[0;33m"
+COLOR_DARKBLUE  = chr(0x1b) + "[0;34m"
+COLOR_DARKPINK  = chr(0x1b) + "[0;35m"
+COLOR_TEAL      = chr(0x1b) + "[0;36m"
+COLOR_GRAY      = chr(0x1b) + "[0;37m"
+COLOR_DARKGRAY  = chr(0x1b) + "[1;30m"
+COLOR_RED       = chr(0x1b) + "[1;31m"
+COLOR_GREEN     = chr(0x1b) + "[1;32m"
+COLOR_YELLOW    = chr(0x1b) + "[1;33m"
+COLOR_BLUE      = chr(0x1b) + "[1;34m"
+COLOR_PINK      = chr(0x1b) + "[1;35m"
+COLOR_TURQUOIS  = chr(0x1b) + "[1;36m"
+COLOR_WHITE     = chr(0x1b) + "[1;37m"
+COLOR_NONE      = chr(0x1b) + "[0m"
+
 class ArgvReader(object):
     _argv = None
     _idx  = None
@@ -83,6 +103,63 @@ class CmdLineReader(object):
                 cmdline_b = cmdline_b[idx:]
                 self._cmdline = str(cmdline_b)
                 break
+
+
+class CommandParser(object):
+    def __init__(self):
+        pass
+    
+    def parse(self, args, order, params, opt, optalias, flags, flagsalias):
+        rc = 0
+        olen = len(order)
+        for ctr in range(0, olen):
+            params[order[ctr]] = None
+        ctr = 0
+        arg = args.next_arg()
+        while arg is not None:
+            if arg.startswith("-"):
+                key = self._get_key(arg, opt, optalias)
+                if key is not None:
+                    val = args.next_arg()
+                    if val is None:
+                        sys.stderr.write("Error: Missing argument for option" \
+                          + " '" + arg + "'\n")
+                        rc = 1
+                        break
+                    else:
+                        opt[key] = val
+                else:
+                    key = self._get_key(arg, flags, flagsalias)
+                    if key is not None:
+                        flags[key] = True
+                    else:
+                        sys.stderr.write("Error: Unknown option name '" \
+                          + arg + "'\n")
+                        rc = 1
+                        break
+            else:
+                if ctr < olen:
+                    params[order[ctr]] = arg
+                    ctr += 1
+                else:
+                    sys.stderr.write("Error: Unexpected extra argument '" \
+                      + arg+ "'\n")
+                    rc = 1
+                    break
+            arg = args.next_arg()
+        if ctr < olen:
+            sys.stderr.write("Error: Incomplete command line\n")
+            rc = 1
+        return rc
+    
+    def _get_key(self, in_key, tbl, tblalias):
+        out_key = None
+        if in_key in tbl:
+            out_key = in_key
+        elif in_key in tblalias:
+            out_key = tblalias[in_key]
+        return out_key
+
 
 class SizeCalc(object):
     _base_2  = 0x0200
