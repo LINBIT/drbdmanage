@@ -7,6 +7,7 @@ import drbdmanage.storage.lvm
 import drbdmanage.utils
 from drbdmanage.exceptions import *
 
+
 class GenericStorage(object):
     _size_MiB = None
     
@@ -33,12 +34,15 @@ class BlockDevice(GenericStorage):
     def __init__(self, name, size_MiB, path):
         super(BlockDevice, self).__init__(size_MiB)
         self._path     = path
-        self._name     = self.name_check(name, self.NAME_MAXLEN)
+        self._name     = self.name_check(name)
     
     def __init__(self, path, size_MiB):
         self._path     = path
         self._name     = None
         self._size_MiB = size_MiB
+    
+    def name_check(self, name):
+        return DrbdManager.name_check(name, self.NAME_MAXLEN)
     
     def get_name(self):
         return self._name
@@ -51,7 +55,8 @@ class BlockDeviceManager(object):
     _plugin = None
     
     def __init__(self):
-        self._plugin = drbdmanage.storage.lvm.LVM()
+        # self._plugin = drbdmanage.storage.lvm.LVM()
+        self._plugin = self._plugin_import("drbdmanage.storage.lvm.LVM")
     
     def create_blockdevice(self, name, size):
         return self._plugin.create_blockdevice(name, size)
@@ -73,7 +78,23 @@ class BlockDeviceManager(object):
     
     def reconfigure(self):
         self._plugin.reconfigure()
-
+        
+    def _plugin_import(self, path):
+        try:
+            idx = path.rfind(".")
+            if idx != -1:
+                p_name = path[idx + 1:]
+                p_path = path[:idx]
+            else:
+                p_name = path
+                p_path = ""
+            p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
+            p_class = getattr(p_mod, p_name)
+            p_inst  = p_class()
+        except Exception:
+            return None
+        return p_inst
+    
 
 class MinorNr(object):
     """
@@ -97,6 +118,7 @@ class MinorNr(object):
             if nr < 0 or nr > cls.MINOR_MAX:
                 raise InvalidMinorNrException
         return nr
+
 
 class MajorNr(object):
     """

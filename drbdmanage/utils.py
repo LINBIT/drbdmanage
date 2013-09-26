@@ -23,6 +23,7 @@ COLOR_TURQUOIS  = chr(0x1b) + "[1;36m"
 COLOR_WHITE     = chr(0x1b) + "[1;37m"
 COLOR_NONE      = chr(0x1b) + "[0m"
 
+
 class ArgvReader(object):
     _argv = None
     _idx  = None
@@ -55,6 +56,7 @@ class ArgvReader(object):
     
     def reset(self):
         self._idx = 1
+
 
 class CmdLineReader(object):
     _cmdline = None
@@ -98,7 +100,7 @@ class CmdLineReader(object):
     
     def _remove_space(self):
         cmdline_b = bytearray(self._cmdline)
-        for idx in range(0, len(cmdline_b)):
+        for idx in xrange(0, len(cmdline_b)):
             if cmdline_b[idx] != 0x20 and cmdline_b[idx] != 0x9:
                 cmdline_b = cmdline_b[idx:]
                 self._cmdline = str(cmdline_b)
@@ -112,7 +114,7 @@ class CommandParser(object):
     def parse(self, args, order, params, opt, optalias, flags, flagsalias):
         rc = 0
         olen = len(order)
-        for ctr in range(0, olen):
+        for ctr in xrange(0, olen):
             params[order[ctr]] = None
         ctr = 0
         arg = args.next_arg()

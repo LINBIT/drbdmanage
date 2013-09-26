@@ -35,6 +35,9 @@ DM_EVOLSZ   = 105
 # Invalid option value
 DM_EINVAL   = 106
 
+# Cannot write configuration to or load configuration from persistent storage
+DM_EPERSIST = 107
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -48,6 +51,8 @@ _DM_EXC_TEXTS[DM_EVOLSZ]   = "Volume size out of range"
 _DM_EXC_TEXTS[DM_EINVAL]   = "Invalid option"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
 _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
+_DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
+  + "configuration storage"
 
 def dm_exc_text(id):
     try:

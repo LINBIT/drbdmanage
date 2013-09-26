@@ -22,6 +22,7 @@ class DrbdManageServer(object):
         self._nodes   = dict()
         self._volumes = dict()
         self._bd_mgr  = BlockDeviceManager()
+        self.load_conf()
     
     def create_node(self, name, ip, af):
         """
@@ -207,7 +208,7 @@ class DrbdManageServer(object):
             node_id = 0
             # The block device is set upon allocation of the backend storage
             # area on the target node
-            assignment = Assignment(node, volume, None, node_id, 0, tstate)
+            assignment = Assignment(node, volume, node_id, 0, tstate)
             node.add_assignment(assignment)
             volume.add_assignment(assignment)
         except Exception as exc:
@@ -311,10 +312,48 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return DM_SUCCESS
-                
-        
+    
+    def save_conf(self):
+        rc = DM_EPERSIST
+        try:
+            persist = PersistenceImpl()
+            if persist.open_modify():
+                if persist.save(self._nodes, self._volumes) == True:
+                    rc = DM_SUCCESS
+                persist.close()
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
+        return rc
+    
+    def load_conf(self):
+        rc = DM_EPERSIST
+        try:
+            persist = PersistenceImpl()
+            if persist.open():
+                if persist.load(self._nodes, self._volumes) == True:
+                    rc = DM_SUCCESS
+                persist.close()
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            return DM_DEBUG
+        return rc
+    
     def reconfigure(self):
-        return DM_ENOTIMPL
+        # TODO: this is debug code only
+        rc = DM_EPERSIST
+        try:
+            sys.stderr.write("save_conf()\n")
+            self.save_conf()
+            sys.stderr.write("setup new memory objects\n")
+            self._nodes   = dict()
+            self._volumes = dict()
+            sys.stderr.write("load_conf()\n")
+            rc = self.load_conf()
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        return rc
     
     def shutdown(self):
         exit(0)

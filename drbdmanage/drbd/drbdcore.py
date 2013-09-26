@@ -7,6 +7,7 @@ from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.storage.storagecore import BlockDevice
 from drbdmanage.exceptions import *
 
+
 class DrbdManager(object):
     def __init__(self):
         pass
@@ -30,7 +31,7 @@ class DrbdManager(object):
         if name_len < 1 or name_len > length:
             raise InvalidNameException
         alpha = False
-        for idx in range(0, name_len):
+        for idx in xrange(0, name_len):
             b = name_b[idx]
             if b >= ord('a') and b <= ord('z'):
                 alpha = True
@@ -109,6 +110,7 @@ class DrbdVolume(GenericStorage):
     def mark_remove(self):
         self._state |= self.FLAG_REMOVE
 
+
 class DrbdVolumeView(object):
     
     _name  = None
@@ -175,6 +177,7 @@ class DrbdVolumeView(object):
                     text += ","
                 text += "remove"
         return text
+
 
 class DrbdNode(object):
     NAME_MAXLEN = 16
@@ -272,6 +275,7 @@ class DrbdNode(object):
     def iterate_assignments(self):
         return self._assignments.itervalues()
 
+
 class DrbdNodeView(object):
     
     _name     = None
@@ -337,10 +341,12 @@ class DrbdNodeView(object):
                 text = "remove"
         return text
 
+
 class Assignment(object):
     _node        = None
     _volume      = None
     _blockdevice = None
+    _bd_path     = None
     _node_id     = None
     _cstate      = 0
     _tstate      = 0
@@ -359,10 +365,9 @@ class Assignment(object):
     # --discard-my-data upon connect / resolve split-brain
     FLAG_DISCARD   = 0x80000
 
-    def __init__(self, node, volume, blockdevice, node_id, cstate, tstate):
+    def __init__(self, node, volume, node_id, cstate, tstate):
         self._node        = node
         self._volume      = volume
-        self._blockdevice = blockdevice
         self._node_id     = int(node_id)
         # current state
         self._cstate      = cstate
@@ -382,6 +387,13 @@ class Assignment(object):
     
     def get_blockdevice(self):
         return self._blockdevice
+    
+    def get_bd_path(self):
+        return self._bd_path
+    
+    def set_blockdevice(self, blockdevice, path):
+        self._blockdevice = blockdevice
+        self._bd_path     = path
     
     def get_node_id(self):
         return self._node_id
@@ -440,6 +452,7 @@ class Assignment(object):
     def is_attached(self):
         return (self._cstate & self.FLAG_ATTACH) != 0
 
+
 class AssignmentView(object):
     _node        = None
     _volume      = None
@@ -463,11 +476,11 @@ class AssignmentView(object):
     
     @classmethod
     def get_properties(self, assg):
-        bd = assg.get_blockdevice()
-        if bd is None:
+        bd_path = assg.get_bd_path()
+        if bd_path is None:
             bd_str = "-"
         else:
-            bd_str = bd.get_path()
+            bd_str = bd_path
         properties = []
         node   = assg.get_node()
         volume = assg.get_volume()
@@ -478,7 +491,7 @@ class AssignmentView(object):
         properties.append(str(assg.get_cstate()))
         properties.append(str(assg.get_tstate()))
         return properties
-
+    
     def get_node(self):
         return self._node
     
