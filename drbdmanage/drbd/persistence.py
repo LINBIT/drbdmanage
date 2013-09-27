@@ -6,9 +6,9 @@ __date__ ="$Sep 24, 2013 3:33:50 PM$"
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import *
 from drbdmanage.exceptions import *
+from drbdmanage.utils import *
 import sys
 import json
-from StringIO import StringIO
 
 
 class GenericPersistence(object):
@@ -38,10 +38,10 @@ class PersistenceImpl(object):
     _file      = None
     _server    = None
     _writeable = False
-    _offset    = 0
     
-    BLKSZ     = 0x1000 # 4096
-    CONF_FILE = "/tmp/drbdmanaged.bin"
+    BLKSZ      = 0x1000 # 4096
+    IDX_OFFSET = 0x0800 # 2048
+    CONF_FILE  = "/tmp/drbdmanaged.bin"
     
     def __init__(self):
         pass
@@ -51,7 +51,6 @@ class PersistenceImpl(object):
         try:
             self._file      = open(self.CONF_FILE, "r")
             self._writeable = False
-            self._offset    = 0
             rc = True
         except Exception:
             pass
@@ -62,7 +61,6 @@ class PersistenceImpl(object):
         try:
             self._file      = open(self.CONF_FILE, "r+")
             self._writeable = True
-            self._offset    = 0
             rc = True
         except Exception:
             pass
@@ -73,48 +71,58 @@ class PersistenceImpl(object):
         rc = False
         try:
             if self._writeable:
-                self._file.seek(self.BLKSZ)
-                self._offset = self.BLKSZ
+                p_nodes_con = dict()
+                p_vol_con   = dict()
+                p_assg_con  = dict()
                 
-                # Save nodes
-                nodes_offset = self._offset
+                # Prepare nodes container (and build assignments list)
                 assignments = []
                 for node in nodes.itervalues():
                     p_node = DrbdNodePersistence(node)
-                    self._offset += p_node.save(self._file)
+                    p_node.save(p_nodes_con)
                     for assg in node.iterate_assignments():
                         assignments.append(assg)
-                nodes_length = self._offset
                 
-                self._align_offset()
-                self._file.seek(self._offset)
-                
-                # Save volumes
-                volumes_offset = self._offset
+                # Prepare volumes container
                 for volume in volumes.itervalues():
                     p_volume = DrbdVolumePersistence(volume)
-                    self._offset += p_volume.save(self._file)
-                volumes_length = self._offset
+                    p_volume.save(p_vol_con)
                 
-                self._align_offset()
-                self._file.seek(self._offset)
-                
-                # Save assignments
-                assignments_offset = self._offset
+                # Prepare assignments container
                 for assignment in assignments:
                     p_assignment = AssignmentPersistence(assignment)
-                    self._offset += p_assignment.save(self._file)
-                assignments_length = self._offset
+                    p_assignment.save(p_assg_con)
                 
-                self._file.seek(0)
-                self._file.write(str(nodes_offset) + ";")
-                self._file.write(str(nodes_length) + ";")
-                self._file.write(str(volumes_offset) + ";")
-                self._file.write(str(volumes_length) + ";")
-                self._file.write(str(assignments_offset) + ";")
-                self._file.write(str(assignments_length) + ";")
-                self._file.write(str(assignments_length) + "#")
-                self._file.seek(self._offset)
+                # Save data
+                self._file.seek(self.BLKSZ)
+                
+                nodes_off = self._file.tell()
+                safe_data = self._container_to_json(p_nodes_con)
+                self._file.write(safe_data)
+                nodes_len = self._file.tell() - nodes_off
+                
+                self._align_offset()
+                
+                vol_off = self._file.tell()
+                safe_data = self._container_to_json(p_vol_con)
+                self._file.write(safe_data)
+                vol_len = self._file.tell() - vol_off
+                
+                self._align_offset()
+                
+                assg_off = self._file.tell()
+                safe_data = self._container_to_json(p_assg_con)
+                self._file.write(safe_data)
+                assg_len = self._file.tell() - assg_off
+                
+                self._file.seek(self.IDX_OFFSET)
+                self._file.write( \
+                  long_to_bin(nodes_off) \
+                  + long_to_bin(nodes_len) \
+                  + long_to_bin(vol_off) \
+                  + long_to_bin(vol_len) \
+                  + long_to_bin(assg_off) \
+                  + long_to_bin(assg_len))
                 
                 rc = True
         except Exception as exc:
@@ -126,67 +134,47 @@ class PersistenceImpl(object):
         rc = False
         try:
             if self._file is not None:
-                self._file.seek(0)
-                storeinfo = self._file.read(self.BLKSZ)
-                idx = storeinfo.find("#")
-                if idx != -1:
-                    storeinfo = storeinfo[:idx]
-                else:
-                    return rc
-                numbers = storeinfo.split(";")
-                nodes_offset = int(numbers[0])
-                nodes_length = int(numbers[1])
-                volumes_offset = int(numbers[2])
-                volumes_length = int(numbers[3])
-                assignments_offset = int(numbers[4])
-                assignments_length = int(numbers[5])
+                self._file.seek(self.IDX_OFFSET)
+                index = self._file.read(48)
+                nodes_off = long_from_bin(index[0:8])
+                nodes_len = long_from_bin(index[8:16])
+                vol_off   = long_from_bin(index[16:24])
+                vol_len   = long_from_bin(index[24:32])
+                assg_off  = long_from_bin(index[32:40])
+                assg_len  = long_from_bin(index[40:48])
                 
-                sys.stderr.write("nodes@" + str(nodes_offset) + "\n")
-                sys.stderr.write("volumes@" + str(volumes_offset) + "\n")
-                sys.stderr.write("assignments@" + str(volumes_offset) + "\n")
+                # begin DEBUG
+                sys.stderr.write("nodes@" + str(nodes_off) + "\n")
+                sys.stderr.write("volumes@" + str(vol_off) + "\n")
+                sys.stderr.write("assignments@" + str(assg_off) + "\n")
+                # end DEBUG
                 
-                self._file.seek(nodes_offset)
-                nodes_dump = self._file.read(nodes_length)
+                self._file.seek(nodes_off)
+                load_data = self._file.read(nodes_len)
+                nodes_con = self._json_to_container(load_data)
                 
-                self._file.seek(volumes_offset)
-                volumes_dump = self._file.read(volumes_length)
+                self._file.seek(vol_off)
+                load_data = self._file.read(vol_len)
+                vol_con   = self._json_to_container(load_data)
                 
-                self._file.seek(assignments_offset)
-                assignments_dump = self._file.read(assignments_length)
+                self._file.seek(assg_off)
+                load_data = self._file.read(assg_len)
+                assg_con  = self._json_to_container(load_data)
                 
-                sys.stderr.write("DEBUG: #1\n")
-                nodes_stream = StringIO(nodes_dump)
-                json_blk = self._next_json(nodes_stream)
-                while json_blk is not None:
-                    node = DrbdNodePersistence.load(json_blk)
+                for properties in nodes_con.itervalues():
+                    node = DrbdNodePersistence.load(properties)
                     if node is not None:
                         nodes[node.get_name()] = node
-                    json_blk = self._next_json(nodes_stream)
-                nodes_stream.close()
                 
-                sys.stderr.write("DEBUG: #2\n")
-                volumes_stream = StringIO(volumes_dump)
-                json_blk = self._next_json(volumes_stream)
-                while json_blk is not None:
-                    volume = DrbdVolumePersistence.load(json_blk)
+                for properties in vol_con.itervalues():
+                    volume = DrbdVolumePersistence.load(properties)
                     if volume is not None:
                         volumes[volume.get_name()] = volume
-                    json_blk = self._next_json(volumes_stream)
-                volumes_stream.close()
                 
-                sys.stderr.write("DEBUG: #3\n")
-                assignments_stream = StringIO(assignments_dump)
-                json_blk = self._next_json(assignments_stream)
-                while json_blk is not None:
-                    assignment = AssignmentPersistence.load(json_blk, \
+                for properties in assg_con.itervalues():
+                    assignment = AssignmentPersistence.load(properties, \
                       nodes, volumes)
-                    if assignment is not None:
-                        node = assignment.get_node()
-                        volume = assignment.get_volume()
-                        node.add_assignment(assignment)
-                        volume.add_assignment(assignment)
-                    json_blk = self._next_json(assignments_stream)
-                assignments_stream.close()
+                
                 rc = True
         except Exception as exc:
             sys.stderr.write(str(exc) + "\n")
@@ -198,13 +186,21 @@ class PersistenceImpl(object):
                 self._writeable = False
                 self._file.close()
                 self._file      = None
-                self._offset    = 0
         except Exception:
             pass
     
+    def _container_to_json(self, container):
+        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
+    
+    def _json_to_container(self, json_doc):
+        return json.loads(json_doc)
+    
     def _align_offset(self):
-        if self._offset % self.BLKSZ != 0:
-            self._offset = ((self._offset / self.BLKSZ) + 1) * self.BLKSZ
+        if self._file is not None:
+            offset = self._file.tell()
+            if offset % self.BLKSZ != 0:
+                offset = ((offset / self.BLKSZ) + 1) * self.BLKSZ
+                self._file.seek(offset)
     
     def _next_json(self, stream):
         read = False
@@ -233,27 +229,15 @@ class DrbdNodePersistence(GenericPersistence):
     def __init__(self, node):
         super(DrbdNodePersistence, self).__init__(node)
     
-    def save(self, stream):
-        properties  = self.load_dict(self.SERIALIZABLE)
-        
-        # Serialize the name of the assigned volumes only
+    def save(self, container):
         node = self.get_object()
-        assignments = []
-        for assg in node.iterate_assignments():
-            volume = assg.get_volume()
-            vol_name = volume.get_name()
-            assignments.append(vol_name)
-        properties["assignments"] = assignments
-        
-        serialized = self.serialize(properties)
-        stream.write(serialized + "\n")
-        return len(serialized) + 1
+        properties  = self.load_dict(self.SERIALIZABLE)
+        container[node.get_name()] = properties
     
     @classmethod
-    def load(cls, conf):
+    def load(cls, properties):
         node = None
         try:
-            properties = json.loads(conf)
             node = DrbdNode( \
               properties["_name"], \
               properties["_ip"], \
@@ -273,29 +257,17 @@ class DrbdVolumePersistence(GenericPersistence):
     def __init__(self, volume):
         super(DrbdVolumePersistence, self).__init__(volume)
     
-    def save(self, stream):
-        properties = self.load_dict(self.SERIALIZABLE)
-        
-        # Serialize the name of the assigned nodes only
+    def save(self, container):
         volume = self.get_object()
-        assignments = []
-        for assg in volume.iterate_assignments():
-            node = assg.get_node()
-            node_name = node.get_name()
-            assignments.append(node_name)
-        properties["assignments"] = assignments
+        properties  = self.load_dict(self.SERIALIZABLE)
         minor = volume.get_minor()
         properties["minor"] = minor.get_value()
-        
-        serialized = self.serialize(properties)
-        stream.write(serialized + "\n")
-        return len(serialized) + 1
+        container[volume.get_name()] = properties
     
     @classmethod
-    def load(cls, conf):
+    def load(cls, properties):
         volume = None
         try:
-            properties = json.loads(conf)
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
             volume = DrbdVolume( \
@@ -316,7 +288,7 @@ class AssignmentPersistence(GenericPersistence):
     def __init__(self, assignment):
         super(AssignmentPersistence, self).__init__(assignment)
         
-    def save(self, stream):
+    def save(self, container):
         properties = self.load_dict(self.SERIALIZABLE)
         
         # Serialize the names of nodes and volumes only
@@ -329,15 +301,14 @@ class AssignmentPersistence(GenericPersistence):
         properties["node"]        = node_name
         properties["volume"]      = vol_name
         
-        serialized = self.serialize(properties)
-        stream.write(serialized + "\n")
-        return len(serialized) + 1
+        assg_name = node_name + ":" + vol_name
+        
+        container[assg_name] = properties
     
     @classmethod
-    def load(cls, conf, nodes, volumes):
+    def load(cls, properties, nodes, volumes):
         assignment = None
         try:
-            properties = json.loads(conf)
             node = nodes[properties["node"]]
             volume = volumes[properties["volume"]]
             assignment = Assignment( \
@@ -347,11 +318,18 @@ class AssignmentPersistence(GenericPersistence):
               properties["_cstate"], \
               properties["_tstate"] \
               )
-            blockdevice = properties["_blockdevice"]
-            bd_path     = properties["_bd_path"]
+            blockdevice = None
+            bd_path     = None
+            try:
+                blockdevice = properties["_blockdevice"]
+                bd_path     = properties["_bd_path"]
+            except KeyError:
+                pass
             if blockdevice is not None and bd_path is not None:
                 assignment.set_blockdevice(blockdevice, bd_path)
             assignment.set_rc(properties["_rc"])
-        except Exception:
-            pass
+            node.add_assignment(assignment)
+            volume.add_assignment(assignment)
+        except Exception as exc:
+            sys.stderr.write(str(exc) + "\n")
         return assignment

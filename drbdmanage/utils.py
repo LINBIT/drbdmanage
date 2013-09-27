@@ -23,6 +23,26 @@ COLOR_TURQUOIS  = chr(0x1b) + "[1;36m"
 COLOR_WHITE     = chr(0x1b) + "[1;37m"
 COLOR_NONE      = chr(0x1b) + "[0m"
 
+def long_to_bin(number):
+    num64 = int(number) & 0xffffffffffffffff
+    if num64 != number:
+        raise OverflowError
+    field = bytearray('0' * 8)
+    idx = 0
+    while idx < 8:
+        field[idx] = chr((num64 >> (7 - idx) * 8) & 0xff)
+        idx += 1
+    return field
+
+def long_from_bin(field):
+    num64 = 0
+    if len(field) != 8:
+        raise ValueError
+    idx = 0
+    while idx < 8:
+        num64 |= (ord(field[idx]) << ((7 - idx) * 8))
+        idx += 1
+    return num64
 
 class ArgvReader(object):
     _argv = None
