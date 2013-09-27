@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-from drbdmanage.storage.storagecore import *
-from drbdmanage.exceptions import *
+from ..exceptions import *
+import storagecore
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:49:42 AM$"
@@ -14,7 +14,8 @@ class LVM(object):
         self._lvs = dict()
     
     def create_blockdevice(self, name, size):
-        bd = BlockDevice(name, size, "/dev/mapper/drbdpool-" + name)
+        bd = storagecore.BlockDevice(name, size, \
+          "/dev/mapper/drbdpool-" + name)
         self._lvs[name] = bd
         return bd
     

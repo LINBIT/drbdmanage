@@ -36,12 +36,8 @@ class BlockDevice(GenericStorage):
         self._path     = path
         self._name     = self.name_check(name)
     
-    def __init__(self, path, size_MiB):
-        self._path     = path
-        self._name     = None
-        self._size_MiB = size_MiB
-    
     def name_check(self, name):
+        DrbdManager = drbdmanage.drbd.drbdcore.DrbdManager
         return DrbdManager.name_check(name, self.NAME_MAXLEN)
     
     def get_name(self):
@@ -55,7 +51,6 @@ class BlockDeviceManager(object):
     _plugin = None
     
     def __init__(self):
-        # self._plugin = drbdmanage.storage.lvm.LVM()
         self._plugin = self._plugin_import("drbdmanage.storage.lvm.LVM")
     
     def create_blockdevice(self, name, size):

@@ -209,6 +209,10 @@ class DrbdManageServer(object):
             # The block device is set upon allocation of the backend storage
             # area on the target node
             assignment = Assignment(node, volume, node_id, 0, tstate)
+            # TODO: This is DEBUG code; BlockDeviceManager is a dummy a.t.m.
+            bd = self._bd_mgr.create_blockdevice(volume.get_name(), \
+              volume.get_size_MiB())
+            assignment.set_blockdevice(bd.get_name(), bd.get_path())
             node.add_assignment(assignment)
             volume.add_assignment(assignment)
         except Exception as exc:
