@@ -167,19 +167,6 @@ class DBusServer(dbus.service.Object):
                         sys.stdout.write(" " + str(assg.get_cstate()) + "\n")
                         # print the node name in the first line only
                         node_name = ""
-            elif cmd == "safe":
-                assignments = []
-                for node in self._server._nodes.itervalues():
-                    for assg in node.iterate_assignments():
-                        assignments.append(assg)
-                    pnode = DrbdNodePersistence(node)
-                    pnode.safe()
-                for volume in self._server._volumes.itervalues():
-                    pvol = DrbdVolumePersistence(volume)
-                    pvol.safe()
-                for assg in assignments:
-                    passg = AssignmentPersistence(assg)
-                    passg.safe()
             else:
                 sys.stderr.write("No such debug command: " + cmd + "\n")
             sys.stdout.write("\n")

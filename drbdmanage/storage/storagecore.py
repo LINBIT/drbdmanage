@@ -75,6 +75,9 @@ class BlockDeviceManager(object):
         self._plugin.reconfigure()
         
     def _plugin_import(self, path):
+        p_mod   = None
+        p_class = None
+        p_inst  = None
         try:
             idx = path.rfind(".")
             if idx != -1:
@@ -86,8 +89,8 @@ class BlockDeviceManager(object):
             p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
             p_class = getattr(p_mod, p_name)
             p_inst  = p_class()
-        except Exception:
-            return None
+        except Exception as exc:
+            print exc
         return p_inst
     
 

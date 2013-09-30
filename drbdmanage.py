@@ -157,8 +157,6 @@ class DrbdManage(object):
             rc = self._server.debug_cmd("list-nodes")
             rc = self._server.debug_cmd("list-volumes")
             rc = self._server.debug_cmd("list-assignments")
-        elif arg == "safe":
-            rc = self._server.debug_cmd("safe")
         elif arg == "exit":
             exit(0)
         else:

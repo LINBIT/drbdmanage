@@ -3,6 +3,7 @@
 __author__="raltnoeder"
 __date__ ="$Sep 24, 2013 3:33:50 PM$"
 
+from drbdmanage.persistence import *
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import *
 from drbdmanage.exceptions import *
@@ -11,37 +12,15 @@ import sys
 import json
 
 
-class GenericPersistence(object):
-    _obj = None
-    
-    def __init__(self, obj):
-        self._obj = obj
-    
-    def get_object(self):
-        return self._obj
-    
-    def load_dict(self, serializable):
-        properties = dict()
-        for key in serializable:
-            try:
-                val = self._obj.__dict__[key]
-                properties[key] = val
-            except KeyError:
-                pass
-        return properties
-    
-    def serialize(self, properties):
-        return json.dumps(properties, indent=4, sort_keys=True)
-
-
 class PersistenceImpl(object):
-    _file      = None
-    _server    = None
-    _writeable = False
+    _file       = None
+    _server     = None
+    _writeable  = False
     
-    BLKSZ      = 0x1000 # 4096
-    IDX_OFFSET = 0x0800 # 2048
-    CONF_FILE  = "/tmp/drbdmanaged.bin"
+    BLKSZ       = 0x1000 # 4096
+    IDX_OFFSET  = 0x0800 # 2048
+    HASH_OFFSET = 0x0900 # 2304
+    CONF_FILE   = "/tmp/drbdmanaged.bin"
     
     def __init__(self):
         pass
@@ -74,6 +53,7 @@ class PersistenceImpl(object):
                 p_nodes_con = dict()
                 p_vol_con   = dict()
                 p_assg_con  = dict()
+                hash        = DataHash()
                 
                 # Prepare nodes container (and build assignments list)
                 assignments = []
@@ -97,22 +77,25 @@ class PersistenceImpl(object):
                 self._file.seek(self.BLKSZ)
                 
                 nodes_off = self._file.tell()
-                safe_data = self._container_to_json(p_nodes_con)
-                self._file.write(safe_data)
+                save_data = self._container_to_json(p_nodes_con)
+                hash.update(save_data)
+                self._file.write(save_data)
                 nodes_len = self._file.tell() - nodes_off
                 
                 self._align_offset()
                 
                 vol_off = self._file.tell()
-                safe_data = self._container_to_json(p_vol_con)
-                self._file.write(safe_data)
+                save_data = self._container_to_json(p_vol_con)
+                self._file.write(save_data)
+                hash.update(save_data)
                 vol_len = self._file.tell() - vol_off
                 
                 self._align_offset()
                 
                 assg_off = self._file.tell()
-                safe_data = self._container_to_json(p_assg_con)
-                self._file.write(safe_data)
+                save_data = self._container_to_json(p_assg_con)
+                self._file.write(save_data)
+                hash.update(save_data)
                 assg_len = self._file.tell() - assg_off
                 
                 self._file.seek(self.IDX_OFFSET)
@@ -123,6 +106,8 @@ class PersistenceImpl(object):
                   + long_to_bin(vol_len) \
                   + long_to_bin(assg_off) \
                   + long_to_bin(assg_len))
+                self._file.seek(self.HASH_OFFSET)
+                self._file.write(hash.get_hash())
                 
                 rc = True
         except Exception as exc:
@@ -134,6 +119,7 @@ class PersistenceImpl(object):
         rc = False
         try:
             if self._file is not None:
+                hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
                 index = self._file.read(48)
                 nodes_off = long_from_bin(index[0:8])
@@ -151,15 +137,25 @@ class PersistenceImpl(object):
                 
                 self._file.seek(nodes_off)
                 load_data = self._file.read(nodes_len)
+                hash.update(load_data)
                 nodes_con = self._json_to_container(load_data)
                 
                 self._file.seek(vol_off)
                 load_data = self._file.read(vol_len)
+                hash.update(load_data)
                 vol_con   = self._json_to_container(load_data)
                 
                 self._file.seek(assg_off)
                 load_data = self._file.read(assg_len)
+                hash.update(load_data)
                 assg_con  = self._json_to_container(load_data)
+                
+                self._file.seek(self.HASH_OFFSET)
+                computed_hash = hash.get_hash()
+                stored_hash   = self._file.read(hash.get_hash_len())
+                if computed_hash != stored_hash:
+                    sys.stderr.write("Warning: configuration data does not "
+                      "match its signature\n")
                 
                 for properties in nodes_con.itervalues():
                     node = DrbdNodePersistence.load(properties)
@@ -282,7 +278,7 @@ class DrbdVolumePersistence(GenericPersistence):
 
 
 class AssignmentPersistence(GenericPersistence):
-    SERIALIZABLE = [ "_blockdevice", "bd_path", "_node_id", \
+    SERIALIZABLE = [ "_blockdevice", "_bd_path", "_node_id", \
       "_cstate", "_tstate", "_rc" ]
     
     def __init__(self, assignment):

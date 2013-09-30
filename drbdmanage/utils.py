@@ -4,6 +4,7 @@ __author__="raltnoeder"
 __date__ ="$Sep 16, 2013 1:40:12 PM$"
 
 import sys
+import hashlib
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -43,6 +44,28 @@ def long_from_bin(field):
         num64 |= (ord(field[idx]) << ((7 - idx) * 8))
         idx += 1
     return num64
+
+
+class DataHash(object):
+    HASH_LEN = 32 # SHA-256
+    _hash = None
+    def __init__(self):
+        self._hash = hashlib.sha256()
+    
+    def update(self, data):
+        self._hash.update(data)
+    
+    def get_hash(self):
+        return self._hash.digest()
+    
+    def get_hex_hash(self):
+        return self._hash.hexdigest()
+    
+    def get_hash_len(self):
+        return self.HASH_LEN
+    
+    def get_hex_hash_len(self):
+        return self.HASH_LEN * 2
 
 class ArgvReader(object):
     _argv = None
