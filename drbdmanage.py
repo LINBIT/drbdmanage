@@ -49,7 +49,6 @@ class DrbdManage(object):
         rc = 1
         cl_cmd = False
         try:
-            self._debug_tests()
             args = ArgvReader(sys.argv)
             script = False
             while True:
@@ -101,6 +100,7 @@ class DrbdManage(object):
     
     
     def cli(self):
+        color = self.color
         while True:
             if self._interactive:
                 sys.stdout.write("drbdmanage> ")
@@ -524,7 +524,7 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN)
+            sys.stdout.write(color(COLOR_GREEN)
               + string.ljust("Name", DrbdNodeView.get_name_maxlen())
               + " "
               + string.ljust("AF", 5)
@@ -536,7 +536,7 @@ class DrbdManage(object):
               + string.rjust("Pool free", 12)
               + " "
               + string.rjust("state", 8)
-              + self.color(COLOR_NONE) + "\n")
+              + color(COLOR_NONE) + "\n")
         for properties in node_list:
             try:
                 view = DrbdNodeView(properties, machine_readable)
@@ -574,6 +574,7 @@ class DrbdManage(object):
     
     
     def cmd_list_volumes(self, args):
+        color = self.color
         # Command parser configuration
         order    = []
         params   = {}
@@ -595,7 +596,7 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN)
+            sys.stdout.write(color(COLOR_GREEN)
               + string.ljust("Name", DrbdVolumeView.get_name_maxlen())
               + " "
               + string.rjust("Size (MiB)", 12)
@@ -603,7 +604,7 @@ class DrbdManage(object):
               + string.rjust("Minor#", 7)
               + " "
               + string.rjust("flags", 8)
-              + self.color(COLOR_NONE) + "\n")
+              + color(COLOR_NONE) + "\n")
         for properties in volume_list:
             try:
                 view = DrbdVolumeView(properties, machine_readable)
@@ -635,6 +636,7 @@ class DrbdManage(object):
     
     
     def cmd_list_assignments(self, args):
+        color = self.color
         # Command parser configuration
         order    = []
         params   = {}
@@ -656,7 +658,7 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN)
+            sys.stdout.write(color(COLOR_GREEN)
               + string.ljust("Node", DrbdNodeView.get_name_maxlen())
               + " "
               + string.ljust("Volume", DrbdVolumeView.get_name_maxlen())
@@ -666,7 +668,7 @@ class DrbdManage(object):
               + string.rjust("Node id", 7)
               + " "
               + string.rjust("state", 8)
-              + self.color(COLOR_NONE) + "\n")
+              + color(COLOR_NONE) + "\n")
         prev_node = ""
         for properties in assignment_list:
             try:

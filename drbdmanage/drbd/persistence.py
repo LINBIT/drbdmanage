@@ -18,8 +18,9 @@ class PersistenceImpl(object):
     _writeable  = False
     
     BLKSZ       = 0x1000 # 4096
-    IDX_OFFSET  = 0x0800 # 2048
-    HASH_OFFSET = 0x0900 # 2304
+    IDX_OFFSET  = 0x1800 # 6144
+    HASH_OFFSET = 0x1900 # 6400
+    DATA_OFFSET = 0x2000 # 8192
     CONF_FILE   = "/tmp/drbdmanaged.bin"
     
     
@@ -78,7 +79,7 @@ class PersistenceImpl(object):
                     p_assignment.save(p_assg_con)
                 
                 # Save data
-                self._file.seek(self.BLKSZ)
+                self._file.seek(self.DATA_OFFSET)
                 
                 nodes_off = self._file.tell()
                 save_data = self._container_to_json(p_nodes_con)
