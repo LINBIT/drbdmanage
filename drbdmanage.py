@@ -18,14 +18,17 @@ from drbdmanage.drbd.drbdcore import AssignmentView
 __author__="raltnoeder"
 __date__ ="$Sep 16, 2013 1:11:20 PM$"
 
+
 class DrbdManage(object):
     _server = None
     _interactive = False
     _noerr       = False
     _colors      = True
     
+    
     def __init__(self):
         self.dbus_init()
+    
     
     def dbus_init(self):
         try:
@@ -37,10 +40,12 @@ class DrbdManage(object):
               + "process using DBus\n")
             sys.stderr.write("The DBus subsystem returned the following "
               + "error description:\n")
-            sys.stderr.write(str(exc) + "\n")
+            sys.stderr.write("%s\n" % (str(exc)))
             exit(1)
     
+    
     def run(self):
+        color = self.color
         rc = 1
         cl_cmd = False
         try:
@@ -56,9 +61,8 @@ class DrbdManage(object):
                     cl_cmd = True
                     rc = self.exec_cmd(args, False)
                     if rc != 0:
-                        sys.stderr.write(self.color(COLOR_RED) \
-                          + "  Operation failed" \
-                          + self.color(COLOR_NONE) + "\n")
+                        sys.stderr.write("  %sOperation failed%s\n"
+                          % (color(COLOR_RED), color(COLOR_NONE)))
                     break
                 else:
                     if arg == "-i" or arg == "--interactive":
@@ -71,8 +75,8 @@ class DrbdManage(object):
                     elif arg == "--no-colors":
                         self._colors = False
                     else:
-                        sys.stderr.write("Error: Invalid option '" + arg \
-                          + "'\n")
+                        sys.stderr.write("Error: Invalid option '%s'\n"
+                          % (arg))
                         exit(1)
                 args.next()
             if self._interactive and script:
@@ -94,6 +98,7 @@ class DrbdManage(object):
               + "error description:\n")
             sys.stderr.write(str(exc) + "\n")
         exit(rc)
+    
     
     def cli(self):
         while True:
@@ -119,12 +124,12 @@ class DrbdManage(object):
             else:
                 rc = self.exec_cmd(args, True)
                 if rc != 0 and self._interactive:
-                    sys.stderr.write(self.color(COLOR_RED) \
-                      + "  Operation failed" \
-                      + self.color(COLOR_NONE) + "\n")
+                    sys.stderr.write("  %sOperation failed%s\n"
+                          % (color(COLOR_RED), color(COLOR_NONE)))
                 if rc != 0 and not self._interactive and not self._noerr:
                     return rc
         return 0   
+    
     
     def exec_cmd(self, args, interactive):
         rc = 1
@@ -167,6 +172,7 @@ class DrbdManage(object):
                 sys.stderr.write("Error: unknown command '" + arg + "'\n")
         return rc
     
+    
     def cmd_new_node(self, args):
         rc = 1
         # Command parser configuration
@@ -192,10 +198,12 @@ class DrbdManage(object):
             self.syntax_new_node()
         return rc
     
+    
     def syntax_new_node(self):
         sys.stderr.write("Syntax: new-node [ options ] <name> <ip>\n")
         sys.stderr.write("  Options:\n")
         sys.stderr.write("    --address-family | -a : { ipv4 | ipv6 }\n")
+    
     
     def cmd_new_volume(self, args):
         rc    = 1
@@ -266,6 +274,7 @@ class DrbdManage(object):
             self.syntax_new_volume()
         return rc
     
+    
     def cmd_remove_node(self, args):
         rc = 1
         # Command parser configuration
@@ -301,8 +310,10 @@ class DrbdManage(object):
             self.syntax_remove_node()
         return rc
     
+    
     def syntax_remove_node(self):
         sys.stderr.write("Syntax: remove-node [ --quiet | -q ] <name>\n")
+    
     
     def cmd_remove_volume(self, args):
         rc = 1
@@ -339,8 +350,10 @@ class DrbdManage(object):
             self.syntax_remove_volume()
         return rc
     
+    
     def syntax_remove_volume(self):
         sys.stderr.write("Syntax: remove-volume [ --quiet | -q ] <name>\n")
+    
     
     def syntax_new_volume(self):
         sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
@@ -349,6 +362,7 @@ class DrbdManage(object):
           + "| PiB }\n" \
           + "    --minor | -m : <minor-number>\n" \
           + "The default size unit is GiB.\n")
+    
     
     def cmd_assign(self, args):
         rc    = 1
@@ -374,12 +388,12 @@ class DrbdManage(object):
             discard   = flags["--discard"]
             
             if (overwrite and client):
-                sys.stderr.write("Error: --overwrite and --client are mutually " \
-                  + "exclusive options\n")
+                sys.stderr.write("Error: --overwrite and --client "
+                  "are mutually exclusive options\n")
                 raise SyntaxException
             if (overwrite and discard):
-                sys.stderr.write("Error: --overwrite and --discard are mutually " \
-                  + "exclusive options\n")
+                sys.stderr.write("Error: --overwrite and --discard "
+                "are mutually exclusive options\n")
                 raise SyntaxException
             if client:
                 state.append("client")
@@ -387,7 +401,7 @@ class DrbdManage(object):
                 state.append("overwrite")
             if discard:
                 state.append("discard")
-            server_rc = self._server.assign(node_name, vol_name, state,\
+            server_rc = self._server.assign(node_name, vol_name, state,
               signature="ssas")
             if server_rc == 0:
                 rc = 0
@@ -397,15 +411,17 @@ class DrbdManage(object):
             self.syntax_assign()
         return rc
     
+    
     def syntax_assign(self):
         sys.stderr.write("Syntax: assign [ options ] <node> <volume>\n")
-        sys.stderr.write("  Options:\n" \
-          + "    --client      make this node a DRBD client only\n" \
-          + "    --overwrite   copy this node's data to all other nodes\n" \
-          + "    --discard     discard this node's data upon connect\n")
-        sys.stderr.write("The following options are mutually exclusive:\n" \
-          + "  --overwrite and --client\n"
-          + "  --overwrite and --discard\n")
+        sys.stderr.write("  Options:\n"
+          "    --client      make this node a DRBD client only\n"
+          "    --overwrite   copy this node's data to all other nodes\n"
+          "    --discard     discard this node's data upon connect\n")
+        sys.stderr.write("The following options are mutually exclusive:\n"
+          "  --overwrite and --client\n"
+          "  --overwrite and --discard\n")
+    
     
     def cmd_reconfigure(self):
         rc = 1
@@ -415,6 +431,7 @@ class DrbdManage(object):
         else:
             self.error_msg_text(server_rc)
         return rc
+    
     
     def cmd_unassign(self, args):
         rc = 1
@@ -439,17 +456,20 @@ class DrbdManage(object):
             self.syntax_unassign()
         return rc
 
+
     def syntax_unassign(self):
         sys.stderr.write("Syntax: unassign [ options ] <node> <volume>\n")
-        sys.stderr.write("  Options:\n" \
-          + "    --quiet | -q  disable the safety question\n")
+        sys.stderr.write("  Options:\n"
+          "    --quiet | -q  disable the safety question\n")
+    
     
     def syntax(self):
         sys.stderr.write("Syntax: drbdmanage [ options ] command\n")
-        sys.stderr.write("  Options:\n" \
-          + "    --interactive | -i ... run in interactive mode\n" \
-          + "    --stdin       | -s ... read commands from stdin " \
-          + "(for scripts)\n")
+        sys.stderr.write("  Options:\n"
+          "    --interactive | -i ... run in interactive mode\n"
+          "    --stdin       | -s ... read commands from stdin "
+          "(for scripts)\n")
+    
     
     def cmd_shutdown(self, args):
         # Command parser configuration
@@ -460,12 +480,12 @@ class DrbdManage(object):
         flags      = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
         try:
-            if CommandParser().parse(args, order, params, opt, optalias, \
+            if CommandParser().parse(args, order, params, opt, optalias,
               flags, flagsalias) != 0:
                 raise SyntaxException
             quiet = flags["-q"]
             if not quiet:
-                quiet = self.user_confirm("You are going to shut down the " \
+                quiet = self.user_confirm("You are going to shut down the "
                   + "drbdmanaged server process on this node.\nPlease confirm:")
             if quiet:
                 try:
@@ -480,7 +500,9 @@ class DrbdManage(object):
             sys.stderr.write("Syntax: shutdown [ --quiet | -q ]\n")
         return 0
     
+    
     def cmd_list_nodes(self, args):
+        color = self.color
         # Command parser configuration
         order    = []
         params   = {}
@@ -488,7 +510,7 @@ class DrbdManage(object):
         optalias = {}
         flags    = { "-m" : False }
         flagsalias = { "--machine-readable" : "-m" }
-        if CommandParser().parse(args, order, params, opt, optalias, \
+        if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) != 0:
               self.syntax_list_nodes()
               return 1
@@ -502,18 +524,18 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN) \
-              + string.ljust("Name", DrbdNodeView.get_name_maxlen()) \
-              + " " \
-              + string.ljust("AF", 5) \
-              + " " \
-              + string.ljust("IP address", 20) \
-              + " " \
-              + string.rjust("Pool size", 12) \
-              + " " \
-              + string.rjust("Pool free", 12) \
-              + " " \
-              + string.rjust("state", 8) \
+            sys.stdout.write(self.color(COLOR_GREEN)
+              + string.ljust("Name", DrbdNodeView.get_name_maxlen())
+              + " "
+              + string.ljust("AF", 5)
+              + " "
+              + string.ljust("IP address", 20)
+              + " "
+              + string.rjust("Pool size", 12)
+              + " "
+              + string.rjust("Pool free", 12)
+              + " "
+              + string.rjust("state", 8)
               + self.color(COLOR_NONE) + "\n")
         for properties in node_list:
             try:
@@ -528,26 +550,28 @@ class DrbdManage(object):
             node_free = view.get_poolfree()
             node_st   = view.get_state()
             if machine_readable:
-                sys.stdout.write(node_name + "," + node_af + "," + node_ip \
+                sys.stdout.write(node_name + "," + node_af + "," + node_ip
                   + "," + node_pool + "," + node_free + "," + node_st + "\n")
             else:
-                sys.stdout.write( \
-                  string.ljust(node_name, DrbdNodeView.get_name_maxlen()) \
-                  + " " \
-                  + string.ljust(node_af, 5) \
-                  + " " \
-                  + string.ljust(node_ip, 20) \
-                  + " " \
-                  + string.rjust(node_pool, 12) \
-                  + " " \
-                  + string.rjust(node_free, 12) \
-                  + " " \
-                  + string.rjust(node_st, 8) \
+                sys.stdout.write(
+                  string.ljust(node_name, DrbdNodeView.get_name_maxlen())
+                  + " "
+                  + string.ljust(node_af, 5)
+                  + " "
+                  + string.ljust(node_ip, 20)
+                  + " "
+                  + string.rjust(node_pool, 12)
+                  + " "
+                  + string.rjust(node_free, 12)
+                  + " "
+                  + string.rjust(node_st, 8)
                   + "\n")
         return 0
     
+    
     def syntax_list_nodes(self):
         sys.stderr.write("Syntax: nodes [ --machine-readable | -m ]\n")
+    
     
     def cmd_list_volumes(self, args):
         # Command parser configuration
@@ -557,7 +581,7 @@ class DrbdManage(object):
         optalias = {}
         flags    = { "-m" : False }
         flagsalias = { "--machine-readable" : "-m" }
-        if CommandParser().parse(args, order, params, opt, optalias, \
+        if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) != 0:
               self.syntax_list_volumes()
               return 1
@@ -571,14 +595,14 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN) \
-              + string.ljust("Name", DrbdVolumeView.get_name_maxlen()) \
-              + " " \
-              + string.rjust("Size (MiB)", 12) \
-              + " " \
-              + string.rjust("Minor#", 7) \
-              + " " \
-              + string.rjust("flags", 8) \
+            sys.stdout.write(self.color(COLOR_GREEN)
+              + string.ljust("Name", DrbdVolumeView.get_name_maxlen())
+              + " "
+              + string.rjust("Size (MiB)", 12)
+              + " "
+              + string.rjust("Minor#", 7)
+              + " "
+              + string.rjust("flags", 8)
               + self.color(COLOR_NONE) + "\n")
         for properties in volume_list:
             try:
@@ -591,22 +615,24 @@ class DrbdManage(object):
             vol_minor = view.get_minor()
             vol_state = view.get_state()
             if machine_readable:
-                sys.stdout.write(vol_name + "," + vol_size + "," \
+                sys.stdout.write(vol_name + "," + vol_size + ","
                   + vol_minor + "," + vol_state + "\n")
             else:
-                sys.stdout.write( \
-                  string.ljust(vol_name, DrbdVolumeView.get_name_maxlen()) \
-                  + " " \
-                  + string.rjust(vol_size, 12) \
-                  + " " \
-                  + string.rjust(vol_minor, 7) \
-                  + " " \
-                  + string.rjust(vol_state, 8) \
+                sys.stdout.write(
+                  string.ljust(vol_name, DrbdVolumeView.get_name_maxlen())
+                  + " "
+                  + string.rjust(vol_size, 12)
+                  + " "
+                  + string.rjust(vol_minor, 7)
+                  + " "
+                  + string.rjust(vol_state, 8)
                   + "\n")
         return 0
     
+    
     def syntax_list_volumes(self):
         sys.stderr.write("Syntax: volumes [ --machine-readable | -m ]\n")
+    
     
     def cmd_list_assignments(self, args):
         # Command parser configuration
@@ -616,7 +642,7 @@ class DrbdManage(object):
         optalias = {}
         flags    = { "-m" : False }
         flagsalias = { "--machine-readable" : "-m" }
-        if CommandParser().parse(args, order, params, opt, optalias, \
+        if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) != 0:
               self.syntax_list_volumes()
               return 1
@@ -630,16 +656,16 @@ class DrbdManage(object):
             return 0
         
         if not machine_readable:
-            sys.stdout.write(self.color(COLOR_GREEN) \
-              + string.ljust("Node", DrbdNodeView.get_name_maxlen()) \
-              + " " \
-              + string.ljust("Volume", DrbdVolumeView.get_name_maxlen()) \
+            sys.stdout.write(self.color(COLOR_GREEN)
+              + string.ljust("Node", DrbdNodeView.get_name_maxlen())
               + " "
-              + string.ljust("Blockdevice", 32) \
-              + " " \
-              + string.rjust("Node id", 7) \
-              + " " \
-              + string.rjust("state", 8) \
+              + string.ljust("Volume", DrbdVolumeView.get_name_maxlen())
+              + " "
+              + string.ljust("Blockdevice", 32)
+              + " "
+              + string.rjust("Node id", 7)
+              + " "
+              + string.rjust("state", 8)
               + self.color(COLOR_NONE) + "\n")
         prev_node = ""
         for properties in assignment_list:
@@ -656,7 +682,7 @@ class DrbdManage(object):
             tst  = view.get_tstate()
             st   = view.get_state()
             if machine_readable:
-                sys.stdout.write(node + "," + vol + "," + bd + "," + id \
+                sys.stdout.write(node + "," + vol + "," + bd + "," + id
                   + "," + cst + "," + tst + "\n")
             else:
                 if prev_node == node:
@@ -664,37 +690,24 @@ class DrbdManage(object):
                 else:
                     view_node = node
                     prev_node = node
-                sys.stdout.write( \
-                  string.ljust(view_node, DrbdNodeView.get_name_maxlen()) \
-                  + " " \
-                  + string.ljust(vol, DrbdVolumeView.get_name_maxlen()) \
-                  + " " \
-                  + string.ljust(bd, 32) \
-                  + " " \
-                  + string.rjust(id, 7) \
-                  + " " \
-                  + string.rjust(st, 8) \
+                sys.stdout.write(
+                  string.ljust(view_node, DrbdNodeView.get_name_maxlen())
+                  + " "
+                  + string.ljust(vol, DrbdVolumeView.get_name_maxlen())
+                  + " "
+                  + string.ljust(bd, 32)
+                  + " "
+                  + string.rjust(id, 7)
+                  + " "
+                  + string.rjust(st, 8)
                   + "\n")
         return 0
+    
     
     def syntax_list_assignments(self):
         sys.stderr.write("Syntax: assignments [ --machine-readable | -m ]\n")
     
-    def debug_args(self, args):
-        first = True
-        sys.stdout.write("DEBUG: args(")
-        while True:
-            arg = args.next_arg()
-            if arg is not None:
-                if first:
-                    first = False
-                else:
-                    sys.stdout.write(", ")
-                sys.stdout.write(arg)
-            else:
-                break
-        sys.stdout.write(")\n")
-    
+
     def user_confirm(self, question):
         """
         Ask yes/no questions. Requires the user to answer either "yes" or "no".
@@ -724,8 +737,10 @@ class DrbdManage(object):
                 break
         return rc
     
+    
     def error_msg_text(self, error):
         sys.stderr.write("Error: " + dm_exc_text(error) + "\n")
+    
     
     def color(self, col):
         if self._colors:
@@ -733,22 +748,7 @@ class DrbdManage(object):
         else:
             return ""
     
-    def _debug_tests(self):
-        # rc = self._server.create_node("remus", "10.43.5.208", "ipv4")
-        # rc = self._server.create_node("romulus", "10.43.5.209", "ipv4")
-        # rc = self._server.create_volume("vol01", 2460700)
-        # rc = self._server.create_volume("vol02", 1050260)
-        # rc = self._server.create_volume("petapool", 12890760600, \
-        #   signature="sx")
-        # rc = self._server.assign("remus", "vol01")
-        # rc = self._server.assign("romulus", "vol02")
-        # rc = self._server.assign("romulus", "petapool")
-        # rc = self._server.assign("remus", "petapool")
-        # rc = self._server.debug_cmd("list-nodes")
-        # rc = self._server.debug_cmd("list-volumes")
-        # rc = self._server.debug_cmd("list-assignments")
-        pass
-
+    
 def main():
     drbdmanage = DrbdManage()
     drbdmanage.run()

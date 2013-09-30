@@ -11,11 +11,14 @@ from drbdmanage.exceptions import *
 class GenericStorage(object):
     _size_MiB = None
     
+    
     def __init__(self, size_MiB):
         self._size_MiB = int(size_MiB)
     
+    
     def get_size_MiB(self):
         return self._size_MiB
+
 
     def get_size(self, unit):
         return drbdmanage.utils.SizeCalc.convert(self._size_MiB,
@@ -31,17 +34,21 @@ class BlockDevice(GenericStorage):
     _path     = None
     _name     = None
     
+    
     def __init__(self, name, size_MiB, path):
         super(BlockDevice, self).__init__(size_MiB)
         self._path     = path
         self._name     = self.name_check(name)
     
+    
     def name_check(self, name):
         DrbdManager = drbdmanage.drbd.drbdcore.DrbdManager
         return DrbdManager.name_check(name, self.NAME_MAXLEN)
     
+    
     def get_name(self):
         return self._name
+    
     
     def get_path(self):
         return self._path
@@ -50,30 +57,37 @@ class BlockDevice(GenericStorage):
 class BlockDeviceManager(object):
     _plugin = None
     
+    
     def __init__(self):
         self._plugin = self._plugin_import("drbdmanage.storage.lvm.LVM")
     
+    
     def create_blockdevice(self, name, size):
         return self._plugin.create_blockdevice(name, size)
+    
     
     def remove_blockdevice(self, name):
         # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
         return self._plugin.remove_blockdevice(bd)
     
+    
     def up_blockdevice(self, name):
         # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
         return self._plugin.up_blockdevice(bd)
+    
     
     def down_blockdevice(self, name):
         # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
         return self._plugin.down_blockdevice(bd)
     
+    
     def reconfigure(self):
         self._plugin.reconfigure()
-        
+    
+    
     def _plugin_import(self, path):
         p_mod   = None
         p_class = None
@@ -104,11 +118,14 @@ class MinorNr(object):
     MINOR_AUTO     = -1
     MINOR_AUTODRBD = -2
     
+    
     def __init__(self, nr):
         self._minor = MinorNr.minor_check(nr)
     
+    
     def get_value(self):
         return self._minor
+    
     
     @classmethod
     def minor_check(cls, nr):
@@ -125,11 +142,14 @@ class MajorNr(object):
     _major = None
     MAJOR_MAX = 0xfff
     
+    
     def __init__(self, nr):
         self._major = MajorNr.major_check(nr)
     
+    
     def get_value(self):
         return self._major
+    
     
     @classmethod
     def major_check(cls, nr):
@@ -145,12 +165,15 @@ class DevNr(object):
     _minor = None
     _major = None
     
+    
     def __init__self(self, major, minor):
         self._minor = minor
         self._major = major
 
+
     def get_minor(self):
         self._minor.get_value()
+    
     
     def get_major(self):
         self._major.get_value()
@@ -160,20 +183,26 @@ class StoragePlugin(object):
     def __init__(self):
         pass
     
+    
     def get_blockdevice(self, name):
         raise NotImplementedError
+    
     
     def create_blockdevice(self, name, size):
         raise NotImplementedError
     
+    
     def remove_blockdevice(self, blockdevice):
         raise NotImplementedError
+    
     
     def up_blockdevice(self, blockdevice):
         raise NotImplementedError
     
+    
     def down_blockdevice(self, blockdevice):
         raise NotImplementedError
+    
     
     def reconfigure(self):
         raise NotImplementedError

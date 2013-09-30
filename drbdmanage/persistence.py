@@ -9,11 +9,14 @@ import json
 class GenericPersistence(object):
     _obj = None
     
+    
     def __init__(self, obj):
         self._obj = obj
     
+    
     def get_object(self):
         return self._obj
+    
     
     def load_dict(self, serializable):
         properties = dict()
@@ -24,6 +27,7 @@ class GenericPersistence(object):
             except KeyError:
                 pass
         return properties
+    
     
     def serialize(self, properties):
         return json.dumps(properties, indent=4, sort_keys=True)

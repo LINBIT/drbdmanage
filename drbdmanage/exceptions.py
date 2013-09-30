@@ -54,36 +54,44 @@ _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
   + "configuration storage"
 
+
 def dm_exc_text(id):
     try:
         text = _DM_EXC_TEXTS[id]
     except KeyError:
-        text = "<<No error message for id " + str(id) + ">>"
+        text = "<<No error message for id %d>>" % (str(id))
     return text
+
 
 class InvalidNameException(Exception):
     def __init__(self):
         pass
 
+
 class InvalidIpTypeException(Exception):
     def __init__(self):
         pass
+
 
 class VolSizeRangeException(Exception):
     def __init__(self):
         pass
 
+
 class InvalidMinorNrException(Exception):
     def __init__(self):
         pass
+
 
 class InvalidMajorNrException(Exception):
     def __init__(self):
         pass
 
+
 class IncompatibleDataException(Exception):
     def __init__(self):
         pass
+
 
 class SyntaxException(Exception):
     def __init__(self):

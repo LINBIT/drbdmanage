@@ -22,8 +22,10 @@ class PersistenceImpl(object):
     HASH_OFFSET = 0x0900 # 2304
     CONF_FILE   = "/tmp/drbdmanaged.bin"
     
+    
     def __init__(self):
         pass
+    
     
     def open(self):
         rc = False
@@ -35,6 +37,7 @@ class PersistenceImpl(object):
             pass
         return rc
     
+    
     def open_modify(self):
         rc = False
         try:
@@ -44,6 +47,7 @@ class PersistenceImpl(object):
         except Exception:
             pass
         return rc
+    
     
     # TODO: clean implementation - this is a prototype
     def save(self, nodes, volumes):
@@ -111,8 +115,10 @@ class PersistenceImpl(object):
                 
                 rc = True
         except Exception as exc:
+            # TODO: Exception handling
             sys.stderr.write(str(exc) + "\n")
         return rc
+    
     
     # TODO: clean implementation - this is a prototype
     def load(self, nodes, volumes):
@@ -128,12 +134,6 @@ class PersistenceImpl(object):
                 vol_len   = long_from_bin(index[24:32])
                 assg_off  = long_from_bin(index[32:40])
                 assg_len  = long_from_bin(index[40:48])
-                
-                # begin DEBUG
-                sys.stderr.write("nodes@" + str(nodes_off) + "\n")
-                sys.stderr.write("volumes@" + str(vol_off) + "\n")
-                sys.stderr.write("assignments@" + str(assg_off) + "\n")
-                # end DEBUG
                 
                 self._file.seek(nodes_off)
                 load_data = self._file.read(nodes_len)
@@ -173,8 +173,10 @@ class PersistenceImpl(object):
                 
                 rc = True
         except Exception as exc:
+            # TODO: Exception handling
             sys.stderr.write(str(exc) + "\n")
         return rc
+    
     
     def close(self):
         try:
@@ -185,11 +187,14 @@ class PersistenceImpl(object):
         except Exception:
             pass
     
+    
     def _container_to_json(self, container):
         return (json.dumps(container, indent=4, sort_keys=True) + "\n")
     
+    
     def _json_to_container(self, json_doc):
         return json.loads(json_doc)
+    
     
     def _align_offset(self):
         if self._file is not None:
@@ -197,6 +202,7 @@ class PersistenceImpl(object):
             if offset % self.BLKSZ != 0:
                 offset = ((offset / self.BLKSZ) + 1) * self.BLKSZ
                 self._file.seek(offset)
+    
     
     def _next_json(self, stream):
         read = False
@@ -212,23 +218,23 @@ class PersistenceImpl(object):
             if cfgline == "}\n":
                 break
             cfgline = stream.readline()
-        if json_blk is not None:
-            sys.stderr.write("DEBUG: json_blk:\n" + json_blk + "\n")
-        else:
-            sys.stderr.write("DEBUG: json_blk = None\n")
         return json_blk
+
 
 class DrbdNodePersistence(GenericPersistence):
     SERIALIZABLE = [ "_name", "_ip", "_af", "_state", \
       "_poolsize", "_poolfree" ]
     
+    
     def __init__(self, node):
         super(DrbdNodePersistence, self).__init__(node)
+    
     
     def save(self, container):
         node = self.get_object()
         properties  = self.load_dict(self.SERIALIZABLE)
         container[node.get_name()] = properties
+    
     
     @classmethod
     def load(cls, properties):
@@ -250,8 +256,10 @@ class DrbdNodePersistence(GenericPersistence):
 class DrbdVolumePersistence(GenericPersistence):
     SERIALIZABLE = [ "_name", "_state", "_size_MiB" ]
     
+    
     def __init__(self, volume):
         super(DrbdVolumePersistence, self).__init__(volume)
+    
     
     def save(self, container):
         volume = self.get_object()
@@ -259,6 +267,7 @@ class DrbdVolumePersistence(GenericPersistence):
         minor = volume.get_minor()
         properties["minor"] = minor.get_value()
         container[volume.get_name()] = properties
+    
     
     @classmethod
     def load(cls, properties):
@@ -281,8 +290,10 @@ class AssignmentPersistence(GenericPersistence):
     SERIALIZABLE = [ "_blockdevice", "_bd_path", "_node_id", \
       "_cstate", "_tstate", "_rc" ]
     
+    
     def __init__(self, assignment):
         super(AssignmentPersistence, self).__init__(assignment)
+        
         
     def save(self, container):
         properties = self.load_dict(self.SERIALIZABLE)
@@ -300,6 +311,7 @@ class AssignmentPersistence(GenericPersistence):
         assg_name = node_name + ":" + vol_name
         
         container[assg_name] = properties
+    
     
     @classmethod
     def load(cls, properties, nodes, volumes):
@@ -327,5 +339,6 @@ class AssignmentPersistence(GenericPersistence):
             node.add_assignment(assignment)
             volume.add_assignment(assignment)
         except Exception as exc:
+            # TODO: Exception handling
             sys.stderr.write(str(exc) + "\n")
         return assignment

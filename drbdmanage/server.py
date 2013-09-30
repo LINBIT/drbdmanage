@@ -18,11 +18,13 @@ class DrbdManageServer(object):
     _nodes   = None
     _volumes = None
     
+    
     def __init__(self):
         self._nodes   = dict()
         self._volumes = dict()
         self._bd_mgr  = BlockDeviceManager()
         self.load_conf()
+    
     
     def create_node(self, name, ip, af):
         """
@@ -45,6 +47,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return DM_SUCCESS
+    
     
     def remove_node(self, name, force):
         """
@@ -78,6 +81,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
         return DM_SUCCESS
     
+    
     def get_node(self, name):
         node = None
         try:
@@ -88,6 +92,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return node
+    
     
     def create_volume(self, name, size, minor):
         """
@@ -119,6 +124,7 @@ class DrbdManageServer(object):
                 return DM_DEBUG
         return DM_SUCCESS
     
+    
     def remove_volume(self, name, force):
         """
         Marks a volume for removal from the DRBD cluster
@@ -144,6 +150,7 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    
     def get_volume(self, name):
         volume = None
         try:
@@ -153,6 +160,7 @@ class DrbdManageServer(object):
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
         return volume
+    
     
     def assign(self, node_name, volume_name, tstate):
         """
@@ -178,6 +186,7 @@ class DrbdManageServer(object):
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
         return DM_DEBUG
+    
     
     def unassign(self, node_name, volume_name, force):
         """
@@ -220,6 +229,7 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    
     def _unassign(self, assignment, force):
         """
         Implementation - see unassign()
@@ -241,6 +251,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return DM_SUCCESS
+    
     
     def cleanup(self):
         try:
@@ -280,6 +291,7 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    
     def node_list(self):
         try:
             node_list = []
@@ -292,6 +304,7 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    
     def volume_list(self):
         try:
             volume_list = []
@@ -303,6 +316,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return DM_SUCCESS
+    
     
     def assignment_list(self):
         try:
@@ -317,6 +331,7 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
     
+    
     def save_conf(self):
         rc = DM_EPERSIST
         try:
@@ -329,6 +344,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return rc
+    
     
     def load_conf(self):
         rc = DM_EPERSIST
@@ -343,32 +359,30 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return rc
     
+    
     def reconfigure(self):
         # TODO: this is debug code only
         rc = DM_EPERSIST
         try:
-            sys.stderr.write("save_conf()\n")
             self.save_conf()
-            sys.stderr.write("setup new memory objects\n")
             self._nodes   = dict()
             self._volumes = dict()
-            sys.stderr.write("load_conf()\n")
             rc = self.load_conf()
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
         return rc
     
+    
     def shutdown(self):
         exit(0)
+    
     
     @staticmethod
     def catch_internal_error(exc):
         try:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            sys.stderr.write("Internal error: Unexpected exception: " \
-              + str(exc) + "\n")
-            sys.stderr.write(exc_type + ":\n" \
-              + traceback.format_exc() + "\n")
+            sys.stderr.write("Internal error: Unexpected exception: %s\n" 
+              % (str(exc)))
         except Exception:
             pass

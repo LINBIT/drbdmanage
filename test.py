@@ -64,7 +64,7 @@ class Test(object):
             return
         rc = self._server.create_volume(name, size)
         if rc != DM_SUCCESS:
-            sys.stderr.write(dm_exc_text(rc) + "\n")
+            sys.stderr.write("%s\n" % (dm_exc_text(rc)))
     
     def show_size(self):
         name = self.next_token()
@@ -73,7 +73,7 @@ class Test(object):
             return
         volume = self._server.get_volume(name)
         if volume is None:
-            sys.stderr.write("No volume named '" + name + "'\n")
+            sys.stderr.write("No volume named '%s'\n" % (name))
             return
         # bytes
         size = volume.get_size(volume.UNIT_B)

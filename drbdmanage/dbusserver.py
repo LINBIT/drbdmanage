@@ -17,12 +17,14 @@ from drbdmanage.drbd.persistence import *
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 4:43:41 PM$"
 
+
 class DBusServer(dbus.service.Object):
     DBUS_DRBDMANAGED = "org.drbd.drbdmanaged"
     DBUS_SERVICE     = "/interface"
     
     _dbus   = None
     _server = None
+    
     
     def __init__(self, server):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -31,8 +33,10 @@ class DBusServer(dbus.service.Object):
         dbus.service.Object.__init__(self, self._dbus, self.DBUS_SERVICE)
         self._server = server
     
+    
     def run(self):
         gobject.MainLoop().run()
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sss", out_signature="i")
@@ -46,20 +50,24 @@ class DBusServer(dbus.service.Object):
         except Exception as exc:
             sys.stderr.write("Oops, " + str(exc))
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sb", out_signature="i")
     def remove_node(self, name, force):
         return self._server.remove_node(name, force)
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sxi", out_signature="i")
     def create_volume(self, name, size_MiB, minor):
         return self._server.create_volume(name, size_MiB, minor)
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="sb", out_signature="i")
     def remove_volume(self, name, force):
         return self._server.remove_volume(name, force)
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="ssas", out_signature="i")
@@ -79,35 +87,42 @@ class DBusServer(dbus.service.Object):
             tstate = tstate | Assignment.FLAG_ATTACH
         return self._server.assign(node_name, volume_name, tstate)
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="ssb", out_signature="i")
     def unassign(self, node_name, volume_name, force):
         return self._server.unassign(node_name, volume_name, force)
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="aas")
     def node_list(self):
         return self._server.node_list()
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="aas")
     def volume_list(self):
         return self._server.volume_list()
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="aas")
     def assignment_list(self):
         return self._server.assignment_list()
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="i")
     def reconfigure(self):
         return self._server.reconfigure()
     
+    
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="", out_signature="")
     def shutdown(self):
         self._server.shutdown()
+    
     
     @dbus.service.method(DBUS_DRBDMANAGED, \
       in_signature="s", out_signature="i")

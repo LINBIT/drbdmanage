@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from drbdmanage.persistence import *
+import drbdmanage.storage.storagecore
 
 __author__="raltnoeder"
 __date__ ="$Sep 30, 2013 12:19:56 PM$"
@@ -19,6 +20,7 @@ class BlockDevicePersistence(GenericPersistence):
     
     @classmethod
     def load(cls, properties):
+        BlockDevice = drbdmanage.storage.storagecore.BlockDevice
         bd = None
         try:
             bd = BlockDevice(
@@ -26,6 +28,7 @@ class BlockDevicePersistence(GenericPersistence):
               properties["size_MiB"],
               properties["_path"]
               )
-        except Exception:
-            pass
+        except Exception as exc:
+            # TODO: Exception handling
+            print exc
         return bd
