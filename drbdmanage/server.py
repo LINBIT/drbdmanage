@@ -18,7 +18,18 @@ __date__ ="$Sep 12, 2013 5:09:49 PM$"
 
 
 class DrbdManageServer(object):
-    EVT_UTIL  = "../drbdsetup-emu"
+    EVT_UTIL  = "/usr/local/sbin/drbdsetup"
+    
+    EVT_TYPE_CHANGE = "change"
+    EVT_SRC_CON     = "connection"
+    EVT_SRC_RES     = "resource"
+    EVT_ARG_NAME    = "name"
+    EVT_ARG_ROLE    = "role"
+    
+    EVT_ROLE_PRIMARY   = "Primary"
+    EVT_ROLE_SECONDARY = "Secondary"
+    DRBDCTRL_RES_NAME  = "drbdctrl"
+    
     _bd_mgr   = None
     _nodes    = None
     _volumes  = None
@@ -57,13 +68,26 @@ class DrbdManageServer(object):
             else:
                 if line.endswith("\n"):
                     line = line[:len(line) - 1]
-                # TODO: drbd events interpreter
-                sys.stderr.write("DEBUG: drbd_event() received: (%s)\n"
-                  % (line))
+                sys.stderr.write("%sDEBUG: drbd_event() (%s%s%s)%s\n"
+                  % (COLOR_RED, COLOR_NONE, line, COLOR_RED, COLOR_NONE))
                 sys.stderr.flush();
+                event_type   = get_event_type(line)
+                event_source = get_event_source(line)
+                if event_type is not None and event_source is not None:
+                    # If the configuration resource changes to "Secondary" role
+                    # on a connected node, the configuration may have changed
+                    if event_type == self.EVT_TYPE_CHANGE and \
+                      event_source == self.EVT_SRC_CON:
+                        event_res  = get_event_arg(line, self.EVT_ARG_NAME)
+                        event_role = get_event_arg(line, self.EVT_ARG_ROLE)
+                        if event_res == self.DRBDCTRL_RES_NAME and \
+                          event_role == self.EVT_ROLE_SECONDARY:
+                            self.load_conf()
+                            sys.stderr.write("DEBUG: load_conf(), "
+                              "-> enter new target state\n")
         # True = GMainLoop shall not unregister this event handler
         return True
-
+    
     
     def create_node(self, name, ip, af):
         """

@@ -48,6 +48,48 @@ def long_from_bin(field):
     return num64
 
 
+def get_event_type(logline):
+    event_type = None
+    s_idx = logline.find(" ")
+    if s_idx != -1:
+        s_idx += 1
+        e_idx = logline.find(" ", s_idx)
+        if e_idx != -1:
+            event_type = logline[s_idx:e_idx]
+        else:
+            event_type = logline[s_idx:]
+    return event_type
+
+
+def get_event_source(logline):
+    event_source = None
+    s_idx = logline.find(" ")
+    if s_idx != -1:
+        s_idx = logline.find(" ", s_idx + 1)
+        if s_idx != -1:
+            s_idx += 1
+            e_idx = logline.find(" ", s_idx)
+            if e_idx != -1:
+                event_source = logline[s_idx:e_idx]
+            else:
+                event_source = logline[s_idx:]
+    return event_source
+
+
+def get_event_arg(logline, name):
+    event_arg = None
+    pattern = name + ":"
+    s_idx = logline.find(pattern)
+    if s_idx != -1:
+        s_idx += len(pattern)
+        e_idx = logline.find(" ", s_idx)
+        if e_idx != -1:
+            event_arg = logline[s_idx:e_idx]
+        else:
+            event_arg = logline[s_idx:]
+    return event_arg
+
+
 class DataHash(object):
     HASH_LEN = 32 # SHA-256
     _hash = None
