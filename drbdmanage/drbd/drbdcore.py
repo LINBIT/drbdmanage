@@ -181,21 +181,23 @@ class DrbdVolumeView(object):
     
     
     def get_state(self):
-        text = "-"
-        if self._machine_readable:
-            if self._state & DrbdVolume.FLAG_NEW != 0:
+        text = ""
+        if self._state & DrbdVolume.FLAG_NEW != 0:
+            if self._machine_readable:
                 text = "NEW"
-            if self._state & DrbdVolume.FLAG_REMOVE != 0:
-                if len(text) > 0:
-                    text +="|"
-                text += "REMOVE"
-        else:
-            if self._state & DrbdVolume.FLAG_NEW != 0:
+            else:
                 text = "new"
-            if self._state & DrbdVolume.FLAG_REMOVE != 0:
-                if len(text) > 0:
+        if self._state & DrbdVolume.FLAG_REMOVE != 0:
+            if self._machine_readable:
+                if (len(text) > 0):
+                    text += "|"
+                text += "REMOVE"
+            else:
+                if (len(text) > 0):
                     text += ","
                 text += "remove"
+        if len(text) == 0:
+            text = "-"
         return text
 
 
@@ -380,11 +382,10 @@ class DrbdNodeView(object):
     
     def get_state(self):
         text = "-"
-        if self._machine_readable:
-            if self._state & DrbdNode.FLAG_REMOVE != 0:
+        if self._state & DrbdNode.FLAG_REMOVE != 0:
+            if self._machine_readable:
                 text = "REMOVE"
-        else:
-            if self._state & DrbdNode.FLAG_REMOVE != 0:
+            else:
                 text = "remove"
         return text
 
@@ -545,8 +546,8 @@ class AssignmentView(object):
         self._volume      = properties[1]
         self._blockdevice = properties[2]
         self._node_id     = properties[3]
-        self._cstate      = properties[4]
-        self._tstate      = properties[5]
+        self._cstate      = int(properties[4])
+        self._tstate      = int(properties[5])
     
     
     @classmethod
@@ -585,15 +586,62 @@ class AssignmentView(object):
     
     
     def get_cstate(self):
-        # TODO: state parser
-        return self._cstate
+        mr = self._machine_readable
+        text = ""
+        if self._cstate & Assignment.FLAG_DEPLOY != 0:
+            text = state_text_append(mr, text, "DEPLOY", "deployed")
+        if self._cstate & Assignment.FLAG_ATTACH != 0:
+            text = state_text_append(mr, text, "ATTACH", "attached")
+        if self._cstate & Assignment.FLAG_CONNECT != 0:
+            text = state_text_append(mr, text, "CONNECT", "connected")
+        if self._cstate & Assignment.FLAG_DISKLESS != 0:
+            text = state_text_append(mr, text, "DISKLESS", "client")
+        return text
     
     
     def get_tstate(self):
-        # TODO: state parser
-        return self._tstate
+        mr = self._machine_readable
+        text = ""
+        if self._cstate & Assignment.FLAG_DEPLOY != 0:
+            text = state_text_append(mr, text, "DEPLOY", "deploy")
+        if self._cstate & Assignment.FLAG_ATTACH != 0:
+            text = state_text_append(mr, text, "ATTACH", "attach")
+        if self._cstate & Assignment.FLAG_CONNECT != 0:
+            text = state_text_append(mr, text, "CONNECT", "connect")
+        if self._cstate & Assignment.FLAG_UPD_CON != 0:
+            text = state_text_append(mr, text, "UPD_CON", "update")
+        if self._cstate & Assignment.FLAG_RECONNECT != 0:
+            text = state_text_append(mr, text, "RECONNECT", "reconnect")
+        if self._cstate & Assignment.FLAG_OVERWRITE != 0:
+            text = state_text_append(mr, text, "OVERWRITE", "init-master")
+        if self._cstate & Assignment.FLAG_DISCARD != 0:
+            text = state_text_append(mr, text, "DISCARD", "discard")
+        return text
     
     
     def get_state(self):
-        # TODO: state parser
-        return "<not implemented>"
+        mr = self._machine_readable
+        text = ""
+        if self._cstate & Assignment.FLAG_DEPLOY != 0:
+            text = state_text_append(mr, text, "DEPLOY", "deployed")
+        if self._cstate & Assignment.FLAG_ATTACH != 0:
+            text = state_text_append(mr, text, "ATTACH", "attached")
+        if self._cstate & Assignment.FLAG_CONNECT != 0:
+            text = state_text_append(mr, text, "CONNECT", "connected")
+        if self._cstate & Assignment.FLAG_DISKLESS != 0:
+            text = state_text_append(mr, text, "DISKLESS", "client")
+        if len(text) == 0:
+            text = "-"
+        return text
+
+
+def state_text_append(machine_readable, text, mr_text, hr_text):
+    if machine_readable:
+        if len(text) > 0:
+            text += "|"
+        text += mr_text
+    else:
+        if len(text) > 0:
+            text+= ","
+        text += hr_text
+    return text
