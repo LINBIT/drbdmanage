@@ -1,7 +1,11 @@
 #!/usr/bin/python
 
 import sys
+import os
 import traceback
+import gobject
+import subprocess
+import fcntl
 
 from drbdmanage.dbusserver import *
 from drbdmanage.exceptions import *
@@ -12,11 +16,15 @@ from drbdmanage.storage.storagecore import *
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
 
+
 class DrbdManageServer(object):
-    _bd_mgr      = None
-    
-    _nodes   = None
-    _volumes = None
+    EVT_UTIL  = "../drbdsetup-emu"
+    _bd_mgr   = None
+    _nodes    = None
+    _volumes  = None
+    _evt_file = None
+    _proc_evt = None
+    _reader   = None
     
     
     def __init__(self):
@@ -24,7 +32,38 @@ class DrbdManageServer(object):
         self._volumes = dict()
         self._bd_mgr  = BlockDeviceManager()
         self.load_conf()
+        self.init_events()
+
+
+    def init_events(self):
+        self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events", "all"], 0,
+          self.EVT_UTIL, stdout=subprocess.PIPE)
+        self._evt_file = self._proc_evt.stdout
+        fcntl.fcntl(self._evt_file.fileno(),
+          fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
+        self._reader = NioLineReader(self._evt_file)
+        gobject.io_add_watch(self._evt_file.fileno(), gobject.IO_IN, 
+          self.drbd_event)
+        # TODO: there should be a restart/reopen mechanism if the pipe breaks
+        # or the subprocess goes away somehow (which will break the pipe, too)
+        # Maybe try a HUP (hang-up) event handler from GMainLoop
     
+    
+    def drbd_event(self, fd, condition):
+        while True:
+            line = self._reader.readline()
+            if line is None:
+                break
+            else:
+                if line.endswith("\n"):
+                    line = line[:len(line) - 1]
+                # TODO: drbd events interpreter
+                sys.stderr.write("DEBUG: drbd_event() received: (%s)\n"
+                  % (line))
+                sys.stderr.flush();
+        # True = GMainLoop shall not unregister this event handler
+        return True
+
     
     def create_node(self, name, ip, af):
         """

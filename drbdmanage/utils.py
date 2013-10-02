@@ -228,6 +228,68 @@ class CommandParser(object):
         return out_key
 
 
+class NioLineReader(object):
+    READBUFSZ   =  512
+    
+    _file     = None
+    _data     = None
+    _lines    = None
+    
+    def __init__(self, file):
+        self._file     = file
+        self._text     = ""
+        self._lines    = []
+    
+    
+    def readline(self):
+        """
+        Return the next line of text if one is available and buffer any
+        more lines of text until they are requested, or, if no full
+        line of text is available, return None and buffer text until a full
+        line of text is available.
+        
+        WARNING:
+        Trying to optimize this method will very likely break somthing.
+        This is used for nonblocking I/O, and many other functions like
+        readinto(bytearray), etc. failed surprisingly in all imaginable ways.
+        Some seem to work at first, but fail in some special cases.
+        """
+        line = None
+        if len(self._lines) > 0:
+            line = self._lines.pop(0)
+        else:
+            while line is None:
+                try:
+                    # may the force be with you:
+                    data = self._file.read(self.READBUFSZ)
+                except IOError:
+                    # Resource temporarily unavailable (errno 11)
+                    # check for len(data) == 0 below skipped, as it does
+                    # not help either
+                    break
+                if data is None:
+                    # no more data available for reading
+                    break
+                else:
+                    self._text += data
+                lastidx = 0
+                while True:
+                    idx = self._text.find("\n", lastidx)
+                    if idx != -1:
+                        # include newline character
+                        idx += 1
+                        if line is None:
+                            line = self._text[lastidx:idx]
+                        else:
+                            self._lines.append(self._text[lastidx:idx])
+                        lastidx = idx
+                    else:
+                        break
+                if lastidx != 0:
+                    self._text = self._text[lastidx:]
+        return line
+
+
 class SizeCalc(object):
     _base_2  = 0x0200
     _base_10 = 0x0A00
