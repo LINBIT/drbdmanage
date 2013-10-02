@@ -128,7 +128,7 @@ class DrbdManage(object):
                           % (color(COLOR_RED), color(COLOR_NONE)))
                 if rc != 0 and not self._interactive and not self._noerr:
                     return rc
-        return 0   
+        return 0
     
     
     def exec_cmd(self, args, interactive):
@@ -264,8 +264,8 @@ class DrbdManage(object):
             if unit != SizeCalc.UNIT_MiB:
                 size = SizeCalc.convert_round_up(size, unit, \
                   SizeCalc.UNIT_MiB)
-            server_rc = self._server.create_volume(name, size, minor, \
-              signature="sxi")
+            server_rc = self._server.create_volume(dbus.String(name),
+              dbus.UInt64(size), dbus.Int32(minor))
             if server_rc == 0:
                 rc = 0
             else:
@@ -298,8 +298,8 @@ class DrbdManage(object):
                   + "from the cluster. This will remove all resources from " \
                   + "the node.\nPlease confirm:")
             if quiet:
-                server_rc = self._server.remove_node(node_name, force, \
-                  signature="sb")
+                server_rc = self._server.remove_node(dbus.String(node_name),
+                  dbus.Boolean(force))
                 if server_rc == 0:
                     rc = 0
                 else:
@@ -338,8 +338,8 @@ class DrbdManage(object):
                   + "from all nodes of the cluster.\n" \
                   + "Please confirm:")
             if quiet:
-                server_rc = self._server.remove_volume(vol_name, force, \
-                  signature="sb")
+                server_rc = self._server.remove_volume(dbus.String(vol_name),
+                  dbus.Boolean(force))
                 if server_rc == 0:
                     rc = 0
                 else:
@@ -401,8 +401,8 @@ class DrbdManage(object):
                 state.append("overwrite")
             if discard:
                 state.append("discard")
-            server_rc = self._server.assign(node_name, vol_name, state,
-              signature="ssas")
+            server_rc = self._server.assign(dbus.String(node_name),
+              dbus.String(vol_name), dbus.Array(state, signature="s"))
             if server_rc == 0:
                 rc = 0
             else:

@@ -34,7 +34,7 @@ def long_to_bin(number):
     while idx < 8:
         field[idx] = chr((num64 >> (7 - idx) * 8) & 0xff)
         idx += 1
-    return field
+    return str(field)
 
 
 def long_from_bin(field):
