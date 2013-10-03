@@ -52,7 +52,7 @@ _DM_EXC_TEXTS[DM_EINVAL]   = "Invalid option"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
 _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
-  + "configuration storage"
+  "configuration storage"
 
 
 def dm_exc_text(id):

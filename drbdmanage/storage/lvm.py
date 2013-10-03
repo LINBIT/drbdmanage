@@ -22,7 +22,7 @@ class LVM(object):
     
     
     def create_blockdevice(self, name, size):
-        bd = storagecore.BlockDevice(name, size, \
+        bd = storagecore.BlockDevice(name, size,
           "/dev/mapper/drbdpool-" + name)
         self._lvs[name] = bd
         self.save_conf()

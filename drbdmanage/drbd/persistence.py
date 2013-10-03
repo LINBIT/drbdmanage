@@ -104,12 +104,12 @@ class PersistenceImpl(object):
                 assg_len = self._file.tell() - assg_off
                 
                 self._file.seek(self.IDX_OFFSET)
-                self._file.write( \
-                  long_to_bin(nodes_off) \
-                  + long_to_bin(nodes_len) \
-                  + long_to_bin(vol_off) \
-                  + long_to_bin(vol_len) \
-                  + long_to_bin(assg_off) \
+                self._file.write(
+                  long_to_bin(nodes_off)
+                  + long_to_bin(nodes_len)
+                  + long_to_bin(vol_off)
+                  + long_to_bin(vol_len)
+                  + long_to_bin(assg_off)
                   + long_to_bin(assg_len))
                 self._file.seek(self.HASH_OFFSET)
                 self._file.write(hash.get_hash())
@@ -169,7 +169,7 @@ class PersistenceImpl(object):
                         volumes[volume.get_name()] = volume
                 
                 for properties in assg_con.itervalues():
-                    assignment = AssignmentPersistence.load(properties, \
+                    assignment = AssignmentPersistence.load(properties,
                       nodes, volumes)
                 
                 rc = True
@@ -223,7 +223,7 @@ class PersistenceImpl(object):
 
 
 class DrbdNodePersistence(GenericPersistence):
-    SERIALIZABLE = [ "_name", "_ip", "_af", "_state", \
+    SERIALIZABLE = [ "_name", "_ip", "_af", "_state",
       "_poolsize", "_poolfree" ]
     
     
@@ -241,10 +241,10 @@ class DrbdNodePersistence(GenericPersistence):
     def load(cls, properties):
         node = None
         try:
-            node = DrbdNode( \
-              properties["_name"], \
-              properties["_ip"], \
-              properties["_af"] \
+            node = DrbdNode(
+              properties["_name"],
+              properties["_ip"],
+              properties["_af"]
               )
             node.set_state(properties["_state"])
             node.set_poolsize(properties["_poolsize"])
@@ -276,9 +276,9 @@ class DrbdVolumePersistence(GenericPersistence):
         try:
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
-            volume = DrbdVolume( \
-              properties["_name"], \
-              properties["_size_MiB"], \
+            volume = DrbdVolume(
+              properties["_name"],
+              properties["_size_MiB"],
               minor
               )
             volume.set_state(properties["_state"])
@@ -288,7 +288,7 @@ class DrbdVolumePersistence(GenericPersistence):
 
 
 class AssignmentPersistence(GenericPersistence):
-    SERIALIZABLE = [ "_blockdevice", "_bd_path", "_node_id", \
+    SERIALIZABLE = [ "_blockdevice", "_bd_path", "_node_id",
       "_cstate", "_tstate", "_rc" ]
     
     
@@ -320,12 +320,12 @@ class AssignmentPersistence(GenericPersistence):
         try:
             node = nodes[properties["node"]]
             volume = volumes[properties["volume"]]
-            assignment = Assignment( \
-              node, \
-              volume, \
-              properties["_node_id"], \
-              properties["_cstate"], \
-              properties["_tstate"] \
+            assignment = Assignment(
+              node,
+              volume,
+              properties["_node_id"],
+              properties["_cstate"],
+              properties["_tstate"]
               )
             blockdevice = None
             bd_path     = None
