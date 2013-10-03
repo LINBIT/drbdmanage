@@ -30,12 +30,23 @@ class DrbdManageServer(object):
     EVT_ROLE_SECONDARY = "Secondary"
     DRBDCTRL_RES_NAME  = "drbdctrl"
     
-    _bd_mgr   = None
-    _nodes    = None
-    _volumes  = None
-    _evt_file = None
-    _proc_evt = None
-    _reader   = None
+    # BlockDevice manager
+    _bd_mgr    = None
+    # Configuration objects maps
+    _nodes     = None
+    _volumes   = None
+    # Events log pipe
+    _evt_file  = None
+    # Subprocess handle for the events log source
+    _proc_evt  = None
+    # Reader for the events log
+    _reader    = None
+    # Event handler for incoming data
+    _evt_in_h  = None
+    # Event handler for the hangup event on the subprocess pipe
+    _evt_hup_h = None
+    
+    _DEBUG_max_ctr = 0
     
     
     def __init__(self):
@@ -53,11 +64,22 @@ class DrbdManageServer(object):
         fcntl.fcntl(self._evt_file.fileno(),
           fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
         self._reader = NioLineReader(self._evt_file)
-        gobject.io_add_watch(self._evt_file.fileno(), gobject.IO_IN, 
-          self.drbd_event)
-        # TODO: there should be a restart/reopen mechanism if the pipe breaks
-        # or the subprocess goes away somehow (which will break the pipe, too)
-        # Maybe try a HUP (hang-up) event handler from GMainLoop
+        # detect readable data on the pipe
+        self._evt_in_h = gobject.io_add_watch(self._evt_file.fileno(),
+          gobject.IO_IN, self.drbd_event)
+        # detect broken pipe
+        self._evt_hup_h = gobject.io_add_watch(self._evt_file.fileno(),
+          gobject.IO_HUP, self.restart_events)
+    
+    
+    def restart_events(self, fd, condition):
+        # unregister any existing event handlers for the events log
+        if self._evt_in_h is not None:
+            gobject.source_remove(self._evt_in_h)
+        self.init_events()
+        self.load_conf()
+        # Unregister this event handler
+        return False
     
     
     def drbd_event(self, fd, condition):

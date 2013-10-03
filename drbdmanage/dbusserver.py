@@ -120,14 +120,14 @@ class DBusServer(dbus.service.Object):
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="i")
-    def load_config(self):
-        return self._server.load_config()
+    def load_conf(self):
+        return self._server.load_conf()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="i")
-    def save_config(self):
-        return self._server.save_config()
+    def save_conf(self):
+        return self._server.save_conf()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,

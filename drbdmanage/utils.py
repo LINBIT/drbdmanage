@@ -304,13 +304,17 @@ class NioLineReader(object):
                 try:
                     # may the force be with you:
                     data = self._file.read(self.READBUFSZ)
-                except IOError:
+                except IOError as ioerr:
                     # Resource temporarily unavailable (errno 11)
                     # check for len(data) == 0 below skipped, as it does
                     # not help either
                     break
                 if data is None:
                     # no more data available for reading
+                    break
+                if len(data) == 0:
+                    # this case does not seem to happen,
+                    # but just to be sure...
                     break
                 else:
                     self._text += data

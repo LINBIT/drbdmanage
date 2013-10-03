@@ -156,6 +156,10 @@ class DrbdManage(object):
             rc = self.cmd_unassign(args)
         elif arg == "reconfigure":
             rc = self.cmd_reconfigure()
+        elif arg == "save":
+            rc = self.cmd_save()
+        elif arg == "load":
+            rc = self.cmd_load()
         elif arg == "shutdown":
             rc = self.cmd_shutdown(args)
         elif arg == "debug":
@@ -426,6 +430,26 @@ class DrbdManage(object):
     def cmd_reconfigure(self):
         rc = 1
         server_rc = self._server.reconfigure()
+        if server_rc == 0:
+            rc = 0
+        else:
+            self.error_msg_text(server_rc)
+        return rc
+    
+    
+    def cmd_save(self):
+        rc = 1
+        server_rc = self._server.save_conf()
+        if server_rc == 0:
+            rc = 0
+        else:
+            self.error_msg_text(server_rc)
+        return rc
+    
+    
+    def cmd_load(self):
+        rc = 1
+        server_rc = self._server.load_conf()
         if server_rc == 0:
             rc = 0
         else:
