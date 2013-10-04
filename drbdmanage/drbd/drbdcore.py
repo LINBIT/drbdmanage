@@ -6,11 +6,66 @@ __date__ ="$Sep 12, 2013 10:43:21 AM$"
 from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.storage.storagecore import BlockDevice
 from drbdmanage.exceptions import *
+from drbdmanage.utils import *
 
 
 class DrbdManager(object):
-    def __init__(self):
-        pass
+    _server = None
+    
+    def __init__(self, server):
+        self._server = server
+    
+    def run(self):
+        try:
+            state_changed = False
+            # TODO:
+            # 1. Compare the hash of the current configuration to the hash
+            #    on persistent storage
+            # 2. If the hashes differ, lock the device and reload the
+            #    configuration
+            # 3. If there are required actions on this node, perform
+            #    changes
+            # 4. If there were any changes, save the configuration
+            sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
+              % (COLOR_GREEN, COLOR_NONE))
+            node = self._server.get_instance_node()
+            assignments = node.iterate_assignments()
+            for assg in assignments:
+                if assg.requires_action():
+                    state_changed = True
+                    vol = assg.get_volume()
+                    vol_name = volume.get_name()
+                    if assg.requires_connect():
+                        sys.stdout.write("  %sconnect:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.connect()
+                    elif assg.requires_disconnect():
+                        sys.stdout.write("  %sdisconnect:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.disconnect()
+                    elif assg.requires_attach():
+                        sys.stdout.write("  %sattach:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.attach()
+                    elif assg.requires_detach():
+                        sys.stdout.write("  %sdetach:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.dettach()
+                    elif assg.requires_deploy():
+                        sys.stdout.write("  %sdeploy:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.deploy()
+                    elif assg.requires_undeploy():
+                        sys.stdout.write("  %sundeploy:%s   %s\n"
+                          % (COLOR_GREEN, COLOR_NONE, vol_name))
+                        assg.undeploy()
+            if state_changed:
+                self._server.save_conf()
+            sys.stdout.write("%s--> DrbdManager: finished%s\n"
+              % (COLOR_GREEN, COLOR_NONE))
+        except Exception as exc:
+            sys.stderr.write("%sDrbdManager: Oops: %s%s\n"
+              % (COLOR_RED, str(exc), COLOR_NONE))
     
     
     @staticmethod
@@ -525,6 +580,40 @@ class Assignment(object):
     
     def is_attached(self):
         return (self._cstate & self.FLAG_ATTACH) != 0
+    
+    
+    def requires_action(self):
+        return (self._cstate == self._tstate)
+    
+    
+    def requires_deploy(self):
+        return (self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
+          and (self._cstate & self.FLAG_DEPLOY == 0)
+    
+    
+    def requires_attach(self):
+        return (self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
+          and (self._cstate & self.FLAG_ATTACH == 0)
+    
+    
+    def requires_connect(self):
+        return (self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT) \
+          and (self._cstate & self.FLAG_CONNECT == 0)
+    
+    
+    def requires_undeploy(self):
+        return (self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
+          and (self._tstate & self.FLAG_DEPLOY == 0)
+    
+    
+    def requires_dettach(self):
+        return (self._cstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
+          and (self._tstate & self.FLAG_ATTACH == 0)
+    
+    
+    def requires_disconnect(self):
+        return (self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT) \
+          and (self._tstate & self.FLAG_CONNECT == 0)
 
 
 class AssignmentView(object):

@@ -92,23 +92,28 @@ def get_event_arg(logline, name):
 
 class DataHash(object):
     HASH_LEN = 32 # SHA-256
-    _hash = None
+    _hashalgo = None
+    _hash     = None
     
     
     def __init__(self):
-        self._hash = hashlib.sha256()
+        self._hashalgo = hashlib.sha256()
     
     
     def update(self, data):
-        self._hash.update(data)
+        self._hashalgo.update(data)
     
     
     def get_hash(self):
-        return self._hash.digest()
+        if self._hash is None:
+            self._hash = self._hashalgo.digest()
+        return self._hash
     
     
     def get_hex_hash(self):
-        return self._hash.hexdigest()
+        if self._hash is None:
+            self._hash = self._hashalgo.hexdigest()
+        return self._hash
     
     
     def get_hash_len(self):

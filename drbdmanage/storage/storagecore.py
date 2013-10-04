@@ -67,25 +67,28 @@ class BlockDeviceManager(object):
     
     
     def remove_blockdevice(self, name):
-        # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
-        return self._plugin.remove_blockdevice(bd)
+        if bd is not None:
+            return self._plugin.remove_blockdevice(bd)
+        return DM_ENOENT
     
     
     def up_blockdevice(self, name):
-        # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
-        return self._plugin.up_blockdevice(bd)
+        if bd is not None:
+            return self._plugin.up_blockdevice(bd)
+        return DM_ENOENT
     
     
     def down_blockdevice(self, name):
-        # TODO: check whether bd exists
         bd = self._plugin.get_blockdevice(name)
-        return self._plugin.down_blockdevice(bd)
+        if bd is not None:
+            return self._plugin.down_blockdevice(bd)
+        return DM_ENOENT
     
     
     def reconfigure(self):
-        self._plugin.reconfigure()
+        return self._plugin.reconfigure()
     
     
     def _plugin_import(self, path):
@@ -106,7 +109,7 @@ class BlockDeviceManager(object):
         except Exception as exc:
             print exc
         return p_inst
-    
+
 
 class MinorNr(object):
     """

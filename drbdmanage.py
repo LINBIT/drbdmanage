@@ -12,8 +12,6 @@ from drbdmanage.drbd.drbdcore import DrbdNodeView
 from drbdmanage.drbd.drbdcore import DrbdVolumeView
 from drbdmanage.drbd.drbdcore import AssignmentView
 
-# TODO: add syntax description when drbdmanage is called without any
-#       command line arguments
 
 __author__="raltnoeder"
 __date__ ="$Sep 16, 2013 1:11:20 PM$"

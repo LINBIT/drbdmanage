@@ -16,11 +16,13 @@ class PersistenceImpl(object):
     _file       = None
     _server     = None
     _writeable  = False
+    _hash_obj   = None
     
     BLKSZ       = 0x1000 # 4096
     IDX_OFFSET  = 0x1800 # 6144
     HASH_OFFSET = 0x1900 # 6400
     DATA_OFFSET = 0x2000 # 8192
+    ZEROFILLSZ  = 0x0400 # 1024
     CONF_FILE   = "/tmp/drbdmanaged.bin"
     
     
@@ -52,9 +54,8 @@ class PersistenceImpl(object):
     
     # TODO: clean implementation - this is a prototype
     def save(self, nodes, volumes):
-        rc = False
-        try:
-            if self._writeable:
+        if self._writeable:
+            try:
                 p_nodes_con = dict()
                 p_vol_con   = dict()
                 p_assg_con  = dict()
@@ -87,7 +88,7 @@ class PersistenceImpl(object):
                 self._file.write(save_data)
                 nodes_len = self._file.tell() - nodes_off
                 
-                self._align_offset()
+                self._align_zero_fill()
                 
                 vol_off = self._file.tell()
                 save_data = self._container_to_json(p_vol_con)
@@ -95,7 +96,7 @@ class PersistenceImpl(object):
                 hash.update(save_data)
                 vol_len = self._file.tell() - vol_off
                 
-                self._align_offset()
+                self._align_zero_fill()
                 
                 assg_off = self._file.tell()
                 save_data = self._container_to_json(p_assg_con)
@@ -113,19 +114,37 @@ class PersistenceImpl(object):
                   + long_to_bin(assg_len))
                 self._file.seek(self.HASH_OFFSET)
                 self._file.write(hash.get_hash())
-                
-                rc = True
-        except Exception as exc:
-            # TODO: Exception handling
-            sys.stderr.write(str(exc) + "\n")
-        return rc
+                self._hash_obj = hash
+            except Exception:
+                raise PersistenceException
+        else:
+            # file not open for writing
+            raise IOError("Persistence save() without a "
+              "writable file descriptor")
+    
+    
+    # Get the hash of the configuration on persistent storage
+    def get_stored_hash(self):
+        stored_hash = None
+        if self._file is not None:
+            try:
+                hash = DataHash()
+                self._file.seek(self.HASH_OFFSET)
+                stored_hash = self._file.read(hash.get_hash_len())
+            except Exception:
+                raise PersistenceException
+        else:
+            # file not open
+            raise IOError("Persistence load() without an "
+              "open file descriptor")
+        return stored_hash
     
     
     # TODO: clean implementation - this is a prototype
     def load(self, nodes, volumes):
-        rc = False
-        try:
-            if self._file is not None:
+        errors = False
+        if self._file is not None:
+            try:
                 hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
                 index = self._file.read(48)
@@ -157,26 +176,39 @@ class PersistenceImpl(object):
                 if computed_hash != stored_hash:
                     sys.stderr.write("Warning: configuration data does not "
                       "match its signature\n")
+                # TODO: if the signature is wrong, load an earlier backup
+                #       of the configuration
                 
+                nodes.clear()
                 for properties in nodes_con.itervalues():
                     node = DrbdNodePersistence.load(properties)
                     if node is not None:
                         nodes[node.get_name()] = node
+                    else:
+                        errors = True
                 
+                volumes.clear()
                 for properties in vol_con.itervalues():
                     volume = DrbdVolumePersistence.load(properties)
                     if volume is not None:
                         volumes[volume.get_name()] = volume
+                    else:
+                        errors = True
                 
                 for properties in assg_con.itervalues():
                     assignment = AssignmentPersistence.load(properties,
                       nodes, volumes)
-                
-                rc = True
-        except Exception as exc:
-            # TODO: Exception handling
-            sys.stderr.write(str(exc) + "\n")
-        return rc
+                    if assignment is None:
+                        errors = True
+                self._hash_obj = hash
+            except Exception:
+                raise PersistenceException
+        else:
+            # file not open
+            raise IOError("Persistence load() without an "
+              "open file descriptor")
+        if errors:
+            raise PersistenceException
     
     
     def close(self):
@@ -187,6 +219,10 @@ class PersistenceImpl(object):
                 self._file      = None
         except Exception:
             pass
+    
+    
+    def get_hash_obj(self):
+        return self._hash_obj
     
     
     def _container_to_json(self, container):
@@ -203,6 +239,22 @@ class PersistenceImpl(object):
             if offset % self.BLKSZ != 0:
                 offset = ((offset / self.BLKSZ) + 1) * self.BLKSZ
                 self._file.seek(offset)
+    
+    
+    def _align_zero_fill(self):
+        if self._file is not None:
+            offset = self._file.tell()
+            if offset % self.BLKSZ != 0:
+                fillbuf = ('\0' * ZEROFILLSZ)
+                blk  = ((offset / self.BLKSZ) + 1) * self.BLKSZ
+                diff = blk - offset;
+                fillnr = diff / self.ZEROFILLSZ
+                ctr = 0
+                while ctr < fillnr:
+                    self._file.write(fillbuf)
+                    ctr += 1
+                diff -= (ZEROFILLSZ * fillnr)
+                self._file.write(fillbuf[:diff])
     
     
     def _next_json(self, stream):
@@ -339,7 +391,6 @@ class AssignmentPersistence(GenericPersistence):
             assignment.set_rc(properties["_rc"])
             node.add_assignment(assignment)
             volume.add_assignment(assignment)
-        except Exception as exc:
-            # TODO: Exception handling
-            sys.stderr.write(str(exc) + "\n")
+        except Exception:
+            pass
         return assignment

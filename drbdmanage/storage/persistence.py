@@ -29,6 +29,5 @@ class BlockDevicePersistence(GenericPersistence):
               properties["_path"]
               )
         except Exception as exc:
-            # TODO: Exception handling
-            print exc
+            pass
         return bd

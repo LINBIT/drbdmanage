@@ -89,8 +89,7 @@ class LVM(object):
                 if bd is not None:
                     self._lvs[bd.get_name()] = bd
         except Exception as exc:
-            # TODO: Exception handling
-            print exc
+            raise PersistenceException
         finally:
             if file is not None:
                 file.close()
@@ -110,8 +109,7 @@ class LVM(object):
             file.write(save_data)
             file.write("sig:" + hash.get_hex_hash() + "\n")
         except Exception as exc:
-            # TODO: Exception handling
-            print exc
+            raise PersistenceException
         finally:
             if file is not None:
                 file.close()

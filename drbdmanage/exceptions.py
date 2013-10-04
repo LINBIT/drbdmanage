@@ -96,3 +96,7 @@ class IncompatibleDataException(Exception):
 class SyntaxException(Exception):
     def __init__(self):
         pass
+
+class PersistenceException(Exception):
+    def __init__(self):
+        pass
