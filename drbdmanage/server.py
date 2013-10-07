@@ -16,6 +16,14 @@ __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
 
 
+def traceit(frame, event, arg):
+    if event == "line":
+        lineno = frame.f_lineno
+        print frame.f_code.co_filename, ":", "line", lineno
+    return traceit
+
+#sys.settrace(traceit)
+
 class DrbdManageServer(object):
     CONF_FILE = "/etc/drbdmanaged.conf"
     EVT_UTIL  = "/usr/local/sbin/drbdsetup"
@@ -89,6 +97,7 @@ class DrbdManageServer(object):
             gobject.source_remove(self._evt_in_h)
         self.init_events()
         self.load_conf()
+        self._drbd_mgr.perform_actions()
         # Unregister this event handler
         return False
     
@@ -115,7 +124,6 @@ class DrbdManageServer(object):
                         event_role = get_event_arg(line, self.EVT_ARG_ROLE)
                         if event_res == self.DRBDCTRL_RES_NAME and \
                           event_role == self.EVT_ROLE_SECONDARY:
-                            self.load_conf()
                             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
         return True
@@ -231,6 +239,7 @@ class DrbdManageServer(object):
                         for peer_assg in volume.iterate_assignments():
                             peer_assg.update_connections()
                     del self._nodes[name]
+                self._drbd_mgr.perform_changes()
                 self.save_conf_data(persist)
                 rc = DM_SUCCESS
         except KeyError:
@@ -266,7 +275,7 @@ class DrbdManageServer(object):
                             pass
                         volume = DrbdVolume(name, size, MinorNr(minor))
                         self._volumes[volume.get_name()] = volume
-                        self.save_config_data()
+                        self.save_conf_data(persist)
                         rc = DM_SUCCESS
                     except InvalidNameException:
                         rc = DM_ENAME
@@ -306,7 +315,8 @@ class DrbdManageServer(object):
                         node = assignment.get_node()
                         node.remove_assignment(assignment)
                     del self._volumes[name]
-                self.save_conf_data()
+                self._drbd_mgr.perform_changes()
+                self.save_conf_data(persist)
                 rc = DM_SUCCESS
         except KeyError:
             rc = DM_ENOENT
@@ -347,7 +357,8 @@ class DrbdManageServer(object):
                             rc = DM_EINVAL
                         else:
                             rc = self._assign(node, volume, tstate)
-                            self.save_conf_data()
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
                             rc = DM_SUCCESS
         except PersistenceException:
             pass
@@ -379,6 +390,8 @@ class DrbdManageServer(object):
                         rc = DM_ENOENT
                     else:
                         rc = self._unassign(assignment, force)
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
         except PersistenceException:
             pass
         except Exception as exc:
@@ -415,6 +428,8 @@ class DrbdManageServer(object):
             node   = assignment.get_node()
             volume = assignment.get_volume()
             if (not force) and assignment.is_deployed():
+                assignment.disconnect()
+                assignment.detach()
                 assignment.undeploy()
                 for assignment in node.iterate_assignments():
                     if assignment.get_node() != node \
@@ -562,6 +577,30 @@ class DrbdManageServer(object):
             self._conf_hash = hash_obj.get_hash()
     
     
+    def open_conf(self):
+        """
+        Opens the configuration on persistent storage for reading
+        This function is only there because drbdcore cannot import anything
+        from persistence, so the code for creating a PersistenceImpl object
+        has to be somwhere else.
+        Returns a PersistenceImpl object on success, or None if the operation
+        fails due to errors in the persistence layer
+        """
+        ret_persist = None
+        persist     = None
+        try:
+            persist = PersistenceImpl()
+            if persist.open():
+                ret_persist = persist
+        except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print exc_type
+            print exc_obj
+            print exc_tb
+            persist.close()
+        return ret_persist
+    
+    
     def begin_modify_conf(self):
         """
         Opens the configuration on persistent storage for writing,
@@ -576,13 +615,14 @@ class DrbdManageServer(object):
             persist = PersistenceImpl()
             if persist.open_modify():
                 if not self.hashes_match(persist.get_stored_hash()):
-                    self.load_conf_data()
+                    self.load_conf_data(persist)
                 ret_persist = persist
-        except PersistenceException:
-            pass
-        finally:
-            if persist is not None:
-                persist.close()
+        except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print exc_type
+            print exc_obj
+            print exc_tb
+            persist.close()
         return ret_persist
     
     
@@ -609,9 +649,22 @@ class DrbdManageServer(object):
     
     
     def reconfigure(self):
-        # TODO: this is debug code only
-        return DM_ENOTIMPL
-    
+        rc      = DM_EPERSIST
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                self._drbd_mgr.perform_changes()
+                self.save_conf_data(persist)
+                rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
     
     def shutdown(self):
         exit(0)

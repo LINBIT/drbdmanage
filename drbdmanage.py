@@ -240,7 +240,7 @@ class DrbdManage(object):
                           "or \"auto\" or \"auto-drbd\"\n")
                         raise SyntaxException
             try:
-                size = int(size_str)
+                size = long(size_str)
             except Exception as exc:
                 sys.stderr.write("Error: <size> must be a number\n")
                 raise SyntaxException
@@ -687,9 +687,9 @@ class DrbdManage(object):
               + " "
               + string.ljust("Blockdevice", 32)
               + " "
-              + string.rjust("Node id", 7)
+              + string.rjust("Node#", 5)
               + " "
-              + string.rjust("state", 8)
+              + string.ljust("state", 16)
               + color(COLOR_NONE) + "\n")
         prev_node = ""
         for properties in assignment_list:
@@ -721,9 +721,9 @@ class DrbdManage(object):
                   + " "
                   + string.ljust(bd, 32)
                   + " "
-                  + string.rjust(id, 7)
+                  + string.rjust(id, 5)
                   + " "
-                  + string.rjust(st, 8)
+                  + string.ljust(st, 16)
                   + "\n")
         return 0
     

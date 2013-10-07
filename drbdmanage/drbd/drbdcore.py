@@ -3,6 +3,10 @@
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
+"""
+WARNING!
+  do not import anything from drbdmanage.drbd.persistence
+"""
 from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.storage.storagecore import BlockDevice
 from drbdmanage.exceptions import *
@@ -15,57 +19,99 @@ class DrbdManager(object):
     def __init__(self, server):
         self._server = server
     
+    # FIXME
     def run(self):
+        persist = None
+        sys.stdout.write("%sDrbdManager invoked%s\n"
+          % (COLOR_YELLOW, COLOR_NONE))
         try:
-            state_changed = False
-            # TODO:
-            # 1. Compare the hash of the current configuration to the hash
-            #    on persistent storage
-            # 2. If the hashes differ, lock the device and reload the
-            #    configuration
-            # 3. If there are required actions on this node, perform
-            #    changes
-            # 4. If there were any changes, save the configuration
-            sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
-              % (COLOR_GREEN, COLOR_NONE))
-            node = self._server.get_instance_node()
-            assignments = node.iterate_assignments()
-            for assg in assignments:
-                if assg.requires_action():
-                    state_changed = True
-                    vol = assg.get_volume()
-                    vol_name = volume.get_name()
-                    if assg.requires_connect():
-                        sys.stdout.write("  %sconnect:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.connect()
-                    elif assg.requires_disconnect():
-                        sys.stdout.write("  %sdisconnect:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.disconnect()
-                    elif assg.requires_attach():
-                        sys.stdout.write("  %sattach:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.attach()
-                    elif assg.requires_detach():
-                        sys.stdout.write("  %sdetach:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.dettach()
-                    elif assg.requires_deploy():
-                        sys.stdout.write("  %sdeploy:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.deploy()
-                    elif assg.requires_undeploy():
-                        sys.stdout.write("  %sundeploy:%s   %s\n"
-                          % (COLOR_GREEN, COLOR_NONE, vol_name))
-                        assg.undeploy()
-            if state_changed:
-                self._server.save_conf()
+            persist = self._server.open_conf()
+            if persist is not None:
+                if self._server.hashes_match(persist.get_stored_hash()):
+                    # configuration did not change, bail out
+                    return
+            # lock and reload the configuration
+            persist.close()
+            persist = self._server.begin_modify_conf()
+            if persist is not None:
+                if self.perform_changes():
+                    self._server.save_conf_data(persist)
+            else:
+                # Could not instantiate PersistenceImpl
+                # TODO: Error logging
+                sys.stderr.write("%sDrbdManager: cannot open "
+                  "persistent storage%s\n" % (COLOR_RED, COLOR_NONE))
             sys.stdout.write("%s--> DrbdManager: finished%s\n"
               % (COLOR_GREEN, COLOR_NONE))
         except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
             sys.stderr.write("%sDrbdManager: Oops: %s%s\n"
               % (COLOR_RED, str(exc), COLOR_NONE))
+            print exc_type
+            print exc_obj
+            print exc_tb
+        finally:
+            # this also works for read access
+            self._server.end_modify_conf(persist)
+    
+    
+    # FIXME
+    def perform_changes(self):
+        state_changed = False
+        sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
+          % (COLOR_GREEN, COLOR_NONE))
+        node = self._server.get_instance_node()
+        if node is None:
+            sys.stdout.write("%s--> DrbdManager: this node is "
+              "not registered%s\n"
+              % (COLOR_RED, COLOR_NONE))
+            return False
+        sys.stdout.write("%s--> DrbdManager: This node is '%s'%s\n"
+          % (COLOR_GREEN, node.get_name(), COLOR_NONE))
+        assignments = node.iterate_assignments()
+        for assg in assignments:
+            sys.stdout.write("%s--> DrbdManager: assignment '%s:%s'%s\n"
+              % (COLOR_GREEN, assg.get_node().get_name(),
+              assg.get_volume().get_name(), COLOR_NONE))
+            
+            if assg.requires_action():
+                sys.stdout.write("%s-->   (requires action)%s\n"
+                  % (COLOR_GREEN, COLOR_NONE))
+                state_changed = True
+                vol = assg.get_volume()
+                vol_name = vol.get_name()
+                
+                if assg.requires_connect():
+                    sys.stdout.write("  %sconnect:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_connected()
+                elif assg.requires_disconnect():
+                    sys.stdout.write("  %sdisconnect:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_disconnected()
+                
+                if assg.requires_attach():
+                    sys.stdout.write("  %sattach:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_attached()
+                elif assg.requires_detach():
+                    sys.stdout.write("  %sdetach:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_detached()
+                
+                if assg.requires_deploy():
+                    sys.stdout.write("  %sdeploy:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_deployed()
+                elif assg.requires_undeploy():
+                    sys.stdout.write("  %sundeploy:%s   %s\n"
+                      % (COLOR_GREEN, COLOR_NONE, vol_name))
+                    assg.set_undeployed()
+        
+        # Clean up undeployed resources
+        self._server.cleanup()
+        
+        return state_changed
     
     
     @staticmethod
@@ -196,7 +242,7 @@ class DrbdVolumeView(object):
         self._size = properties[1]
         try:
             self._minor = int(properties[2])
-            self._state = int(properties[3])
+            self._state = long(properties[3])
         except Exception:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
@@ -284,7 +330,7 @@ class DrbdNode(object):
         if af_n == self.AF_IPV4 or af_n == self.AF_IPV6:
             self._af = af_n
         else:
-            raise InvalidIpTypeException
+            raise InvalidAddrFamException
         self._ip          = ip
         self._assignments = dict()
         self._state       = 0
@@ -392,7 +438,7 @@ class DrbdNodeView(object):
         self._poolsize = properties[3]
         self._poolfree = properties[4]
         try:
-            self._state    = int(properties[5])
+            self._state    = long(properties[5])
         except Exception:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
@@ -533,7 +579,6 @@ class Assignment(object):
     def undeploy(self):
         self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
     
-    
     def connect(self):
         self._tstate = self._tstate | self.FLAG_CONNECT
     
@@ -562,6 +607,43 @@ class Assignment(object):
         self._tstate = self._tstate | self.FLAG_UPD_CON
     
     
+    def set_deployed(self):
+        self._cstate = self._cstate | self.FLAG_DEPLOY
+    
+    
+    def set_undeployed(self):
+        self._cstate = (self._cstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+    
+    
+    def set_connected(self):
+        self._cstate = self._cstate | self.FLAG_CONNECT
+    
+    
+    def set_reconnected(self):
+        self._tstate = (self._tstate | self.FLAG_RECONNECT) \
+          ^ self.FLAG_RECONNECT
+    
+    
+    def set_disconnected(self):
+        self._cstate = (self._cstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
+    
+    
+    def set_attached(self):
+        self._cstate = self._cstate | self.FLAG_ATTACH
+    
+    
+    def set_detached(self):
+        self._cstate = (self._cstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
+    
+    
+    def set_deployed_client(self):
+        self._cstate = self._cstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
+    
+    
+    def set_updated_connections(self):
+        self._tstate = (self._tstate | self.FLAG_UPD_CON) ^ self.FLAG_UPD_CON
+    
+    
     def set_rc(self, rc):
         self._rc = rc
     
@@ -583,7 +665,7 @@ class Assignment(object):
     
     
     def requires_action(self):
-        return (self._cstate == self._tstate)
+        return (self._cstate != self._tstate)
     
     
     def requires_deploy(self):
@@ -606,7 +688,7 @@ class Assignment(object):
           and (self._tstate & self.FLAG_DEPLOY == 0)
     
     
-    def requires_dettach(self):
+    def requires_detach(self):
         return (self._cstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
           and (self._tstate & self.FLAG_ATTACH == 0)
     
@@ -635,8 +717,8 @@ class AssignmentView(object):
         self._volume      = properties[1]
         self._blockdevice = properties[2]
         self._node_id     = properties[3]
-        self._cstate      = int(properties[4])
-        self._tstate      = int(properties[5])
+        self._cstate      = long(properties[4])
+        self._tstate      = long(properties[5])
     
     
     @classmethod
@@ -685,26 +767,30 @@ class AssignmentView(object):
             text = state_text_append(mr, text, "CONNECT", "connected")
         if self._cstate & Assignment.FLAG_DISKLESS != 0:
             text = state_text_append(mr, text, "DISKLESS", "client")
+        if len(text) == 0:
+            text = "-"
         return text
     
     
     def get_tstate(self):
         mr = self._machine_readable
         text = ""
-        if self._cstate & Assignment.FLAG_DEPLOY != 0:
+        if self._tstate & Assignment.FLAG_DEPLOY != 0:
             text = state_text_append(mr, text, "DEPLOY", "deploy")
-        if self._cstate & Assignment.FLAG_ATTACH != 0:
+        if self._tstate & Assignment.FLAG_ATTACH != 0:
             text = state_text_append(mr, text, "ATTACH", "attach")
-        if self._cstate & Assignment.FLAG_CONNECT != 0:
+        if self._tstate & Assignment.FLAG_CONNECT != 0:
             text = state_text_append(mr, text, "CONNECT", "connect")
-        if self._cstate & Assignment.FLAG_UPD_CON != 0:
+        if self._tstate & Assignment.FLAG_UPD_CON != 0:
             text = state_text_append(mr, text, "UPD_CON", "update")
-        if self._cstate & Assignment.FLAG_RECONNECT != 0:
+        if self._tstate & Assignment.FLAG_RECONNECT != 0:
             text = state_text_append(mr, text, "RECONNECT", "reconnect")
-        if self._cstate & Assignment.FLAG_OVERWRITE != 0:
+        if self._tstate & Assignment.FLAG_OVERWRITE != 0:
             text = state_text_append(mr, text, "OVERWRITE", "init-master")
-        if self._cstate & Assignment.FLAG_DISCARD != 0:
+        if self._tstate & Assignment.FLAG_DISCARD != 0:
             text = state_text_append(mr, text, "DISCARD", "discard")
+        if len(text) == 0:
+            text = "-"
         return text
     
     

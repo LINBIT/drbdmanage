@@ -1,15 +1,18 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 24, 2013 3:33:50 PM$"
-
-from drbdmanage.persistence import *
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import *
+from drbdmanage.persistence import *
 from drbdmanage.exceptions import *
 from drbdmanage.utils import *
 import sys
+import os
+import errno
+import time
 import json
+
+__author__="raltnoeder"
+__date__ ="$Sep 24, 2013 3:33:50 PM$"
 
 
 class PersistenceImpl(object):
@@ -25,6 +28,9 @@ class PersistenceImpl(object):
     ZEROFILLSZ  = 0x0400 # 1024
     CONF_FILE   = "/tmp/drbdmanaged.bin"
     
+    # fail counter for attempts to open the config file (CONF_FILE)
+    MAX_FAIL_COUNTER = 10
+    
     
     def __init__(self):
         pass
@@ -32,23 +38,47 @@ class PersistenceImpl(object):
     
     def open(self):
         rc = False
-        try:
-            self._file      = open(self.CONF_FILE, "r")
-            self._writeable = False
-            rc = True
-        except Exception:
-            pass
+        fail_ctr = 0
+        while fail_ctr < 10:
+            try:
+                self._file      = open(self.CONF_FILE, "r")
+                self._writeable = False
+                rc = True
+                break
+            except IOError as io_err:
+                if io_err.errno == errno.ENOENT:
+                    sys.stderr.write("Cannot open %s: not found\n"
+                      % (self.CONF_FILE))
+                fail_ctr += 1
+                b = os.urandom(1)
+                cs = ord(b) / 100
+                time.sleep(0.5 + cs)
+        if not fail_ctr < 10:
+            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
+              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
         return rc
     
     
     def open_modify(self):
         rc = False
-        try:
-            self._file      = open(self.CONF_FILE, "r+")
-            self._writeable = True
-            rc = True
-        except Exception:
-            pass
+        fail_ctr = 0
+        while fail_ctr < 10:
+            try:
+                self._file      = open(self.CONF_FILE, "r+")
+                self._writeable = True
+                rc = True
+                break
+            except IOError as io_err:
+                if io_err.errno == errno.ENOENT:
+                    sys.stderr.write("Cannot open %s: not found\n"
+                      % (self.CONF_FILE))
+                fail_ctr += 1
+                b = os.urandom(1)
+                cs = ord(b) / 100
+                time.sleep(0.5 + cs)
+        if not fail_ctr < 10:
+            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
+              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
         return rc
     
     
@@ -115,7 +145,8 @@ class PersistenceImpl(object):
                 self._file.seek(self.HASH_OFFSET)
                 self._file.write(hash.get_hash())
                 self._hash_obj = hash
-            except Exception:
+            except Exception as exc:
+                sys.stderr.write("persistence save(): " + str(exc) + "\n")
                 raise PersistenceException
         else:
             # file not open for writing
@@ -147,28 +178,41 @@ class PersistenceImpl(object):
             try:
                 hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
-                index = self._file.read(48)
-                nodes_off = long_from_bin(index[0:8])
-                nodes_len = long_from_bin(index[8:16])
-                vol_off   = long_from_bin(index[16:24])
-                vol_len   = long_from_bin(index[24:32])
-                assg_off  = long_from_bin(index[32:40])
-                assg_len  = long_from_bin(index[40:48])
+                f_index = self._file.read(48)
+                nodes_off = long_from_bin(f_index[0:8])
+                nodes_len = long_from_bin(f_index[8:16])
+                vol_off   = long_from_bin(f_index[16:24])
+                vol_len   = long_from_bin(f_index[24:32])
+                assg_off  = long_from_bin(f_index[32:40])
+                assg_len  = long_from_bin(f_index[40:48])
+                
+                nodes_con = None
+                vol_con   = None
+                assg_con  = None
                 
                 self._file.seek(nodes_off)
                 load_data = self._file.read(nodes_len)
                 hash.update(load_data)
-                nodes_con = self._json_to_container(load_data)
+                try:
+                    nodes_con = self._json_to_container(load_data)
+                except Exception:
+                    pass
                 
                 self._file.seek(vol_off)
                 load_data = self._file.read(vol_len)
                 hash.update(load_data)
-                vol_con   = self._json_to_container(load_data)
+                try:
+                    vol_con   = self._json_to_container(load_data)
+                except Exception:
+                    pass
                 
                 self._file.seek(assg_off)
                 load_data = self._file.read(assg_len)
                 hash.update(load_data)
-                assg_con  = self._json_to_container(load_data)
+                try:
+                    assg_con  = self._json_to_container(load_data)
+                except Exception:
+                    pass
                 
                 self._file.seek(self.HASH_OFFSET)
                 computed_hash = hash.get_hash()
@@ -180,30 +224,40 @@ class PersistenceImpl(object):
                 #       of the configuration
                 
                 nodes.clear()
-                for properties in nodes_con.itervalues():
-                    node = DrbdNodePersistence.load(properties)
-                    if node is not None:
-                        nodes[node.get_name()] = node
-                    else:
-                        errors = True
+                if nodes_con is not None:
+                    for properties in nodes_con.itervalues():
+                        node = DrbdNodePersistence.load(properties)
+                        if node is not None:
+                            nodes[node.get_name()] = node
+                        else:
+                            print "Nodes", properties # DEBUG
+                            errors = True
                 
                 volumes.clear()
-                for properties in vol_con.itervalues():
-                    volume = DrbdVolumePersistence.load(properties)
-                    if volume is not None:
-                        volumes[volume.get_name()] = volume
-                    else:
-                        errors = True
+                if vol_con is not None:
+                    for properties in vol_con.itervalues():
+                        volume = DrbdVolumePersistence.load(properties)
+                        if volume is not None:
+                            volumes[volume.get_name()] = volume
+                        else:
+                            print "Volumes", properties # DEBUG
+                            errors = True
                 
-                for properties in assg_con.itervalues():
-                    assignment = AssignmentPersistence.load(properties,
-                      nodes, volumes)
-                    if assignment is None:
-                        errors = True
-                self._hash_obj = hash
-            except Exception:
+                if assg_con is not None:
+                    for properties in assg_con.itervalues():
+                        assignment = AssignmentPersistence.load(properties,
+                          nodes, volumes)
+                        if assignment is None:
+                            print "Assignments", properties # DEBUG
+                            errors = True
+                    self._hash_obj = hash
+            except Exception as exc:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                sys.stderr.write("DEBUG: Exception %s (%s), %s\n%s\n"
+                  % (str(exc), exc_type, exc_obj, exc_tb))
                 raise PersistenceException
         else:
+            sys.stderr.write("DEBUG: File not open\n" % str(exc))
             # file not open
             raise IOError("Persistence load() without an "
               "open file descriptor")
@@ -245,7 +299,7 @@ class PersistenceImpl(object):
         if self._file is not None:
             offset = self._file.tell()
             if offset % self.BLKSZ != 0:
-                fillbuf = ('\0' * ZEROFILLSZ)
+                fillbuf = ('\0' * self.ZEROFILLSZ)
                 blk  = ((offset / self.BLKSZ) + 1) * self.BLKSZ
                 diff = blk - offset;
                 fillnr = diff / self.ZEROFILLSZ
@@ -253,7 +307,7 @@ class PersistenceImpl(object):
                 while ctr < fillnr:
                     self._file.write(fillbuf)
                     ctr += 1
-                diff -= (ZEROFILLSZ * fillnr)
+                diff -= (self.ZEROFILLSZ * fillnr)
                 self._file.write(fillbuf[:diff])
     
     
@@ -288,7 +342,7 @@ class DrbdNodePersistence(GenericPersistence):
         properties  = self.load_dict(self.SERIALIZABLE)
         container[node.get_name()] = properties
     
-    
+        
     @classmethod
     def load(cls, properties):
         node = None
@@ -296,13 +350,17 @@ class DrbdNodePersistence(GenericPersistence):
             node = DrbdNode(
               properties["_name"],
               properties["_ip"],
-              properties["_af"]
+              int(properties["_af"])
               )
-            node.set_state(properties["_state"])
-            node.set_poolsize(properties["_poolsize"])
-            node.set_poolfree(properties["_poolfree"])
+            node.set_state(long(properties["_state"]))
+            node.set_poolsize(long(properties["_poolsize"]))
+            node.set_poolfree(long(properties["_poolfree"]))
         except Exception:
-            pass
+            # DEBUG
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            print exc_type
+            print exc_obj
+            print exc_tb
         return node
 
 
@@ -330,10 +388,10 @@ class DrbdVolumePersistence(GenericPersistence):
             minor = MinorNr(minor_nr)
             volume = DrbdVolume(
               properties["_name"],
-              properties["_size_MiB"],
+              long(properties["_size_MiB"]),
               minor
               )
-            volume.set_state(properties["_state"])
+            volume.set_state(long(properties["_state"]))
         except Exception:
             pass
         return volume
@@ -375,9 +433,9 @@ class AssignmentPersistence(GenericPersistence):
             assignment = Assignment(
               node,
               volume,
-              properties["_node_id"],
-              properties["_cstate"],
-              properties["_tstate"]
+              int(properties["_node_id"]),
+              long(properties["_cstate"]),
+              long(properties["_tstate"])
               )
             blockdevice = None
             bd_path     = None
@@ -391,6 +449,6 @@ class AssignmentPersistence(GenericPersistence):
             assignment.set_rc(properties["_rc"])
             node.add_assignment(assignment)
             volume.add_assignment(assignment)
-        except Exception:
+        except Exception as exc:
             pass
         return assignment

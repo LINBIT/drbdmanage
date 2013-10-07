@@ -26,7 +26,7 @@ COLOR_NONE      = chr(0x1b) + "[0m"
 
 
 def long_to_bin(number):
-    num64 = int(number) & 0xffffffffffffffff
+    num64 = long(number) & 0xffffffffffffffff
     if num64 != number:
         raise OverflowError
     field = bytearray('0' * 8)

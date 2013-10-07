@@ -13,7 +13,7 @@ class GenericStorage(object):
     
     
     def __init__(self, size_MiB):
-        self._size_MiB = int(size_MiB)
+        self._size_MiB = long(size_MiB)
     
     
     def get_size_MiB(self):

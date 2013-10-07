@@ -68,7 +68,7 @@ class InvalidNameException(Exception):
         pass
 
 
-class InvalidIpTypeException(Exception):
+class InvalidAddrFamException(Exception):
     def __init__(self):
         pass
 
