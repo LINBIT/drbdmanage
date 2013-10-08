@@ -7,6 +7,7 @@ from drbdmanage.exceptions import *
 from drbdmanage.utils import *
 import sys
 import os
+import fcntl
 import errno
 import time
 import json
@@ -28,59 +29,52 @@ class PersistenceImpl(object):
     ZEROFILLSZ  = 0x0400 # 1024
     CONF_FILE   = "/tmp/drbdmanaged.bin"
     
+    BLKFLSBUF = 0x00001261 # <include/linux/fs.h>
+    
     # fail counter for attempts to open the config file (CONF_FILE)
-    MAX_FAIL_COUNTER = 10
+    MAX_FAIL_COUNT = 10
+    
+    # wait 2 seconds before every open() retry if the file was not found
+    ENOENT_REOPEN_TIMER = 2
+    # wait at least half a second between open() retries
+    MIN_REOPEN_TIMER    = 0.5
     
     
     def __init__(self):
         pass
     
     
-    def open(self):
+    def open(self, modify):
+        """
+        Open the persistent storage for reading or writing, depending on
+        the modify flag. If (modify == True), open for writing, otherwise
+        open readonly.
+        """
         rc = False
         fail_ctr = 0
-        while fail_ctr < 10:
+        mode = "r+" if modify else "r"
+        while fail_ctr < self.MAX_FAIL_COUNT:
             try:
-                self._file      = open(self.CONF_FILE, "r")
-                self._writeable = False
+                self._file      = open(self.CONF_FILE, mode)
+                fcntl.ioctl(self._file.fileno(), self.BLKFLSBUF)
+                self._writeable = modify
                 rc = True
                 break
             except IOError as io_err:
+                fail_ctr += 1
                 if io_err.errno == errno.ENOENT:
                     sys.stderr.write("Cannot open %s: not found\n"
                       % (self.CONF_FILE))
-                fail_ctr += 1
-                b = os.urandom(1)
-                cs = ord(b) / 100
-                time.sleep(0.5 + cs)
+                    cs = self.ENOENT_REOPEN_TIMER
+                else:
+                    b = os.urandom(1)
+                    cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
+                time.sleep(cs)
         if not fail_ctr < 10:
             sys.stderr.write("Cannot open %s (%d failed attempts)\n"
               % (self.CONF_FILE, self.MAX_FAIL_COUNT))
         return rc
-    
-    
-    def open_modify(self):
-        rc = False
-        fail_ctr = 0
-        while fail_ctr < 10:
-            try:
-                self._file      = open(self.CONF_FILE, "r+")
-                self._writeable = True
-                rc = True
-                break
-            except IOError as io_err:
-                if io_err.errno == errno.ENOENT:
-                    sys.stderr.write("Cannot open %s: not found\n"
-                      % (self.CONF_FILE))
-                fail_ctr += 1
-                b = os.urandom(1)
-                cs = ord(b) / 100
-                time.sleep(0.5 + cs)
-        if not fail_ctr < 10:
-            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
-              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
-        return rc
-    
+        
     
     # TODO: clean implementation - this is a prototype
     def save(self, nodes, volumes):
@@ -144,6 +138,8 @@ class PersistenceImpl(object):
                   + long_to_bin(assg_len))
                 self._file.seek(self.HASH_OFFSET)
                 self._file.write(hash.get_hash())
+                sys.stderr.write("%sDEBUG: persistence save/hash: %s%s\n"
+                  % (COLOR_BLUE, hash.get_hex_hash(), COLOR_NONE))
                 self._hash_obj = hash
             except Exception as exc:
                 sys.stderr.write("persistence save(): " + str(exc) + "\n")
@@ -217,6 +213,8 @@ class PersistenceImpl(object):
                 self._file.seek(self.HASH_OFFSET)
                 computed_hash = hash.get_hash()
                 stored_hash   = self._file.read(hash.get_hash_len())
+                sys.stderr.write("%sDEBUG: persistence load/hash: %s%s\n"
+                  % (COLOR_BLUE, hex_from_bin(stored_hash), COLOR_NONE))
                 if computed_hash != stored_hash:
                     sys.stderr.write("Warning: configuration data does not "
                       "match its signature\n")

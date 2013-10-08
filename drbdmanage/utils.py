@@ -48,6 +48,35 @@ def long_from_bin(field):
     return num64
 
 
+def hex_from_bin(field):
+    flen = len(field)
+    hexfield = bytearray('\0' * flen * 2)
+    idx = 0
+    while idx < flen:
+        num = ord(field[idx])
+        
+        hi  = (num & 0xf0) >> 4;
+        lo  = (num & 0x0f)
+        
+        if hi < 0xa:
+            # 0x30 is '0'
+            hi_chr = hi | 0x30
+        else:
+            # 0x57 is 'a' minus 10 (because hi_chr is >= 10 here)
+            hi_chr = hi + 0x57
+        
+        if lo < 0xa:
+            lo_chr = lo | 0x30
+        else:
+            lo_chr = lo + 0x57
+        
+        hexfield[(idx * 2)]     = hi_chr
+        hexfield[(idx * 2) + 1] = lo_chr
+        
+        idx += 1
+    return str(hexfield)
+
+
 def get_event_type(logline):
     event_type = None
     s_idx = logline.find(" ")
@@ -112,8 +141,8 @@ class DataHash(object):
     
     def get_hex_hash(self):
         if self._hash is None:
-            self._hash = self._hashalgo.hexdigest()
-        return self._hash
+            self._hash = self._hashalgo.digest()
+        return hex_from_bin(self._hash)
     
     
     def get_hash_len(self):

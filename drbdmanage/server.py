@@ -529,7 +529,7 @@ class DrbdManageServer(object):
         persist  = None
         try:
             persist = PersistenceImpl()
-            if persist.open_modify():
+            if persist.open(True):
                 self.save_conf_data(persist)
                 rc = DM_SUCCESS
         except PersistenceException:
@@ -547,7 +547,7 @@ class DrbdManageServer(object):
         persist  = None
         try:
             persist = PersistenceImpl()
-            if persist.open():
+            if persist.open(False):
                 self.load_conf_data(persist)
                 persist.close()
                 rc = DM_SUCCESS
@@ -590,7 +590,7 @@ class DrbdManageServer(object):
         persist     = None
         try:
             persist = PersistenceImpl()
-            if persist.open():
+            if persist.open(False):
                 ret_persist = persist
         except Exception as exc:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -613,7 +613,7 @@ class DrbdManageServer(object):
         persist     = None
         try:
             persist = PersistenceImpl()
-            if persist.open_modify():
+            if persist.open(True):
                 if not self.hashes_match(persist.get_stored_hash()):
                     self.load_conf_data(persist)
                 ret_persist = persist

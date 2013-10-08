@@ -29,13 +29,17 @@ class DrbdManager(object):
             if persist is not None:
                 if self._server.hashes_match(persist.get_stored_hash()):
                     # configuration did not change, bail out
+                    sys.stdout.write("  hash unchanged, abort\n")
                     return
             # lock and reload the configuration
             persist.close()
             persist = self._server.begin_modify_conf()
             if persist is not None:
                 if self.perform_changes():
+                    sys.stdout.write("  perform_changes(): state changed\n")
                     self._server.save_conf_data(persist)
+                else:
+                    sys.stdout.write("  perform_changes(): no state change\n")
             else:
                 # Could not instantiate PersistenceImpl
                 # TODO: Error logging
@@ -157,6 +161,7 @@ class DrbdVolume(GenericStorage):
     _name     = None
     _minor    = None
     _state    = None
+    _secret   = None
     
     _assignments = None
     
@@ -170,7 +175,8 @@ class DrbdVolume(GenericStorage):
         super(DrbdVolume, self).__init__(size_MiB)
         self._name   = self.name_check(name)
         self._minor  = minor
-        self._state = 0
+        self._state  = 0
+        self._secret = None
         self._assignments = dict()
     
     
@@ -219,6 +225,14 @@ class DrbdVolume(GenericStorage):
     
     def set_state(self, state):
         self._state = state
+    
+    
+    def set_secret(self, secret):
+        self._secret = secret
+    
+    
+    def get_secret(self):
+        return self._secret
     
     
     def mark_remove(self):
