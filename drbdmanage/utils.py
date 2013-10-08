@@ -325,7 +325,7 @@ class NioLineReader(object):
         line of text is available.
         
         WARNING:
-        Trying to optimize this method will very likely break somthing.
+        Trying to optimize this method will very likely break something.
         This is used for nonblocking I/O, and many other functions like
         readinto(bytearray), etc. failed surprisingly in all imaginable ways.
         Some seem to work at first, but fail in some special cases.

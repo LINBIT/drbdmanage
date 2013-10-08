@@ -97,12 +97,13 @@ class DrbdManageServer(object):
             gobject.source_remove(self._evt_in_h)
         self.init_events()
         self.load_conf()
-        self._drbd_mgr.perform_actions()
+        self._drbd_mgr.perform_changes()
         # Unregister this event handler
         return False
     
     
     def drbd_event(self, fd, condition):
+        changed = False
         while True:
             line = self._reader.readline()
             if line is None:
@@ -113,18 +114,22 @@ class DrbdManageServer(object):
                 sys.stderr.write("%sDEBUG: drbd_event() (%s%s%s)%s\n"
                   % (COLOR_RED, COLOR_NONE, line, COLOR_RED, COLOR_NONE))
                 sys.stderr.flush();
-                event_type   = get_event_type(line)
-                event_source = get_event_source(line)
-                if event_type is not None and event_source is not None:
-                    # If the configuration resource changes to "Secondary" role
-                    # on a connected node, the configuration may have changed
-                    if event_type == self.EVT_TYPE_CHANGE and \
-                      event_source == self.EVT_SRC_CON:
-                        event_res  = get_event_arg(line, self.EVT_ARG_NAME)
-                        event_role = get_event_arg(line, self.EVT_ARG_ROLE)
-                        if event_res == self.DRBDCTRL_RES_NAME and \
-                          event_role == self.EVT_ROLE_SECONDARY:
-                            self._drbd_mgr.run()
+                if not changed:
+                    event_type   = get_event_type(line)
+                    event_source = get_event_source(line)
+                    if event_type is not None and event_source is not None:
+                        # If the configuration resource changes to "Secondary"
+                        # role on a connected node, the configuration may have
+                        # changed
+                        if event_type == self.EVT_TYPE_CHANGE and \
+                          event_source == self.EVT_SRC_CON:
+                            event_res  = get_event_arg(line, self.EVT_ARG_NAME)
+                            event_role = get_event_arg(line, self.EVT_ARG_ROLE)
+                            if event_res == self.DRBDCTRL_RES_NAME and \
+                              event_role == self.EVT_ROLE_SECONDARY:
+                                changed = True
+        if changed:
+            self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
         return True
     
