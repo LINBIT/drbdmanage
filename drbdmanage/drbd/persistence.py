@@ -11,6 +11,7 @@ import fcntl
 import errno
 import time
 import json
+import mmap
 
 __author__="raltnoeder"
 __date__ ="$Sep 24, 2013 3:33:50 PM$"
@@ -18,6 +19,7 @@ __date__ ="$Sep 24, 2013 3:33:50 PM$"
 
 class PersistenceImpl(object):
     _file       = None
+    _i_file     = None
     _server     = None
     _writeable  = False
     _hash_obj   = None
@@ -27,7 +29,9 @@ class PersistenceImpl(object):
     HASH_OFFSET = 0x1900 # 6400
     DATA_OFFSET = 0x2000 # 8192
     ZEROFILLSZ  = 0x0400 # 1024
-    CONF_FILE   = "/tmp/drbdmanaged.bin"
+    CONF_FILE   = "/opt/tmp/drbdmanaged.bin"
+    
+    MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
     
     BLKFLSBUF = 0x00001261 # <include/linux/fs.h>
     
@@ -44,6 +48,44 @@ class PersistenceImpl(object):
         pass
     
     
+    def open_new(self, modify):
+        rc = False
+        fail_ctr = 0
+        if modify:
+            mode = (os.O_RDWR | os.O_DIRECT)
+        else:
+            mode = (os.O_RDONLY | os.O_DIRECT)
+        while fail_ctr < self.MAX_FAIL_COUNT:
+            try:
+                self._i_file    = os.open(self.CONF_FILE, mode)
+                # self._file      = mmap.mmap(self._i_file, self.MMAP_BUFSZ)
+                # FIXME -- length is still fixed to 16384
+                self._file      = mmap.mmap(self._i_file, 16384, MAP_SHARED,
+                  PROT_READ | PROT_WRITE, 0)
+                self._writeable = modify
+                rc = True
+                break
+            except IOError as io_err:
+                fail_ctr += 1
+                if io_err.errno == errno.ENOENT:
+                    sys.stderr.write("Cannot open %s: not found\n"
+                      % (self.CONF_FILE))
+                    cs = self.ENOENT_REOPEN_TIMER
+                else:
+                    b = os.urandom(1)
+                    cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
+                time.sleep(cs)
+        try:
+            if rc:
+                fcntl.ioctl(self._i_file, self.BLKFLSBUF)
+        except IOError:
+            pass
+        if not fail_ctr < 10:
+            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
+              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
+        return rc
+    
+    
     def open(self, modify):
         """
         Open the persistent storage for reading or writing, depending on
@@ -52,17 +94,31 @@ class PersistenceImpl(object):
         """
         rc = False
         fail_ctr = 0
-        mode = "r+" if modify else "r"
+        error    = 0
+        if modify:
+            modeflags = os.O_RDWR
+            mode      = "r+"
+        else:
+            modeflags = os.O_RDONLY
+            mode      = "r"
         while fail_ctr < self.MAX_FAIL_COUNT:
             try:
-                self._file      = open(self.CONF_FILE, mode)
-                fcntl.ioctl(self._file.fileno(), self.BLKFLSBUF)
+                fail = False
+                fd = os.open(self.CONF_FILE, modeflags)
+                fcntl.ioctl(fd, self.BLKFLSBUF)
+                self._file = os.fdopen(fd, mode)
                 self._writeable = modify
                 rc = True
                 break
             except IOError as io_err:
+                fail  = True
+                error = io_err.ernno
+            except OSError as os_err:
+                fail  = True
+                error = os_err.errno
+            if fail:
                 fail_ctr += 1
-                if io_err.errno == errno.ENOENT:
+                if error == errno.ENOENT:
                     sys.stderr.write("Cannot open %s: not found\n"
                       % (self.CONF_FILE))
                     cs = self.ENOENT_REOPEN_TIMER
@@ -147,7 +203,7 @@ class PersistenceImpl(object):
         else:
             # file not open for writing
             raise IOError("Persistence save() without a "
-              "writable file descriptor")
+              "writeable file descriptor")
     
     
     # Get the hash of the configuration on persistent storage
@@ -263,14 +319,36 @@ class PersistenceImpl(object):
             raise PersistenceException
     
     
+    def close_new(self):
+        try:
+            if self._i_file is not None:
+                if self._writeable:
+                    self._writeable = False
+                    if self._file is not None:
+                        self._file.flush()
+                    os.fsync(self._i_file)
+                if self._file is not None:
+                    self._file.close()
+                os.close(self._i_file)
+                self._i_file    = None
+                self._file      = None
+        except IOError:
+            pass
+    
+    
     def close(self):
         try:
             if self._file is not None:
-                self._writeable = False
-                self._file.close()
-                self._file      = None
-        except Exception:
+                if self._writeable:
+                    self._file.flush()
+                    os.fsync(self._file.fileno())
+                    self._writeable = False
+                # fcntl.ioctl(self._file.fileno(), self.BLKFLSBUF)
+        except IOError:
             pass
+        finally:
+            self._file.close()
+            self._file = None
     
     
     def get_hash_obj(self):
