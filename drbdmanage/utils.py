@@ -170,7 +170,9 @@ class ArgvReader(object):
         arg = None
         while self._idx < self._max:
             self._idx += 1
-            if self._argv[cur_idx] != "":
+            if self._argv[cur_idx] == "":
+                cur_idx = self._idx
+            else:
                 arg = self._argv[cur_idx]
                 break
         return arg

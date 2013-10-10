@@ -58,8 +58,8 @@ class BlockDeviceManager(object):
     _plugin = None
     
     
-    def __init__(self):
-        self._plugin = self._plugin_import("drbdmanage.storage.lvm.LVM")
+    def __init__(self, plugin_name):
+        self._plugin = self._plugin_import(plugin_name)
     
     
     def create_blockdevice(self, name, size):
@@ -96,16 +96,17 @@ class BlockDeviceManager(object):
         p_class = None
         p_inst  = None
         try:
-            idx = path.rfind(".")
-            if idx != -1:
-                p_name = path[idx + 1:]
-                p_path = path[:idx]
-            else:
-                p_name = path
-                p_path = ""
-            p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
-            p_class = getattr(p_mod, p_name)
-            p_inst  = p_class()
+            if path is not None:
+                idx = path.rfind(".")
+                if idx != -1:
+                    p_name = path[idx + 1:]
+                    p_path = path[:idx]
+                else:
+                    p_name = path
+                    p_path = ""
+                p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
+                p_class = getattr(p_mod, p_name)
+                p_inst  = p_class()
         except Exception as exc:
             print exc
         return p_inst

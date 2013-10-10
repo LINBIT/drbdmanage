@@ -2,6 +2,7 @@
 
 from ..exceptions import *
 from ..utils import DataHash
+from ..conf.conffile import *
 from persistence import BlockDevicePersistence
 import storagecore
 import json
@@ -12,18 +13,42 @@ __date__ ="$Sep 12, 2013 10:49:42 AM$"
 
 
 class LVM(object):
-    LVM_SAVEFILE = "/tmp/drbdmanaged-lvm.local.bin"
-    _lvs = None
+    LVM_CONFFILE = "/opt/tmp/drbdmanaged-lvm.conf"
+    LVM_SAVEFILE = "/opt/tmp/drbdmanaged-lvm.local.bin"
+    _lvs  = None
+    _conf = None
+    
+    _lv_prefix = "/dev/mapper/drbdpool-"
+    _vg_name   = "drbdpool"
     
     
     def __init__(self):
-        self._lvs = dict()
-        self.load_conf()
+        try:
+            self._lvs = dict()
+            try:
+                self.load_state()
+            except PersistenceException as p_exc:
+                sys.stderr.write("Warning: Cannot load the LVM state file: %s\n"
+                  % self.LVM_SAVEFILE)
+            try:
+                self._conf = self.load_conf()
+            except IOError as io_err:
+                sys.stderr.write("Warning: Cannot load the LVM configuration "
+                  "file: %s\n" % self.LVM_CONFFILE)
+            if self._conf is not None:
+                val = self._conf.get(KEY_LV_PREFIX)
+                if val is not None:
+                    self._lv_prefix = val
+                val = self._conf.get(KEY_VG_NAME)
+                if val is not None:
+                    self._vg_name = val
+        except Exception as exc:
+            print exc
     
     
     def create_blockdevice(self, name, size):
         bd = storagecore.BlockDevice(name, size,
-          "/dev/mapper/drbdpool-" + name)
+          self._lv_prefix + name)
         self._lvs[name] = bd
         self.save_conf()
         return bd
@@ -56,6 +81,21 @@ class LVM(object):
     
     
     def load_conf(self):
+        file = None
+        conf = None
+        try:
+            file = open(self.LVM_CONFFILE, "r")
+            conffile = ConfFile(file)
+            conf = conffile.get_conf()
+        except IOError as io_err:
+            print io_err
+        finally:
+            if file is not None:
+                file.close()
+        return conf
+    
+    
+    def load_state(self):
         file = None
         try:
             stored_hash = None
@@ -95,7 +135,7 @@ class LVM(object):
                 file.close()
     
     
-    def save_conf(self):
+    def save_state(self):
         lvm_con = dict()
         for bd in self._lvs.itervalues():
             bd_persist = BlockDevicePersistence(bd)

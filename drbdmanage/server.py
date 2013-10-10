@@ -11,6 +11,7 @@ from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import *
 from drbdmanage.drbd.persistence import *
 from drbdmanage.storage.storagecore import *
+from drbdmanage.conf.conffile import *
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
@@ -25,8 +26,8 @@ def traceit(frame, event, arg):
 #sys.settrace(traceit)
 
 class DrbdManageServer(object):
-    CONF_FILE = "/etc/drbdmanaged.conf"
-    EVT_UTIL  = "/usr/local/sbin/drbdsetup"
+    CONFFILE = "/etc/drbdmanaged.conf"
+    EVT_UTIL = "/usr/local/sbin/drbdsetup"
     
     EVT_TYPE_CHANGE = "change"
     EVT_SRC_CON     = "connection"
@@ -37,6 +38,8 @@ class DrbdManageServer(object):
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
     DRBDCTRL_RES_NAME  = "drbdctrl"
+    
+    KEY_PLUGIN_NAME = "storage-plugin"
     
     # BlockDevice manager
     _bd_mgr    = None
@@ -60,6 +63,9 @@ class DrbdManageServer(object):
     # The hash of the currently loaded configuration
     _conf_hash = None
     
+    # The name of the storage plugin to be loaded into the block device manager
+    _plugin_name = None
+    
     _DEBUG_max_ctr = 0
     
     
@@ -70,7 +76,8 @@ class DrbdManageServer(object):
         # end DEBUG
         self._nodes    = dict()
         self._volumes  = dict()
-        self._bd_mgr   = BlockDeviceManager()
+        self.load_server_conf()
+        self._bd_mgr   = BlockDeviceManager(self._plugin_name)
         self._drbd_mgr = DrbdManager(self)
         self.load_conf()
         self.init_events()
@@ -132,6 +139,24 @@ class DrbdManageServer(object):
             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
         return True
+    
+    
+    def load_server_conf(self):
+        file = None
+        try:
+            file = open(self.CONFFILE, "r")
+            conffile = ConfFile(file)
+            conf = conffile.get_conf()
+            if conf is not None:
+                val = conf.get(self.KEY_PLUGIN_NAME)
+                if val is not None:
+                    self._plugin_name = val
+        except IOError as io_err:
+            sys.stderr.write("Warning: Cannot open drbdmanage configuration "
+              "file %s\n", self.CONFFILE)
+        finally:
+            if file is not None:
+                file.close()
     
     
     def iterate_nodes(self):

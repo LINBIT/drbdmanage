@@ -105,14 +105,24 @@ class PersistenceImpl(object):
             try:
                 fail = False
                 fd = os.open(self.CONF_FILE, modeflags)
-                fcntl.ioctl(fd, self.BLKFLSBUF)
+                
+                # Try to flush the buffer cache
+                # This can fail depending on the type of the file's
+                # underlying device
+                try:
+                    fcntl.ioctl(fd, self.BLKFLSBUF)
+                except OSError:
+                    pass
+                except IOError:
+                    pass
+                
                 self._file = os.fdopen(fd, mode)
                 self._writeable = modify
                 rc = True
                 break
             except IOError as io_err:
                 fail  = True
-                error = io_err.ernno
+                error = io_err.errno
             except OSError as os_err:
                 fail  = True
                 error = os_err.errno
@@ -126,7 +136,7 @@ class PersistenceImpl(object):
                     b = os.urandom(1)
                     cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
                 time.sleep(cs)
-        if not fail_ctr < 10:
+        if not fail_ctr < self.MAX_FAIL_COUNT:
             sys.stderr.write("Cannot open %s (%d failed attempts)\n"
               % (self.CONF_FILE, self.MAX_FAIL_COUNT))
         return rc
