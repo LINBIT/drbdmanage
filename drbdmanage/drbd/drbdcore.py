@@ -158,6 +158,64 @@ class DrbdManager(object):
         return str(name_b)
 
 
+class DrbdResource(object):
+    NAME_MAXLEN = 16
+    
+    _name        = None
+    _secret      = None
+    _state       = None
+    _assignments = None
+    
+    FLAG_REMOVE  = 0x1
+    
+    def __init__(self, name):
+        self._name        = self.name_check(name)
+        self._state       = 0
+        self._secret      = None
+        self._assignments = dict()
+    
+    
+    def get_name(self):
+        return self._name
+    
+    
+    def name_check(self, name):
+        return DrbdManager.name_check(name, self.NAME_MAXLEN)
+    
+    
+    def add_assignment(self, assignment):
+        node = assignment.get_node()
+        self._assignments[node.get_name()] = assignment
+    
+    
+    def get_assignment(self, name):
+        return self._assignments.get(name)
+    
+    
+    def remove_assignment(self, name):
+        node = self._assignments.get(name)
+        if node is not None:
+            del self._assignments[node.get_name()]
+    
+    
+class DrbdResourceView(object):
+    
+    _name  = None
+    _volid = None
+    _state = None
+    
+    def __init__(self, properties, machine_readable):
+        if len(properties) < 3:
+            raise IncompatibleDataException
+        self._name  = properties[0]
+        self._volid = properties[1]
+        try:
+            self._state = long(properties[2])
+        except Exception:
+            raise IncompatibleDataException
+        self._machine_readable = machine_readable
+    
+    
 class DrbdVolume(GenericStorage):
     NAME_MAXLEN = 16
     
@@ -187,6 +245,7 @@ class DrbdVolume(GenericStorage):
         return self._name
     
     
+    # returns a storagecore.MinorNr object
     def get_minor(self):
         return self._minor
     
@@ -530,6 +589,8 @@ class Assignment(object):
     FLAG_OVERWRITE = 0x40000
     # --discard-my-data upon connect / resolve split-brain
     FLAG_DISCARD   = 0x80000
+    
+    NODE_ID_ERROR  = -1
 
 
     def __init__(self, node, volume, node_id, cstate, tstate):

@@ -38,6 +38,9 @@ DM_EINVAL   = 106
 # Cannot write configuration to or load configuration from persistent storage
 DM_EPERSIST = 107
 
+# Invalid node id or no free node id for auto-assignment
+DM_ENODEID  = 108
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -46,13 +49,15 @@ _DM_EXC_TEXTS[DM_ENAME]    = "Invalid name"
 _DM_EXC_TEXTS[DM_ENOENT]   = "Object not found"
 _DM_EXC_TEXTS[DM_EEXIST]   = "Object already exists"
 _DM_EXC_TEXTS[DM_EIPTYPE]  = "Invalid IP protocol type"
-_DM_EXC_TEXTS[DM_EMINOR]   = "Minor number out of range"
+_DM_EXC_TEXTS[DM_EMINOR]   = "Minor number out of range or no " \
+  "free minor numbers"
 _DM_EXC_TEXTS[DM_EVOLSZ]   = "Volume size out of range"
 _DM_EXC_TEXTS[DM_EINVAL]   = "Invalid option"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
 _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
   "configuration storage"
+_DM_EXC_TEXTS[DM_ENODEID]  = "Invalid node id or no free node id number"
 
 
 def dm_exc_text(id):

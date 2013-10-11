@@ -117,11 +117,11 @@ class MinorNr(object):
     Contains the minor number of a unix device file
     """
     _minor = None
-    MINOR_MAX = 0xfffff
+    MINOR_NR_MAX = 0xfffff
     
-    MINOR_AUTO     = -1
-    MINOR_AUTODRBD = -2
-    
+    MINOR_NR_AUTO     = -1
+    MINOR_NR_AUTODRBD = -2
+    MINOR_NR_ERROR    = -3
     
     def __init__(self, nr):
         self._minor = MinorNr.minor_check(nr)
@@ -133,8 +133,8 @@ class MinorNr(object):
     
     @classmethod
     def minor_check(cls, nr):
-        if nr != cls.MINOR_AUTO and nr != cls.MINOR_AUTODRBD:
-            if nr < 0 or nr > cls.MINOR_MAX:
+        if nr != cls.MINOR_NR_AUTO and nr != cls.MINOR_NR_AUTODRBD:
+            if nr < 0 or nr > cls.MINOR_NR_MAX:
                 raise InvalidMinorNrException
         return nr
 
@@ -144,7 +144,7 @@ class MajorNr(object):
     Contains the major number of a unix device file
     """
     _major = None
-    MAJOR_MAX = 0xfff
+    MAJOR_NR_MAX = 0xfff
     
     
     def __init__(self, nr):
@@ -157,7 +157,7 @@ class MajorNr(object):
     
     @classmethod
     def major_check(cls, nr):
-        if nr < 0 or nr > cls.MAJOR_MAX:
+        if nr < 0 or nr > cls.MAJOR_NR_MAX:
             raise InvalidMajorNrException
         return nr
 

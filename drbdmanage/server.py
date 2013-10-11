@@ -41,6 +41,10 @@ class DrbdManageServer(object):
     
     KEY_PLUGIN_NAME = "storage-plugin"
     
+    # defaults
+    _max_node_id =  31
+    _min_minor_nr = 100
+    
     # BlockDevice manager
     _bd_mgr    = None
     # Configuration objects maps
@@ -151,9 +155,15 @@ class DrbdManageServer(object):
                 val = conf.get(self.KEY_PLUGIN_NAME)
                 if val is not None:
                     self._plugin_name = val
+                val = conf.get(self.KEY_MAX_NODE_ID)
+                if val is not None:
+                    self._max_node_id = val
+                val = conf.get(self.KEY_MIN_MINOR_NR)
+                if val is not None:
+                    self._min_minor_nr = val
         except IOError as io_err:
             sys.stderr.write("Warning: Cannot open drbdmanage configuration "
-              "file %s\n", self.CONFFILE)
+              "file %s\n" % (self.CONFFILE))
         finally:
             if file is not None:
                 file.close()
@@ -300,9 +310,10 @@ class DrbdManageServer(object):
                     rc = DM_EEXIST
                 else:
                     try:
-                        if minor == MinorNr.MINOR_AUTO:
-                            # TODO: generate the minor number
-                            pass
+                        if minor == MinorNr.MINOR_NR_AUTO:
+                            minor = self.get_free_minor_nr()
+                            if minor == MinorNr.MINOR_NR_ERROR:
+                                raise InvalidMinorNrException
                         volume = DrbdVolume(name, size, MinorNr(minor))
                         self._volumes[volume.get_name()] = volume
                         self.save_conf_data(persist)
@@ -436,18 +447,22 @@ class DrbdManageServer(object):
         """
         Implementation - see assign()
         """
+        rc = DM_DEBUG
         try:
-            # TODO: generate the node-id
-            node_id = 0
-            # The block device is set upon allocation of the backend storage
-            # area on the target node
-            assignment = Assignment(node, volume, node_id, 0, tstate)
-            node.add_assignment(assignment)
-            volume.add_assignment(assignment)
+            node_id = self.get_free_node_id(volume)
+            if node_id == -1:
+                # no free node ids
+                rc = DM_ENODEID
+            else:
+                # The block device is set upon allocation of the backend
+                # storage area on the target node
+                assignment = Assignment(node, volume, node_id, 0, tstate)
+                node.add_assignment(assignment)
+                volume.add_assignment(assignment)
+                rc = DM_SUCCESS
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
-        return DM_SUCCESS
+        return rc
     
     
     def _unassign(self, assignment, force):
@@ -698,6 +713,63 @@ class DrbdManageServer(object):
     
     def shutdown(self):
         exit(0)
+    
+    
+    def get_free_minor_nr(self):
+        minor_nr   = MinorNr.MINOR_NR_ERROR
+        minor_list = []
+        for volume in self._volumes.itervalues():
+            minor_obj = volume.get_minor()
+            nr = minor_obj.get_value()
+            if nr >= self._min_minor_nr and nr <= MinorNr.MINOR_NR_MAX:
+                minor_list.append(nr)
+        minor_list.sort()
+        items = len(minor_list)
+        if items == 0:
+            minor_nr = self._min_minor_nr
+        else:
+            idx = 0
+            lnr = self._min_minor_nr - 1
+            while True:
+                nr = minor_list[idx]
+                if nr - lnr > 1:
+                    minor_nr = lnr + 1
+                    break
+                idx += 1
+                if not idx < items:
+                    if nr != MinorNr.MINOR_NR_MAX:
+                        minor_nr = nr + 1
+                    break
+                lnr = nr
+        return minor_nr
+    
+    
+    def get_free_node_id(self, volume):
+        node_id = Assignment.NODE_ID_ERROR
+        id_list = []
+        for assg in volume.iterate_assignments():
+            id = assg.get_node_id()
+            if id >= 0 and id <= self._max_node_id:
+                id_list.append(id)
+        id_list.sort()
+        items = len(id_list)
+        if items == 0:
+            node_id = 0
+        else:
+            idx = 0
+            lid = -1
+            while True:
+                id = id_list[idx]
+                if id - lid > 1:
+                    node_id = lid + 1
+                    break
+                idx += 1
+                if not idx < items:
+                    if self._max_node_id != id:
+                        node_id = id + 1
+                    break
+                lid = id
+        return node_id
     
     
     @staticmethod

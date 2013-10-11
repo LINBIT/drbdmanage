@@ -211,7 +211,7 @@ class DrbdManage(object):
         rc    = 1
         unit  = SizeCalc.UNIT_GiB
         size  = None
-        minor = MinorNr.MINOR_AUTO
+        minor = MinorNr.MINOR_NR_AUTO
         # Command parser configuration
         order      = [ "name", "size" ]
         params     = {}
@@ -229,9 +229,9 @@ class DrbdManage(object):
             minor_str = opt["-m"]
             if minor_str is not None:
                 if minor_str == "auto":
-                    minor = MinorNr.MINOR_AUTO
+                    minor = MinorNr.MINOR_NR_AUTO
                 elif minor_str == "auto-drbd":
-                    minor = MinorNr.MINOR_AUTODRBD
+                    minor = MinorNr.MINOR_NR_AUTODRBD
                 else:
                     try:
                         minor = int(minor_str)
