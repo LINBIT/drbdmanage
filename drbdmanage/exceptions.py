@@ -41,6 +41,9 @@ DM_EPERSIST = 107
 # Invalid node id or no free node id for auto-assignment
 DM_ENODEID  = 108
 
+# Invalid volume id or no free volume id for auto-assignment
+DM_EVOLID   = 109
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -58,6 +61,7 @@ _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
   "configuration storage"
 _DM_EXC_TEXTS[DM_ENODEID]  = "Invalid node id or no free node id number"
+_DM_EXC_TEXTS[DM_ENODEID]  = "Invalid volume id or no free volume id number"
 
 
 def dm_exc_text(id):

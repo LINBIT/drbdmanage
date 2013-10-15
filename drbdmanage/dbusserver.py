@@ -48,6 +48,7 @@ class DBusServer(dbus.service.Object):
                 af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4
             return self._server.create_node(name, ip, af_n)
         except Exception as exc:
+            # FIXME
             sys.stderr.write("Oops, " + str(exc))
     
     
@@ -55,6 +56,18 @@ class DBusServer(dbus.service.Object):
       in_signature="sb", out_signature="i")
     def remove_node(self, name, force):
         return self._server.remove_node(name, force)
+        
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="s", out_signature="i")
+    def create_resource(self, name):
+        return self._server.create_resource(name)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sb", out_signature="i")
+    def remove_resource(self, name, force):
+        return self._server.remove_resource(name, force)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -64,14 +77,14 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="sb", out_signature="i")
-    def remove_volume(self, name, force):
-        return self._server.remove_volume(name, force)
+      in_signature="sib", out_signature="i")
+    def remove_volume(self, name, id, force):
+        return self._server.remove_volume(name, id, force)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssas", out_signature="i")
-    def assign(self, node_name, volume_name, state):
+    def assign(self, node_name, resource_name, state):
         tstate = 0
         for opt in state:
             if opt == "client":
@@ -83,9 +96,7 @@ class DBusServer(dbus.service.Object):
             else:
                 return DM_EINVAL
         tstate = tstate | Assignment.FLAG_DEPLOY
-        if tstate & Assignment.FLAG_DISKLESS == 0:
-            tstate = tstate | Assignment.FLAG_ATTACH
-        return self._server.assign(node_name, volume_name, tstate)
+        return self._server.assign(node_name, resource_name, tstate)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -102,14 +113,46 @@ class DBusServer(dbus.service.Object):
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="aas")
-    def volume_list(self):
-        return self._server.volume_list()
+    def resource_list(self):
+        return self._server.resource_list()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="aas")
     def assignment_list(self):
         return self._server.assignment_list()
+    
+    
+    # DEBUG
+    """
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="", out_signature="a(sa(ssaas))")
+    def assignment_list(self):
+        try:
+            sys.stdout.write("DEBUG #1\n")
+            vol_aa = [ "0", "10240", "103" ]
+            vol_ab = [ "1", "8192", "107" ]
+            vol_bb = [ "0", "13500", "104" ]
+            vols_a = [ vol_aa, vol_ab ]
+            vols_b = [ vol_bb ]
+            sys.stdout.write("DEBUG #2\n")
+            res_a = [ "res01", "0", vols_a ]
+            res_b = [ "res02", "1", vols_b ]
+            sys.stdout.write("DEBUG #3\n")
+            res_node_a = [ res_a, res_b ]
+            res_node_b = [ res_b ]
+            sys.stdout.write("DEBUG #4\n")
+            node_a = [ "node01", res_node_a ]
+            node_b = [ "node02", res_node_b ]
+            sys.stdout.write("DEBUG #5\n")
+            nodes_arr = [ node_a, node_b ]
+            nodes = dbus.Array(nodes_arr)
+            sys.stdout.write("DEBUG #6\n")
+            # this works
+        except Exception as exc:
+            print exc
+        return dbus.Struct(nodes)
+    """
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -136,67 +179,43 @@ class DBusServer(dbus.service.Object):
         self._server.shutdown()
     
     
+    # DEBUG
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="s", out_signature="i")
     def debug_cmd(self, cmd):
         try:
-            if cmd.endswith("\n"):
-                cmd = cmd[:len(cmd) - 1]
-            if cmd == "list-nodes":
-                sys.stdout.write(
-                  chr(0x1b) + "[0;93m"
-                  + string.ljust("Node name", 17)
-                  + string.ljust("type", 5)
-                  + string.ljust("IP address", 16)
-                  + chr(0x1b) + "[0m\n")
-                sys.stdout.write(("-" * 60) + "\n")
-                for node in self._server._nodes.itervalues():
-                    af = "unkn"
-                    if node.get_af() \
-                      == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4:
-                        af = "ipv4"
-                    elif node.get_af() \
-                      == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6:
-                        af = "ipv6"
-                    sys.stdout.write(
-                      string.ljust(node.get_name(), 17)
-                      + string.ljust(af, 5)
-                      + string.ljust(node.get_ip(), 16)
-                      + "\n")
-            elif cmd == "list-volumes":
-                sys.stdout.write(
-                  chr(0x1b) + "[0;93m"
-                  + string.ljust("Volume name", 17)
-                  + string.rjust("size MiB", 17)
-                  + chr(0x1b) + "[0m\n")
-                sys.stdout.write(("-" * 60) + "\n")
-                for volume in self._server._volumes.itervalues():
-                    sys.stdout.write(
-                      string.ljust(volume.get_name(), 17)
-                      + string.rjust(str(volume.get_size_MiB()), 17)
-                      + "\n")
-            elif cmd == "list-assignments":
-                sys.stdout.write(
-                  chr(0x1b) + "[0;93m"
-                  + string.ljust("Node name", 17)
-                  + string.ljust("Volume name", 17)
-                  + chr(0x1b) + "[0m\n")
-                sys.stdout.write(("-" * 60) + "\n")
-                for node in self._server._nodes.itervalues():
-                    node_name = node.get_name()
-                    for assg in node._assignments.itervalues():
-                        vol_name = assg.get_volume().get_name()
-                        sys.stdout.write(
-                          string.ljust(node_name, 17)
-                          + string.ljust(vol_name, 17))
-                        if assg.is_deployed():
-                            sys.stdout.write(" (deployed)")
-                        sys.stdout.write(" " + str(assg.get_cstate()) + "\n")
-                        # print the node name in the first line only
-                        node_name = ""
-            else:
-                sys.stderr.write("No such debug command: " + cmd + "\n")
+            for node in self._server._nodes.itervalues():
+                sys.stdout.write("Node(%s) af=%s ip=%s\n" %
+                  (node.get_name(), node.get_af_label(), node.get_ip()))
             sys.stdout.write("\n")
+            for resource in self._server.iterate_resources():
+                sys.stdout.write("Resource(%s)\n" % (resource.get_name()))
+                for volume in resource.iterate_volumes():
+                    sys.stdout.write("  --(%d) size(%d) minor(%d)\n"
+                      % (volume.get_id(), volume.get_size_MiB(),
+                      volume.get_minor().get_value()))
+            sys.stdout.write("\n")
+            for node in self._server.iterate_nodes():
+                sys.stdout.write("on %s:\n" % (node.get_name()))
+                for assg in node.iterate_assignments():
+                    resource = assg.get_resource()
+                    sys.stdout.write("  resource %s:\n" % (resource.get_name()))
+                    for vol_st in assg.iterate_volume_states():
+                        id = vol_st.get_id()
+                        cstate = vol_st.get_cstate()
+                        tstate = vol_st.get_tstate()
+                        if tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
+                            deploy = "deploy"
+                        else:
+                            deploy = "~deploy"
+                        if tstate & DrbdVolumeState.FLAG_ATTACH != 0:
+                            attach = "attach"
+                        else:
+                            attach = "~attach"
+                        sys.stdout.write("    %d: %d (%s,%s)\n"
+                          % (vol_st.get_id(),
+                          vol_st.get_volume().get_size_MiB(), deploy, attach))
+            sys.stdout.write("--------------------\n\n")
         except Exception:
             sys.stderr.write("Caught exception:\n"
               + traceback.format_exc() + "\n")

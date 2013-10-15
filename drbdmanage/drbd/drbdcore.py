@@ -16,8 +16,10 @@ from drbdmanage.utils import *
 class DrbdManager(object):
     _server = None
     
+    
     def __init__(self, server):
         self._server = server
+    
     
     # FIXME
     def run(self):
@@ -79,41 +81,13 @@ class DrbdManager(object):
         for assg in assignments:
             sys.stdout.write("%s--> DrbdManager: assignment '%s:%s'%s\n"
               % (COLOR_GREEN, assg.get_node().get_name(),
-              assg.get_volume().get_name(), COLOR_NONE))
+              assg.get_resource().get_name(), COLOR_NONE))
             
             if assg.requires_action():
                 sys.stdout.write("%s-->   (requires action)%s\n"
                   % (COLOR_GREEN, COLOR_NONE))
+                # TODO: perform actions required by the assignment
                 state_changed = True
-                vol = assg.get_volume()
-                vol_name = vol.get_name()
-                
-                if assg.requires_connect():
-                    sys.stdout.write("  %sconnect:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_connected()
-                elif assg.requires_disconnect():
-                    sys.stdout.write("  %sdisconnect:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_disconnected()
-                
-                if assg.requires_attach():
-                    sys.stdout.write("  %sattach:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_attached()
-                elif assg.requires_detach():
-                    sys.stdout.write("  %sdetach:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_detached()
-                
-                if assg.requires_deploy():
-                    sys.stdout.write("  %sdeploy:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_deployed()
-                elif assg.requires_undeploy():
-                    sys.stdout.write("  %sundeploy:%s   %s\n"
-                      % (COLOR_GREEN, COLOR_NONE, vol_name))
-                    assg.set_undeployed()
         
         # Clean up undeployed resources
         self._server.cleanup()
@@ -164,14 +138,20 @@ class DrbdResource(object):
     _name        = None
     _secret      = None
     _state       = None
+    _volumes     = None
     _assignments = None
     
     FLAG_REMOVE  = 0x1
+    FLAG_NEW     = 0x2
+    
+    # maximum volumes per resource
+    MAX_RES_VOLS = 64
     
     def __init__(self, name):
         self._name        = self.name_check(name)
-        self._state       = 0
         self._secret      = None
+        self._state       = 0
+        self._volumes     = dict()
         self._assignments = dict()
     
     
@@ -198,6 +178,44 @@ class DrbdResource(object):
             del self._assignments[node.get_name()]
     
     
+    def iterate_assignments(self):
+        return self._assignments.itervalues()
+    
+    
+    def has_assignments(self):
+        return len(self._assignments) > 0
+    
+    
+    def add_volume(self, volume):
+        self._volumes[volume.get_id()] = volume
+    
+    
+    def get_volume(self, id):
+        return self._volumes.get(id)
+    
+    
+    def remove_volume(self, id):
+        volume = self._volumes.get(id)
+        if volume is not None:
+            del self._volumes[volume.get_id()]
+    
+    
+    def iterate_volumes(self):
+        return self._volumes.itervalues()
+    
+    
+    def remove(self):
+        self._state |= self.FLAG_REMOVE
+    
+    
+    def set_secret(self, secret):
+        self._secret = secret
+    
+    
+    def get_secret(self):
+        return self._secret
+    
+    
 class DrbdResourceView(object):
     
     _name  = None
@@ -219,66 +237,31 @@ class DrbdResourceView(object):
 class DrbdVolume(GenericStorage):
     NAME_MAXLEN = 16
     
-    _name     = None
+    _id       = None
     _minor    = None
     _state    = None
-    _secret   = None
-    
-    _assignments = None
     
     FLAG_REMOVE = 0x1
-    FLAG_NEW    = 0x2
     
     
-    def __init__(self, name, size_MiB, minor):
+    def __init__(self, id, size_MiB, minor):
         if not size_MiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_MiB)
-        self._name   = self.name_check(name)
+        self._id     = int(id)
+        if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
+            raise ValueError
         self._minor  = minor
         self._state  = 0
-        self._secret = None
-        self._assignments = dict()
     
     
-    def get_name(self):
-        return self._name
+    def get_id(self):
+        return self._id
     
     
     # returns a storagecore.MinorNr object
     def get_minor(self):
         return self._minor
-    
-    
-    def name_check(self, name):
-        return DrbdManager.name_check(name, self.NAME_MAXLEN)
-    
-    
-    def add_assignment(self, assignment):
-        node = assignment.get_node()
-        self._assignments[node.get_name()] = assignment
-    
-    
-    def get_assignment(self, name):
-        assignment = None
-        try:
-            assignment = self._assignments[name]
-        except KeyError:
-            pass
-        return assignment
-    
-    
-    def remove_assignment(self, assignment):
-        node = assignment.get_node()
-        del self._assignments[node.get_name()]
-    
-    
-    def has_assignments(self):
-        return len(self._assignments) > 0
-    
-    
-    def iterate_assignments(self):
-        return self._assignments.itervalues()
     
     
     def get_state(self):
@@ -289,15 +272,7 @@ class DrbdVolume(GenericStorage):
         self._state = state
     
     
-    def set_secret(self, secret):
-        self._secret = secret
-    
-    
-    def get_secret(self):
-        return self._secret
-    
-    
-    def mark_remove(self):
+    def remove(self):
         self._state |= self.FLAG_REMOVE
 
 
@@ -459,7 +434,7 @@ class DrbdNode(object):
         self._poolfree = size
     
     
-    def mark_remove(self):
+    def remove(self):
         self._state |= self.FLAG_REMOVE
     
     
@@ -468,7 +443,8 @@ class DrbdNode(object):
     
     
     def add_assignment(self, assignment):
-        self._assignments[assignment.get_volume().get_name()] = assignment
+        resource = assignment.get_resource()
+        self._assignments[resource.get_name()] = assignment
     
     
     def get_assignment(self, name):
@@ -565,13 +541,99 @@ class DrbdNodeView(object):
             else:
                 text = "remove"
         return text
+    
+    
+class DrbdVolumeState(object):
+    FLAG_DEPLOY    = 0x1
+    FLAG_ATTACH    = 0x2
+    
+    _volume = None
+    _cstate = 0
+    _tstate = 0
+    
+    
+    def __init__(self, volume):
+        self._volume = volume
+        self._cstate = 0
+        self._tstate = 0
+    
+    
+    def get_volume(self):
+        return self._volume
+    
+    
+    def get_id(self):
+        return self._volume.get_id()
+    
+    
+    def requires_action(self):
+        return (self._cstate != self._tstate)
+    
+    
+    def requires_deploy(self):
+        return (self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
+          and (self._cstate & self.FLAG_DEPLOY == 0)
+    
+    
+    def requires_attach(self):
+        return (self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
+          and (self._cstate & self.FLAG_ATTACH == 0)
+    
+    
+    def requires_undeploy(self):
+        return (self._tstate & self.FLAG_DEPLOY == 0) \
+          and (self._cstate & self.FLAG_DEPLOY != 0)
+    
+    
+    def requires_detach(self):
+        return (self._tstate & self.FLAG_ATTACH == 0) \
+          and (self._cstate & self.FLAG_ATTACH != 0)
+    
+    
+    def set_cstate(self, cstate):
+        self._cstate = cstate
+    
+    
+    def set_tstate(self, tstate):
+        self._tstate = tstate
+    
+    
+    def get_cstate(self):
+        return self._cstate
+    
+    
+    def get_tstate(self):
+        return self._tstate
+    
+    
+    def deploy(self):
+        self._tstate = self._tstate | self.FLAG_DEPLOY
+    
+    
+    def undeploy(self):
+        self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+    
+    
+    def attach(self):
+        self._tstate = self._tstate | self.FLAG_ATTACH
+    
+    
+    def detach(self):
+        self._tstate = (self._tstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
+    
+    
+    def set_deployed(self):
+        self._cstate = self._cstate | self.FLAG_DEPLOYED
+    
+    
+    def set_undeployed(self):
+        self._cstate = (self._cstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
 
 
 class Assignment(object):
     _node        = None
-    _volume      = None
-    _blockdevice = None
-    _bd_path     = None
+    _resource    = None
+    _vol_states  = None
     _node_id     = None
     _cstate      = 0
     _tstate      = 0
@@ -579,9 +641,8 @@ class Assignment(object):
     _rc          = 0
 
     FLAG_DEPLOY    = 0x1
-    FLAG_ATTACH    = 0x2
-    FLAG_CONNECT   = 0x4
-    FLAG_DISKLESS  = 0x8
+    FLAG_CONNECT   = 0x2
+    FLAG_DISKLESS  = 0x4
     
     FLAG_UPD_CON   = 0x10000
     FLAG_RECONNECT = 0x20000
@@ -593,9 +654,12 @@ class Assignment(object):
     NODE_ID_ERROR  = -1
 
 
-    def __init__(self, node, volume, node_id, cstate, tstate):
+    def __init__(self, node, resource, node_id, cstate, tstate):
         self._node        = node
-        self._volume      = volume
+        self._resource    = resource
+        self._vol_states  = dict()
+        for volume in resource.iterate_volumes():
+            self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id     = int(node_id)
         # current state
         self._cstate      = cstate
@@ -608,26 +672,41 @@ class Assignment(object):
         return self._node
     
     
-    def get_volume(self):
-        return self._volume
+    def get_resource(self):
+        return self._resource
+    
+    
+    def iterate_volume_states(self):
+        return self._vol_states.itervalues()
+    
+    
+    def get_volume_state(self, id):
+        return self._vol_states.get(id)
+    
+    
+    def remove_volume_state(self, id):
+        vol_st = self._vol_states.get(id)
+        if vol_st is not None:
+            del self._vol_states[id]
+    
+    
+    def update_volume_states(self):
+        # create volume states for new volumes in the resource
+        for volume in self._resource.iterate_volumes():
+            vol_st = self._vol_states.get(volume.get_id())
+            if vol_st is None:
+                vol_st = DrbdVolumeState(volume)
+                self._vol_states[volume.get_id()] = vol_st
+        # remove volume states for volumes that no longer exist in the resource
+        for vol_st in self._vol_states.itervalues():
+            volume = self._resource.get_volume(vol_st.get_id())
+            if volume is None:
+                del self._vol_states[vol_st.get_id()]
     
     
     def remove(self):
         self._node.remove_assignment(self)
-        self._volume.remove_assignment(self)
-    
-    
-    def get_blockdevice(self):
-        return self._blockdevice
-    
-    
-    def get_bd_path(self):
-        return self._bd_path
-    
-    
-    def set_blockdevice(self, blockdevice, path):
-        self._blockdevice = blockdevice
-        self._bd_path     = path
+        self._resource.remove_assignment(self)
     
     
     def get_node_id(self):
@@ -657,6 +736,7 @@ class Assignment(object):
     def undeploy(self):
         self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
     
+    
     def connect(self):
         self._tstate = self._tstate | self.FLAG_CONNECT
     
@@ -667,14 +747,6 @@ class Assignment(object):
     
     def disconnect(self):
         self._tstate = (self._tstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
-    
-    
-    def attach(self):
-        self._tstate = self._tstate | self.FLAG_ATTACH
-    
-    
-    def detach(self):
-        self._tstate = (self._tstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
     
     
     def deploy_client(self):
@@ -706,14 +778,6 @@ class Assignment(object):
         self._cstate = (self._cstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
     
     
-    def set_attached(self):
-        self._cstate = self._cstate | self.FLAG_ATTACH
-    
-    
-    def set_detached(self):
-        self._cstate = (self._cstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
-    
-    
     def set_deployed_client(self):
         self._cstate = self._cstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
     
@@ -738,22 +802,22 @@ class Assignment(object):
         return (self._cstate & self.FLAG_CONNECT) != 0
     
     
-    def is_attached(self):
-        return (self._cstate & self.FLAG_ATTACH) != 0
-    
-    
     def requires_action(self):
-        return (self._cstate != self._tstate)
+        """
+        If the state of the assignment itself requires action, or the
+        state of any of the volumes of the resource associated with this
+        assignment requires action, return True
+        """
+        req_act = False
+        for vol_state in self._vol_states:
+            if vol_state.requires_action():
+                req_act = True
+        return (self._cstate != self._tstate) or req_act
     
     
     def requires_deploy(self):
         return (self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
           and (self._cstate & self.FLAG_DEPLOY == 0)
-    
-    
-    def requires_attach(self):
-        return (self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
-          and (self._cstate & self.FLAG_ATTACH == 0)
     
     
     def requires_connect(self):
@@ -766,11 +830,6 @@ class Assignment(object):
           and (self._tstate & self.FLAG_DEPLOY == 0)
     
     
-    def requires_detach(self):
-        return (self._cstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
-          and (self._tstate & self.FLAG_ATTACH == 0)
-    
-    
     def requires_disconnect(self):
         return (self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT) \
           and (self._tstate & self.FLAG_CONNECT == 0)
@@ -778,7 +837,7 @@ class Assignment(object):
 
 class AssignmentView(object):
     _node        = None
-    _volume      = None
+    _resource    = None
     _blockdevice = None
     _node_id     = None
     _cstate      = None
@@ -792,11 +851,12 @@ class AssignmentView(object):
             raise IncompatibleDataException
         self._machine_readable = machine_readable
         self._node        = properties[0]
-        self._volume      = properties[1]
-        self._blockdevice = properties[2]
-        self._node_id     = properties[3]
-        self._cstate      = long(properties[4])
-        self._tstate      = long(properties[5])
+        self._resource    = properties[1]
+        self._vol_id      = properties[2]
+        self._blockdevice = properties[3]
+        self._node_id     = properties[4]
+        self._cstate      = long(properties[5])
+        self._tstate      = long(properties[6])
     
     
     @classmethod

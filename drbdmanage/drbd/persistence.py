@@ -17,6 +17,36 @@ __author__="raltnoeder"
 __date__ ="$Sep 24, 2013 3:33:50 PM$"
 
 
+class PersistenceImplDummy(object):
+    def __init__(self):
+        pass
+    
+    
+    def close(self):
+        pass
+    
+    
+    def get_hash_obj(self):
+        return DataHash()
+    
+    
+    def get_stored_hash(self):
+        dh = DataHash()
+        dh.get_hash()
+    
+    
+    def load(self, nodes, volumes):
+        pass
+    
+    
+    def save(self, nodes, volumes):
+        pass
+    
+    
+    def open(self, modify):
+        return True
+    
+
 class PersistenceImpl(object):
     _file       = None
     _i_file     = None

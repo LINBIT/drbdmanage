@@ -119,8 +119,38 @@ def get_event_arg(logline, name):
     return event_arg
 
 
+def get_free_number(min, max, nr_list):
+    """
+    In the range min to max, finds and returns a number that is not in the
+    supplied list of numbers. If all numbers are in the supplied list of
+    numbers, returns -1 instead.
+    min and max must be positive integers, and nr_list must be a list of
+    positive integers in the range from min to max
+    """
+    fnr = -1
+    items = len(nr_list)
+    if items == 0:
+        fnr = min
+    else:
+        nr_list.sort()
+        idx = 0
+        lnr = min - 1
+        while True:
+            nr = nr_list[idx]
+            if nr - lnr > 1:
+                fnr = lnr + 1
+                break
+            idx += 1
+            if not idx < items:
+                if nr < max:
+                    fnr = nr + 1
+                break
+            lnr = nr
+    return fnr
+
+
 class DataHash(object):
-    HASH_LEN = 32 # SHA-256
+    HASH_LEN  = 32 # SHA-256
     _hashalgo = None
     _hash     = None
     

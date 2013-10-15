@@ -161,9 +161,7 @@ class DrbdManage(object):
         elif arg == "shutdown":
             rc = self.cmd_shutdown(args)
         elif arg == "debug":
-            rc = self._server.debug_cmd("list-nodes")
-            rc = self._server.debug_cmd("list-volumes")
-            rc = self._server.debug_cmd("list-assignments")
+            rc = self._server.debug_cmd("list")
         elif arg == "exit":
             exit(0)
         else:
@@ -266,8 +264,10 @@ class DrbdManage(object):
             if unit != SizeCalc.UNIT_MiB:
                 size = SizeCalc.convert_round_up(size, unit,
                   SizeCalc.UNIT_MiB)
-            server_rc = self._server.create_volume(dbus.String(name),
-              dbus.UInt64(size), dbus.Int32(minor))
+            server_rc = self._server.create_resource(dbus.String(name))
+            if server_rc == 0 or server_rc == DM_EEXIST:
+                server_rc = self._server.create_volume(dbus.String(name),
+                  dbus.UInt64(size), dbus.Int32(minor))
             if server_rc == 0:
                 rc = 0
             else:
@@ -320,7 +320,7 @@ class DrbdManage(object):
     def cmd_remove_volume(self, args):
         rc = 1
         # Command parser configuration
-        order = [ "volume" ]
+        order = [ "volume", "id" ]
         params = {}
         opt   = {}
         optalias = {}
@@ -333,6 +333,11 @@ class DrbdManage(object):
                 raise SyntaxException
         
             vol_name = params["volume"]
+            id_str   = params["id"]
+            try:
+                id   = int(id_str)
+            except ValueError:
+                raise SyntaxException
             force    = flags["-f"]
             quiet    = flags["-q"]
             if not quiet:
@@ -341,7 +346,7 @@ class DrbdManage(object):
                   "Please confirm:")
             if quiet:
                 server_rc = self._server.remove_volume(dbus.String(vol_name),
-                  dbus.Boolean(force))
+                  dbus.Int32(id), dbus.Boolean(force))
                 if server_rc == 0:
                     rc = 0
                 else:
@@ -354,7 +359,8 @@ class DrbdManage(object):
     
     
     def syntax_remove_volume(self):
-        sys.stderr.write("Syntax: remove-volume [ --quiet | -q ] <name>\n")
+        sys.stderr.write("Syntax: remove-volume [ --quiet | -q ] <name> "
+          " <id>\n")
     
     
     def syntax_new_volume(self):

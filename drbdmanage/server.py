@@ -39,7 +39,9 @@ class DrbdManageServer(object):
     EVT_ROLE_SECONDARY = "Secondary"
     DRBDCTRL_RES_NAME  = "drbdctrl"
     
-    KEY_PLUGIN_NAME = "storage-plugin"
+    KEY_PLUGIN_NAME  = "storage-plugin"
+    KEY_MAX_NODE_ID  = "max-node-id"
+    KEY_MIN_MINOR_NR = "min-minor-nr"
     
     # defaults
     _max_node_id =  31
@@ -49,7 +51,7 @@ class DrbdManageServer(object):
     _bd_mgr    = None
     # Configuration objects maps
     _nodes     = None
-    _volumes   = None
+    _resources = None
     # Events log pipe
     _evt_file  = None
     # Subprocess handle for the events log source
@@ -78,12 +80,12 @@ class DrbdManageServer(object):
         if len(sys.argv) >= 2:
             self._instance_node_name = sys.argv[1]
         # end DEBUG
-        self._nodes    = dict()
-        self._volumes  = dict()
+        self._nodes     = dict()
+        self._resources = dict()
         self.load_server_conf()
-        self._bd_mgr   = BlockDeviceManager(self._plugin_name)
-        self._drbd_mgr = DrbdManager(self)
-        self.load_conf()
+        self._bd_mgr    = BlockDeviceManager(self._plugin_name)
+        self._drbd_mgr  = DrbdManager(self)
+        # self.load_conf()
         self.init_events()
 
 
@@ -172,9 +174,9 @@ class DrbdManageServer(object):
     def iterate_nodes(self):
         return self._nodes.itervalues()
     
-    
-    def iterate_volumes(self):
-        return self._volumes.itervalues()
+
+    def iterate_resources(self):
+        return self._resources.itervalues()
     
     
     def get_node(self, name):
@@ -189,12 +191,21 @@ class DrbdManageServer(object):
         return node
     
     
-    def get_volume(self, name):
+    def get_resource(self, name):
+        resource = None
+        try:
+           resource = self._resources.get(name)
+        except Exception as exvc:
+            DrbdManageServer.catch_internal_error(exc)
+        return resource
+    
+    
+    def get_volume(self, name, id):
         volume = None
         try:
-            volume = self._volumes[name]
-        except KeyError:
-            pass
+            resource = self._resources.get(name)
+            if resource is not None:
+                volume = resource.get_volume(id)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
         return volume
@@ -264,22 +275,21 @@ class DrbdManageServer(object):
                 if (not force) and node.has_assignments():
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
-                        volume = assignment.get_volume()
-                        for peer_assg in volume.iterate_assignments():
+                        resource = assignment.get_resource()
+                        for peer_assg in resource.iterate_assignments():
                             peer_assg.update_connections()
-                    node.mark_remove()
-                    self.cleanup()
+                    node.remove()
+                    self._drbd_mgr.perform_changes()
                 else:
                     # drop all associated assignments
                     for assignment in node.iterate_assignments():
-                        volume = assignment.get_volume()
-                        volume.remove_assignment(assignment)
-                        # tell the remaining nodes that have this volume to
+                        resource = assignment.get_resource()
+                        resource.remove_assignment(assignment)
+                        # tell the remaining nodes that have this resource to
                         # drop the connection to the deleted node
-                        for peer_assg in volume.iterate_assignments():
+                        for peer_assg in resource.iterate_assignments():
                             peer_assg.update_connections()
                     del self._nodes[name]
-                self._drbd_mgr.perform_changes()
                 self.save_conf_data(persist)
                 rc = DM_SUCCESS
         except KeyError:
@@ -294,10 +304,76 @@ class DrbdManageServer(object):
         return rc
     
     
+    def create_resource(self, name):
+        """
+        Registers a new resource that can be deployed to DRBD cluster nodes
+        """
+        rc = DM_EPERSIST
+        resource = None
+        persist  = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._resources.get(name)
+                if resource is not None:
+                    rc = DM_EEXIST
+                else:
+                    resource = DrbdResource(name)
+                    self._resources[resource.get_name()] = resource
+                    self.save_conf_data(persist)
+                    rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except InvalidNameException:
+            rc = DM_ENAME
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def remove_resource(self, name, force):
+        """
+        Marks a resource for removal from the DRBD cluster
+        * Orders all nodes to undeploy all volume of this resource
+        """
+        rc = DM_EPERSIST
+        persist  = None
+        resource = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._resources[name]
+                if (not force) and resource.has_assignments():
+                    for assg in resource.iterate_assignments():
+                        peer_res = assg.get_resource()
+                        peer_res.undeploy()
+                    resource.remove()
+                    self._drbd_mgr.perform_changes()
+                else:
+                    for assg in resource.iterate_assignments():
+                        node = assg.get_node()
+                        node.remove_assignment(assg)
+                    del self._resources[resource.get_name()]
+                self.save_conf_data(persist)
+                rc = DM_SUCCESS
+        except KeyError:
+            rc = DM_ENOENT
+        except PersistenceException:
+            pass
+        except Exception as exc:
+                DrbdManageServer.catch_internal_error(exc)
+                rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
     def create_volume(self, name, size, minor):
         """
-        Registers a new volume that can subsequently be deployed on
-        DRBD cluster nodes
+        Adds a volume to a resource
         """
         rc      = DM_EPERSIST
         volume  = None
@@ -305,19 +381,30 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                volume = self._volumes.get(name)
-                if volume is not None:
-                    rc = DM_EEXIST
+                resource = self._resources.get(name)
+                if resource is None:
+                    rc = DM_ENOENT
                 else:
                     try:
+                        vol_id = self.get_free_volume_id(resource)
                         if minor == MinorNr.MINOR_NR_AUTO:
                             minor = self.get_free_minor_nr()
                             if minor == MinorNr.MINOR_NR_ERROR:
                                 raise InvalidMinorNrException
-                        volume = DrbdVolume(name, size, MinorNr(minor))
-                        self._volumes[volume.get_name()] = volume
-                        self.save_conf_data(persist)
-                        rc = DM_SUCCESS
+                        if vol_id == -1:
+                            rc = DM_EVOLID
+                        else:
+                            volume = DrbdVolume(vol_id, size, MinorNr(minor))
+                            resource.add_volume(volume)
+                            for assg in resource.iterate_assignments():
+                                assg.update_volume_states()
+                                vol_st = assg.get_volume_state(volume.get_id())
+                                if vol_st is not None:
+                                    vol_st.deploy()
+                                    vol_st.attach()
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
+                            rc = DM_SUCCESS
                     except InvalidNameException:
                         rc = DM_ENAME
                     except InvalidMinorNrException:
@@ -334,7 +421,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def remove_volume(self, name, force):
+    def remove_volume(self, name, id, force):
         """
         Marks a volume for removal from the DRBD cluster
         * Orders all nodes to undeploy the volume
@@ -344,21 +431,24 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                volume = self._volumes[name]
-                if (not force) and volume.has_assignments():
-                    for assignment in volume.iterate_assignments():
-                        assignment.undeploy()
-                    volume.mark_remove()
-                    self.cleanup()
+                resource = self._resources[name]
+                volume   = resource.get_volume(id)
+                if volume is None:
+                    raise KeyError
                 else:
-                    # drop all associated assignments
-                    for assignment in volume.iterate_assignments():
-                        node = assignment.get_node()
-                        node.remove_assignment(assignment)
-                    del self._volumes[name]
-                self._drbd_mgr.perform_changes()
-                self.save_conf_data(persist)
-                rc = DM_SUCCESS
+                    if (not force) and resource.has_assignments():
+                        for assg in resource.iterate_assignments():
+                            peer_vol_st = assg.get_volume_state(id)
+                            if peer_vol_st is not None:
+                                peer_vol_st.undeploy()
+                        volume.remove()
+                        self._drbd_mgr.perform_changes()
+                    else:
+                        resource.remove_volume(id)
+                        for assg in resource.iterate_assignments():
+                            assg.remove_volume_state(id)                    
+                    self.save_conf_data(persist)
+                    rc = DM_SUCCESS
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
@@ -371,22 +461,23 @@ class DrbdManageServer(object):
         return rc
     
     
-    def assign(self, node_name, volume_name, tstate):
+    def assign(self, node_name, resource_name, tstate):
         """
-        Assigns a volume to a node
-        * Orders all participating nodes to deploy the volume
+        Assigns a resource to a node
+        * Orders all participating nodes to deploy all volumes of
+          resource
         """
         rc      = DM_EPERSIST
         persist = None
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                node   = self._nodes.get(node_name)
-                volume = self._volumes.get(volume_name)
-                if node is None or volume is None:
+                node     = self._nodes.get(node_name)
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
                     rc = DM_ENOENT
                 else:
-                    assignment = node.get_assignment(volume.get_name())
+                    assignment = node.get_assignment(resource.get_name())
                     if assignment is not None:
                         rc = DM_EEXIST
                     else:
@@ -397,10 +488,10 @@ class DrbdManageServer(object):
                           and (tstate & Assignment.FLAG_OVERWRITE) != 0:
                             rc = DM_EINVAL
                         else:
-                            rc = self._assign(node, volume, tstate)
-                            self._drbd_mgr.perform_changes()
-                            self.save_conf_data(persist)
-                            rc = DM_SUCCESS
+                            rc = self._assign(node, resource, tstate)
+                            if rc == DM_SUCCESS:
+                                self._drbd_mgr.perform_changes()
+                                self.save_conf_data(persist)
         except PersistenceException:
             pass
         except Exception as exc:
@@ -411,10 +502,10 @@ class DrbdManageServer(object):
         return rc
     
     
-    def unassign(self, node_name, volume_name, force):
+    def unassign(self, node_name, resource_name, force):
         """
-        Removes the assignment of a volume to a node
-        * Orders the node to undeploy the volume
+        Removes the assignment of a resource to a node
+        * Orders the node to undeploy all volumes of the resource
         """
         rc      = DM_EPERSIST
         persist = None
@@ -422,17 +513,18 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node   = self._nodes.get(node_name)
-                volume = self._volumes.get(volume_name)
-                if node is None or volume is None:
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
                     rc = DM_ENOENT
                 else:
-                    assignment = node.get_assignment(volume.get_name())
+                    assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
                         rc = DM_ENOENT
                     else:
                         rc = self._unassign(assignment, force)
-                        self._drbd_mgr.perform_changes()
-                        self.save_conf_data(persist)
+                        if rc == DM_SUCCESS:
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
         except PersistenceException:
             pass
         except Exception as exc:
@@ -443,22 +535,28 @@ class DrbdManageServer(object):
         return rc
     
     
-    def _assign(self, node, volume, tstate):
+    def _assign(self, node, resource, tstate):
         """
         Implementation - see assign()
         """
         rc = DM_DEBUG
         try:
-            node_id = self.get_free_node_id(volume)
+            node_id = self.get_free_node_id(resource)
             if node_id == -1:
                 # no free node ids
                 rc = DM_ENODEID
             else:
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
-                assignment = Assignment(node, volume, node_id, 0, tstate)
+                assignment = Assignment(node, resource, node_id, 0, tstate)
+                for vol_state in assignment.iterate_volume_states():
+                    vol_state.deploy()
+                    vol_state.attach()
+                for assignment in resource.iterate_assignments():
+                    if assignment.is_deployed():
+                        assignment.update_connections()
                 node.add_assignment(assignment)
-                volume.add_assignment(assignment)
+                resource.add_assignment(assignment)
                 rc = DM_SUCCESS
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -470,19 +568,18 @@ class DrbdManageServer(object):
         Implementation - see unassign()
         """
         try:
-            node   = assignment.get_node()
-            volume = assignment.get_volume()
+            node     = assignment.get_node()
+            resource = assignment.get_resource()
             if (not force) and assignment.is_deployed():
                 assignment.disconnect()
-                assignment.detach()
                 assignment.undeploy()
-                for assignment in node.iterate_assignments():
-                    if assignment.get_node() != node \
-                      and assignment.is_deployed():
-                        assignment.update_connections()
             else:
                 node.remove_assignment(assignment)
-                volume.remove_assignment(assignment)
+                resource.remove_assignment(assignment)
+            for assignment in node.iterate_assignments():
+                if assignment.get_node() != node \
+                  and assignment.is_deployed():
+                    assignment.update_connections()
             self.cleanup()
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -513,16 +610,29 @@ class DrbdManageServer(object):
                         removable.append(node)
             for node in removable:
                 del self._nodes[node.get_name()]
-            # delete volumes that are marked for removal and that do not
+            # delete volumes that are marked for removal and that have
+            # been undeployed
+            for resource in self._resources.itervalues():
+                for assg in resource.iterate_assignments():
+                    removable = []
+                    for vol_state in assg.iterate_volume_states():
+                        vol_cstate = vol_state.get_cstate()
+                        vol_tstate = vol_state.get_tstate()
+                        if (vol_cstate & DrbdVolumeState.FLAG_DEPLOY == 0) \
+                          and (vol_tstate & DrbdVolumeState.FLAG_DEPLOY == 0):
+                            removable.append(vol_state)
+                    for vol_state in removable:
+                        assg.remove_volume_state(vol_state.get_id())
+            # delete resources that are marked for removal and that do not
             # have assignments any more
             removable = []
-            for volume in self._volumes.itervalues():
-                volstate = volume.get_state()
-                if (volstate & DrbdVolume.FLAG_REMOVE) != 0:
-                    if not volume.has_assignments():
-                        removable.append(volume)
-            for volume in removable:
-                del self._volumes[volume.get_name()]
+            for resource in self._resources.itervalues():
+                res_state = resource.get_state()
+                if (res_state & DrbdResource.FLAG_REMOVE) != 0:
+                    if not resource.has_assignments():
+                        removable.append(resource)
+            for resource in removable:
+                del self._resources[resource.get_name()]
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
@@ -538,21 +648,19 @@ class DrbdManageServer(object):
             return node_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
-        return DM_SUCCESS
+        return None
     
     
-    def volume_list(self):
+    def resource_list(self):
         try:
-            volume_list = []
-            for volume in self._volumes.itervalues():
-                properties = DrbdVolumeView.get_properties(volume)
-                volume_list.append(properties)
-            return volume_list
+            resource_list = []
+            for resource in self._resources.itervalues():
+                properties = DrbdResourceView.get_properties(resource)
+                resource_list.append(properties)
+            return resource_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
-        return DM_SUCCESS
+        return None
     
     
     def assignment_list(self):
@@ -565,15 +673,14 @@ class DrbdManageServer(object):
             return assignment_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
-        return DM_SUCCESS
+        return None
     
     
     def save_conf(self):
         rc = DM_EPERSIST
         persist  = None
         try:
-            persist = PersistenceImpl()
+            persist = PersistenceImplDummy()
             if persist.open(True):
                 self.save_conf_data(persist)
                 rc = DM_SUCCESS
@@ -591,7 +698,7 @@ class DrbdManageServer(object):
         rc = DM_EPERSIST
         persist  = None
         try:
-            persist = PersistenceImpl()
+            persist = PersistenceImplDummy()
             if persist.open(False):
                 self.load_conf_data(persist)
                 persist.close()
@@ -608,15 +715,13 @@ class DrbdManageServer(object):
     
     def load_conf_data(self, persist):
         hash_obj = None
-        persist.load(self._nodes, self._volumes)
-        hash_obj = persist.get_hash_obj()
-        if hash_obj is not None:
-            self._conf_hash = hash_obj.get_hash()
+        persist.load(self._nodes, self._resources)
+        self._conf_hash = persist.get_stored_hash()
     
     
     def save_conf_data(self, persist):
         hash_obj = None
-        persist.save(self._nodes, self._volumes)
+        persist.save(self._nodes, self._resources)
         hash_obj = persist.get_hash_obj()
         if hash_obj is not None:
             self._conf_hash = hash_obj.get_hash()
@@ -634,7 +739,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = PersistenceImpl()
+            persist = PersistenceImplDummy()
             if persist.open(False):
                 ret_persist = persist
         except Exception as exc:
@@ -657,7 +762,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = PersistenceImpl()
+            persist = PersistenceImplDummy()
             if persist.open(True):
                 if not self.hashes_match(persist.get_stored_hash()):
                     self.load_conf_data(persist)
@@ -716,60 +821,40 @@ class DrbdManageServer(object):
     
     
     def get_free_minor_nr(self):
-        minor_nr   = MinorNr.MINOR_NR_ERROR
         minor_list = []
-        for volume in self._volumes.itervalues():
-            minor_obj = volume.get_minor()
-            nr = minor_obj.get_value()
-            if nr >= self._min_minor_nr and nr <= MinorNr.MINOR_NR_MAX:
-                minor_list.append(nr)
-        minor_list.sort()
-        items = len(minor_list)
-        if items == 0:
-            minor_nr = self._min_minor_nr
-        else:
-            idx = 0
-            lnr = self._min_minor_nr - 1
-            while True:
-                nr = minor_list[idx]
-                if nr - lnr > 1:
-                    minor_nr = lnr + 1
-                    break
-                idx += 1
-                if not idx < items:
-                    if nr != MinorNr.MINOR_NR_MAX:
-                        minor_nr = nr + 1
-                    break
-                lnr = nr
+        for resource in self._resources.itervalues():
+            for vol in resource.iterate_volumes():
+                minor_obj = vol.get_minor()
+                nr = minor_obj.get_value()
+                if nr >= self._min_minor_nr and nr <= MinorNr.MINOR_NR_MAX:
+                    minor_list.append(nr)
+        minor_nr = get_free_number(self._min_minor_nr, MinorNr.MINOR_NR_MAX,
+          minor_list)
+        if minor_nr == -1:
+            minor_nr = MinorNr.MINOR_NR_ERROR
         return minor_nr
     
     
-    def get_free_node_id(self, volume):
-        node_id = Assignment.NODE_ID_ERROR
+    def get_free_node_id(self, resource):
         id_list = []
-        for assg in volume.iterate_assignments():
+        for assg in resource.iterate_assignments():
             id = assg.get_node_id()
             if id >= 0 and id <= self._max_node_id:
                 id_list.append(id)
-        id_list.sort()
-        items = len(id_list)
-        if items == 0:
-            node_id = 0
-        else:
-            idx = 0
-            lid = -1
-            while True:
-                id = id_list[idx]
-                if id - lid > 1:
-                    node_id = lid + 1
-                    break
-                idx += 1
-                if not idx < items:
-                    if self._max_node_id != id:
-                        node_id = id + 1
-                    break
-                lid = id
+        node_id = get_free_number(0, self._max_node_id, id_list)
+        if node_id == -1:
+            node_id = Assignment.NODE_ID_ERROR
         return node_id
+    
+    
+    def get_free_volume_id(self, resource):
+        id_list = []
+        for vol in resource.iterate_volumes():
+            id = vol.get_id()
+            if id >= 0 and id <= DrbdResource.MAX_RES_VOLS:
+                id_list.append(id)
+        vol_id = get_free_number(0, DrbdResource.MAX_RES_VOLS, id_list)
+        return vol_id
     
     
     @staticmethod
