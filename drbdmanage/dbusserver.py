@@ -106,19 +106,19 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="aas")
+      in_signature="", out_signature="a(sssxxx)")
     def node_list(self):
         return self._server.node_list()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="aas")
+      in_signature="", out_signature="a(sxa(ixix))")
     def resource_list(self):
         return self._server.resource_list()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="aas")
+      in_signature="", out_signature="a(ssixxa(isxx))")
     def assignment_list(self):
         return self._server.assignment_list()
     

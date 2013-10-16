@@ -9,7 +9,9 @@ from drbdmanage.dbusserver import DBusServer
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import DrbdNodeView
+from drbdmanage.drbd.drbdcore import DrbdResourceView
 from drbdmanage.drbd.drbdcore import DrbdVolumeView
+from drbdmanage.drbd.drbdcore import DrbdVolumeStateView
 from drbdmanage.drbd.drbdcore import AssignmentView
 
 
@@ -136,8 +138,8 @@ class DrbdManage(object):
             arg = ""
         if arg == "assignments":
             rc = self.cmd_list_assignments(args)
-        elif arg == "volumes":
-            rc = self.cmd_list_volumes(args)
+        elif arg == "resources":
+            rc = self.cmd_list_resources(args)
         elif arg == "nodes":
             rc = self.cmd_list_nodes(args)
         elif arg == "new-node":
@@ -267,7 +269,7 @@ class DrbdManage(object):
             server_rc = self._server.create_resource(dbus.String(name))
             if server_rc == 0 or server_rc == DM_EEXIST:
                 server_rc = self._server.create_volume(dbus.String(name),
-                  dbus.UInt64(size), dbus.Int32(minor))
+                  dbus.Int64(size), dbus.Int32(minor))
             if server_rc == 0:
                 rc = 0
             else:
@@ -546,54 +548,19 @@ class DrbdManage(object):
         machine_readable = flags["-m"]
         
         node_list = self._server.node_list()
-        if len(node_list) == 0:
-            if not machine_readable:
-                sys.stdout.write("No nodes defined\n")
-            return 0
+        if (not machine_readable) and len(node_list) == 0:
+            sys.stdout.write("No nodes defined\n")
         
-        if not machine_readable:
-            sys.stdout.write(color(COLOR_GREEN)
-              + string.ljust("Name", DrbdNodeView.get_name_maxlen())
-              + " "
-              + string.ljust("AF", 5)
-              + " "
-              + string.ljust("IP address", 20)
-              + " "
-              + string.rjust("Pool size", 12)
-              + " "
-              + string.rjust("Pool free", 12)
-              + " "
-              + string.rjust("state", 8)
-              + color(COLOR_NONE) + "\n")
+        # DEBUG
+        print node_list
+        
+        # TODO
         for properties in node_list:
             try:
                 view = DrbdNodeView(properties, machine_readable)
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
-            node_name = view.get_name()
-            node_af   = view.get_af()
-            node_ip   = view.get_ip()
-            node_pool = view.get_poolsize()
-            node_free = view.get_poolfree()
-            node_st   = view.get_state()
-            if machine_readable:
-                sys.stdout.write(node_name + "," + node_af + "," + node_ip
-                  + "," + node_pool + "," + node_free + "," + node_st + "\n")
-            else:
-                sys.stdout.write(
-                  string.ljust(node_name, DrbdNodeView.get_name_maxlen())
-                  + " "
-                  + string.ljust(node_af, 5)
-                  + " "
-                  + string.ljust(node_ip, 20)
-                  + " "
-                  + string.rjust(node_pool, 12)
-                  + " "
-                  + string.rjust(node_free, 12)
-                  + " "
-                  + string.rjust(node_st, 8)
-                  + "\n")
         return 0
     
     
@@ -601,7 +568,7 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: nodes [ --machine-readable | -m ]\n")
     
     
-    def cmd_list_volumes(self, args):
+    def cmd_list_resources(self, args):
         color = self.color
         # Command parser configuration
         order    = []
@@ -617,45 +584,20 @@ class DrbdManage(object):
         
         machine_readable = flags["-m"]
         
-        volume_list = self._server.volume_list()
-        if len(volume_list) == 0:
-            if not machine_readable:
-                sys.stdout.write("No volumes defined\n")
-            return 0
+        resource_list = self._server.resource_list()
+        if (not machine_readable) and len(resource_list) == 0:
+            sys.stdout.write("No volumes defined\n")
         
-        if not machine_readable:
-            sys.stdout.write(color(COLOR_GREEN)
-              + string.ljust("Name", DrbdVolumeView.get_name_maxlen())
-              + " "
-              + string.rjust("Size (MiB)", 12)
-              + " "
-              + string.rjust("Minor#", 7)
-              + " "
-              + string.rjust("flags", 8)
-              + color(COLOR_NONE) + "\n")
-        for properties in volume_list:
+        # DEBUG
+        print resource_list
+        
+        # TODO
+        for properties in resource_list:
             try:
-                view = DrbdVolumeView(properties, machine_readable)
+                view = DrbdResourceView(properties, machine_readable)
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
-            vol_name  = view.get_name()
-            vol_size  = view.get_size()
-            vol_minor = view.get_minor()
-            vol_state = view.get_state()
-            if machine_readable:
-                sys.stdout.write(vol_name + "," + vol_size + ","
-                  + vol_minor + "," + vol_state + "\n")
-            else:
-                sys.stdout.write(
-                  string.ljust(vol_name, DrbdVolumeView.get_name_maxlen())
-                  + " "
-                  + string.rjust(vol_size, 12)
-                  + " "
-                  + string.rjust(vol_minor, 7)
-                  + " "
-                  + string.rjust(vol_state, 8)
-                  + "\n")
         return 0
     
     
@@ -680,23 +622,13 @@ class DrbdManage(object):
         machine_readable = flags["-m"]
         
         assignment_list = self._server.assignment_list()
-        if len(assignment_list) == 0:
-            if not machine_readable:
-                sys.stdout.write("No assignments defined\n")
-            return 0
+        if (not machine_readable) and len(assignment_list) == 0:
+            sys.stdout.write("No assignments defined\n")
         
-        if not machine_readable:
-            sys.stdout.write(color(COLOR_GREEN)
-              + string.ljust("Node", DrbdNodeView.get_name_maxlen())
-              + " "
-              + string.ljust("Volume", DrbdVolumeView.get_name_maxlen())
-              + " "
-              + string.ljust("Blockdevice", 32)
-              + " "
-              + string.rjust("Node#", 5)
-              + " "
-              + string.ljust("state", 16)
-              + color(COLOR_NONE) + "\n")
+        # DEBUG
+        print assignment_list
+        
+        # TODO
         prev_node = ""
         for properties in assignment_list:
             try:
@@ -704,33 +636,6 @@ class DrbdManage(object):
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
-            node = view.get_node()
-            vol  = view.get_volume()
-            bd   = view.get_blockdevice()
-            id   = view.get_node_id()
-            cst  = view.get_cstate()
-            tst  = view.get_tstate()
-            st   = view.get_state()
-            if machine_readable:
-                sys.stdout.write(node + "," + vol + "," + bd + "," + id
-                  + "," + cst + "," + tst + "\n")
-            else:
-                if prev_node == node:
-                    view_node = ""
-                else:
-                    view_node = node
-                    prev_node = node
-                sys.stdout.write(
-                  string.ljust(view_node, DrbdNodeView.get_name_maxlen())
-                  + " "
-                  + string.ljust(vol, DrbdVolumeView.get_name_maxlen())
-                  + " "
-                  + string.ljust(bd, 32)
-                  + " "
-                  + string.rjust(id, 5)
-                  + " "
-                  + string.ljust(st, 16)
-                  + "\n")
         return 0
     
     

@@ -144,6 +144,8 @@ class DrbdResource(object):
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
     
+    STATE_MASK   = FLAG_REMOVE | FLAG_NEW
+    
     # maximum volumes per resource
     MAX_RES_VOLS = 64
     
@@ -216,33 +218,85 @@ class DrbdResource(object):
         return self._secret
     
     
-class DrbdResourceView(object):
+    def get_state(self):
+        return self._state
     
-    _name  = None
-    _volid = None
-    _state = None
+    
+    def set_state(self, state):
+        self._state = state & self.STATE_MASK
+    
+    
+class DrbdResourceView(object):
+    # array indexes
+    RV_NAME     = 0
+    RV_STATE    = 1
+    RV_VOLUMES  = 2
+    RV_PROP_LEN = 3
+    
+    _name    = None
+    _state   = None
+    _volumes = None
+    
+    _machine_readable = False
+    
     
     def __init__(self, properties, machine_readable):
-        if len(properties) < 3:
+        if len(properties) < self.RV_PROP_LEN:
             raise IncompatibleDataException
-        self._name  = properties[0]
-        self._volid = properties[1]
+        self._name  = properties[self.RV_NAME]
         try:
-            self._state = long(properties[2])
-        except Exception:
+            self._state = long(properties[self.RV_STATE])
+        except ValueError:
             raise IncompatibleDataException
+        self._volumes = []
+        for vol_list in properties[self.RV_VOLUMES]:
+            self._volumes.append(DrbdVolumeView(vol_list, machine_readable))
         self._machine_readable = machine_readable
     
     
-class DrbdVolume(GenericStorage):
-    NAME_MAXLEN = 16
+    @classmethod
+    def get_name_maxlen(self):
+        return DrbdResource.NAME_MAXLEN
     
-    _id       = None
-    _minor    = None
-    _state    = None
+    
+    @classmethod
+    def get_properties(cls, resource):
+        properties = []
+        properties.append(resource.get_name())
+        properties.append(resource.get_state())
+        vol_list = []
+        for volume in resource.iterate_volumes():
+            vol_list.append(DrbdVolumeView.get_properties(volume))
+        properties.append(vol_list)
+        return properties
+    
+    
+    def get_name(self):
+        return self._name
+    
+    
+    def get_state(self):
+        text = "-"
+        if self._state & DrbdResource.FLAG_REMOVE != 0:
+            if self._machine_readable:
+                text = "REMOVE"
+            else:
+                text = "remove"
+        return text
+    
+    
+    def get_volumes(self):
+        return self._volumes
+    
+    
+class DrbdVolume(GenericStorage):    
+    _id          = None
+    _minor       = None
+    _state       = None
     
     FLAG_REMOVE = 0x1
     
+    STATE_MASK  = FLAG_REMOVE
     
     def __init__(self, id, size_MiB, minor):
         if not size_MiB > 0:
@@ -269,7 +323,7 @@ class DrbdVolume(GenericStorage):
     
     
     def set_state(self, state):
-        self._state = state
+        self._state = state & self.STATE_MASK
     
     
     def remove(self):
@@ -277,8 +331,14 @@ class DrbdVolume(GenericStorage):
 
 
 class DrbdVolumeView(object):
+    # array indexes
+    VV_ID       = 0
+    VV_SIZE     = 1
+    VV_MINOR    = 2
+    VV_STATE    = 3
+    VV_PROP_LEN = 4
     
-    _name  = None
+    _id    = None
     _size  = None
     _minor = None
     _state = None
@@ -287,36 +347,31 @@ class DrbdVolumeView(object):
     
     
     def __init__(self, properties, machine_readable):
-        if len(properties) < 4:
+        if len(properties) < self.VV_PROP_LEN:
             raise IncompatibleDataException
-        self._name = properties[0]
-        self._size = properties[1]
+        self._id = properties[self.VV_ID]
         try:
-            self._minor = int(properties[2])
-            self._state = long(properties[3])
-        except Exception:
+            self._size  = long(properties[self.VV_SIZE])
+            self._minor = int(properties[self.VV_MINOR])
+            self._state = long(properties[self.VV_STATE])
+        except ValueError:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
     
     
     @classmethod
-    def get_name_maxlen(self):
-        return DrbdVolume.NAME_MAXLEN
-    
-    
-    @classmethod
-    def get_properties(self, volume):
+    def get_properties(cls, volume):
         properties = []
-        minor = volume.get_minor()
-        properties.append(volume.get_name())
-        properties.append(str(volume.get_size_MiB()))
-        properties.append(str(minor.get_value()))
-        properties.append(str(volume.get_state()))
+        minor   = volume.get_minor()
+        properties.append(volume.get_id())
+        properties.append(volume.get_size_MiB())
+        properties.append(minor.get_value())
+        properties.append(volume.get_state())
         return properties
     
     
-    def get_name(self):
-        return self._name
+    def get_id(self):
+        return self._id
     
     
     def get_size(self):
@@ -373,6 +428,8 @@ class DrbdNode(object):
     
     FLAG_REMOVE = 0x1
     
+    STATE_MASK = FLAG_REMOVE
+    
     
     def __init__(self, name, ip, af):
         self._name    = self.name_check(name)
@@ -415,7 +472,7 @@ class DrbdNode(object):
     
     
     def set_state(self, state):
-        self._state = state
+        self._state = state & self.STATE_MASK
     
     
     def get_poolsize(self):
@@ -470,6 +527,14 @@ class DrbdNode(object):
 
 
 class DrbdNodeView(object):
+    # array indexes
+    NV_NAME     = 0
+    NV_AF_LABEL = 1
+    NV_IP       = 2
+    NV_POOLSIZE = 3
+    NV_POOLFREE = 4
+    NV_STATE    = 5
+    NV_PROP_LEN = 6
     
     _name     = None
     _af       = None
@@ -482,16 +547,16 @@ class DrbdNodeView(object):
     
     
     def __init__(self, properties, machine_readable):
-        if len(properties) < 6:
+        if len(properties) < self.NV_PROP_LEN:
             raise IncompatibleDataException
-        self._name     = properties[0]
-        self._af       = properties[1]
-        self._ip       = properties[2]
-        self._poolsize = properties[3]
-        self._poolfree = properties[4]
+        self._name     = properties[self.NV_NAME]
+        self._af       = properties[self.NV_AF_LABEL]
+        self._ip       = properties[self.NV_IP]
         try:
-            self._state    = long(properties[5])
-        except Exception:
+            self._poolsize = long(properties[self.NV_POOLSIZE])
+            self._poolfree = long(properties[self.NV_POOLFREE])
+            self._state    = long(properties[self.NV_STATE])
+        except TypeError:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
     
@@ -502,14 +567,14 @@ class DrbdNodeView(object):
     
     
     @classmethod
-    def get_properties(self, node):
+    def get_properties(cls, node):
         properties = []
         properties.append(node.get_name())
         properties.append(node.get_af_label())
         properties.append(node.get_ip())
-        properties.append(str(node.get_poolsize()))
-        properties.append(str(node.get_poolfree()))
-        properties.append(str(node.get_state()))
+        properties.append(node.get_poolsize())
+        properties.append(node.get_poolfree())
+        properties.append(node.get_state())
         return properties
     
     
@@ -544,13 +609,17 @@ class DrbdNodeView(object):
     
     
 class DrbdVolumeState(object):
+    _volume      = None
+    _bd_path     = None
+    _blockdevice = None
+    _cstate      = 0
+    _tstate      = 0
+    
     FLAG_DEPLOY    = 0x1
     FLAG_ATTACH    = 0x2
     
-    _volume = None
-    _cstate = 0
-    _tstate = 0
-    
+    CSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
+    TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
     
     def __init__(self, volume):
         self._volume = volume
@@ -564,6 +633,19 @@ class DrbdVolumeState(object):
     
     def get_id(self):
         return self._volume.get_id()
+    
+    
+    def get_bd_path(self):
+        return self._bd_path
+    
+    
+    def get_blockdevice(self):
+        return self._blockdevice
+    
+    
+    def set_blockdevice(self, blockdevice, bd_path):
+        self._blockdevice = blockdevice
+        self._bd_path     = bd_path
     
     
     def requires_action(self):
@@ -599,11 +681,11 @@ class DrbdVolumeState(object):
     
     
     def get_cstate(self):
-        return self._cstate
+        return self._cstate & self.CSTATE_MASK
     
     
     def get_tstate(self):
-        return self._tstate
+        return self._tstate & self.TSTATE_MASK
     
     
     def deploy(self):
@@ -630,6 +712,67 @@ class DrbdVolumeState(object):
         self._cstate = (self._cstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
 
 
+class DrbdVolumeStateView(object):
+    # array indexes
+    SV_ID       = 0
+    SV_BD_PATH  = 1
+    SV_CSTATE   = 2
+    SV_TSTATE   = 3
+    SV_PROP_LEN = 4
+    
+    _id      = None
+    _bd_path = None
+    _cstate  = None
+    _tstate  = None
+    
+    _machine_readable = False
+    
+    
+    def __init__(self, properties, machine_readable):
+        if len(properties) < self.SV_PROP_LEN:
+            raise IncompatibleDataException
+        self._id = properties[self.SV_ID]
+        self._bd_path = properties[self.SV_BD_PATH]
+        self._cstate  = properties[self.SV_CSTATE]
+        self._tstate  = properties[self.SV_TSTATE]
+        self._machine_readable = machine_readable
+    
+    
+    @classmethod
+    def get_properties(cls, vol_state):
+        properties = []
+        volume  = vol_state.get_volume()
+        bd_path = vol_state.get_bd_path()
+        if bd_path is None:
+            bd_path = "-"
+        properties.append(vol_state.get_id())
+        properties.append(bd_path)
+        properties.append(vol_state.get_cstate())
+        properties.append(vol_state.get_tstate())
+        return properties
+    
+    
+    def get_id(self):
+        return self._id
+    
+    
+    def get_bd_path(self):
+        return self._bd_path
+    
+    
+    def get_cstate(self):
+        return self._cstate
+    
+    
+    def get_tstate(self):
+        return self._tstate
+    
+    
+    # TODO: implement state views
+    def get_state(self):
+        return "<not implemented>"
+
+
 class Assignment(object):
     _node        = None
     _resource    = None
@@ -650,6 +793,11 @@ class Assignment(object):
     FLAG_OVERWRITE = 0x40000
     # --discard-my-data upon connect / resolve split-brain
     FLAG_DISCARD   = 0x80000
+    
+    CSTATE_MASK    = FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
+    TSTATE_MASK    = FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS \
+                       | FLAG_UPD_CON | FLAG_RECONNECT \
+                       | FLAG_OVERWRITE | FLAG_DISCARD
     
     NODE_ID_ERROR  = -1
 
@@ -718,7 +866,7 @@ class Assignment(object):
     
     
     def set_cstate(self, cstate):
-        self._cstate = cstate
+        self._cstate = cstate & self.CSTATE_MASK
     
     
     def get_tstate(self):
@@ -726,7 +874,7 @@ class Assignment(object):
     
     
     def set_tstate(self, tstate):
-        self._tstate = tstate
+        self._tstate = tstate & self.TSTATE_MASK
     
     
     def deploy(self):
@@ -836,45 +984,54 @@ class Assignment(object):
 
 
 class AssignmentView(object):
-    _node        = None
-    _resource    = None
-    _blockdevice = None
-    _node_id     = None
-    _cstate      = None
-    _tstate      = None
+    # array indexes
+    AV_NODE_NAME  = 0
+    AV_RES_NAME   = 1
+    AV_NODE_ID    = 2
+    AV_CSTATE     = 3
+    AV_TSTATE     = 4
+    AV_VOL_STATES = 5
+    AV_PROP_LEN   = 6
+    
+    _node         = None
+    _resource     = None
+    _node_id      = None
+    _cstate       = None
+    _tstate       = None
     
     _machine_readable = False
     
     
     def __init__(self, properties, machine_readable):
-        if len(properties) < 6:
+        if len(properties) < self.AV_PROP_LEN:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
-        self._node        = properties[0]
-        self._resource    = properties[1]
-        self._vol_id      = properties[2]
-        self._blockdevice = properties[3]
-        self._node_id     = properties[4]
-        self._cstate      = long(properties[5])
-        self._tstate      = long(properties[6])
+        self._node        = properties[self.AV_NODE_NAME]
+        self._resource    = properties[self.AV_RES_NAME]
+        self._node_id     = properties[self.AV_NODE_ID]
+        try:
+            self._cstate      = long(properties[self.AV_CSTATE])
+            self._tstate      = long(properties[self.AV_TSTATE])
+        except ValueError:
+            raise IncompatibleDataException
+        self._vol_states  = properties[self.AV_VOL_STATES]
     
     
     @classmethod
-    def get_properties(self, assg):
-        bd_path = assg.get_bd_path()
-        if bd_path is None:
-            bd_str = "-"
-        else:
-            bd_str = bd_path
+    def get_properties(cls, assg):
         properties = []
-        node   = assg.get_node()
-        volume = assg.get_volume()
+        node     = assg.get_node()
+        resource = assg.get_resource()
         properties.append(node.get_name())
-        properties.append(volume.get_name())
-        properties.append(bd_str)
-        properties.append(str(assg.get_node_id()))
-        properties.append(str(assg.get_cstate()))
-        properties.append(str(assg.get_tstate()))
+        properties.append(resource.get_name())
+        properties.append(assg.get_node_id())
+        properties.append(assg.get_cstate())
+        properties.append(assg.get_tstate())
+        vol_state_list = []
+        properties.append(vol_state_list)
+        for vol_state in assg.iterate_volume_states():
+            vol_state_list.append(
+              DrbdVolumeStateView.get_properties(vol_state))
         return properties
     
     
