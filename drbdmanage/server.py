@@ -85,7 +85,7 @@ class DrbdManageServer(object):
         self.load_server_conf()
         self._bd_mgr    = BlockDeviceManager(self._plugin_name)
         self._drbd_mgr  = DrbdManager(self)
-        # self.load_conf()
+        self.load_conf()
         self.init_events()
 
 
@@ -552,11 +552,11 @@ class DrbdManageServer(object):
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
                     vol_state.attach()
+                node.add_assignment(assignment)
+                resource.add_assignment(assignment)
                 for assignment in resource.iterate_assignments():
                     if assignment.is_deployed():
                         assignment.update_connections()
-                node.add_assignment(assignment)
-                resource.add_assignment(assignment)
                 rc = DM_SUCCESS
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -680,7 +680,7 @@ class DrbdManageServer(object):
         rc = DM_EPERSIST
         persist  = None
         try:
-            persist = PersistenceImplDummy()
+            persist = persistence_impl()
             if persist.open(True):
                 self.save_conf_data(persist)
                 rc = DM_SUCCESS
@@ -698,7 +698,7 @@ class DrbdManageServer(object):
         rc = DM_EPERSIST
         persist  = None
         try:
-            persist = PersistenceImplDummy()
+            persist = persistence_impl()
             if persist.open(False):
                 self.load_conf_data(persist)
                 persist.close()
@@ -739,7 +739,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = PersistenceImplDummy()
+            persist = persistence_impl()
             if persist.open(False):
                 ret_persist = persist
         except Exception as exc:
@@ -762,7 +762,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = PersistenceImplDummy()
+            persist = persistence_impl()
             if persist.open(True):
                 if not self.hashes_match(persist.get_stored_hash()):
                     self.load_conf_data(persist)

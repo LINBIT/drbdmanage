@@ -17,6 +17,15 @@ __author__="raltnoeder"
 __date__ ="$Sep 24, 2013 3:33:50 PM$"
 
 
+def persistence_impl():
+    """
+    Return the persistence implementation.
+    This function serves for easy and centralized replacement of
+    the class that implements persistence (saving object state to disk)
+    """
+    return PersistenceImpl()
+
+
 class PersistenceImplDummy(object):
     def __init__(self):
         pass
@@ -35,11 +44,11 @@ class PersistenceImplDummy(object):
         dh.get_hash()
     
     
-    def load(self, nodes, volumes):
+    def load(self, nodes, resources):
         pass
     
     
-    def save(self, nodes, volumes):
+    def save(self, nodes, resources):
         pass
     
     
@@ -173,11 +182,11 @@ class PersistenceImpl(object):
         
     
     # TODO: clean implementation - this is a prototype
-    def save(self, nodes, volumes):
+    def save(self, nodes, resources):
         if self._writeable:
             try:
                 p_nodes_con = dict()
-                p_vol_con   = dict()
+                p_res_con   = dict()
                 p_assg_con  = dict()
                 hash        = DataHash()
                 
@@ -189,11 +198,11 @@ class PersistenceImpl(object):
                     for assg in node.iterate_assignments():
                         assignments.append(assg)
                 
-                # Prepare volumes container
-                for volume in volumes.itervalues():
-                    p_volume = DrbdVolumePersistence(volume)
-                    p_volume.save(p_vol_con)
-                
+                # Prepare resources container
+                for resource in resources.itervalues():
+                    p_resource = DrbdResourcePersistence(resource)
+                    p_resource.save(p_res_con)
+                              
                 # Prepare assignments container
                 for assignment in assignments:
                     p_assignment = AssignmentPersistence(assignment)
@@ -210,11 +219,11 @@ class PersistenceImpl(object):
                 
                 self._align_zero_fill()
                 
-                vol_off = self._file.tell()
-                save_data = self._container_to_json(p_vol_con)
+                res_off = self._file.tell()
+                save_data = self._container_to_json(p_res_con)
                 self._file.write(save_data)
                 hash.update(save_data)
-                vol_len = self._file.tell() - vol_off
+                res_len = self._file.tell() - res_off
                 
                 self._align_zero_fill()
                 
@@ -228,8 +237,8 @@ class PersistenceImpl(object):
                 self._file.write(
                   long_to_bin(nodes_off)
                   + long_to_bin(nodes_len)
-                  + long_to_bin(vol_off)
-                  + long_to_bin(vol_len)
+                  + long_to_bin(res_off)
+                  + long_to_bin(res_len)
                   + long_to_bin(assg_off)
                   + long_to_bin(assg_len))
                 self._file.seek(self.HASH_OFFSET)
@@ -264,7 +273,7 @@ class PersistenceImpl(object):
     
     
     # TODO: clean implementation - this is a prototype
-    def load(self, nodes, volumes):
+    def load(self, nodes, resources):
         errors = False
         if self._file is not None:
             try:
@@ -273,13 +282,13 @@ class PersistenceImpl(object):
                 f_index = self._file.read(48)
                 nodes_off = long_from_bin(f_index[0:8])
                 nodes_len = long_from_bin(f_index[8:16])
-                vol_off   = long_from_bin(f_index[16:24])
-                vol_len   = long_from_bin(f_index[24:32])
+                res_off   = long_from_bin(f_index[16:24])
+                res_len   = long_from_bin(f_index[24:32])
                 assg_off  = long_from_bin(f_index[32:40])
                 assg_len  = long_from_bin(f_index[40:48])
                 
                 nodes_con = None
-                vol_con   = None
+                res_con   = None
                 assg_con  = None
                 
                 self._file.seek(nodes_off)
@@ -290,11 +299,11 @@ class PersistenceImpl(object):
                 except Exception:
                     pass
                 
-                self._file.seek(vol_off)
-                load_data = self._file.read(vol_len)
+                self._file.seek(res_off)
+                load_data = self._file.read(res_len)
                 hash.update(load_data)
                 try:
-                    vol_con   = self._json_to_container(load_data)
+                    res_con   = self._json_to_container(load_data)
                 except Exception:
                     pass
                 
@@ -324,25 +333,25 @@ class PersistenceImpl(object):
                         if node is not None:
                             nodes[node.get_name()] = node
                         else:
-                            print "Nodes", properties # DEBUG
+                            print "DEBUG Nodes", properties # DEBUG
                             errors = True
                 
-                volumes.clear()
-                if vol_con is not None:
-                    for properties in vol_con.itervalues():
-                        volume = DrbdVolumePersistence.load(properties)
-                        if volume is not None:
-                            volumes[volume.get_name()] = volume
+                resources.clear()
+                if res_con is not None:
+                    for properties in res_con.itervalues():
+                        resource = DrbdResourcePersistence.load(properties)
+                        if resource is not None:
+                            resources[resource.get_name()] = resource
                         else:
-                            print "Volumes", properties # DEBUG
+                            print "DEBUG Resources", properties # DEBUG
                             errors = True
                 
                 if assg_con is not None:
                     for properties in assg_con.itervalues():
                         assignment = AssignmentPersistence.load(properties,
-                          nodes, volumes)
+                          nodes, resources)
                         if assignment is None:
-                            print "Assignments", properties # DEBUG
+                            print "DEBUG Assignments", properties # DEBUG
                             errors = True
                     self._hash_obj = hash
             except Exception as exc:
@@ -471,17 +480,51 @@ class DrbdNodePersistence(GenericPersistence):
             node.set_state(long(properties["_state"]))
             node.set_poolsize(long(properties["_poolsize"]))
             node.set_poolfree(long(properties["_poolfree"]))
-        except Exception:
-            # DEBUG
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            print exc_type
-            print exc_obj
-            print exc_tb
+        except Exception as exc:
+            # FIXME
+            raise exc
         return node
 
 
+class DrbdResourcePersistence(GenericPersistence):
+    SERIALIZABLE = [ "_name", "_secret", "_state" ]
+    
+    def __init__(self, resource):
+        super(DrbdResourcePersistence, self).__init__(resource)
+    
+    
+    def save(self, container):
+        resource = self.get_object()
+        properties = self.load_dict(self.SERIALIZABLE)
+        volume_list = dict()
+        for volume in resource.iterate_volumes():
+            p_vol = DrbdVolumePersistence(volume)
+            p_vol.save(volume_list)
+        properties["volumes"] = volume_list
+        container[resource.get_name()] = properties
+    
+    
+    @classmethod
+    def load(cls, properties):
+        resource = None
+        try:
+            resource = DrbdResource(properties["_name"])
+            secret = properties.get("_secret")
+            if secret is not None:
+                resource.set_secret(secret)
+            resource.set_state(properties["_state"])
+            volume_list = properties["volumes"]
+            for vol_properties in volume_list.itervalues():
+                volume = DrbdVolumePersistence.load(vol_properties)
+                resource.add_volume(volume)
+        except Exception as exc:
+            # FIXME
+            raise exc
+        return resource
+    
+    
 class DrbdVolumePersistence(GenericPersistence):
-    SERIALIZABLE = [ "_name", "_state", "_size_MiB" ]
+    SERIALIZABLE = [ "_id", "_state", "_size_MiB" ]
     
     
     def __init__(self, volume):
@@ -493,7 +536,7 @@ class DrbdVolumePersistence(GenericPersistence):
         properties  = self.load_dict(self.SERIALIZABLE)
         minor = volume.get_minor()
         properties["minor"] = minor.get_value()
-        container[volume.get_name()] = properties
+        container[volume.get_id()] = properties
     
     
     @classmethod
@@ -503,19 +546,19 @@ class DrbdVolumePersistence(GenericPersistence):
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
             volume = DrbdVolume(
-              properties["_name"],
+              properties["_id"],
               long(properties["_size_MiB"]),
               minor
               )
             volume.set_state(long(properties["_state"]))
-        except Exception:
-            pass
+        except Exception as exc:
+            # FIXME
+            raise exc
         return volume
 
 
 class AssignmentPersistence(GenericPersistence):
-    SERIALIZABLE = [ "_blockdevice", "_bd_path", "_node_id",
-      "_cstate", "_tstate", "_rc" ]
+    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc" ]
     
     
     def __init__(self, assignment):
@@ -525,46 +568,83 @@ class AssignmentPersistence(GenericPersistence):
     def save(self, container):
         properties = self.load_dict(self.SERIALIZABLE)
         
-        # Serialize the names of nodes and volumes only
+        # Serialize the names of nodes and resources only
         assignment  = self.get_object()
         node        = assignment.get_node()
-        volume      = assignment.get_volume()
+        resource    = assignment.get_resource()
         node_name   = node.get_name()
-        vol_name    = volume.get_name()
+        res_name    = resource.get_name()
         
         properties["node"]        = node_name
-        properties["volume"]      = vol_name
+        properties["resource"]    = res_name
         
-        assg_name = node_name + ":" + vol_name
+        assg_name = node_name + ":" + res_name
         
+        vol_state_list = dict()
+        for vol_state in assignment.iterate_volume_states():
+            p_vol_state = DrbdVolumeStatePersistence(vol_state)
+            p_vol_state.save(vol_state_list)
+        properties["volume_states"] = vol_state_list
         container[assg_name] = properties
     
     
     @classmethod
-    def load(cls, properties, nodes, volumes):
+    def load(cls, properties, nodes, resources):
         assignment = None
         try:
             node = nodes[properties["node"]]
-            volume = volumes[properties["volume"]]
+            resource = resources[properties["resource"]]
             assignment = Assignment(
               node,
-              volume,
+              resource,
               int(properties["_node_id"]),
               long(properties["_cstate"]),
               long(properties["_tstate"])
               )
-            blockdevice = None
-            bd_path     = None
-            try:
-                blockdevice = properties["_blockdevice"]
-                bd_path     = properties["_bd_path"]
-            except KeyError:
-                pass
-            if blockdevice is not None and bd_path is not None:
-                assignment.set_blockdevice(blockdevice, bd_path)
             assignment.set_rc(properties["_rc"])
             node.add_assignment(assignment)
-            volume.add_assignment(assignment)
+            resource.add_assignment(assignment)
+            vol_state_list = properties.get("volume_states")
+            for vol_state_props in vol_state_list.itervalues():
+                vol_state = DrbdVolumeStatePersistence.load(
+                  vol_state_props, assignment)
+                assignment.add_volume_state(vol_state)
         except Exception as exc:
-            pass
+            # FIXME
+            raise exc
         return assignment
+
+
+class DrbdVolumeStatePersistence(GenericPersistence):
+    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate" ]
+    
+    
+    def __init__(self, vol_state):
+        super(DrbdVolumeStatePersistence, self).__init__(vol_state)
+    
+    
+    def save(self, container):
+            vol_state = self.get_object()
+            id = vol_state.get_id()
+            properties = self.load_dict(self.SERIALIZABLE)
+            properties["id"] = id
+            container[id] = properties
+    
+    
+    @classmethod
+    def load(cls, properties, assignment):
+        vol_state = None
+        try:
+            resource = assignment.get_resource()
+            volume   = resource.get_volume(properties["id"])
+            vol_state = DrbdVolumeState(volume)
+            blockdevice = properties.get("_blockdevice")
+            bd_path     = properties.get("_bd_path")
+            if blockdevice is not None and bd_path is not None:
+                vol_state.set_blockdevice(blockdevice, bd_path)
+            vol_state.set_cstate(properties["_cstate"])
+            vol_state.set_tstate(properties["_tstate"])
+        except Exception as exc:
+            # FIXME
+            raise exc
+        return vol_state

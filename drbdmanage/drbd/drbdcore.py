@@ -291,22 +291,24 @@ class DrbdResourceView(object):
     
 class DrbdVolume(GenericStorage):    
     _id          = None
+    _size_MiB    = None    
     _minor       = None
     _state       = None
     
-    FLAG_REMOVE = 0x1
+    FLAG_REMOVE  = 0x1
     
-    STATE_MASK  = FLAG_REMOVE
+    STATE_MASK   = FLAG_REMOVE
     
     def __init__(self, id, size_MiB, minor):
         if not size_MiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_MiB)
-        self._id     = int(id)
+        self._id       = int(id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
-        self._minor  = minor
-        self._state  = 0
+        self._size_MiB = size_MiB
+        self._minor    = minor
+        self._state    = 0
     
     
     def get_id(self):
@@ -333,15 +335,15 @@ class DrbdVolume(GenericStorage):
 class DrbdVolumeView(object):
     # array indexes
     VV_ID       = 0
-    VV_SIZE     = 1
+    VV_SIZE_MiB = 1
     VV_MINOR    = 2
     VV_STATE    = 3
     VV_PROP_LEN = 4
     
-    _id    = None
-    _size  = None
-    _minor = None
-    _state = None
+    _id       = None
+    _size_MiB = None
+    _minor    = None
+    _state    = None
     
     _machine_readable = False
     
@@ -351,9 +353,9 @@ class DrbdVolumeView(object):
             raise IncompatibleDataException
         self._id = properties[self.VV_ID]
         try:
-            self._size  = long(properties[self.VV_SIZE])
-            self._minor = int(properties[self.VV_MINOR])
-            self._state = long(properties[self.VV_STATE])
+            self._size_MiB = long(properties[self.VV_SIZE_MiB])
+            self._minor    = int(properties[self.VV_MINOR])
+            self._state    = long(properties[self.VV_STATE])
         except ValueError:
             raise IncompatibleDataException
         self._machine_readable = machine_readable
@@ -374,8 +376,8 @@ class DrbdVolumeView(object):
         return self._id
     
     
-    def get_size(self):
-        return self._size
+    def get_size_MiB(self):
+        return self._size_MiB
     
     
     def get_minor(self):
@@ -389,20 +391,11 @@ class DrbdVolumeView(object):
     
     def get_state(self):
         text = ""
-        if self._state & DrbdVolume.FLAG_NEW != 0:
-            if self._machine_readable:
-                text = "NEW"
-            else:
-                text = "new"
         if self._state & DrbdVolume.FLAG_REMOVE != 0:
             if self._machine_readable:
-                if (len(text) > 0):
-                    text += "|"
-                text += "REMOVE"
+                text = "REMOVE"
             else:
-                if (len(text) > 0):
-                    text += ","
-                text += "remove"
+                text = "remove"
         if len(text) == 0:
             text = "-"
         return text
@@ -514,8 +507,8 @@ class DrbdNode(object):
 
 
     def remove_assignment(self, assignment):
-        volume = assignment.get_volume()
-        del self._assignments[volume.get_name()]
+        resource = assignment.get_resource()
+        del self._assignments[resource.get_name()]
     
     
     def has_assignments(self):
@@ -824,6 +817,11 @@ class Assignment(object):
         return self._resource
     
     
+    # used by AssignmentPersistence
+    def add_volume_state(self, vol_state):
+        self._vol_states[vol_state.get_id()] = vol_state
+    
+    
     def iterate_volume_states(self):
         return self._vol_states.itervalues()
     
@@ -1014,8 +1012,11 @@ class AssignmentView(object):
             self._tstate      = long(properties[self.AV_TSTATE])
         except ValueError:
             raise IncompatibleDataException
-        self._vol_states  = properties[self.AV_VOL_STATES]
-    
+        self._vol_states = []
+        for vol_state in properties[self.AV_VOL_STATES]:
+            self._vol_states.append(
+              DrbdVolumeStateView(vol_state, machine_readable))
+        
     
     @classmethod
     def get_properties(cls, assg):
@@ -1039,8 +1040,12 @@ class AssignmentView(object):
         return self._node
     
     
-    def get_volume(self):
-        return self._volume
+    def get_resource(self):
+        return self._resource
+    
+    
+    def get_volume_states(self):
+        return self._vol_states
     
     
     def get_blockdevice(self):
@@ -1056,8 +1061,6 @@ class AssignmentView(object):
         text = ""
         if self._cstate & Assignment.FLAG_DEPLOY != 0:
             text = state_text_append(mr, text, "DEPLOY", "deployed")
-        if self._cstate & Assignment.FLAG_ATTACH != 0:
-            text = state_text_append(mr, text, "ATTACH", "attached")
         if self._cstate & Assignment.FLAG_CONNECT != 0:
             text = state_text_append(mr, text, "CONNECT", "connected")
         if self._cstate & Assignment.FLAG_DISKLESS != 0:
@@ -1072,8 +1075,6 @@ class AssignmentView(object):
         text = ""
         if self._tstate & Assignment.FLAG_DEPLOY != 0:
             text = state_text_append(mr, text, "DEPLOY", "deploy")
-        if self._tstate & Assignment.FLAG_ATTACH != 0:
-            text = state_text_append(mr, text, "ATTACH", "attach")
         if self._tstate & Assignment.FLAG_CONNECT != 0:
             text = state_text_append(mr, text, "CONNECT", "connect")
         if self._tstate & Assignment.FLAG_UPD_CON != 0:

@@ -25,6 +25,7 @@ class DrbdManage(object):
     _noerr       = False
     _colors      = True
     
+    VIEW_SEPARATOR_LEN = 78
     
     def __init__(self):
         self.dbus_init()
@@ -551,13 +552,31 @@ class DrbdManage(object):
         if (not machine_readable) and len(node_list) == 0:
             sys.stdout.write("No nodes defined\n")
         
-        # DEBUG
-        print node_list
-        
         # TODO
+        
+        if not machine_readable:
+            sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
+              % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(), "Node",
+                color(COLOR_NONE), "addr family", "Network address",
+                color(COLOR_RED), "state", color(COLOR_NONE))
+              )
+            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        
         for properties in node_list:
             try:
                 view = DrbdNodeView(properties, machine_readable)
+                if not machine_readable:
+                    sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
+                      % (color(COLOR_TEAL), view.get_name_maxlen(),
+                        view.get_name(), color(COLOR_NONE), view.get_af(),
+                        view.get_ip(), color(COLOR_RED), view.get_state(),
+                        color(COLOR_NONE))
+                      )
+                else:
+                    sys.stdout.write("%s,%s,%s,%s\n"
+                      % (view.get_name(), view.get_af(),
+                        view.get_ip(), view.get_state())
+                      )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
@@ -588,13 +607,47 @@ class DrbdManage(object):
         if (not machine_readable) and len(resource_list) == 0:
             sys.stdout.write("No volumes defined\n")
         
-        # DEBUG
-        print resource_list
-        
         # TODO
+        
+        # Header/key for the table
+        if not machine_readable:
+            sys.stdout.write(
+                "%s%-*s%s               %s%s\n" % (color(COLOR_DARKGREEN),
+                    DrbdResourceView.get_name_maxlen(), "Resource",
+                    color(COLOR_RED), "state", color(COLOR_NONE))
+                  )
+            sys.stdout.write(
+              "  *%s%6s%s %12s %7s %s\n" % (color(COLOR_DARKPINK),
+                "id#", color(COLOR_NONE), "size (MiB)", "minor#", "state")
+              )
+            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        
         for properties in resource_list:
             try:
                 view = DrbdResourceView(properties, machine_readable)
+                if not machine_readable:
+                    sys.stdout.write(
+                      "%s%-*s%s               %s%s\n"
+                        % (color(COLOR_DARKGREEN),
+                        view.get_name_maxlen(), view.get_name(),
+                        color(COLOR_RED), view.get_state(), color(COLOR_NONE))
+                      )
+                volume_list = view.get_volumes()
+                for vol_view in volume_list:
+                    if not machine_readable:
+                        sys.stdout.write(
+                          "  *%s%6d%s %12d %7s %s\n" % (color(COLOR_DARKPINK),
+                            vol_view.get_id(), color(COLOR_NONE),
+                            vol_view.get_size_MiB(), vol_view.get_minor(),
+                            vol_view.get_state())
+                          )
+                    else:
+                        sys.stdout.write(
+                          "%s,%s,%d,%d,%s,%s\n" % (view.get_name(),
+                            view.get_state(), vol_view.get_id(),
+                            vol_view.get_size_MiB(), vol_view.get_minor(),
+                            vol_view.get_state())
+                          )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
@@ -624,15 +677,50 @@ class DrbdManage(object):
         assignment_list = self._server.assignment_list()
         if (not machine_readable) and len(assignment_list) == 0:
             sys.stdout.write("No assignments defined\n")
-        
-        # DEBUG
-        print assignment_list
-        
+            
         # TODO
+        
+        if not machine_readable:
+            sys.stdout.write("%s%-*s %s%-*s%s %5s %s%s%s\n"
+                % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
+                "Node", color(COLOR_DARKGREEN),
+                DrbdResourceView.get_name_maxlen(),
+                "Resource", color(COLOR_NONE),
+                "Node#", color(COLOR_RED),
+                "state (current -> target)",
+                color(COLOR_NONE))
+              )
+            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        
         prev_node = ""
         for properties in assignment_list:
             try:
                 view = AssignmentView(properties, machine_readable)
+                vol_state_list = view.get_volume_states()
+                if not machine_readable:
+                    sys.stdout.write("%s%-*s %s%-*s%s %5d %s%s -> %s%s\n"
+                        % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
+                        view.get_node(), color(COLOR_DARKGREEN),
+                        DrbdResourceView.get_name_maxlen(),
+                        view.get_resource(), color(COLOR_NONE),
+                        view.get_node_id(), color(COLOR_RED),
+                        view.get_cstate(), view.get_tstate(),
+                        color(COLOR_NONE))
+                      )
+                    for vol_state in vol_state_list:
+                        sys.stdout.write("  %s%6d%s %-32s %s%s -> %s%s\n"
+                            % (color(COLOR_DARKPINK),
+                            vol_state.get_id(),  color(COLOR_NONE),
+                            vol_state.get_bd_path(),
+                            color(COLOR_RED), vol_state.get_cstate(),
+                            vol_state.get_tstate(), color(COLOR_NONE))
+                          )
+                else:
+                    sys.stdout.write("%s,%s,%d,%s,%s\n"
+                        % (view.get_node(), view.get_resource(),
+                        view.get_node_id(), view.get_cstate(),
+                        view.get_tstate())
+                      )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
