@@ -163,3 +163,77 @@ class ConfFile(object):
             if lidx > midx:
                 break
         return rc
+
+
+class DrbdAdmConf(object):
+    def __init__(self):
+        pass
+    
+    
+    def write(self, assignment, stream):
+        try:
+            resource = assignment.get_resource()
+            secret   = resource.get_secret()
+            if secret is None:
+                secret = ""
+            
+            # begin resource
+            stream.write("resource %s {\n"
+              "    net {\n"
+              "        cram-hmac-alg sha1;\n"
+              "        shared-secret \"%s\";\n"
+              "    }\n"
+              % (resource.get_name(), secret)
+              )
+            
+            # begin resource/volumes
+            for volume in assignment.iterate_volumes():
+                minor = volume.get_minor()
+                if minor is None:
+                    raise InvalidMinorNrException
+                bd_path = volume.get_bd_path()
+                if bd_path is None:
+                    raise ValueError
+                stream.write("    volume %d {\n"
+                  "        device /dev/drbd%d minor %d;\n"
+                  "        disk %s;\n"
+                  "        meta-disk internal;\n"
+                  "    }\n"
+                  % (volume.get_id(), minor.get_value(), minor.get_value(),
+                    volume.get_bd_path())
+                  )
+            # end resource/volumes
+            
+            # begin resource/nodes
+            for assignment in resource.iterate_assignments():
+                node = assignment.get_node()
+                stream.write("    on %s {\n"
+                  "        node-id %s;\n"
+                  "        address %s:%d;\n"
+                  "    }\n"
+                  % (node.get_name(), assignment.get_node_id(), node.get_ip(),
+                    resource.get_port())
+                  )
+            # end resource/nodes
+            
+            # begin resource/connection
+            stream.write("    connection-mesh {\n"
+              "        hosts"
+              )
+            for assignment in resource.iterate_assignments():
+                node = assignment.get_node()
+                stream.write(" %s" % (node.get_name()))
+            stream.write(";\n")
+            stream.write("        net {\n"
+              "            protocol C;\n"
+              "        }\n"
+              )
+            stream.write("    }\n")
+            # end resource/connection
+            
+            stream.write("}\n")
+            # end resource
+        except Exception:
+            # TODO: handle errors (stream I/O?)
+            print exc
+        

@@ -22,6 +22,12 @@ class DrbdManager(object):
     
     
     # FIXME
+    # TODO: currently, if the configuration can not be loaded (due to
+    #       errors in the data structures on the disk), the server's
+    #       hash is not updated, so the DrbdManager can begin to loop,
+    #       trying to load the new configuration. If DrbdManager fails
+    #       to load the configuration, it should probably rather stop
+    #       than loop at some point.
     def run(self):
         persist = None
         sys.stdout.write("%sDrbdManager invoked%s\n"
@@ -88,11 +94,94 @@ class DrbdManager(object):
                   % (COLOR_GREEN, COLOR_NONE))
                 # TODO: perform actions required by the assignment
                 state_changed = True
+                
+                # undeploy assignments
+                if assg.requires_undeploy():
+                    for vol_state in assg.iterate_volume_states():
+                        # TODO: undeploy/detach of all volumes
+                        self._undeploy(assg, vol_state)
+                        vol_state.set_tstate(0)
+                        vol_state.set_cstate(0)
+                    assg.set_cstate(0)
+                    assg.set_tstate(0)
+                    # ignore other actions for the same assignment
+                    # after undeploy
+                    continue
+                
+                # connect/disconnect
+                if assg.requires_disconnect():
+                    assg.clear_cstate_flags(Assignment.FLAG_CONNECT)
+                elif assg.requires_connect():
+                    assg.set_cstate_flags(Assignment.FLAG_CONNECT)
+                
+                # update connections/reconnect
+                assg_actions = assg.get_tstate()
+                if assg_actions & Assignment.FLAG_UPD_CON != 0:
+                    assg.clear_tstate_flags(Assignment.FLAG_UPD_CON)
+                if assg_actions & Assignment.FLAG_RECONNECT != 0:
+                    assg.clear_tstate_flags(Assignment.FLAG_RECONNECT)
+                
+                # actions for single volumes of an assignments
+                for vol_state in assg.iterate_volume_states():
+                    
+                    # deploy/undeploy volumes
+                    if vol_state.requires_deploy():
+                        self._deploy(assg, vol_state)
+                    elif vol_state.requires_undeploy():
+                        # TODO: undeploy volume
+                        self._undeploy(assg, vol_state)
+                    
+                    # attach/detach volumes
+                    if vol_state.requires_attach():
+                        # TODO: attach volume
+                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                    elif vol_state.requires_detach():
+                        # TODO: detach volume
+                        vol_state.clear_cstate_flags(
+                          DrbdVolumeState.FLAG_ATTACH)
+                
+                assg.clear_tstate_flags(
+                  Assignment.FLAG_OVERWRITE | Assignment.FLAG_DISCARD)
+                
+                if assg.requires_deploy():
+                    assg.set_cstate_flags(Assignment.FLAG_DEPLOY)
+                
+                if assg.get_cstate() != assg.get_tstate():
+                    sys.stderr.write(COLOR_RED
+                      + "Warning: End of perform_changes(), but assignment "
+                      " cstate != tstate" + COLOR_NONE + "\n")
+                    assg.set_tstate(assg.get_cstate());
         
         # Clean up undeployed resources
         self._server.cleanup()
         
         return state_changed
+    
+    
+    def _deploy(self, assignment, vol_state):
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        volume   = vol_state.get_volume()
+        
+        if resource is None:
+            sys.stderr.write("DEBUG: resource == NULL\n")
+        
+        bd = bd_mgr.create_blockdevice(resource.get_name(), volume.get_id(),
+          volume.get_size_MiB())
+        if bd is not None:
+            vol_state.set_blockdevice(bd.get_name(), bd.get_path())
+            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+    
+    
+    def _undeploy(self, assignment, vol_state):
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        volume   = vol_state.get_volume()
+        
+        rc = bd_mgr.remove_blockdevice(resource.get_name(), vol_state.get_id())
+        if rc == DM_SUCCESS:
+            vol_state.set_cstate(0)
+            vol_state.set_tstate(0)
     
     
     @staticmethod
@@ -133,10 +222,13 @@ class DrbdManager(object):
 
 
 class DrbdResource(object):
-    NAME_MAXLEN = 16
+    NAME_MAXLEN   = 16
+    PORT_NR_AUTO  = -1
+    PORT_NR_ERROR = -2
     
     _name        = None
     _secret      = None
+    _port        = None
     _state       = None
     _volumes     = None
     _assignments = None
@@ -149,9 +241,10 @@ class DrbdResource(object):
     # maximum volumes per resource
     MAX_RES_VOLS = 64
     
-    def __init__(self, name):
+    def __init__(self, name, port):
         self._name        = self.name_check(name)
-        self._secret      = None
+        self._secret      = ""
+        self._port        = port
         self._state       = 0
         self._volumes     = dict()
         self._assignments = dict()
@@ -159,6 +252,10 @@ class DrbdResource(object):
     
     def get_name(self):
         return self._name
+    
+    
+    def get_port(self):
+        return self._port
     
     
     def name_check(self, name):
@@ -229,12 +326,16 @@ class DrbdResource(object):
 class DrbdResourceView(object):
     # array indexes
     RV_NAME     = 0
-    RV_STATE    = 1
-    RV_VOLUMES  = 2
-    RV_PROP_LEN = 3
+    RV_SECRET   = 1
+    RV_PORT     = 2
+    RV_STATE    = 3
+    RV_VOLUMES  = 4
+    RV_PROP_LEN = 5
     
     _name    = None
     _state   = None
+    _secret  = None
+    _port    = None
     _volumes = None
     
     _machine_readable = False
@@ -244,8 +345,10 @@ class DrbdResourceView(object):
         if len(properties) < self.RV_PROP_LEN:
             raise IncompatibleDataException
         self._name  = properties[self.RV_NAME]
+        self._secret = properties[self.RV_SECRET]
         try:
             self._state = long(properties[self.RV_STATE])
+            self._port   = int(properties[self.RV_PORT])
         except ValueError:
             raise IncompatibleDataException
         self._volumes = []
@@ -263,6 +366,11 @@ class DrbdResourceView(object):
     def get_properties(cls, resource):
         properties = []
         properties.append(resource.get_name())
+        properties.append(resource.get_secret())
+        if resource.get_port() == DrbdResource.PORT_NR_AUTO:
+            properties.append("auto")
+        else:
+            properties.append(str(resource.get_port()))
         properties.append(resource.get_state())
         vol_list = []
         for volume in resource.iterate_volumes():
@@ -273,6 +381,14 @@ class DrbdResourceView(object):
     
     def get_name(self):
         return self._name
+    
+    
+    def get_secret(self):
+        return self._secret
+    
+    
+    def get_port(self):
+        return self._port
     
     
     def get_state(self):
@@ -646,23 +762,26 @@ class DrbdVolumeState(object):
     
     
     def requires_deploy(self):
-        return (self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
-          and (self._cstate & self.FLAG_DEPLOY == 0)
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
+          and (self._cstate & self.FLAG_DEPLOY == 0))
     
     
     def requires_attach(self):
-        return (self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH) \
+        # DISKLESS: never attempt to attach clients,
+        # as those do not have local storage
+        return ((self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH)
           and (self._cstate & self.FLAG_ATTACH == 0)
+          and (self._tstate & self.FLAG_DISKLESS == 0))
     
     
     def requires_undeploy(self):
-        return (self._tstate & self.FLAG_DEPLOY == 0) \
-          and (self._cstate & self.FLAG_DEPLOY != 0)
+        return ((self._tstate & self.FLAG_DEPLOY == 0)
+          and (self._cstate & self.FLAG_DEPLOY != 0))
     
     
     def requires_detach(self):
-        return (self._tstate & self.FLAG_ATTACH == 0) \
-          and (self._cstate & self.FLAG_ATTACH != 0)
+        return ((self._tstate & self.FLAG_ATTACH == 0)
+          and (self._cstate & self.FLAG_ATTACH != 0))
     
     
     def set_cstate(self, cstate):
@@ -686,23 +805,34 @@ class DrbdVolumeState(object):
     
     
     def undeploy(self):
-        self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+        self._tstate = 0
     
     
     def attach(self):
-        self._tstate = self._tstate | self.FLAG_ATTACH
+        # if this should be a client (DISKLESS), do not attach, because
+        # there is no local storage on clients
+        if not self._tstate == self.FLAG_DISKLESS:
+            self._tstate = self._tstate | self.FLAG_ATTACH
     
     
     def detach(self):
         self._tstate = (self._tstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
     
     
-    def set_deployed(self):
-        self._cstate = self._cstate | self.FLAG_DEPLOYED
+    def set_cstate_flags(self, flags):
+        self._cstate = (self._cstate | flags) & self.CSTATE_MASK
     
     
-    def set_undeployed(self):
-        self._cstate = (self._cstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+    def clear_cstate_flags(self, flags):
+        self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+    
+    
+    def set_tstate_flags(self, flags):
+        self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+    
+    
+    def clear_tstate_flags(self, flags):
+        self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
 class DrbdVolumeStateView(object):
@@ -754,11 +884,43 @@ class DrbdVolumeStateView(object):
     
     
     def get_cstate(self):
-        return self._cstate
+        mr = self._machine_readable
+        text = ""
+        if self._cstate & DrbdVolumeState.FLAG_DEPLOY != 0:
+            text = state_text_append(mr, text, "DEPLOY", "deployed")
+        if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
+            text = state_text_append(mr, text, "ATTACH", "attached")
+        # FIXME: experimental human-readable mask output
+        if not self._machine_readable:
+            if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
+                text = "a"
+            else:
+                text = "-"
+            if self._cstate & DrbdVolumeState.FLAG_DEPLOY != 0:
+                text += "d"
+            else:
+                text += "-"
+        return text
     
     
     def get_tstate(self):
-        return self._tstate
+        mr = self._machine_readable
+        text = ""
+        if self._tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
+            text = state_text_append(mr, text, "DEPLOY", "deploy")
+        if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
+            text = state_text_append(mr, text, "ATTACH", "attach")
+        # FIXME: experimental human-readable mask output
+        if not self._machine_readable:
+            if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
+                text = "a"
+            else:
+                text = "-"
+            if self._tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
+                text += "d"
+            else:
+                text += "-"
+        return text
     
     
     # TODO: implement state views
@@ -788,9 +950,9 @@ class Assignment(object):
     FLAG_DISCARD   = 0x80000
     
     CSTATE_MASK    = FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
-    TSTATE_MASK    = FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS \
-                       | FLAG_UPD_CON | FLAG_RECONNECT \
-                       | FLAG_OVERWRITE | FLAG_DISCARD
+    TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
+                       | FLAG_UPD_CON | FLAG_RECONNECT
+                       | FLAG_OVERWRITE | FLAG_DISCARD)
     
     NODE_ID_ERROR  = -1
 
@@ -839,6 +1001,9 @@ class Assignment(object):
     def update_volume_states(self):
         # create volume states for new volumes in the resource
         for volume in self._resource.iterate_volumes():
+            # skip volumes that are pending removal
+            if volume.get_state() & DrbdVolume.FLAG_REMOVE != 0:
+                continue
             vol_st = self._vol_states.get(volume.get_id())
             if vol_st is None:
                 vol_st = DrbdVolumeState(volume)
@@ -880,7 +1045,7 @@ class Assignment(object):
     
     
     def undeploy(self):
-        self._tstate = (self._tstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
+        self._tstate = 0
     
     
     def connect(self):
@@ -901,35 +1066,6 @@ class Assignment(object):
     
     def update_connections(self):
         self._tstate = self._tstate | self.FLAG_UPD_CON
-    
-    
-    def set_deployed(self):
-        self._cstate = self._cstate | self.FLAG_DEPLOY
-    
-    
-    def set_undeployed(self):
-        self._cstate = (self._cstate | self.FLAG_DEPLOY) ^ self.FLAG_DEPLOY
-    
-    
-    def set_connected(self):
-        self._cstate = self._cstate | self.FLAG_CONNECT
-    
-    
-    def set_reconnected(self):
-        self._tstate = (self._tstate | self.FLAG_RECONNECT) \
-          ^ self.FLAG_RECONNECT
-    
-    
-    def set_disconnected(self):
-        self._cstate = (self._cstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
-    
-    
-    def set_deployed_client(self):
-        self._cstate = self._cstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
-    
-    
-    def set_updated_connections(self):
-        self._tstate = (self._tstate | self.FLAG_UPD_CON) ^ self.FLAG_UPD_CON
     
     
     def set_rc(self, rc):
@@ -955,30 +1091,46 @@ class Assignment(object):
         assignment requires action, return True
         """
         req_act = False
-        for vol_state in self._vol_states:
+        for vol_state in self._vol_states.itervalues():
             if vol_state.requires_action():
                 req_act = True
         return (self._cstate != self._tstate) or req_act
     
     
     def requires_deploy(self):
-        return (self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
-          and (self._cstate & self.FLAG_DEPLOY == 0)
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
+          and (self._cstate & self.FLAG_DEPLOY == 0))
     
     
     def requires_connect(self):
-        return (self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT) \
-          and (self._cstate & self.FLAG_CONNECT == 0)
+        return ((self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
+          and (self._cstate & self.FLAG_CONNECT == 0))
     
     
     def requires_undeploy(self):
-        return (self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) \
-          and (self._tstate & self.FLAG_DEPLOY == 0)
+        return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
+          and (self._tstate & self.FLAG_DEPLOY == 0))
     
     
     def requires_disconnect(self):
-        return (self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT) \
-          and (self._tstate & self.FLAG_CONNECT == 0)
+        return ((self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
+          and (self._tstate & self.FLAG_CONNECT == 0))
+    
+    
+    def set_cstate_flags(self, flags):
+        self._cstate = (self._cstate | flags) & self.CSTATE_MASK
+    
+    
+    def clear_cstate_flags(self, flags):
+        self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+    
+    
+    def set_tstate_flags(self, flags):
+        self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+    
+    
+    def clear_tstate_flags(self, flags):
+        self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
 class AssignmentView(object):
@@ -1067,6 +1219,20 @@ class AssignmentView(object):
             text = state_text_append(mr, text, "DISKLESS", "client")
         if len(text) == 0:
             text = "-"
+        # FIXME: experimental human-readable mask output
+        if not self._machine_readable:
+            if self._cstate & Assignment.FLAG_CONNECT != 0:
+                text = "c"
+            else:
+                text = "-"
+            if self._cstate & Assignment.FLAG_DEPLOY != 0:
+                text += "d"
+            else:
+                text += "-"
+            if self._cstate & Assignment.FLAG_DISKLESS != 0:
+                text += "D"
+            else:
+                text += "-"
         return text
     
     
@@ -1087,19 +1253,51 @@ class AssignmentView(object):
             text = state_text_append(mr, text, "DISCARD", "discard")
         if len(text) == 0:
             text = "-"
+        # FIXME: experimental human-readable mask output
+        if not self._machine_readable:
+            if self._tstate & Assignment.FLAG_CONNECT != 0:
+                text = "c"
+            else:
+                text = "-"
+            if self._tstate & Assignment.FLAG_DEPLOY != 0:
+                text += "d"
+            else:
+                text += "-"
+            if self._tstate & Assignment.FLAG_DISKLESS != 0:
+                text += "D"
+            else:
+                text += "-"
+            text += " ("
+            if self._tstate & Assignment.FLAG_DISCARD != 0:
+                text += "d"
+            else:
+                text += "-"
+            if self._tstate & Assignment.FLAG_OVERWRITE != 0:
+                text += "o"
+            else:
+                text += "-"
+            if self._tstate & Assignment.FLAG_RECONNECT != 0:
+                text += "r"
+            else:
+                text += "-"
+            if self._tstate & Assignment.FLAG_UPD_CON != 0:
+                text += "u"
+            else:
+                text += "-"
+            text += ")"
         return text
     
     
     def get_state(self):
         mr = self._machine_readable
         text = ""
-        if self._cstate & Assignment.FLAG_DEPLOY != 0:
+        if self._tstate & Assignment.FLAG_DEPLOY != 0:
             text = state_text_append(mr, text, "DEPLOY", "deployed")
-        if self._cstate & Assignment.FLAG_ATTACH != 0:
+        if self._tstate & Assignment.FLAG_ATTACH != 0:
             text = state_text_append(mr, text, "ATTACH", "attached")
-        if self._cstate & Assignment.FLAG_CONNECT != 0:
+        if self._tstate & Assignment.FLAG_CONNECT != 0:
             text = state_text_append(mr, text, "CONNECT", "connected")
-        if self._cstate & Assignment.FLAG_DISKLESS != 0:
+        if self._tstate & Assignment.FLAG_DISKLESS != 0:
             text = state_text_append(mr, text, "DISKLESS", "client")
         if len(text) == 0:
             text = "-"

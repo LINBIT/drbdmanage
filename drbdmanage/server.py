@@ -42,10 +42,14 @@ class DrbdManageServer(object):
     KEY_PLUGIN_NAME  = "storage-plugin"
     KEY_MAX_NODE_ID  = "max-node-id"
     KEY_MIN_MINOR_NR = "min-minor-nr"
+    KEY_MIN_PORT_NR  = "min-port-nr"
+    KEY_MAX_PORT_NR  = "max-port-nr"
     
     # defaults
-    _max_node_id =  31
+    _max_node_id  =  31
     _min_minor_nr = 100
+    _min_port_nr  = 7000
+    _max_port_nr  = 7999
     
     # BlockDevice manager
     _bd_mgr    = None
@@ -163,12 +167,26 @@ class DrbdManageServer(object):
                 val = conf.get(self.KEY_MIN_MINOR_NR)
                 if val is not None:
                     self._min_minor_nr = val
+                val = conf.get(self.KEY_MIN_PORT_NR)
+                if val is not None:
+                    self._min_port_nr = val
+                val = conf.get(self.KEY_MAX_PORT_NR)
+                if val is not None:
+                    self._max_port_nr = val
         except IOError as io_err:
             sys.stderr.write("Warning: Cannot open drbdmanage configuration "
               "file %s\n" % (self.CONFFILE))
         finally:
             if file is not None:
                 file.close()
+    
+    
+    def get_drbd_mgr(self):
+        return self._drbd_mgr
+    
+    
+    def get_bd_mgr(self):
+        return self._bd_mgr
     
     
     def iterate_nodes(self):
@@ -304,7 +322,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def create_resource(self, name):
+    def create_resource(self, name, port):
         """
         Registers a new resource that can be deployed to DRBD cluster nodes
         """
@@ -318,10 +336,15 @@ class DrbdManageServer(object):
                 if resource is not None:
                     rc = DM_EEXIST
                 else:
-                    resource = DrbdResource(name)
-                    self._resources[resource.get_name()] = resource
-                    self.save_conf_data(persist)
-                    rc = DM_SUCCESS
+                    if port == DrbdResource.PORT_NR_AUTO:
+                        port = self.get_free_port_nr()
+                    if port < 1 or port > 65535:
+                        rc = DM_EPORT
+                    else:
+                        resource = DrbdResource(name, port)
+                        self._resources[resource.get_name()] = resource
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
         except PersistenceException:
             pass
         except InvalidNameException:
@@ -348,8 +371,7 @@ class DrbdManageServer(object):
                 resource = self._resources[name]
                 if (not force) and resource.has_assignments():
                     for assg in resource.iterate_assignments():
-                        peer_res = assg.get_resource()
-                        peer_res.undeploy()
+                        assg.undeploy()
                     resource.remove()
                     self._drbd_mgr.perform_changes()
                 else:
@@ -610,8 +632,8 @@ class DrbdManageServer(object):
                         removable.append(node)
             for node in removable:
                 del self._nodes[node.get_name()]
-            # delete volumes that are marked for removal and that have
-            # been undeployed
+            # delete volume assignments that are marked for removal
+            # and that have been undeployed
             for resource in self._resources.itervalues():
                 for assg in resource.iterate_assignments():
                     removable = []
@@ -623,6 +645,28 @@ class DrbdManageServer(object):
                             removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
+            # delete volumes that are marked for removal and that are not
+            # deployed on any node
+            for resource in self._resources.itervalues():
+                volumes = dict()
+                # collect volumes marked for removal
+                for volume in resource.iterate_volumes():
+                    if volume.get_state() & DrbdVolume.FLAG_REMOVE != 0:
+                        volumes[volume.get_id()] = volume;
+                for assg in resource.iterate_assignments():
+                    removable = []
+                    for vol_state in assg.iterate_volume_states():
+                        volume = volumes.get(vol_state.get_id())
+                        if volume is not None:
+                            if vol_state.get_cstate() \
+                              & DrbdVolumeState.FLAG_DEPLOY != 0:
+                                del volumes[vol_state.get_id()]
+                            else:
+                                removable.append(vol_state)
+                        for vol_state in removable:
+                            assg.remove_volume_state(vol_state.get_id())
+                for id in volumes.iterkeys():
+                    resource.remove_volume(id)
             # delete resources that are marked for removal and that do not
             # have assignments any more
             removable = []
@@ -833,6 +877,19 @@ class DrbdManageServer(object):
         if minor_nr == -1:
             minor_nr = MinorNr.MINOR_NR_ERROR
         return minor_nr
+    
+    
+    def get_free_port_nr(self):
+        port_list = []
+        for resource in self._resources.itervalues():
+            nr = resource.get_port()
+            if nr >= self._min_port_nr and nr <= self._max_port_nr:
+                port_list.append(nr)
+        port = get_free_number(self._min_port_nr, self._max_port_nr,
+          port_list)
+        if port == -1:
+            port = DrbdResource.PORT_NR_ERROR
+        return port
     
     
     def get_free_node_id(self, resource):

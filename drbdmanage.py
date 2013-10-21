@@ -7,6 +7,7 @@ import drbdmanage.drbd.drbdcore
 from drbdmanage.utils import *
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.storage.storagecore import MinorNr
+from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import DrbdNodeView
 from drbdmanage.drbd.drbdcore import DrbdResourceView
@@ -151,6 +152,8 @@ class DrbdManage(object):
             rc = self.cmd_new_volume(args)
         elif arg == "remove-volume":
             rc = self.cmd_remove_volume(args)
+        elif arg == "remove-resource":
+            rc = self.cmd_remove_resource(args)
         elif arg == "assign":
             rc = self.cmd_assign(args)
         elif arg == "unassign":
@@ -216,8 +219,8 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name", "size" ]
         params     = {}
-        opt        = { "-u" : None, "-m" : None }
-        optalias   = { "--unit" : "-u", "--minor" : "-m" }
+        opt        = { "-u" : None, "-m" : None, "-p" : None }
+        optalias   = { "--unit" : "-u", "--minor" : "-m", }
         flags      = {}
         flagsalias = {}
         try:
@@ -267,7 +270,8 @@ class DrbdManage(object):
             if unit != SizeCalc.UNIT_MiB:
                 size = SizeCalc.convert_round_up(size, unit,
                   SizeCalc.UNIT_MiB)
-            server_rc = self._server.create_resource(dbus.String(name))
+            server_rc = self._server.create_resource(dbus.String(name),
+              DrbdResource.PORT_NR_AUTO)
             if server_rc == 0 or server_rc == DM_EEXIST:
                 server_rc = self._server.create_volume(dbus.String(name),
                   dbus.Int64(size), dbus.Int32(minor))
@@ -318,6 +322,46 @@ class DrbdManage(object):
     
     def syntax_remove_node(self):
         sys.stderr.write("Syntax: remove-node [ --quiet | -q ] <name>\n")
+    
+    
+    def cmd_remove_resource(self, args):
+        rc = 1
+        # Command parser configuration
+        order = [ "resource" ]
+        params = {}
+        opt   = {}
+        optalias = {}
+        flags = { "-q" : False, "-f" : False }
+        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
+        
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+        
+            res_name = params["resource"]
+            force    = flags["-f"]
+            quiet    = flags["-q"]
+            if not quiet:
+                quiet = self.user_confirm("You are going to remove a resource "
+                  "and all of its volumes from all nodes of the cluster.\n"
+                  "Please confirm:")
+            if quiet:
+                server_rc = self._server.remove_resource(dbus.String(res_name),
+                  dbus.Boolean(force))
+                if server_rc == 0:
+                    rc = 0
+                else:
+                    self.error_msg_text(server_rc)
+            else:
+                rc = 0
+        except SyntaxException:
+            self.syntax_remove_resource()
+        return rc
+    
+    
+    def syntax_remove_resource(self):
+        sys.stderr.write("Syntax: remove-resource [ --quiet | -q ] <name>\n")
     
     
     def cmd_remove_volume(self, args):
@@ -384,8 +428,8 @@ class DrbdManage(object):
         opt      = {}
         optalias = {}
         flags    = { "--overwrite" : False, "--client" : False,
-          "--discard" : False }
-        flagsalias = { }
+          "--discard" : False, "-c" : False }
+        flagsalias = { "--connect" : "-c" }
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
               flags, flagsalias) != 0:
@@ -397,6 +441,7 @@ class DrbdManage(object):
             client    = flags["--client"]
             overwrite = flags["--overwrite"]
             discard   = flags["--discard"]
+            connect   = flags["-c"]
             
             if (overwrite and client):
                 sys.stderr.write("Error: --overwrite and --client "
@@ -412,6 +457,8 @@ class DrbdManage(object):
                 state.append("overwrite")
             if discard:
                 state.append("discard")
+            if connect:
+                state.append("connect")
             server_rc = self._server.assign(dbus.String(node_name),
               dbus.String(vol_name), dbus.Array(state, signature="s"))
             if server_rc == 0:
@@ -426,9 +473,10 @@ class DrbdManage(object):
     def syntax_assign(self):
         sys.stderr.write("Syntax: assign [ options ] <node> <volume>\n")
         sys.stderr.write("  Options:\n"
-          "    --client      make this node a DRBD client only\n"
-          "    --overwrite   copy this node's data to all other nodes\n"
-          "    --discard     discard this node's data upon connect\n")
+          "    --client         make this node a DRBD client only\n"
+          "    --overwrite      copy this node's data to all other nodes\n"
+          "    --discard        discard this node's data upon connect\n"
+          "    -c | --connect   connect to peer resources on other nodes\n")
         sys.stderr.write("The following options are mutually exclusive:\n"
           "  --overwrite and --client\n"
           "  --overwrite and --discard\n")
@@ -612,12 +660,13 @@ class DrbdManage(object):
         # Header/key for the table
         if not machine_readable:
             sys.stdout.write(
-                "%s%-*s%s               %s%s\n" % (color(COLOR_DARKGREEN),
+                "%s%-*s%s %7s        %s%s%s\n" % (color(COLOR_DARKGREEN),
                     DrbdResourceView.get_name_maxlen(), "Resource",
+                    color(COLOR_NONE), "Port",
                     color(COLOR_RED), "state", color(COLOR_NONE))
                   )
             sys.stdout.write(
-              "  *%s%6s%s %12s %7s %s\n" % (color(COLOR_DARKPINK),
+              "  *%s%6s%s %14s %7s %s\n" % (color(COLOR_DARKPINK),
                 "id#", color(COLOR_NONE), "size (MiB)", "minor#", "state")
               )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
@@ -627,26 +676,27 @@ class DrbdManage(object):
                 view = DrbdResourceView(properties, machine_readable)
                 if not machine_readable:
                     sys.stdout.write(
-                      "%s%-*s%s               %s%s\n"
+                      "%s%-*s%s %7s       %s%s%s\n"
                         % (color(COLOR_DARKGREEN),
                         view.get_name_maxlen(), view.get_name(),
+                        color(COLOR_NONE), view.get_port(),
                         color(COLOR_RED), view.get_state(), color(COLOR_NONE))
                       )
                 volume_list = view.get_volumes()
                 for vol_view in volume_list:
                     if not machine_readable:
                         sys.stdout.write(
-                          "  *%s%6d%s %12d %7s %s\n" % (color(COLOR_DARKPINK),
+                          "  *%s%6d%s %14d %7s %s\n" % (color(COLOR_DARKPINK),
                             vol_view.get_id(), color(COLOR_NONE),
-                            vol_view.get_size_MiB(), vol_view.get_minor(),
-                            vol_view.get_state())
+                            vol_view.get_size_MiB(),
+                            vol_view.get_minor(), vol_view.get_state())
                           )
                     else:
                         sys.stdout.write(
-                          "%s,%s,%d,%d,%s,%s\n" % (view.get_name(),
+                          "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
                             view.get_state(), vol_view.get_id(),
-                            vol_view.get_size_MiB(), vol_view.get_minor(),
-                            vol_view.get_state())
+                            vol_view.get_size_MiB(), view.get_port(),
+                            vol_view.get_minor(), vol_view.get_state())
                           )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
@@ -681,13 +731,20 @@ class DrbdManage(object):
         # TODO
         
         if not machine_readable:
-            sys.stdout.write("%s%-*s %s%-*s%s %5s %s%s%s\n"
+            sys.stdout.write("%s%-*s %s%-*s%s %5s %20s%s%s%s\n"
                 % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
                 "Node", color(COLOR_DARKGREEN),
                 DrbdResourceView.get_name_maxlen(),
                 "Resource", color(COLOR_NONE),
-                "Node#", color(COLOR_RED),
+                "Node#", "", color(COLOR_RED),
                 "state (current -> target)",
+                color(COLOR_NONE))
+              )
+            sys.stdout.write("  %s%6s%s %-50s %s%s%s\n"
+                % (color(COLOR_DARKPINK),
+                "Vol#",  color(COLOR_NONE),
+                "Blockdevice path",
+                color(COLOR_DARKRED), "state (current -> target)",
                 color(COLOR_NONE))
               )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
@@ -698,21 +755,21 @@ class DrbdManage(object):
                 view = AssignmentView(properties, machine_readable)
                 vol_state_list = view.get_volume_states()
                 if not machine_readable:
-                    sys.stdout.write("%s%-*s %s%-*s%s %5d %s%s -> %s%s\n"
+                    sys.stdout.write("%s%-*s %s%-*s%s %5d %20s%s%s -> %s%s\n"
                         % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
                         view.get_node(), color(COLOR_DARKGREEN),
                         DrbdResourceView.get_name_maxlen(),
                         view.get_resource(), color(COLOR_NONE),
-                        view.get_node_id(), color(COLOR_RED),
+                        view.get_node_id(), "", color(COLOR_RED),
                         view.get_cstate(), view.get_tstate(),
                         color(COLOR_NONE))
                       )
                     for vol_state in vol_state_list:
-                        sys.stdout.write("  %s%6d%s %-32s %s%s -> %s%s\n"
+                        sys.stdout.write("  %s%6d%s %-50s %s%s  -> %s%s\n"
                             % (color(COLOR_DARKPINK),
                             vol_state.get_id(),  color(COLOR_NONE),
                             vol_state.get_bd_path(),
-                            color(COLOR_RED), vol_state.get_cstate(),
+                            color(COLOR_DARKRED), vol_state.get_cstate(),
                             vol_state.get_tstate(), color(COLOR_NONE))
                           )
                 else:

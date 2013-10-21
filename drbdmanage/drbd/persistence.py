@@ -487,7 +487,7 @@ class DrbdNodePersistence(GenericPersistence):
 
 
 class DrbdResourcePersistence(GenericPersistence):
-    SERIALIZABLE = [ "_name", "_secret", "_state" ]
+    SERIALIZABLE = [ "_name", "_secret", "_port", "_state" ]
     
     def __init__(self, resource):
         super(DrbdResourcePersistence, self).__init__(resource)
@@ -508,7 +508,7 @@ class DrbdResourcePersistence(GenericPersistence):
     def load(cls, properties):
         resource = None
         try:
-            resource = DrbdResource(properties["_name"])
+            resource = DrbdResource(properties["_name"], properties["_port"])
             secret = properties.get("_secret")
             if secret is not None:
                 resource.set_secret(secret)

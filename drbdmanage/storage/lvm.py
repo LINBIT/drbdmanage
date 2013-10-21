@@ -1,18 +1,22 @@
 #!/usr/bin/python
 
+import subprocess
+import sys
+import json
 from ..exceptions import *
 from ..utils import DataHash
 from ..conf.conffile import *
 from persistence import BlockDevicePersistence
 import storagecore
-import json
-import sys
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:49:42 AM$"
 
 
 class LVM(object):
+    KEY_DEV_PATH  = "dev-path"
+    KEY_VG_NAME   = "volume-group"
+    
     LVM_CONFFILE = "/opt/tmp/drbdmanaged-lvm.conf"
     LVM_SAVEFILE = "/opt/tmp/drbdmanaged-lvm.local.bin"
     _lvs  = None
@@ -36,37 +40,45 @@ class LVM(object):
                 sys.stderr.write("Warning: Cannot load the LVM configuration "
                   "file: %s\n" % self.LVM_CONFFILE)
             if self._conf is not None:
-                val = self._conf.get(KEY_LV_PREFIX)
-                if val is not None:
-                    self._lv_prefix = val
-                val = self._conf.get(KEY_VG_NAME)
+                val = self._conf.get(self.KEY_VG_NAME)
                 if val is not None:
                     self._vg_name = val
+                val = self._conf.get(self.KEY_DEV_PATH)
+                if val is not None:
+                    self._lv_prefix = val + self._vg_name + "-"
         except Exception as exc:
             print exc
     
     
-    def create_blockdevice(self, name, size):
-        bd = storagecore.BlockDevice(name, size,
-          self._lv_prefix + name)
-        self._lvs[name] = bd
-        self.save_conf()
+    def create_blockdevice(self, name, id, size):
+        bd = None
+        lv_name = self._lv_name(name, id)
+        try:
+            if self._create_lv(lv_name, size) == 0:
+                bd = storagecore.BlockDevice(lv_name, size,
+                  self._lv_prefix + lv_name)
+                self._lvs[lv_name] = bd
+                self.save_state()
+        except Exception as exc:
+            sys.stderr.write("DEBUG: LVM: create_blockdevice failed\n")
+            print exc
         return bd
     
     
     def remove_blockdevice(self, blockdevice):
         try:
+            self._remove_lv(blockdevice.get_name())
             del self._lvs[blockdevice.get_name()]
         except KeyError:
             return DM_ENOENT
-        self.save_conf()
+        self.save_state()
         return DM_SUCCESS
     
     
-    def get_blockdevice(self, name):
+    def get_blockdevice(self, name, id):
         bd = None
         try:
-            bd = self._lvs[name]
+            bd = self._lvs[self._lv_name(name, id)]
         except KeyError:
             pass
         return bd
@@ -79,6 +91,27 @@ class LVM(object):
     def down_blockdevice(self, blockdevice):
         return DM_SUCCESS
     
+    
+    def _create_lv(self, name, size):
+        # FIXME experimental/hardcoded
+        lvm_proc = subprocess.Popen(["./lvcreate-dummy", "-n", name, "-L",
+          str(size) + "M", self._vg_name], 0, "./lvcreate-dummy",
+          ) # disabled: stdout=subprocess.PIPE
+        rc = lvm_proc.wait()
+        return rc
+    
+    
+    def _remove_lv(self, name):
+        # FIXME experimental/hardcoded
+        lvm_proc = subprocess.Popen(["./lvremove-dummy", self._vg_name
+          + "/" + name], 0, "./lvremove-dummy",
+          ) # disabled: stdout=subprocess.PIPE
+        rc = lvm_proc.wait()
+        return rc
+    
+    
+    def _lv_name(self, name, id):
+        return ("%s_%.2d" % (name, id));
     
     def load_conf(self):
         file = None
@@ -136,6 +169,7 @@ class LVM(object):
     
     
     def save_state(self):
+        print "DEBUG: save_state"
         lvm_con = dict()
         for bd in self._lvs.itervalues():
             bd_persist = BlockDevicePersistence(bd)

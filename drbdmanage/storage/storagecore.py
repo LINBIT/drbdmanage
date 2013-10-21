@@ -29,7 +29,7 @@ class BlockDevice(GenericStorage):
     """
     Represents a block device
     """
-    NAME_MAXLEN = 16
+    NAME_MAXLEN = 20
     
     _path     = None
     _name     = None
@@ -62,26 +62,26 @@ class BlockDeviceManager(object):
         self._plugin = self._plugin_import(plugin_name)
     
     
-    def create_blockdevice(self, name, size):
-        return self._plugin.create_blockdevice(name, size)
+    def create_blockdevice(self, name, id, size):
+        return self._plugin.create_blockdevice(name, id, size)
     
     
-    def remove_blockdevice(self, name):
-        bd = self._plugin.get_blockdevice(name)
+    def remove_blockdevice(self, name, id):
+        bd = self._plugin.get_blockdevice(name, id)
         if bd is not None:
             return self._plugin.remove_blockdevice(bd)
         return DM_ENOENT
     
     
-    def up_blockdevice(self, name):
-        bd = self._plugin.get_blockdevice(name)
+    def up_blockdevice(self, name, id):
+        bd = self._plugin.get_blockdevice(name, id)
         if bd is not None:
             return self._plugin.up_blockdevice(bd)
         return DM_ENOENT
     
     
-    def down_blockdevice(self, name):
-        bd = self._plugin.get_blockdevice(name)
+    def down_blockdevice(self, name, id):
+        bd = self._plugin.get_blockdevice(name, id)
         if bd is not None:
             return self._plugin.down_blockdevice(bd)
         return DM_ENOENT
@@ -188,11 +188,11 @@ class StoragePlugin(object):
         pass
     
     
-    def get_blockdevice(self, name):
+    def get_blockdevice(self, name, id):
         raise NotImplementedError
     
     
-    def create_blockdevice(self, name, size):
+    def create_blockdevice(self, name, id, size):
         raise NotImplementedError
     
     

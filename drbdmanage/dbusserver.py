@@ -59,9 +59,9 @@ class DBusServer(dbus.service.Object):
         
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="s", out_signature="i")
-    def create_resource(self, name):
-        return self._server.create_resource(name)
+      in_signature="si", out_signature="i")
+    def create_resource(self, name, port):
+        return self._server.create_resource(name, port)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -93,6 +93,8 @@ class DBusServer(dbus.service.Object):
                 tstate = tstate | Assignment.FLAG_OVERWRITE
             elif opt == "discard":
                 tstate = tstate | Assignment.FLAG_DISCARD
+            elif opt == "connect":
+                tstate = tstate | Assignment.FLAG_CONNECT
             else:
                 return DM_EINVAL
         tstate = tstate | Assignment.FLAG_DEPLOY
@@ -112,7 +114,7 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="a(sxa(ixix))")
+      in_signature="", out_signature="a(sssxa(ixix))")
     def resource_list(self):
         return self._server.resource_list()
     
