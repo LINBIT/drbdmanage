@@ -134,7 +134,12 @@ class DrbdManager(object):
                     # attach/detach volumes
                     if vol_state.requires_attach():
                         # TODO: attach volume
-                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                        # do not attach clients, because there is no local
+                        # storage on clients
+                        if not assg.get_tstate() \
+                          & Assignment.FLAG_DISKLESS != 0:
+                            vol_state.set_cstate_flags(
+                              DrbdVolumeState.FLAG_ATTACH)
                     elif vol_state.requires_detach():
                         # TODO: detach volume
                         vol_state.clear_cstate_flags(
@@ -145,6 +150,9 @@ class DrbdManager(object):
                 
                 if assg.requires_deploy():
                     assg.set_cstate_flags(Assignment.FLAG_DEPLOY)
+                
+                if assg.get_tstate() & Assignment.FLAG_DISKLESS != 0:
+                    assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
                 
                 if assg.get_cstate() != assg.get_tstate():
                     sys.stderr.write(COLOR_RED
@@ -159,18 +167,20 @@ class DrbdManager(object):
     
     
     def _deploy(self, assignment, vol_state):
-        bd_mgr   = self._server.get_bd_mgr()
-        resource = assignment.get_resource()
-        volume   = vol_state.get_volume()
-        
-        if resource is None:
-            sys.stderr.write("DEBUG: resource == NULL\n")
-        
-        bd = bd_mgr.create_blockdevice(resource.get_name(), volume.get_id(),
-          volume.get_size_MiB())
-        if bd is not None:
-            vol_state.set_blockdevice(bd.get_name(), bd.get_path())
-            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+        # do not create block devices for clients
+        if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
+            bd_mgr   = self._server.get_bd_mgr()
+            resource = assignment.get_resource()
+            volume   = vol_state.get_volume()
+
+            if resource is None:
+                sys.stderr.write("DEBUG: resource == NULL\n")
+
+            bd = bd_mgr.create_blockdevice(resource.get_name(), volume.get_id(),
+              volume.get_size_MiB())
+            if bd is not None:
+                vol_state.set_blockdevice(bd.get_name(), bd.get_path())
+                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
     
     
     def _undeploy(self, assignment, vol_state):
@@ -767,11 +777,8 @@ class DrbdVolumeState(object):
     
     
     def requires_attach(self):
-        # DISKLESS: never attempt to attach clients,
-        # as those do not have local storage
         return ((self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH)
-          and (self._cstate & self.FLAG_ATTACH == 0)
-          and (self._tstate & self.FLAG_DISKLESS == 0))
+          and (self._cstate & self.FLAG_ATTACH == 0))
     
     
     def requires_undeploy(self):
@@ -809,10 +816,7 @@ class DrbdVolumeState(object):
     
     
     def attach(self):
-        # if this should be a client (DISKLESS), do not attach, because
-        # there is no local storage on clients
-        if not self._tstate == self.FLAG_DISKLESS:
-            self._tstate = self._tstate | self.FLAG_ATTACH
+        self._tstate = self._tstate | self.FLAG_ATTACH
     
     
     def detach(self):
