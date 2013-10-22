@@ -503,11 +503,11 @@ class DrbdManageServer(object):
                     if assignment is not None:
                         rc = DM_EEXIST
                     else:
-                        if (tstate & Assignment.FLAG_DISKLESS) != 0 \
-                          and (tstate & Assignment.FLAG_OVERWRITE) != 0:
+                        if ((tstate & Assignment.FLAG_DISKLESS) != 0
+                          and (tstate & Assignment.FLAG_OVERWRITE) != 0):
                             rc = DM_EINVAL
-                        elif (tstate & Assignment.FLAG_DISCARD) != 0 \
-                          and (tstate & Assignment.FLAG_OVERWRITE) != 0:
+                        elif ((tstate & Assignment.FLAG_DISCARD) != 0
+                          and (tstate & Assignment.FLAG_OVERWRITE) != 0):
                             rc = DM_EINVAL
                         else:
                             rc = self._assign(node, resource, tstate)
@@ -573,7 +573,8 @@ class DrbdManageServer(object):
                 assignment = Assignment(node, resource, node_id, 0, tstate)
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
-                    vol_state.attach()
+                    if tstate & Assignment.FLAG_DISKLESS == 0:
+                        vol_state.attach()
                 node.add_assignment(assignment)
                 resource.add_assignment(assignment)
                 for assignment in resource.iterate_assignments():
@@ -609,6 +610,156 @@ class DrbdManageServer(object):
         return DM_SUCCESS
     
     
+    def connect(self, node_name, resource_name):
+        """
+        Set the CONNECT flag on a resource's target state
+        """
+        rc = DM_EPERSIST
+        node     = None
+        resource = None
+        persist  = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node     = self._nodes.get(node_name)
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
+                    rc = DM_ENOENT
+                else:
+                    assignment = node.get_assignment(resource.get_name())
+                    if assignment is None:
+                        rc = DM_ENOENT
+                    else:
+                        assignment.connect()
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def disconnect(self, node_name, resource_name):
+        """
+        Clear the CONNECT flag on a resource's target state
+        """
+        rc = DM_EPERSIST
+        node     = None
+        resource = None
+        persist  = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node     = self._nodes.get(node_name)
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
+                    rc = DM_ENOENT
+                else:
+                    assignment = node.get_assignment(resource.get_name())
+                    if assignment is None:
+                        rc = DM_ENOENT
+                    else:
+                        assignment.disconnect()
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def attach(self, node_name, resource_name, volume_id):
+        """
+        Set the ATTACH flag on a volume's target state
+        """
+        rc = DM_EPERSIST
+        node      = None
+        resource  = None
+        vol_state = None
+        persist   = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node     = self._nodes.get(node_name)
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
+                    rc = DM_ENOENT
+                else:
+                    assignment = node.get_assignment(resource.get_name())
+                    if assignment is None:
+                        rc = DM_ENOENT
+                    else:
+                        vol_state = assignment.get_volume_state(volume_id)
+                        if vol_state is None:
+                            rc = DM_ENOENT
+                        else:
+                            vol_state.attach()
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
+                            rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def detach(self, node_name, resource_name, volume_id):
+        """
+        Clear the ATTACH flag on a volume's target state
+        """
+        rc = DM_EPERSIST
+        node      = None
+        resource  = None
+        vol_state = None
+        persist   = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node     = self._nodes.get(node_name)
+                resource = self._resources.get(resource_name)
+                if node is None or resource is None:
+                    rc = DM_ENOENT
+                else:
+                    assignment = node.get_assignment(resource.get_name())
+                    if assignment is None:
+                        rc = DM_ENOENT
+                    else:
+                        vol_state = assignment.get_volume_state(volume_id)
+                        if vol_state is None:
+                            rc = DM_ENOENT
+                        else:
+                            vol_state.detach()
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
+                            rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    """
+    Remove entries of undeployed nodes, resources, volumes or their
+    supporting data structures (volume state and assignment entries)
+    """
     def cleanup(self):
         try:
             removable = []

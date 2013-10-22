@@ -30,7 +30,7 @@ class DrbdManager(object):
     #       than loop at some point.
     def run(self):
         persist = None
-        sys.stdout.write("%sDrbdManager invoked%s\n"
+        sys.stdout.write("%sDEBUG: DrbdManager invoked%s\n"
           % (COLOR_YELLOW, COLOR_NONE))
         try:
             persist = self._server.open_conf()
@@ -47,17 +47,19 @@ class DrbdManager(object):
             persist = self._server.begin_modify_conf()
             if persist is not None:
                 if self.perform_changes():
-                    sys.stdout.write("  perform_changes(): state changed\n")
+                    sys.stdout.write("%sDEBUG: DrbdManager: state changed%s\n"
+                      % (COLOR_GREEN, COLOR_NONE))
                     self._server.save_conf_data(persist)
                 else:
-                    sys.stdout.write("  perform_changes(): no state change\n")
+                    sys.stdout.write("%sDEBUG: DrbdManager: state unchanged%s\n"
+                      %(COLOR_DARKGREEN, COLOR_NONE))
             else:
                 # Could not instantiate PersistenceImpl
                 # TODO: Error logging
-                sys.stderr.write("%sDrbdManager: cannot open "
+                sys.stderr.write("%sDEBUG: DrbdManager: cannot open "
                   "persistent storage%s\n" % (COLOR_RED, COLOR_NONE))
-            sys.stdout.write("%s--> DrbdManager: finished%s\n"
-              % (COLOR_GREEN, COLOR_NONE))
+            sys.stdout.write("%sDEBUG: DrbdManager: finished%s\n"
+              % (COLOR_DARKGREEN, COLOR_NONE))
         except Exception as exc:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             sys.stderr.write("%sDrbdManager: Oops: %s%s\n"
@@ -73,100 +75,142 @@ class DrbdManager(object):
     # FIXME
     def perform_changes(self):
         state_changed = False
-        sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
-          % (COLOR_GREEN, COLOR_NONE))
+        # sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
+        #   % (COLOR_GREEN, COLOR_NONE))
+        
+        """
+        Check whether the system the drbdmanaged server is running on is
+        a registered node in the configuration
+        """
         node = self._server.get_instance_node()
         if node is None:
-            sys.stdout.write("%s--> DrbdManager: this node is "
+            sys.stdout.write("%sDEBUG DrbdManager: this node is "
               "not registered%s\n"
               % (COLOR_RED, COLOR_NONE))
             return False
-        sys.stdout.write("%s--> DrbdManager: This node is '%s'%s\n"
-          % (COLOR_GREEN, node.get_name(), COLOR_NONE))
+        
+        sys.stdout.write("%sDEBUG: DrbdManager: Perform changes on '%s'%s\n"
+          % (COLOR_DARKGREEN, node.get_name(), COLOR_NONE))
+        
+        """
+        Check all assignments for changes
+        """
         assignments = node.iterate_assignments()
         for assg in assignments:
-            sys.stdout.write("%s--> DrbdManager: assignment '%s:%s'%s\n"
-              % (COLOR_GREEN, assg.get_node().get_name(),
-              assg.get_resource().get_name(), COLOR_NONE))
+            # sys.stdout.write("%s--> DrbdManager: assignment '%s:%s'%s\n"
+            #   % (COLOR_GREEN, assg.get_node().get_name(),
+            #   assg.get_resource().get_name(), COLOR_NONE))
             
             if assg.requires_action():
-                sys.stdout.write("%s-->   (requires action)%s\n"
-                  % (COLOR_GREEN, COLOR_NONE))
-                # TODO: perform actions required by the assignment
+                sys.stdout.write("%sDEBUG: %s cstate(%x)->tstate(%x)%s\n"
+                  % (COLOR_GREEN, assg.get_resource().get_name(),
+                  assg.get_cstate(), assg.get_tstate(), COLOR_NONE))
+                
                 state_changed = True
                 
-                # undeploy assignments
+                """
+                ============================================================
+                Actions for assignments
+                (concerning all volumes of a resource)
+                ============================================================
+                """
+                
+                """
+                Undeploy an assignment/resource and all of its volumes
+                """
                 if assg.requires_undeploy():
-                    for vol_state in assg.iterate_volume_states():
-                        # TODO: undeploy/detach of all volumes
-                        self._undeploy(assg, vol_state)
-                        vol_state.set_tstate(0)
-                        vol_state.set_cstate(0)
-                    assg.set_cstate(0)
-                    assg.set_tstate(0)
+                    self._undeploy_assignment(assg)
                     # ignore other actions for the same assignment
                     # after undeploy
                     continue
                 
-                # connect/disconnect
+                """
+                Connect/disconnect an assignment/resource
+                """
                 if assg.requires_disconnect():
-                    assg.clear_cstate_flags(Assignment.FLAG_CONNECT)
+                    self._disconnect(assg)
                 elif assg.requires_connect():
-                    assg.set_cstate_flags(Assignment.FLAG_CONNECT)
+                    self._connect(assg)
+                    # DEBUG: clear overwrite/discard flags.
+                    # This goes into the function for connecting resources some
+                    # point in time in the future
+                    assg.clear_tstate_flags(
+                        Assignment.FLAG_OVERWRITE | Assignment.FLAG_DISCARD)
                 
-                # update connections/reconnect
+                """
+                Update connections
+                """
                 assg_actions = assg.get_tstate()
                 if assg_actions & Assignment.FLAG_UPD_CON != 0:
-                    assg.clear_tstate_flags(Assignment.FLAG_UPD_CON)
+                    self._update_connections(assg)
                 if assg_actions & Assignment.FLAG_RECONNECT != 0:
-                    assg.clear_tstate_flags(Assignment.FLAG_RECONNECT)
+                    self._reconnect(assg)
                 
-                # actions for single volumes of an assignments
+                """
+                ============================================================
+                Per-Volume actions
+                (actions that concern a single volume of a resource)
+                ============================================================
+                """
+                
                 for vol_state in assg.iterate_volume_states():
                     
-                    # deploy/undeploy volumes
+                    """
+                    Deploy or undeploy a volume
+                    """
                     if vol_state.requires_deploy():
-                        self._deploy(assg, vol_state)
+                        self._deploy_volume(assg, vol_state)
                     elif vol_state.requires_undeploy():
-                        # TODO: undeploy volume
-                        self._undeploy(assg, vol_state)
+                        self._undeploy_volume(assg, vol_state)
                     
-                    # attach/detach volumes
+                    """
+                    Attach a volume to or detach a volume from local storage
+                    """
                     if vol_state.requires_attach():
-                        # TODO: attach volume
-                        # do not attach clients, because there is no local
-                        # storage on clients
-                        if not assg.get_tstate() \
-                          & Assignment.FLAG_DISKLESS != 0:
-                            vol_state.set_cstate_flags(
-                              DrbdVolumeState.FLAG_ATTACH)
+                        self._attach(assg, vol_state)
                     elif vol_state.requires_detach():
-                        # TODO: detach volume
-                        vol_state.clear_cstate_flags(
-                          DrbdVolumeState.FLAG_ATTACH)
+                        self._detach(assg, vol_state)
+                        
                 
-                assg.clear_tstate_flags(
-                  Assignment.FLAG_OVERWRITE | Assignment.FLAG_DISCARD)
-                
+                """
+                ============================================================
+                Actions for assignments (continuation)
+                (concerning all volumes of a resource)
+                ============================================================
+                """
+
+                """
+                Deploy an assignment (finish deploying)
+                Volumes have already been deployed by the per-volume actions
+                at this point. Only if all volumes that should be deployed have
+                been deployed (current state vs. target state), then mark
+                the assignment as deployed, too.
+                """
                 if assg.requires_deploy():
-                    assg.set_cstate_flags(Assignment.FLAG_DEPLOY)
+                    self._deploy_assignment(assg)
                 
                 if assg.get_tstate() & Assignment.FLAG_DISKLESS != 0:
                     assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
                 
-                if assg.get_cstate() != assg.get_tstate():
+                if ((assg.get_tstate() & Assignment.ACT_IGN_MASK)
+                  != assg.get_cstate()):
                     sys.stderr.write(COLOR_RED
                       + "Warning: End of perform_changes(), but assignment "
-                      " cstate != tstate" + COLOR_NONE + "\n")
-                    assg.set_tstate(assg.get_cstate());
+                      "seems to have pending actions" + COLOR_NONE + "\n")
         
-        # Clean up undeployed resources
+        """
+        Cleanup the server's data structures
+        (remove entries that are no longer required)
+        """
         self._server.cleanup()
         
         return state_changed
     
     
-    def _deploy(self, assignment, vol_state):
+    """
+    Deploy a volume and update its state values
+    """
+    def _deploy_volume(self, assignment, vol_state):
         # do not create block devices for clients
         if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
             bd_mgr   = self._server.get_bd_mgr()
@@ -181,18 +225,111 @@ class DrbdManager(object):
             if bd is not None:
                 vol_state.set_blockdevice(bd.get_name(), bd.get_path())
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+        else:
+            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
     
     
-    def _undeploy(self, assignment, vol_state):
+    """
+    Undeploy a volume, then reset the state values of the volume state entry,
+    so it can be removed from the assignment by the cleanup function.
+    """
+    def _undeploy_volume(self, assignment, vol_state):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
         
-        rc = bd_mgr.remove_blockdevice(resource.get_name(), vol_state.get_id())
-        if rc == DM_SUCCESS:
+        tstate = assignment.get_tstate()
+        if not (tstate & Assignment.FLAG_DISKLESS) != 0:
+            rc = bd_mgr.remove_blockdevice(resource.get_name(),
+              vol_state.get_id())
+        if rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS != 0):
             vol_state.set_cstate(0)
             vol_state.set_tstate(0)
     
+    
+    """
+    Finish deployment of an assignment. The actual deployment of the
+    assignment's/resource's volumes takes place in per-volume actions
+    of the DrbdManager.perform_changes() function.
+    """
+    def _deploy_assignment(self, assignment):
+        deploy_fail = False
+        for vol_state in assignment.iterate_volume_states():
+            if (vol_state.get_tstate() & DrbdVolumeState.FLAG_DEPLOY != 0
+              and vol_state.get_cstate() & DrbdVolumeState.FLAG_DEPLOY == 0):
+                deploy_fail = True
+        if not deploy_fail:
+            assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
+    
+    
+    """
+    Undeploy all volumes of a resource, then reset the assignment's state
+    values, so it can be removed by the cleanup function.
+    """
+    def _undeploy_assignment(self, assignment):
+        for vol_state in assignment.iterate_volume_states():
+            self._undeploy_volume(assignment, vol_state)
+        assignment.set_cstate(0)
+        assignment.set_tstate(0)
+    
+    
+    """
+    Connect a resource on the current node to all peer nodes
+    """
+    def _connect(self, assignment):
+        # TODO: order drbdadm to connect (full mesh)
+        assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+    
+    
+    """
+    Disconnect a resource on the current node from all peer nodes
+    """
+    def _disconnect(self, assignment):
+        # TODO: order drbdadm/drbdsetup to disconnect
+        assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
+    
+    
+    """
+    Update connections
+    * Disconnect from nodes that do not have the same resource
+      connected anymore
+    * Connect to nodes that have newly deployed a resource
+    * Leave valid existing connections untouched
+    """
+    def _update_connections(self, assignment):
+        # TODO:
+        """
+        * Find active connections
+        * ... disconnect those that do not match any
+          of the assignments for that resource.
+        * ... connect those where there is an assignment for that resource
+          but no matching connection
+        """
+        assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
+    
+    
+    """
+    Disconnect, then connect again
+    """
+    def _reconnect(self, assignment):
+        # disconnect
+        self._disconnect(assignment)
+        # connect
+        self._connect(assignment)
+        assignment.clear_tstate_flags(Assignment.FLAG_RECONNECT)
+    
+    
+    def _attach(self, assignment, vol_state):
+        # do not attach clients, because there is no local storage on clients
+        if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
+            # TODO: order drbdadm to attach the volume
+            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+    
+    
+    def _detach(self, assignment, vol_state):
+        # TODO: order drbdadm to attach the volume
+        vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        
     
     @staticmethod
     def name_check(name, length):
@@ -957,6 +1094,7 @@ class Assignment(object):
     TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
                        | FLAG_UPD_CON | FLAG_RECONNECT
                        | FLAG_OVERWRITE | FLAG_DISCARD)
+    ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
     
     NODE_ID_ERROR  = -1
 
@@ -1061,7 +1199,7 @@ class Assignment(object):
     
     
     def disconnect(self):
-        self._tstate = (self._tstate | self.FLAG_CONNECT) | self.FLAG_CONNECT
+        self._tstate = (self._tstate | self.FLAG_CONNECT) ^ self.FLAG_CONNECT
     
     
     def deploy_client(self):
@@ -1098,7 +1236,7 @@ class Assignment(object):
         for vol_state in self._vol_states.itervalues():
             if vol_state.requires_action():
                 req_act = True
-        return (self._cstate != self._tstate) or req_act
+        return ((self._tstate & self.ACT_IGN_MASK) != self._cstate) or req_act
     
     
     def requires_deploy(self):

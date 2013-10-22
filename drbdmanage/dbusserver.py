@@ -83,6 +83,30 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ss", out_signature="i")
+    def connect(self, node_name, resource_name):
+        return self._server.connect(node_name, resource_name)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ss", out_signature="i")
+    def disconnect(self, node_name, resource_name):
+        return self._server.disconnect(node_name, resource_name)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ssi", out_signature="i")
+    def attach(self, node_name, resource_name, volume_id):
+        return self._server.attach(node_name, resource_name, volume_id)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ssi", out_signature="i")
+    def detach(self, node_name, resource_name, volume_id):
+        return self._server.detach(node_name, resource_name, volume_id)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssas", out_signature="i")
     def assign(self, node_name, resource_name, state):
         tstate = 0

@@ -154,6 +154,14 @@ class DrbdManage(object):
             rc = self.cmd_remove_volume(args)
         elif arg == "remove-resource":
             rc = self.cmd_remove_resource(args)
+        elif arg == "connect":
+            rc = self.cmd_connect(args)
+        elif arg == "disconnect":
+            rc = self.cmd_disconnect(args)
+        elif arg == "attach":
+            rc = self.cmd_attach(args)
+        elif arg == "detach":
+            rc = self.cmd_detach(args)
         elif arg == "assign":
             rc = self.cmd_assign(args)
         elif arg == "unassign":
@@ -419,6 +427,148 @@ class DrbdManage(object):
           "The default size unit is GiB.\n")
     
     
+    def cmd_connect(self, args):
+        rc    = 1
+        state = []
+        # Command parser configuration
+        order    = [ "node", "res" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            res_name  = params["res"]
+
+            server_rc = self._server.connect(dbus.String(node_name),
+              dbus.String(res_name))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_connect()
+        return rc
+    
+    
+    def syntax_connect(self):
+        sys.stderr.write("Syntax: connect <node> <resource>\n")
+    
+    
+    def cmd_disconnect(self, args):
+        rc    = 1
+        state = []
+        # Command parser configuration
+        order    = [ "node", "res" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            res_name  = params["res"]
+
+            server_rc = self._server.disconnect(dbus.String(node_name),
+              dbus.String(res_name))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_connect()
+        return rc
+    
+    
+    def syntax_disconnect(self):
+        sys.stderr.write("Syntax: disconnect <node> <resource>\n")
+    
+    
+    def cmd_attach(self, args):
+        rc    = 1
+        state = []
+        # Command parser configuration
+        order    = [ "node", "res", "id" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            res_name  = params["res"]
+            id_str    = params["id"]
+            try:
+                id   = int(id_str)
+            except ValueError:
+                raise SyntaxException
+
+            server_rc = self._server.attach(dbus.String(node_name),
+              dbus.String(res_name), dbus.Int32(id))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_connect()
+        return rc
+    
+    
+    def syntax_attach(self):
+        sys.stderr.write("Syntax: attach <node> <resource> <id>\n")
+    
+    
+    def cmd_detach(self, args):
+        rc    = 1
+        state = []
+        # Command parser configuration
+        order    = [ "node", "res", "id" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            res_name  = params["res"]
+            id_str    = params["id"]
+            try:
+                id   = int(id_str)
+            except ValueError:
+                raise SyntaxException
+
+            server_rc = self._server.detach(dbus.String(node_name),
+              dbus.String(res_name), dbus.Int32(id))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_connect()
+        return rc
+    
+    
+    def syntax_detach(self):
+        sys.stderr.write("Syntax: detach <node> <resource> <id>\n")
+    
+    
     def cmd_assign(self, args):
         rc    = 1
         state = []
@@ -599,8 +749,7 @@ class DrbdManage(object):
         node_list = self._server.node_list()
         if (not machine_readable) and len(node_list) == 0:
             sys.stdout.write("No nodes defined\n")
-        
-        # TODO
+            return 0
         
         if not machine_readable:
             sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
@@ -654,8 +803,7 @@ class DrbdManage(object):
         resource_list = self._server.resource_list()
         if (not machine_readable) and len(resource_list) == 0:
             sys.stdout.write("No volumes defined\n")
-        
-        # TODO
+            return 0
         
         # Header/key for the table
         if not machine_readable:
@@ -727,24 +875,26 @@ class DrbdManage(object):
         assignment_list = self._server.assignment_list()
         if (not machine_readable) and len(assignment_list) == 0:
             sys.stdout.write("No assignments defined\n")
+            return 0
             
-        # TODO
-        
         if not machine_readable:
-            sys.stdout.write("%s%-*s %s%-*s%s %5s %20s%s%s%s\n"
+            sys.stdout.write("%s%-*s%s\n"
                 % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
-                "Node", color(COLOR_DARKGREEN),
+                "Node", color(COLOR_NONE))
+              )
+            sys.stdout.write("  %s%-*s%s %5s %35s%s%s%s\n"
+                % (color(COLOR_DARKGREEN),
                 DrbdResourceView.get_name_maxlen(),
                 "Resource", color(COLOR_NONE),
                 "Node#", "", color(COLOR_RED),
-                "state (current -> target)",
+                "state (crt -> tgt)",
                 color(COLOR_NONE))
               )
             sys.stdout.write("  %s%6s%s %-50s %s%s%s\n"
                 % (color(COLOR_DARKPINK),
                 "Vol#",  color(COLOR_NONE),
                 "Blockdevice path",
-                color(COLOR_DARKRED), "state (current -> target)",
+                color(COLOR_DARKRED), "state (crt -> tgt)",
                 color(COLOR_NONE))
               )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
@@ -755,9 +905,16 @@ class DrbdManage(object):
                 view = AssignmentView(properties, machine_readable)
                 vol_state_list = view.get_volume_states()
                 if not machine_readable:
-                    sys.stdout.write("%s%-*s %s%-*s%s %5d %20s%s%s -> %s%s\n"
-                        % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
-                        view.get_node(), color(COLOR_DARKGREEN),
+                    crt_node = view.get_node()
+                    if crt_node != prev_node:
+                        prev_node = crt_node
+                        sys.stdout.write("%s%-*s%s\n"
+                            % (color(COLOR_TEAL),
+                            DrbdNodeView.get_name_maxlen(), crt_node,
+                            color(COLOR_NONE))
+                          )
+                    sys.stdout.write("  %s%-*s%s %5d %35s%s%s -> %s%s\n"
+                        % (color(COLOR_DARKGREEN),
                         DrbdResourceView.get_name_maxlen(),
                         view.get_resource(), color(COLOR_NONE),
                         view.get_node_id(), "", color(COLOR_RED),
