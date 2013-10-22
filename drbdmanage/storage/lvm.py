@@ -19,33 +19,35 @@ class LVM(object):
     
     LVM_CONFFILE = "/opt/tmp/drbdmanaged-lvm.conf"
     LVM_SAVEFILE = "/opt/tmp/drbdmanaged-lvm.local.bin"
+    
+    CONF_DEFAULTS = {
+      KEY_DEV_PATH : "/dev/mapper/",
+      KEY_VG_NAME  : "drbdpool"
+    }
+    
     _lvs  = None
     _conf = None
-    
-    _lv_prefix = "/dev/mapper/drbdpool-"
-    _vg_name   = "drbdpool"
     
     
     def __init__(self):
         try:
-            self._lvs = dict()
+            self._lvs   = dict()
+            conf_loaded = None
             try:
                 self.load_state()
             except PersistenceException as p_exc:
                 sys.stderr.write("Warning: Cannot load the LVM state file: %s\n"
                   % self.LVM_SAVEFILE)
             try:
-                self._conf = self.load_conf()
+                conf_loaded = self.load_conf()
             except IOError as io_err:
                 sys.stderr.write("Warning: Cannot load the LVM configuration "
                   "file: %s\n" % self.LVM_CONFFILE)
-            if self._conf is not None:
-                val = self._conf.get(self.KEY_VG_NAME)
-                if val is not None:
-                    self._vg_name = val
-                val = self._conf.get(self.KEY_DEV_PATH)
-                if val is not None:
-                    self._lv_prefix = val + self._vg_name + "-"
+            if conf_loaded is None:
+                self._conf = self.CONF_DEFAULTS
+            else:
+                self._conf = ConfFile.conf_defaults_merge(self.CONF_DEFAULTS,
+                  conf_loaded)
         except Exception as exc:
             print exc
     
@@ -56,7 +58,7 @@ class LVM(object):
         try:
             if self._create_lv(lv_name, size) == 0:
                 bd = storagecore.BlockDevice(lv_name, size,
-                  self._lv_prefix + lv_name)
+                  self._lv_path_prefix() + lv_name)
                 self._lvs[lv_name] = bd
                 self.save_state()
         except Exception as exc:
@@ -95,7 +97,7 @@ class LVM(object):
     def _create_lv(self, name, size):
         # FIXME experimental/hardcoded
         lvm_proc = subprocess.Popen(["./lvcreate-dummy", "-n", name, "-L",
-          str(size) + "M", self._vg_name], 0, "./lvcreate-dummy",
+          str(size) + "M", self._conf[self.KEY_VG_NAME]], 0, "./lvcreate-dummy",
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()
         return rc
@@ -103,8 +105,8 @@ class LVM(object):
     
     def _remove_lv(self, name):
         # FIXME experimental/hardcoded
-        lvm_proc = subprocess.Popen(["./lvremove-dummy", self._vg_name
-          + "/" + name], 0, "./lvremove-dummy",
+        lvm_proc = subprocess.Popen(["./lvremove-dummy",
+          self._conf[self.KEY_VG_NAME] + "/" + name], 0, "./lvremove-dummy",
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()
         return rc
@@ -112,6 +114,17 @@ class LVM(object):
     
     def _lv_name(self, name, id):
         return ("%s_%.2d" % (name, id));
+    
+    
+    def _lv_path_prefix(self):
+        vg_name  = self._conf[self.KEY_VG_NAME]
+        dev_path = self._conf[self.KEY_DEV_PATH]
+        if not dev_path.endswith("/"):
+            lv_path_prefix = dev_path + "/" + vg_name + "-"
+        else:
+            lv_path_prefix = dev_path + vg_name + "-"
+        return lv_path_prefix
+        
     
     def load_conf(self):
         file = None

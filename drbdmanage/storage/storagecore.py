@@ -60,6 +60,9 @@ class BlockDeviceManager(object):
     
     def __init__(self, plugin_name):
         self._plugin = self._plugin_import(plugin_name)
+        if self._plugin is None:
+            sys.stderr.write("DEBUG: BlockDeviceManager(): Cannot import the "
+              "storage management plugin (%s)\n" % plugin_name)
     
     
     def create_blockdevice(self, name, id, size):

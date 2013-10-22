@@ -46,10 +46,13 @@ class DrbdManageServer(object):
     KEY_MAX_PORT_NR  = "max-port-nr"
     
     # defaults
-    _max_node_id  =  31
-    _min_minor_nr = 100
-    _min_port_nr  = 7000
-    _max_port_nr  = 7999
+    CONF_DEFAULTS = {
+      KEY_PLUGIN_NAME  : "drbdmanage.storage.lvm.LVM",
+      KEY_MAX_NODE_ID  :   31,
+      KEY_MIN_MINOR_NR :  100,
+      KEY_MIN_PORT_NR  : 7000,
+      KEY_MAX_PORT_NR  : 7999
+    }
     
     # BlockDevice manager
     _bd_mgr    = None
@@ -73,9 +76,6 @@ class DrbdManageServer(object):
     # The hash of the currently loaded configuration
     _conf_hash = None
     
-    # The name of the storage plugin to be loaded into the block device manager
-    _plugin_name = None
-    
     _DEBUG_max_ctr = 0
     
     
@@ -87,7 +87,7 @@ class DrbdManageServer(object):
         self._nodes     = dict()
         self._resources = dict()
         self.load_server_conf()
-        self._bd_mgr    = BlockDeviceManager(self._plugin_name)
+        self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_PLUGIN_NAME])
         self._drbd_mgr  = DrbdManager(self)
         self.load_conf()
         self.init_events()
@@ -156,23 +156,13 @@ class DrbdManageServer(object):
         try:
             file = open(self.CONFFILE, "r")
             conffile = ConfFile(file)
-            conf = conffile.get_conf()
-            if conf is not None:
-                val = conf.get(self.KEY_PLUGIN_NAME)
-                if val is not None:
-                    self._plugin_name = val
-                val = conf.get(self.KEY_MAX_NODE_ID)
-                if val is not None:
-                    self._max_node_id = val
-                val = conf.get(self.KEY_MIN_MINOR_NR)
-                if val is not None:
-                    self._min_minor_nr = val
-                val = conf.get(self.KEY_MIN_PORT_NR)
-                if val is not None:
-                    self._min_port_nr = val
-                val = conf.get(self.KEY_MAX_PORT_NR)
-                if val is not None:
-                    self._max_port_nr = val
+            conf_loaded = conffile.get_conf()
+            if conf_loaded is None:
+                self._conf = (
+                  ConfFile.conf_defaults_merge(self.CONF_DEFAULTS, conf_loaded)
+                  )
+            else:
+                self._conf = self.CONF_DEFAULTS
         except IOError as io_err:
             sys.stderr.write("Warning: Cannot open drbdmanage configuration "
               "file %s\n" % (self.CONFFILE))
@@ -1017,13 +1007,14 @@ class DrbdManageServer(object):
     
     def get_free_minor_nr(self):
         minor_list = []
+        min_nr = self._conf[self.KEY_MIN_MINOR_NR]
         for resource in self._resources.itervalues():
             for vol in resource.iterate_volumes():
                 minor_obj = vol.get_minor()
                 nr = minor_obj.get_value()
-                if nr >= self._min_minor_nr and nr <= MinorNr.MINOR_NR_MAX:
+                if nr >= min_nr and nr <= MinorNr.MINOR_NR_MAX:
                     minor_list.append(nr)
-        minor_nr = get_free_number(self._min_minor_nr, MinorNr.MINOR_NR_MAX,
+        minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
           minor_list)
         if minor_nr == -1:
             minor_nr = MinorNr.MINOR_NR_ERROR
@@ -1031,13 +1022,14 @@ class DrbdManageServer(object):
     
     
     def get_free_port_nr(self):
+        min_nr    = self._conf[self.KEY_MIN_PORT_NR]
+        max_nr    = self._conf[self.KEY_MAX_PORT_NR]
         port_list = []
         for resource in self._resources.itervalues():
             nr = resource.get_port()
-            if nr >= self._min_port_nr and nr <= self._max_port_nr:
+            if nr >= min_nr and nr <= max_nr:
                 port_list.append(nr)
-        port = get_free_number(self._min_port_nr, self._max_port_nr,
-          port_list)
+        port = get_free_number(min_nr, max_nr, port_list)
         if port == -1:
             port = DrbdResource.PORT_NR_ERROR
         return port
@@ -1047,9 +1039,9 @@ class DrbdManageServer(object):
         id_list = []
         for assg in resource.iterate_assignments():
             id = assg.get_node_id()
-            if id >= 0 and id <= self._max_node_id:
+            if id >= 0 and id <= self._conf[self.KEY_MAX_NODE_ID]:
                 id_list.append(id)
-        node_id = get_free_number(0, self._max_node_id, id_list)
+        node_id = get_free_number(0, self._conf[self.KEY_MAX_NODE_ID], id_list)
         if node_id == -1:
             node_id = Assignment.NODE_ID_ERROR
         return node_id

@@ -219,9 +219,9 @@ class DrbdManager(object):
 
             if resource is None:
                 sys.stderr.write("DEBUG: resource == NULL\n")
-
-            bd = bd_mgr.create_blockdevice(resource.get_name(), volume.get_id(),
-              volume.get_size_MiB())
+            
+            bd = bd_mgr.create_blockdevice(resource.get_name(),
+              volume.get_id(), volume.get_size_MiB())
             if bd is not None:
                 vol_state.set_blockdevice(bd.get_name(), bd.get_path())
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)

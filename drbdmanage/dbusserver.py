@@ -13,6 +13,7 @@ from drbdmanage.exceptions import *
 
 # TODO: DEBUG: used for debug code only
 from drbdmanage.drbd.persistence import *
+import drbdmanage.conf.conffile
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 4:43:41 PM$"
@@ -241,6 +242,19 @@ class DBusServer(dbus.service.Object):
                         sys.stdout.write("    %d: %d (%s,%s)\n"
                           % (vol_st.get_id(),
                           vol_st.get_volume().get_size_MiB(), deploy, attach))
+            """
+            BEGIN Test DrbdAdmConf drbdadm config file writer
+            """
+            """
+            conffile = drbdmanage.conf.conffile.DrbdAdmConf()
+            for node in self._server.iterate_nodes():
+                for assg in node.iterate_assignments():
+                    conffile.write(assg, sys.stdout)
+                    sys.stdout.write("\n")
+            """
+            """
+            END Test DrbdAdmConf drbdadm config file writer
+            """
             sys.stdout.write("--------------------\n\n")
         except Exception:
             sys.stderr.write("Caught exception:\n"

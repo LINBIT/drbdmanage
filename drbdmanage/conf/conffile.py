@@ -6,8 +6,10 @@ __date__ ="$Oct 10, 2013 9:57:03 AM$"
 class ConfFile(object):
     _input = None
     
+    
     def __init__(self, stream):
         self._input = stream
+    
     
     def get_conf(self):
         input        = self._input
@@ -50,6 +52,43 @@ class ConfFile(object):
                 val = None
         if key is not None:
             conf[key] = val
+        return conf
+    
+    
+    """
+    Override values from the default configuration with values from a
+    configuration loaded from a configuration file, without importing
+    any keys that had not been defined in the default configuration.
+    The new configuration contains only keys from the default configuration.
+    """
+    @classmethod
+    def conf_defaults_merge(cls, conf_defaults, conf_loaded):
+        conf = dict()
+        for key in conf_defaults.iterkeys():
+            val = conf_loaded(key)
+            if val is not None:
+                conf[key] = val
+            else:
+                conf[key] = conf_defaults.get(key)
+        return conf
+    
+    
+    """
+    Override values from the default configuration with values from a
+    configuration loaded from a configuration file, and also load new
+    key/value pairs into the new configuration.
+    The new configuration contains all keys from the default configuration
+    plus any keys defined by the configuration loaded from the configuration
+    file.
+    """
+    @classmethod
+    def conf_defaults_union(cls, conf_defaults, conf_loaded):
+        conf = dict()
+        conf = self.conf_defaults_merge(conf_defaults, conf_loaded)
+        for key in conf_loaded.iterkeys():
+            val = conf.get(key)
+            if val is None:
+                conf[key] = conf_loaded.get(key)
         return conf
     
     
@@ -187,20 +226,23 @@ class DrbdAdmConf(object):
               )
             
             # begin resource/volumes
-            for volume in assignment.iterate_volumes():
+            for volume in resource.iterate_volumes():
+                vol_state = assignment.get_volume_state(volume.get_id())
+                if vol_state is None:
+                    raise ValueError
+                bd_path = vol_state.get_bd_path()
+                if bd_path is None:
+                    raise ValueError
                 minor = volume.get_minor()
                 if minor is None:
                     raise InvalidMinorNrException
-                bd_path = volume.get_bd_path()
-                if bd_path is None:
-                    raise ValueError
                 stream.write("    volume %d {\n"
                   "        device /dev/drbd%d minor %d;\n"
                   "        disk %s;\n"
                   "        meta-disk internal;\n"
                   "    }\n"
                   % (volume.get_id(), minor.get_value(), minor.get_value(),
-                    volume.get_bd_path())
+                    bd_path)
                   )
             # end resource/volumes
             
@@ -233,7 +275,7 @@ class DrbdAdmConf(object):
             
             stream.write("}\n")
             # end resource
-        except Exception:
+        except Exception as exc:
             # TODO: handle errors (stream I/O?)
             print exc
         
