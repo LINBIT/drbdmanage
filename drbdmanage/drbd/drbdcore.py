@@ -3,6 +3,9 @@
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
+import subprocess
+import drbdmanage.conf.conffile
+
 """
 WARNING!
   do not import anything from drbdmanage.drbd.persistence
@@ -216,15 +219,49 @@ class DrbdManager(object):
             bd_mgr   = self._server.get_bd_mgr()
             resource = assignment.get_resource()
             volume   = vol_state.get_volume()
+            minor    = volume.get_minor()
 
             if resource is None:
                 sys.stderr.write("DEBUG: resource == NULL\n")
             
             bd = bd_mgr.create_blockdevice(resource.get_name(),
               volume.get_id(), volume.get_size_MiB())
+            
             if bd is not None:
                 vol_state.set_blockdevice(bd.get_name(), bd.get_path())
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                
+                # DEBUG
+                drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+                drbdadm_conf.write(sys.stdout, assignment, False)
+                
+                # FIXME
+                # begin experimental
+                # call drbdadm to initialize the DRBD on top of the blockdevice
+                drbd_md = self._server.get_conf_value(
+                  self._server.KEY_CMD_CREATEMD)
+                args = [drbd_md, str(minor.get_value()), bd.get_path()]
+                drbd_proc = subprocess.Popen(args, 0, drbd_md,
+                  stdin=subprocess.PIPE)
+                drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+                drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                rc = drbd_proc.wait()
+                # end experimental
+                
+                # FIXME
+                # begin experimental
+                # call drbdadm to bring up the resource
+                drbd_adj = self._server.get_conf_value(
+                  self._server.KEY_CMD_ADJUST)
+                args = [drbd_adj, resource.get_name()]
+                drbd_proc = subprocess.Popen(args, 0, drbd_adj,
+                  stdin=subprocess.PIPE)
+                drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+                drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                rc = drbd_proc.wait()
+                # end experimental
         else:
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
     
@@ -237,6 +274,12 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
+       
+        # TODO: tear a single volume down?
+        # FIXME: check return code received from bd_mgr
+        self._detach(assignment, vol_state)
+        bd_mgr.remove_blockdevice(resource.get_name(),
+          volume.get_id())
         
         tstate = assignment.get_tstate()
         if not (tstate & Assignment.FLAG_DISKLESS) != 0:
@@ -267,8 +310,22 @@ class DrbdManager(object):
     values, so it can be removed by the cleanup function.
     """
     def _undeploy_assignment(self, assignment):
+        resource = assignment.get_resource()
         for vol_state in assignment.iterate_volume_states():
             self._undeploy_volume(assignment, vol_state)
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
+        drbd_down = self._server.get_conf_value(
+          self._server.KEY_CMD_DOWN)
+        args = [drbd_down, resource.get_name()]
+        drbd_proc = subprocess.Popen(args, 0, drbd_down,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, True)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         assignment.set_cstate(0)
         assignment.set_tstate(0)
     
@@ -277,7 +334,21 @@ class DrbdManager(object):
     Connect a resource on the current node to all peer nodes
     """
     def _connect(self, assignment):
+        resource = assignment.get_resource()
         # TODO: order drbdadm to connect (full mesh)
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
+        drbd_conn = self._server.get_conf_value(
+          self._server.KEY_CMD_CONNECT)
+        args = [drbd_conn, resource.get_name()]
+        drbd_proc = subprocess.Popen(args, 0, drbd_conn,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
     
     
@@ -285,7 +356,21 @@ class DrbdManager(object):
     Disconnect a resource on the current node from all peer nodes
     """
     def _disconnect(self, assignment):
+        resource = assignment.get_resource()
         # TODO: order drbdadm/drbdsetup to disconnect
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
+        drbd_dconn = self._server.get_conf_value(
+          self._server.KEY_CMD_DISCONNECT)
+        args = [drbd_dconn, resource.get_name()]
+        drbd_proc = subprocess.Popen(args, 0, drbd_dconn,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, True)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
     
     
@@ -297,6 +382,7 @@ class DrbdManager(object):
     * Leave valid existing connections untouched
     """
     def _update_connections(self, assignment):
+        resource = assignment.get_resource()
         # TODO:
         """
         * Find active connections
@@ -305,6 +391,19 @@ class DrbdManager(object):
         * ... connect those where there is an assignment for that resource
           but no matching connection
         """
+        # FIXME
+        # begin experimental
+        # call drbdadm to update connections
+        drbd_uconn = self._server.get_conf_value(
+          self._server.KEY_CMD_ADJUST)
+        args = [drbd_uconn, resource.get_name()]
+        drbd_proc = subprocess.Popen(args, 0, drbd_uconn,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
     
     
@@ -320,14 +419,42 @@ class DrbdManager(object):
     
     
     def _attach(self, assignment, vol_state):
+        resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
+        drbd_atch = self._server.get_conf_value(
+          self._server.KEY_CMD_ATTACH)
+        args = [drbd_atch, resource.get_name(), str(vol_state.get_id())]
+        drbd_proc = subprocess.Popen(args, 0, drbd_atch,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
             # TODO: order drbdadm to attach the volume
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
     
     
     def _detach(self, assignment, vol_state):
+        resource = assignment.get_resource()
         # TODO: order drbdadm to attach the volume
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
+        drbd_dtch = self._server.get_conf_value(
+          self._server.KEY_CMD_DETACH)
+        args = [drbd_dtch, resource.get_name(), str(vol_state.get_id())]
+        drbd_proc = subprocess.Popen(args, 0, drbd_dtch,
+          stdin=subprocess.PIPE)
+        drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+        drbdadm_conf.write(drbd_proc.stdin, assignment, True)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
         vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         
     
@@ -390,7 +517,7 @@ class DrbdResource(object):
     
     def __init__(self, name, port):
         self._name        = self.name_check(name)
-        self._secret      = ""
+        self._secret      = "default"
         self._port        = port
         self._state       = 0
         self._volumes     = dict()
@@ -418,10 +545,9 @@ class DrbdResource(object):
         return self._assignments.get(name)
     
     
-    def remove_assignment(self, name):
-        node = self._assignments.get(name)
-        if node is not None:
-            del self._assignments[node.get_name()]
+    def remove_assignment(self, assignment):
+        node = assignment.get_node()
+        del self._assignments[node.get_name()]
     
     
     def iterate_assignments(self):

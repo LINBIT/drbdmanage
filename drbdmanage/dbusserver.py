@@ -242,16 +242,19 @@ class DBusServer(dbus.service.Object):
                         sys.stdout.write("    %d: %d (%s,%s)\n"
                           % (vol_st.get_id(),
                           vol_st.get_volume().get_size_MiB(), deploy, attach))
+            for key in self._server._conf.iterkeys():
+                sys.stdout.write("conf[%s] = (%s)\n" % (key,
+                  self._server._conf[key]))
             """
             BEGIN Test DrbdAdmConf drbdadm config file writer
             """
-            """
             conffile = drbdmanage.conf.conffile.DrbdAdmConf()
-            for node in self._server.iterate_nodes():
-                for assg in node.iterate_assignments():
-                    conffile.write(assg, sys.stdout)
+            for resource in self._server.iterate_resources():
+                for assg in resource.iterate_assignments():
+                    conffile.write(sys.stdout, assg, True)
                     sys.stdout.write("\n")
-            """
+                    # quick'n'dirty print the first assignment only
+                    break
             """
             END Test DrbdAdmConf drbdadm config file writer
             """

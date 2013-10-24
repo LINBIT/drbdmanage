@@ -45,13 +45,30 @@ class DrbdManageServer(object):
     KEY_MIN_PORT_NR  = "min-port-nr"
     KEY_MAX_PORT_NR  = "max-port-nr"
     
+    KEY_CMD_UP         = "cmd-up"
+    KEY_CMD_DOWN       = "cmd-down"
+    KEY_CMD_ATTACH     = "cmd-attach"
+    KEY_CMD_DETACH     = "cmd-detach"
+    KEY_CMD_CONNECT    = "cmd-connect"
+    KEY_CMD_DISCONNECT = "cmd-disconnect"
+    KEY_CMD_CREATEMD   = "cmd-create-md"
+    KEY_CMD_ADJUST     = "cmd-adjust"
+    
     # defaults
     CONF_DEFAULTS = {
       KEY_PLUGIN_NAME  : "drbdmanage.storage.lvm.LVM",
       KEY_MAX_NODE_ID  :   31,
       KEY_MIN_MINOR_NR :  100,
       KEY_MIN_PORT_NR  : 7000,
-      KEY_MAX_PORT_NR  : 7999
+      KEY_MAX_PORT_NR  : 7999,
+      KEY_CMD_UP         : "dm-up",
+      KEY_CMD_DOWN       : "dm-down",
+      KEY_CMD_ATTACH     : "dm-attach",
+      KEY_CMD_DETACH     : "dm-detach",
+      KEY_CMD_CONNECT    : "dm-connect",
+      KEY_CMD_DISCONNECT : "dm-disconnect",
+      KEY_CMD_CREATEMD   : "dm-create-md",
+      KEY_CMD_ADJUST     : "dm-adjust"
     }
     
     # BlockDevice manager
@@ -157,7 +174,7 @@ class DrbdManageServer(object):
             file = open(self.CONFFILE, "r")
             conffile = ConfFile(file)
             conf_loaded = conffile.get_conf()
-            if conf_loaded is None:
+            if conf_loaded is not None:
                 self._conf = (
                   ConfFile.conf_defaults_merge(self.CONF_DEFAULTS, conf_loaded)
                   )
@@ -169,6 +186,10 @@ class DrbdManageServer(object):
         finally:
             if file is not None:
                 file.close()
+    
+    
+    def get_conf_value(self, key):
+        return self._conf.get(key)
     
     
     def get_drbd_mgr(self):
@@ -361,6 +382,9 @@ class DrbdManageServer(object):
                 resource = self._resources[name]
                 if (not force) and resource.has_assignments():
                     for assg in resource.iterate_assignments():
+                        sys.stderr.write("DEBUG: remove-resource: undeploying "
+                          "assignment %s:%s\n" % (assg.get_node().get_name(),
+                          assg.get_resource().get_name()))
                         assg.undeploy()
                     resource.remove()
                     self._drbd_mgr.perform_changes()
@@ -587,8 +611,7 @@ class DrbdManageServer(object):
                 assignment.disconnect()
                 assignment.undeploy()
             else:
-                node.remove_assignment(assignment)
-                resource.remove_assignment(assignment)
+                assignment.remove()
             for assignment in node.iterate_assignments():
                 if assignment.get_node() != node \
                   and assignment.is_deployed():
@@ -801,6 +824,7 @@ class DrbdManageServer(object):
                         if volume is not None:
                             if vol_state.get_cstate() \
                               & DrbdVolumeState.FLAG_DEPLOY != 0:
+                                # delete the volume from the removal list
                                 del volumes[vol_state.get_id()]
                             else:
                                 removable.append(vol_state)
@@ -985,20 +1009,14 @@ class DrbdManageServer(object):
     
     def reconfigure(self):
         rc      = DM_EPERSIST
-        persist = None
         try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                self._drbd_mgr.perform_changes()
-                self.save_conf_data(persist)
-                rc = DM_SUCCESS
+            self.load_server_conf()
+            rc = self.load_conf()
         except PersistenceException:
             pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
-        finally:
-            self.end_modify_conf(persist)
         return rc
     
     def shutdown(self):
@@ -1006,43 +1024,57 @@ class DrbdManageServer(object):
     
     
     def get_free_minor_nr(self):
-        minor_list = []
-        min_nr = self._conf[self.KEY_MIN_MINOR_NR]
-        for resource in self._resources.itervalues():
-            for vol in resource.iterate_volumes():
-                minor_obj = vol.get_minor()
-                nr = minor_obj.get_value()
-                if nr >= min_nr and nr <= MinorNr.MINOR_NR_MAX:
-                    minor_list.append(nr)
-        minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
-          minor_list)
-        if minor_nr == -1:
+        try:
+            min_nr = int(self._conf[self.KEY_MIN_MINOR_NR])
+            
+            minor_list = []
+            for resource in self._resources.itervalues():
+                for vol in resource.iterate_volumes():
+                    minor_obj = vol.get_minor()
+                    nr = minor_obj.get_value()
+                    if nr >= min_nr and nr <= MinorNr.MINOR_NR_MAX:
+                        minor_list.append(nr)
+            minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
+              minor_list)
+            if minor_nr == -1:
+                raise ValueError
+        except ValueError:
             minor_nr = MinorNr.MINOR_NR_ERROR
         return minor_nr
     
     
     def get_free_port_nr(self):
-        min_nr    = self._conf[self.KEY_MIN_PORT_NR]
-        max_nr    = self._conf[self.KEY_MAX_PORT_NR]
-        port_list = []
-        for resource in self._resources.itervalues():
-            nr = resource.get_port()
-            if nr >= min_nr and nr <= max_nr:
-                port_list.append(nr)
-        port = get_free_number(min_nr, max_nr, port_list)
-        if port == -1:
+        try:
+            min_nr    = int(self._conf[self.KEY_MIN_PORT_NR])
+            max_nr    = int(self._conf[self.KEY_MAX_PORT_NR])
+            
+            port_list = []
+            for resource in self._resources.itervalues():
+                nr = resource.get_port()
+                if nr >= min_nr and nr <= max_nr:
+                    port_list.append(nr)
+            port = get_free_number(min_nr, max_nr, port_list)
+            if port == -1:
+                raise ValueError
+        except ValueError:
             port = DrbdResource.PORT_NR_ERROR
         return port
     
     
     def get_free_node_id(self, resource):
-        id_list = []
-        for assg in resource.iterate_assignments():
-            id = assg.get_node_id()
-            if id >= 0 and id <= self._conf[self.KEY_MAX_NODE_ID]:
-                id_list.append(id)
-        node_id = get_free_number(0, self._conf[self.KEY_MAX_NODE_ID], id_list)
-        if node_id == -1:
+        try:
+            max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
+            
+            id_list = []
+            for assg in resource.iterate_assignments():
+                id = assg.get_node_id()
+                if id >= 0 and id <= int(max_node_id):
+                    id_list.append(id)
+            node_id = get_free_number(0, int(max_node_id),
+              id_list)
+            if node_id == -1:
+                raise ValueError
+        except ValueError:
             node_id = Assignment.NODE_ID_ERROR
         return node_id
     

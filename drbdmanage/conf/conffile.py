@@ -3,6 +3,9 @@
 __author__="raltnoeder"
 __date__ ="$Oct 10, 2013 9:57:03 AM$"
 
+import sys
+from drbdmanage.exceptions import *
+
 class ConfFile(object):
     _input = None
     
@@ -65,7 +68,7 @@ class ConfFile(object):
     def conf_defaults_merge(cls, conf_defaults, conf_loaded):
         conf = dict()
         for key in conf_defaults.iterkeys():
-            val = conf_loaded(key)
+            val = conf_loaded.get(key)
             if val is not None:
                 conf[key] = val
             else:
@@ -209,7 +212,7 @@ class DrbdAdmConf(object):
         pass
     
     
-    def write(self, assignment, stream):
+    def write(self, stream, assignment, undeployed_flag):
         try:
             resource = assignment.get_resource()
             secret   = resource.get_secret()
@@ -232,7 +235,7 @@ class DrbdAdmConf(object):
                     raise ValueError
                 bd_path = vol_state.get_bd_path()
                 if bd_path is None:
-                    raise ValueError
+                    bd_path = ""
                 minor = volume.get_minor()
                 if minor is None:
                     raise InvalidMinorNrException
@@ -248,14 +251,16 @@ class DrbdAdmConf(object):
             
             # begin resource/nodes
             for assignment in resource.iterate_assignments():
-                node = assignment.get_node()
-                stream.write("    on %s {\n"
-                  "        node-id %s;\n"
-                  "        address %s:%d;\n"
-                  "    }\n"
-                  % (node.get_name(), assignment.get_node_id(), node.get_ip(),
-                    resource.get_port())
-                  )
+                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0)
+                  or undeployed_flag):
+                    node = assignment.get_node()
+                    stream.write("    on %s {\n"
+                      "        node-id %s;\n"
+                      "        address %s:%d;\n"
+                      "    }\n"
+                      % (node.get_name(), assignment.get_node_id(),
+                        node.get_ip(), resource.get_port())
+                      )
             # end resource/nodes
             
             # begin resource/connection
@@ -263,8 +268,10 @@ class DrbdAdmConf(object):
               "        hosts"
               )
             for assignment in resource.iterate_assignments():
-                node = assignment.get_node()
-                stream.write(" %s" % (node.get_name()))
+                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0)
+                  or undeployed_flag):
+                    node = assignment.get_node()
+                    stream.write(" %s" % (node.get_name()))
             stream.write(";\n")
             stream.write("        net {\n"
               "            protocol C;\n"
@@ -275,7 +282,8 @@ class DrbdAdmConf(object):
             
             stream.write("}\n")
             # end resource
+        except InvalidMinorNrException as min_exc:
+            sys.stderr.write("DEBUG: DrbdAdmConf: No minor number\n")
         except Exception as exc:
             # TODO: handle errors (stream I/O?)
             print exc
-        
