@@ -90,6 +90,10 @@ class BlockDeviceManager(object):
         return DM_ENOENT
     
     
+    def update_pool(self, drbdnode):
+        return self._plugin.update_pool(drbdnode)
+    
+    
     def reconfigure(self):
         return self._plugin.reconfigure()
     
@@ -208,6 +212,10 @@ class StoragePlugin(object):
     
     
     def down_blockdevice(self, blockdevice):
+        raise NotImplementedError
+    
+    
+    def update_pool(self, drbdnode):
         raise NotImplementedError
     
     

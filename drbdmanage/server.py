@@ -53,6 +53,8 @@ class DrbdManageServer(object):
     KEY_CMD_DISCONNECT = "cmd-disconnect"
     KEY_CMD_CREATEMD   = "cmd-create-md"
     KEY_CMD_ADJUST     = "cmd-adjust"
+    KEY_DRBDADM_PATH   = "drbdadm-path"
+    KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
     # defaults
     CONF_DEFAULTS = {
@@ -68,7 +70,9 @@ class DrbdManageServer(object):
       KEY_CMD_CONNECT    : "dm-connect",
       KEY_CMD_DISCONNECT : "dm-disconnect",
       KEY_CMD_CREATEMD   : "dm-create-md",
-      KEY_CMD_ADJUST     : "dm-adjust"
+      KEY_CMD_ADJUST     : "dm-adjust",
+      KEY_DRBDADM_PATH   : "/usr/local/sbin",
+      KEY_DRBD_CONFPATH  : "/etc/drbd.d"
     }
     
     # BlockDevice manager
@@ -497,7 +501,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def assign(self, node_name, resource_name, tstate):
+    def assign(self, node_name, resource_name, cstate, tstate):
         """
         Assigns a resource to a node
         * Orders all participating nodes to deploy all volumes of
@@ -524,7 +528,7 @@ class DrbdManageServer(object):
                           and (tstate & Assignment.FLAG_OVERWRITE) != 0):
                             rc = DM_EINVAL
                         else:
-                            rc = self._assign(node, resource, tstate)
+                            rc = self._assign(node, resource, cstate, tstate)
                             if rc == DM_SUCCESS:
                                 self._drbd_mgr.perform_changes()
                                 self.save_conf_data(persist)
@@ -571,7 +575,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def _assign(self, node, resource, tstate):
+    def _assign(self, node, resource, cstate, tstate):
         """
         Implementation - see assign()
         """
@@ -584,7 +588,8 @@ class DrbdManageServer(object):
             else:
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
-                assignment = Assignment(node, resource, node_id, 0, tstate)
+                assignment = Assignment(node, resource, node_id,
+                  cstate, tstate)
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
                     if tstate & Assignment.FLAG_DISKLESS == 0:
@@ -623,9 +628,44 @@ class DrbdManageServer(object):
         return DM_SUCCESS
     
     
-    def connect(self, node_name, resource_name):
+    def modify_state(self, node_name, resource_name,
+      cstate_clear_mask, cstate_set_mask, tstate_clear_mask, tstate_set_mask):
         """
-        Set the CONNECT flag on a resource's target state
+        Modifies the tstate (target state) of an assignment
+        """
+        rc      = DM_EPERSIST
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node = self._nodes.get(node_name)
+                if node is None:
+                    rc = DM_ENOENT
+                else:
+                    assg = node.get_assignment(resource_name)
+                    if assg is None:
+                        rc = DM_ENOENT
+                    else:
+                        assg.clear_cstate_flags(cstate_clear_mask)
+                        assg.set_cstate_flags(cstate_set_mask)
+                        assg.clear_tstate_flags(tstate_clear_mask)
+                        assg.set_tstate_flags(tstate_set_mask)
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def connect(self, node_name, resource_name, reconnect):
+        """
+        Set the CONNECT or RECONNECT flag on a resource's target state
         """
         rc = DM_EPERSIST
         node     = None
@@ -643,7 +683,10 @@ class DrbdManageServer(object):
                     if assignment is None:
                         rc = DM_ENOENT
                     else:
-                        assignment.connect()
+                        if reconnect:
+                            assignment.reconnect()
+                        else:
+                            assignment.connect()
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
                         rc = DM_SUCCESS
@@ -996,6 +1039,49 @@ class DrbdManageServer(object):
             pass
     
     
+    # TODO: more precise error handling
+    def export_conf(self, res_name):
+        rc = DM_SUCCESS
+        node = self.get_instance_node()
+        if node is not None:
+            if res_name is None:
+                res_name = ""
+            if len(res_name) > 0 and res_name != "*":
+                assg = node.get_assignment(res_name)
+                if assg is not None:
+                    if self._export_assignment_conf(assg) != 0:
+                        rc = DM_DEBUG
+                else:
+                    rc = DM_ENOENT
+            else:
+                for assg in node.iterate_assignments():
+                    if self._export_assignment_conf(assg) != 0:
+                        rc = DM_DEBUG
+        return rc
+    
+    
+    def _export_assignment_conf(self, assignment):
+        rc = 0
+        resource = assignment.get_resource()
+        file_path = self._conf[self.KEY_DRBD_CONFPATH]
+        if not file_path.endswith("/"):
+            file_path += "/"
+        file_path += "drbdmanage_" + resource.get_name() + ".res"
+        assg_conf = None
+        try:
+            assg_conf = open(file_path, "w")
+            writer    = DrbdAdmConf()
+            writer.write(assg_conf, assignment, False)
+        except IOError as ioerr:
+            sys.stderr.write("Cannot write configuration file '%s'\n"
+              % (file_path))
+            rc = 1
+        finally:
+            if assg_conf is not None:
+                assg_conf.close()
+        return rc
+    
+    
     def get_conf_hash(self):
         return self._conf_hash
     
@@ -1012,12 +1098,15 @@ class DrbdManageServer(object):
         try:
             self.load_server_conf()
             rc = self.load_conf()
+            self._drbd_mgr.reconfigure()
+            self._bd_mgr.reconfigure()
         except PersistenceException:
             pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
         return rc
+    
     
     def shutdown(self):
         exit(0)

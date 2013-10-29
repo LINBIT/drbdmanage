@@ -84,15 +84,25 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="ss", out_signature="i")
-    def connect(self, node_name, resource_name):
-        return self._server.connect(node_name, resource_name)
+      in_signature="ssb", out_signature="i")
+    def connect(self, node_name, resource_name, reconnect):
+        return self._server.connect(node_name, resource_name, reconnect)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ss", out_signature="i")
     def disconnect(self, node_name, resource_name):
         return self._server.disconnect(node_name, resource_name)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ssxxxx", out_signature="i")
+    def modify_state(self, node_name, resource_name,
+      cstate_clear_mask, cstate_set_mask,
+      tstate_clear_mask, tstate_set_mask):
+        return self._server.modify_state(node_name, resource_name,
+          cstate_clear_mask, cstate_set_mask,
+          tstate_clear_mask, tstate_set_mask)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -108,22 +118,10 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="ssas", out_signature="i")
-    def assign(self, node_name, resource_name, state):
-        tstate = 0
-        for opt in state:
-            if opt == "client":
-                tstate = tstate | Assignment.FLAG_DISKLESS
-            elif opt == "overwrite":
-                tstate = tstate | Assignment.FLAG_OVERWRITE
-            elif opt == "discard":
-                tstate = tstate | Assignment.FLAG_DISCARD
-            elif opt == "connect":
-                tstate = tstate | Assignment.FLAG_CONNECT
-            else:
-                return DM_EINVAL
+      in_signature="ssii", out_signature="i")
+    def assign(self, node_name, resource_name, cstate, tstate):
         tstate = tstate | Assignment.FLAG_DEPLOY
-        return self._server.assign(node_name, resource_name, tstate)
+        return self._server.assign(node_name, resource_name, cstate, tstate)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -148,6 +146,12 @@ class DBusServer(dbus.service.Object):
       in_signature="", out_signature="a(ssixxa(isxx))")
     def assignment_list(self):
         return self._server.assignment_list()
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="s", out_signature="i")
+    def export_conf(self, resource):
+        return self._server.export_conf(resource)
     
     
     # DEBUG

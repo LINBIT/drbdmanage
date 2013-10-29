@@ -8,6 +8,7 @@ from drbdmanage.utils import *
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import DrbdResource
+from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import DrbdNodeView
 from drbdmanage.drbd.drbdcore import DrbdResourceView
@@ -155,9 +156,13 @@ class DrbdManage(object):
         elif arg == "remove-resource":
             rc = self.cmd_remove_resource(args)
         elif arg == "connect":
-            rc = self.cmd_connect(args)
+            rc = self.cmd_connect(args, False)
+        elif arg == "reconnect":
+            rc = self.cmd_connect(args, True)
         elif arg == "disconnect":
             rc = self.cmd_disconnect(args)
+        elif arg == "flags":
+            rc = self.cmd_flags(args)
         elif arg == "attach":
             rc = self.cmd_attach(args)
         elif arg == "detach":
@@ -176,6 +181,8 @@ class DrbdManage(object):
             rc = self.cmd_shutdown(args)
         elif arg == "debug":
             rc = self._server.debug_cmd("list")
+        elif arg == "export":
+            rc = self.cmd_export_conf(args)
         elif arg == "exit":
             exit(0)
         else:
@@ -427,7 +434,7 @@ class DrbdManage(object):
           "The default size unit is GiB.\n")
     
     
-    def cmd_connect(self, args):
+    def cmd_connect(self, args, reconnect):
         rc    = 1
         state = []
         # Command parser configuration
@@ -444,20 +451,24 @@ class DrbdManage(object):
 
             node_name = params["node"]
             res_name  = params["res"]
-
+            
             server_rc = self._server.connect(dbus.String(node_name),
-              dbus.String(res_name))
+              dbus.String(res_name), dbus.Boolean(reconnect))
             if server_rc == 0:
                 rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
-            self.syntax_connect()
+            self.syntax_connect(reconnect)
         return rc
     
     
-    def syntax_connect(self):
-        sys.stderr.write("Syntax: connect <node> <resource>\n")
+    def syntax_connect(self, reconnect):
+        if reconnect:
+            cmd = "reconnect"
+        else:
+            cmd = "connect"
+        sys.stderr.write("Syntax: %s <node> <resource>\n" % (cmd))
     
     
     def cmd_disconnect(self, args):
@@ -491,6 +502,77 @@ class DrbdManage(object):
     
     def syntax_disconnect(self):
         sys.stderr.write("Syntax: disconnect <node> <resource>\n")
+    
+    
+    def cmd_flags(self, args):
+        rc         = 1
+        clear_mask = 0
+        set_mask   = 0
+        node_name  = None
+        res_name   = None
+        # Command parser configuration
+        try:
+            crt_arg = args.next_arg()
+            while crt_arg is not None:
+                flag = 0
+                if crt_arg.startswith("-"):
+                    if crt_arg.startswith("--reconnect="):
+                        flag = Assignment.FLAG_RECONNECT
+                    elif crt_arg.startswith("--updcon="):
+                        flag = Assignment.FLAG_UPD_CON
+                    elif crt_arg.startswith("--overwrite="):
+                        flag = Assignment.FLAG_OVERWRITE
+                    elif crt_arg.startswith("--discard="):
+                        flag = Assignment.FLAG_DISCARD
+                    else:
+                        raise SyntaxException
+                    val = self._cmd_flags_val(crt_arg)
+                    if val == "0":
+                        clear_mask = clear_mask | flag
+                    elif val == "1":
+                        set_mask = set_mask | flag
+                    else:
+                        raise SyntaxException
+                else:
+                    if node_name is None:
+                        node_name = crt_arg
+                    elif res_name is None:
+                        res_name = crt_arg
+                    else:
+                        raise SyntaxException
+                
+                crt_arg = args.next_arg()
+            
+            if node_name is None or res_name is None:
+                raise SyntaxException
+            
+            server_rc = self._server.modify_state(dbus.String(node_name),
+              dbus.String(res_name), dbus.Int64(0), dbus.Int64(0),
+              dbus.Int64(clear_mask), dbus.Int64(set_mask))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_flags()
+        return rc
+    
+    
+    def syntax_flags(self):
+        sys.stderr.write("Syntax: flags <node> <resource> [ flags ]\n"
+          "  flags:\n"
+          "          --reconnect={0|1}\n"
+          "          --updcon={0|1}\n"
+          "          --overwrite={0|1}\n"
+          "          --discard={0|1}\n")
+    
+    
+    def _cmd_flags_val(self, arg):
+        val = ""
+        idx = arg.find("=")
+        if idx != -1:
+            val = arg[idx + 1:]
+        return val
     
     
     def cmd_attach(self, args):
@@ -571,7 +653,8 @@ class DrbdManage(object):
     
     def cmd_assign(self, args):
         rc    = 1
-        state = []
+        cstate = 0
+        tstate = 0
         # Command parser configuration
         order    = [ "node", "vol" ]
         params   = {}
@@ -602,15 +685,15 @@ class DrbdManage(object):
                 "are mutually exclusive options\n")
                 raise SyntaxException
             if client:
-                state.append("client")
+                tstate = tstate | Assignment.FLAG_DISKLESS
             if overwrite:
-                state.append("overwrite")
+                tstate = tstate | Assignment.FLAG_OVERWRITE
             if discard:
-                state.append("discard")
+                tstate = tstate | Assignment.FLAG_DISCARD
             if connect:
-                state.append("connect")
+                tstate = tstate | Assignment.FLAG_CONNECT
             server_rc = self._server.assign(dbus.String(node_name),
-              dbus.String(vol_name), dbus.Array(state, signature="s"))
+              dbus.String(vol_name), dbus.Int64(cstate), dbus.Int64(tstate))
             if server_rc == 0:
                 rc = 0
             else:
@@ -757,22 +840,41 @@ class DrbdManage(object):
                 color(COLOR_NONE), "addr family", "Network address",
                 color(COLOR_RED), "state", color(COLOR_NONE))
               )
+            sys.stdout.write("  %s* pool size  %14s / free  %14s%s\n"
+              % (color(COLOR_BROWN), "", "", color(COLOR_NONE))
+              )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
         
         for properties in node_list:
             try:
                 view = DrbdNodeView(properties, machine_readable)
                 if not machine_readable:
+                    poolsize = view.get_poolsize()
+                    poolfree = view.get_poolfree()
+                    if poolsize >= 0:
+                        poolsize_text = "%14d" % (str(poolsize))
+                    else:
+                        poolsize_text = "unknown"
+                    if poolfree >= 0:
+                        poolfree_text = "%14d" % (str(poolfree))
+                    else:
+                        poolfree_text = "unknown"
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
                       % (color(COLOR_TEAL), view.get_name_maxlen(),
                         view.get_name(), color(COLOR_NONE), view.get_af(),
                         view.get_ip(), color(COLOR_RED), view.get_state(),
                         color(COLOR_NONE))
                       )
+                    sys.stdout.write("  %s* pool size: %14s / free: %14s%s\n"
+                      % (color(COLOR_BROWN),
+                      poolsize_text, poolfree_text,
+                      color(COLOR_NONE))
+                      )
                 else:
-                    sys.stdout.write("%s,%s,%s,%s\n"
+                    sys.stdout.write("%s,%s,%s,%d,%d,%s\n"
                       % (view.get_name(), view.get_af(),
-                        view.get_ip(), view.get_state())
+                        view.get_ip(), view.get_poolsize(),
+                        view.get_poolfree(), view.get_state())
                       )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
@@ -795,14 +897,14 @@ class DrbdManage(object):
         flagsalias = { "--machine-readable" : "-m" }
         if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) != 0:
-              self.syntax_list_volumes()
+              self.syntax_list_resources()
               return 1
         
         machine_readable = flags["-m"]
         
         resource_list = self._server.resource_list()
         if (not machine_readable) and len(resource_list) == 0:
-            sys.stdout.write("No volumes defined\n")
+            sys.stdout.write("No resources defined\n")
             return 0
         
         # Header/key for the table
@@ -814,8 +916,10 @@ class DrbdManage(object):
                     color(COLOR_RED), "state", color(COLOR_NONE))
                   )
             sys.stdout.write(
-              "  *%s%6s%s %14s %7s %s\n" % (color(COLOR_DARKPINK),
-                "id#", color(COLOR_NONE), "size (MiB)", "minor#", "state")
+              "  %s*%s%6s%s %14s %7s  %s%s\n"
+                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                "id#", color(COLOR_BROWN), "size (MiB)", "minor#", "state",
+                color(COLOR_NONE))
               )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
         
@@ -824,7 +928,7 @@ class DrbdManage(object):
                 view = DrbdResourceView(properties, machine_readable)
                 if not machine_readable:
                     sys.stdout.write(
-                      "%s%-*s%s %7s       %s%s%s\n"
+                      "%s%-*s%s %7s         %s%s%s\n"
                         % (color(COLOR_DARKGREEN),
                         view.get_name_maxlen(), view.get_name(),
                         color(COLOR_NONE), view.get_port(),
@@ -834,10 +938,12 @@ class DrbdManage(object):
                 for vol_view in volume_list:
                     if not machine_readable:
                         sys.stdout.write(
-                          "  *%s%6d%s %14d %7s %s\n" % (color(COLOR_DARKPINK),
-                            vol_view.get_id(), color(COLOR_NONE),
+                          "  %s*%s%6d%s %14d %7s %s%s\n"
+                            % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                            vol_view.get_id(), color(COLOR_BROWN),
                             vol_view.get_size_MiB(),
-                            vol_view.get_minor(), vol_view.get_state())
+                            vol_view.get_minor(), vol_view.get_state(),
+                            color(COLOR_NONE))
                           )
                     else:
                         sys.stdout.write(
@@ -852,8 +958,8 @@ class DrbdManage(object):
         return 0
     
     
-    def syntax_list_volumes(self):
-        sys.stderr.write("Syntax: volumes [ --machine-readable | -m ]\n")
+    def syntax_list_resources(self):
+        sys.stderr.write("Syntax: resources [ --machine-readable | -m ]\n")
     
     
     def cmd_list_assignments(self, args):
@@ -867,7 +973,7 @@ class DrbdManage(object):
         flagsalias = { "--machine-readable" : "-m" }
         if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) != 0:
-              self.syntax_list_volumes()
+              self.syntax_list_assignments()
               return 1
         
         machine_readable = flags["-m"]
@@ -890,9 +996,9 @@ class DrbdManage(object):
                 "state (crt -> tgt)",
                 color(COLOR_NONE))
               )
-            sys.stdout.write("  %s%6s%s %-50s %s%s%s\n"
-                % (color(COLOR_DARKPINK),
-                "Vol#",  color(COLOR_NONE),
+            sys.stdout.write("  %s* %s%6s%s %-48s %s%s%s\n"
+                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                "Vol#",  color(COLOR_BROWN),
                 "Blockdevice path",
                 color(COLOR_DARKRED), "state (crt -> tgt)",
                 color(COLOR_NONE))
@@ -922,9 +1028,9 @@ class DrbdManage(object):
                         color(COLOR_NONE))
                       )
                     for vol_state in vol_state_list:
-                        sys.stdout.write("  %s%6d%s %-50s %s%s  -> %s%s\n"
-                            % (color(COLOR_DARKPINK),
-                            vol_state.get_id(),  color(COLOR_NONE),
+                        sys.stdout.write("  %s* %s%6d%s %-48s %s%s  -> %s%s\n"
+                            % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                            vol_state.get_id(),  color(COLOR_BROWN),
                             vol_state.get_bd_path(),
                             color(COLOR_DARKRED), vol_state.get_cstate(),
                             vol_state.get_tstate(), color(COLOR_NONE))
@@ -943,6 +1049,38 @@ class DrbdManage(object):
     
     def syntax_list_assignments(self):
         sys.stderr.write("Syntax: assignments [ --machine-readable | -m ]\n")
+    
+    
+    def cmd_export_conf(self, args):
+        rc = 1
+        # Command parser configuration
+        order    = [ "res" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+        
+            res_name = params["res"]
+            if res_name == "*":
+                res_name = ""
+
+            server_rc = self._server.export_conf(dbus.String(res_name))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_export_conf()
+        return rc
+        
+    
+    def syntax_export_conf(self):
+        sys.stderr.write("Syntax: export { resource | * }\n")
     
 
     def user_confirm(self, question):

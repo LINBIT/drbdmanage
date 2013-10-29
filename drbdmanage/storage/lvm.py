@@ -23,6 +23,7 @@ class LVM(object):
     
     LVM_CREATE   = "lvcreate"
     LVM_REMOVE   = "lvremove"
+    LVM_LVS      = "lvs"
     
     CONF_DEFAULTS = {
       KEY_DEV_PATH : "/dev/mapper/",
@@ -100,12 +101,56 @@ class LVM(object):
         return DM_SUCCESS
     
     
+    def update_pool(self, node):
+        rc = 1
+        poolsize = -1
+        poolfree = -1
+        
+        lvs = self._lv_command_path(self.LVM_LVS)
+        lvm_proc = None
+        
+        try:
+            lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
+              "--units", "m", "--separator", ",", "--options",
+              "vg_size,vg_free", self._conf[self.KEY_VG_NAME]], 0, lvs,
+              stdout=subprocess.PIPE)
+            pool_str = lvm_proc.stdout.readline()
+            if pool_str is not None:
+                pool_str = pool_str.strip()
+                idx = pool_str.find(",")
+                if idx != -1:
+                    size_str = pool_str[:idx]
+                    free_str = pool_str[idx + 1:]
+                    idx = size_str.find(".")
+                    if idx != -1:
+                        size_str = size_str[:idx]
+                    idx = free_str.find(".")
+                    if idx != -1:
+                        free_str = free_str[:idx]
+                    try:
+                        poolsize = long(size_str)
+                        poolfree = long(free_str)
+                    except ValueError:
+                        poolsize = -1
+                        poolfree = -1
+                    node.set_pool(poolsize, poolfree)
+                    rc = 0
+        finally:
+            if lvm_proc is not None:
+                try:
+                    lvm_proc.stdout.close()
+                except Exception:
+                    pass
+                lvm_proc.wait()
+        return rc
+    
+    
     def _create_lv(self, name, size):
         # FIXME experimental/hardcoded
         lvcreate = self._lv_command_path(self.LVM_CREATE)
         
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
-          str(size) + "M", self._conf[self.KEY_VG_NAME]], 0, lvcreate
+          str(size) + "m", self._conf[self.KEY_VG_NAME]], 0, lvcreate
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()
         return rc
