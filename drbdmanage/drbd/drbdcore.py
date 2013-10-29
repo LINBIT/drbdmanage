@@ -270,12 +270,9 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
        
-        # TODO: tear a single volume down?
-        # FIXME: check return code received from bd_mgr
         self._detach(assignment, vol_state)
-        bd_mgr.remove_blockdevice(resource.get_name(),
-          volume.get_id())
         
+        rc = -1
         tstate = assignment.get_tstate()
         if not (tstate & Assignment.FLAG_DISKLESS) != 0:
             rc = bd_mgr.remove_blockdevice(resource.get_name(),
@@ -347,7 +344,7 @@ class DrbdManager(object):
         rc = drbd_proc.wait()
         # end experimental
         assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
-        assignment.clear_cstate_flags(Assignment.FLAG_DISCARD)
+        assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
     
     
     """

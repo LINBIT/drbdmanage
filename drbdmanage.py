@@ -141,7 +141,7 @@ class DrbdManage(object):
             arg = ""
         if arg == "assignments":
             rc = self.cmd_list_assignments(args)
-        elif arg == "resources":
+        elif arg == "resources" or arg == "volumes":
             rc = self.cmd_list_resources(args)
         elif arg == "nodes":
             rc = self.cmd_list_nodes(args)
@@ -151,6 +151,8 @@ class DrbdManage(object):
             rc = self.cmd_remove_node(args)
         elif arg == "new-volume":
             rc = self.cmd_new_volume(args)
+        elif arg == "new-resource":
+            rc = self.cmd_new_resource(args)
         elif arg == "remove-volume":
             rc = self.cmd_remove_volume(args)
         elif arg == "remove-resource":
@@ -226,6 +228,45 @@ class DrbdManage(object):
         sys.stderr.write("    --address-family | -a : { ipv4 | ipv6 }\n")
     
     
+    def cmd_new_resource(self, args):
+        rc    = 1
+        port  = DrbdResource.PORT_NR_AUTO
+        # Command parser configuration
+        order      = [ "name" ]
+        params     = {}
+        opt        = { "-p" : None }
+        optalias   = { "--port" : "-p" }
+        flags      = {}
+        flagsalias = {}
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+            name      = params["name"]
+            port_str  = opt["-p"]
+            if port_str != "auto":
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    raise SyntaxException
+
+            server_rc = self._server.create_resource(dbus.String(name),
+              port)
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_new_resource()
+        return rc
+    
+    
+    def syntax_new_resource(self):
+        sys.stderr.write("Syntax: new-resource [ options ] <name>\n")
+        sys.stderr.write("  Options:\n"
+          "    --port | -p : <port-number>\n")
+    
+    
     def cmd_new_volume(self, args):
         rc    = 1
         unit  = SizeCalc.UNIT_GiB
@@ -234,7 +275,7 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name", "size" ]
         params     = {}
-        opt        = { "-u" : None, "-m" : None, "-p" : None }
+        opt        = { "-u" : None, "-m" : None }
         optalias   = { "--unit" : "-u", "--minor" : "-m", }
         flags      = {}
         flagsalias = {}
@@ -297,6 +338,15 @@ class DrbdManage(object):
         except SyntaxException:
             self.syntax_new_volume()
         return rc
+    
+    
+    def syntax_new_volume(self):
+        sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
+        sys.stderr.write("  Options:\n"
+          "    --unit | -u  : { MB | GB | TB | PB | MiB | GiB | TiB "
+          "| PiB }\n"
+          "    --minor | -m : <minor-number>\n"
+          "The default size unit is GiB.\n")
     
     
     def cmd_remove_node(self, args):
@@ -423,15 +473,6 @@ class DrbdManage(object):
     def syntax_remove_volume(self):
         sys.stderr.write("Syntax: remove-volume [ --quiet | -q ] <name> "
           " <id>\n")
-    
-    
-    def syntax_new_volume(self):
-        sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
-        sys.stderr.write("  Options:\n"
-          "    --unit | -u  : { MB | GB | TB | PB | MiB | GiB | TiB "
-          "| PiB }\n"
-          "    --minor | -m : <minor-number>\n"
-          "The default size unit is GiB.\n")
     
     
     def cmd_connect(self, args, reconnect):

@@ -101,10 +101,23 @@ class DrbdManageServer(object):
     
     
     def __init__(self):
-        # DEBUG:
+        # The "(unknown)" node name never matches, because brackets are not
+        # allowed characters in node names
+        self._instance_node_name = "(unknown)"
         if len(sys.argv) >= 2:
             self._instance_node_name = sys.argv[1]
-        # end DEBUG
+        else:
+            try:
+                uname = os.uname()
+                if len(uname) >= 2:
+                    self._instance_node_name = uname[1]
+            except Exception:
+                pass
+        try:
+            sys.stdout.write("drbdmanaged -- initializing server on '%s'\n"
+              % self._instance_node_name)
+        except Exception:
+            pass
         self._nodes     = dict()
         self._resources = dict()
         self.load_server_conf()
