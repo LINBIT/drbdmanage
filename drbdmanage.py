@@ -175,6 +175,8 @@ class DrbdManage(object):
             rc = self.cmd_unassign(args)
         elif arg == "reconfigure":
             rc = self.cmd_reconfigure()
+        elif arg == "update-pool":
+            rc = self.cmd_update_pool()
         elif arg == "save":
             rc = self.cmd_save()
         elif arg == "load":
@@ -234,7 +236,7 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
-        opt        = { "-p" : None }
+        opt        = { "-p" : "auto" }
         optalias   = { "--port" : "-p" }
         flags      = {}
         flagsalias = {}
@@ -756,6 +758,16 @@ class DrbdManage(object):
           "  --overwrite and --discard\n")
     
     
+    def cmd_update_pool(self):
+        rc = 1
+        server_rc = self._server.update_pool()
+        if server_rc == 0:
+            rc = 0
+        else:
+            self.error_msg_text(server_rc)
+        return rc
+    
+    
     def cmd_reconfigure(self):
         rc = 1
         server_rc = self._server.reconfigure()
@@ -893,11 +905,11 @@ class DrbdManage(object):
                     poolsize = view.get_poolsize()
                     poolfree = view.get_poolfree()
                     if poolsize >= 0:
-                        poolsize_text = "%14d" % (str(poolsize))
+                        poolsize_text = "%14d" % (poolsize)
                     else:
                         poolsize_text = "unknown"
                     if poolfree >= 0:
-                        poolfree_text = "%14d" % (str(poolfree))
+                        poolfree_text = "%14d" % (poolfree)
                     else:
                         poolfree_text = "unknown"
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"

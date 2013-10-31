@@ -83,6 +83,7 @@ class DrbdManager(object):
     # FIXME
     def perform_changes(self):
         state_changed = False
+        pool_changed  = False
         # sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
         #   % (COLOR_GREEN, COLOR_NONE))
         
@@ -127,6 +128,7 @@ class DrbdManager(object):
                 Undeploy an assignment/resource and all of its volumes
                 """
                 if assg.requires_undeploy():
+                    pool_changed = True
                     self._undeploy_assignment(assg)
                     # ignore other actions for the same assignment
                     # after undeploy
@@ -162,8 +164,10 @@ class DrbdManager(object):
                     Deploy or undeploy a volume
                     """
                     if vol_state.requires_deploy():
+                        pool_changed = True
                         self._deploy_volume(assg, vol_state)
                     elif vol_state.requires_undeploy():
+                        pool_changed = True
                         self._undeploy_volume(assg, vol_state)
                     
                     """
@@ -190,6 +194,7 @@ class DrbdManager(object):
                 the assignment as deployed, too.
                 """
                 if assg.requires_deploy():
+                    pool_changed = True
                     self._deploy_assignment(assg)
                 
                 if assg.get_tstate() & Assignment.FLAG_DISKLESS != 0:
@@ -207,13 +212,70 @@ class DrbdManager(object):
         """
         self._server.cleanup()
         
+        if pool_changed:
+            self._server.update_pool_data()
+        
         return state_changed
     
     
-    """
-    Deploy a volume and update its state values
-    """
+    def initial_up(self):
+        """
+        Attempt to bring up all deployed resources.
+        Used when the drbdmanage server starts up.
+        """
+        node = self._server.get_instance_node()
+        if node is not None:
+            for assg in node.iterate_assignments():
+                sys.stderr.write("DEBUG: initial_up %s\n"
+                  % (assg.get_resource().get_name()))
+                cstate = assg.get_cstate()
+                tstate = assg.get_tstate()
+                if assg.is_deployed():
+                    try:
+                        self._up_resource(assg)
+                    except Exception as exc:
+                        sys.stderr.write("DEBUG: initial_up: %s\n"
+                          % (str(exc)))
+    
+    
+    def _up_resource(self, assignment):
+        """
+        Bring up DRBD resources
+        """
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        
+        # FIXME
+        # begin experimental
+        # call drbdadm to bring up the resource
+        drbd_proc = self._drbdadm.up(resource.get_name())
+        self._resconf.write(drbd_proc.stdin, assignment, False)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
+    
+    
+    def _down_resource(self, assignment):
+        """
+        Bring down DRBD resources
+        """
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        
+        # FIXME
+        # begin experimental
+        # call drbdadm to bring up the resource
+        drbd_proc = self._drbdadm.down(resource.get_name())
+        self._resconf.write(drbd_proc.stdin, assignment, False)
+        drbd_proc.stdin.close()
+        rc = drbd_proc.wait()
+        # end experimental
+    
+    
     def _deploy_volume(self, assignment, vol_state):
+        """
+        Deploy a volume and update its state values
+        """
         # do not create block devices for clients
         if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
             bd_mgr   = self._server.get_bd_mgr()
@@ -242,7 +304,7 @@ class DrbdManager(object):
                   self._server.KEY_CMD_CREATEMD)
                 args = [drbd_md, str(minor.get_value()), bd.get_path()]
                 drbd_proc = subprocess.Popen(args, 0, drbd_md,
-                  stdin=subprocess.PIPE)
+                  stdin=subprocess.PIPE, close_fds=True)
                 drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
                 drbdadm_conf.write(drbd_proc.stdin, assignment, False)
                 drbd_proc.stdin.close()
@@ -261,11 +323,11 @@ class DrbdManager(object):
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
     
     
-    """
-    Undeploy a volume, then reset the state values of the volume state entry,
-    so it can be removed from the assignment by the cleanup function.
-    """
     def _undeploy_volume(self, assignment, vol_state):
+        """
+        Undeploy a volume, then reset the state values of the volume state entry,
+        so it can be removed from the assignment by the cleanup function.
+        """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
@@ -282,12 +344,12 @@ class DrbdManager(object):
             vol_state.set_tstate(0)
     
     
-    """
-    Finish deployment of an assignment. The actual deployment of the
-    assignment's/resource's volumes takes place in per-volume actions
-    of the DrbdManager.perform_changes() function.
-    """
     def _deploy_assignment(self, assignment):
+        """
+        Finish deployment of an assignment. The actual deployment of the
+        assignment's/resource's volumes takes place in per-volume actions
+        of the DrbdManager.perform_changes() function.
+        """
         deploy_fail = False
         resource = assignment.get_resource()
         for vol_state in assignment.iterate_volume_states():
@@ -304,11 +366,11 @@ class DrbdManager(object):
             assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
     
     
-    """
-    Undeploy all volumes of a resource, then reset the assignment's state
-    values, so it can be removed by the cleanup function.
-    """
     def _undeploy_assignment(self, assignment):
+        """
+        Undeploy all volumes of a resource, then reset the assignment's state
+        values, so it can be removed by the cleanup function.
+        """
         resource = assignment.get_resource()
         for vol_state in assignment.iterate_volume_states():
             self._undeploy_volume(assignment, vol_state)
@@ -328,16 +390,16 @@ class DrbdManager(object):
         assignment.set_tstate(0)
     
     
-    """
-    Connect a resource on the current node to all peer nodes
-    """
     def _connect(self, assignment):
+        """
+        Connect a resource on the current node to all peer nodes
+        """
         resource = assignment.get_resource()
         # TODO: order drbdadm to connect (full mesh)
         # FIXME
         # begin experimental
-        discard_flag = ((assignment.get_tstate()
-          & Assignment.FLAG_DISCARD) != 0)
+        discard_flag = True if ((assignment.get_tstate()
+          & Assignment.FLAG_DISCARD) != 0) else False
         drbd_proc = self._drbdadm.connect(resource.get_name(), discard_flag)
         self._resconf.write(drbd_proc.stdin, assignment, False)
         drbd_proc.stdin.close()
@@ -347,10 +409,10 @@ class DrbdManager(object):
         assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
     
     
-    """
-    Disconnect a resource on the current node from all peer nodes
-    """
     def _disconnect(self, assignment):
+        """
+        Disconnect a resource on the current node from all peer nodes
+        """
         resource = assignment.get_resource()
         # TODO: order drbdadm/drbdsetup to disconnect
         # FIXME
@@ -363,14 +425,14 @@ class DrbdManager(object):
         assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
     
     
-    """
-    Update connections
-    * Disconnect from nodes that do not have the same resource
-      connected anymore
-    * Connect to nodes that have newly deployed a resource
-    * Leave valid existing connections untouched
-    """
     def _update_connections(self, assignment):
+        """
+        Update connections
+        * Disconnect from nodes that do not have the same resource
+          connected anymore
+        * Connect to nodes that have newly deployed a resource
+        * Leave valid existing connections untouched
+        """
         resource = assignment.get_resource()
         # TODO:
         """
@@ -391,10 +453,10 @@ class DrbdManager(object):
         assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
     
     
-    """
-    Disconnect, then connect again
-    """
     def _reconnect(self, assignment):
+        """
+        Disconnect, then connect again
+        """
         # disconnect
         self._disconnect(assignment)
         # connect
@@ -787,9 +849,10 @@ class DrbdNode(object):
     
     _assignments = None
     
-    FLAG_REMOVE = 0x1
+    FLAG_REMOVE   =     0x1
+    FLAG_UPD_POOL = 0x10000
     
-    STATE_MASK = FLAG_REMOVE
+    STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL
     
     
     def __init__(self, name, ip, af):
@@ -859,6 +922,10 @@ class DrbdNode(object):
     
     def remove(self):
         self._state |= self.FLAG_REMOVE
+    
+    
+    def upd_pool(self):
+        self._state |= self.FLAG_UPD_POOL
     
     
     def name_check(self, name):

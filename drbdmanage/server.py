@@ -124,12 +124,20 @@ class DrbdManageServer(object):
         self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_PLUGIN_NAME])
         self._drbd_mgr  = DrbdManager(self)
         self.load_conf()
+        self._drbd_mgr.initial_up()
         self.init_events()
+        # update storage pool information if it is unknown
+        inst_node = self.get_instance_node()
+        if inst_node is not None:
+            poolsize = inst_node.get_poolsize()
+            poolfree = inst_node.get_poolfree()
+            if poolsize == -1 or poolfree == -1:
+                self.update_pool()
 
 
     def init_events(self):
         self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events", "all"], 0,
-          self.EVT_UTIL, stdout=subprocess.PIPE)
+          self.EVT_UTIL, stdout=subprocess.PIPE, close_fds=True)
         self._evt_file = self._proc_evt.stdout
         fcntl.fcntl(self._evt_file.fileno(),
           fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
@@ -825,11 +833,56 @@ class DrbdManageServer(object):
         return rc
     
     
-    """
-    Remove entries of undeployed nodes, resources, volumes or their
-    supporting data structures (volume state and assignment entries)
-    """
+    def update_pool(self):
+        """
+        Update information about the current node storage pool's size and
+        free space
+        """
+        rc = DM_EPERSIST
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                sys.stdout.write(
+                  "DEBUG: updating storage pool information\n")
+                rc = self.update_pool_data()
+                self.save_conf_data(persist)
+        except PersistenceException:
+            sys.stderr.write("DEBUG: could not write to persistent "
+              "storage while updating storage pool information\n")
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def update_pool_data(self):
+        """
+        Update information about the current node storage pool's size and
+        free space
+        """
+        rc = DM_ESTORAGE
+        try:
+            inst_node = self.get_instance_node()
+            if inst_node is not None:
+                stor_rc = self._bd_mgr.update_pool(inst_node)
+                if stor_rc == 0:
+                    rc = DM_SUCCESS
+            else:
+                rc = DM_ENOENT
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        return rc
+    
+    
     def cleanup(self):
+        """
+        Remove entries of undeployed nodes, resources, volumes or their
+        supporting data structures (volume state and assignment entries)
+        """
         try:
             removable = []
             # delete assignments that have been undeployed

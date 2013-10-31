@@ -113,7 +113,7 @@ class LVM(object):
             lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
               "--units", "m", "--separator", ",", "--options",
               "vg_size,vg_free", self._conf[self.KEY_VG_NAME]], 0, lvs,
-              stdout=subprocess.PIPE)
+              stdout=subprocess.PIPE, close_fds=True)
             pool_str = lvm_proc.stdout.readline()
             if pool_str is not None:
                 pool_str = pool_str.strip()
@@ -150,7 +150,8 @@ class LVM(object):
         lvcreate = self._lv_command_path(self.LVM_CREATE)
         
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
-          str(size) + "m", self._conf[self.KEY_VG_NAME]], 0, lvcreate
+          str(size) + "m", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
+          close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()
         return rc
@@ -164,7 +165,8 @@ class LVM(object):
         lvremove = self._lv_command_path(self.LVM_REMOVE)
         
         lvm_proc = subprocess.Popen([lvremove, "--force",
-          self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove
+          self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove,
+          close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()
         return rc

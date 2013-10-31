@@ -115,6 +115,6 @@ class DrbdAdm(object):
     
     def _run_drbdadm(self, args):
         drbd_proc = subprocess.Popen(args, 0, self.execpath,
-          stdin=subprocess.PIPE)
+          stdin=subprocess.PIPE, close_fds=True)
         return drbd_proc
     

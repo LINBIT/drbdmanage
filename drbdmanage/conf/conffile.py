@@ -235,7 +235,7 @@ class DrbdAdmConf(object):
                     raise ValueError
                 bd_path = vol_state.get_bd_path()
                 if bd_path is None:
-                    bd_path = ""
+                    bd_path = "none"
                 minor = volume.get_minor()
                 if minor is None:
                     raise InvalidMinorNrException
