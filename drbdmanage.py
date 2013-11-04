@@ -175,6 +175,8 @@ class DrbdManage(object):
             rc = self.cmd_unassign(args)
         elif arg == "deploy":
             rc = self.cmd_deploy(args)
+        elif arg == "undeploy":
+            rc = self.cmd_undeploy(args)
         elif arg == "reconfigure":
             rc = self.cmd_reconfigure()
         elif arg == "update-pool":
@@ -804,6 +806,47 @@ class DrbdManage(object):
           "    nodes to which the resource should be deployed. It must be at\n"
           "    least 1 and less than the maximum allowable number of nodes\n"
           "    in the cluster\n")
+    
+    
+    def cmd_undeploy(self, args):
+        rc = 1
+        # Command parser configuration
+        order = [ "resource" ]
+        params = {}
+        opt   = {}
+        optalias = {}
+        flags = { "-q" : False, "-f" : False }
+        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
+        
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+        
+            res_name = params["resource"]
+            force    = flags["-f"]
+            quiet    = flags["-q"]
+            if not quiet:
+                quiet = self.user_confirm("You are going to undeploy this "
+                  "resource from all nodes of the cluster.\n"
+                  "Please confirm:")
+            if quiet:
+                server_rc = self._server.undeploy(dbus.String(res_name),
+                  dbus.Boolean(force))
+                if server_rc == 0:
+                    rc = 0
+                else:
+                    self.error_msg_text(server_rc)
+            else:
+                rc = 0
+        except SyntaxException:
+            self.syntax_undeploy()
+        return rc
+    
+    
+    def syntax_undeploy(self):
+        sys.stderr.write("Syntax: undeploy [ --quiet | -q ] <resource>\n")
+    
     
     def cmd_update_pool(self):
         rc = 1

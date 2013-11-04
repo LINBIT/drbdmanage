@@ -210,7 +210,7 @@ class DrbdManageServer(object):
                   )
             else:
                 self._conf = self.CONF_DEFAULTS
-        except IOError as io_err:
+        except IOError as ioerr:
             sys.stderr.write("Warning: Cannot open drbdmanage configuration "
               "file %s\n" % (self.CONFFILE))
         finally:
@@ -254,7 +254,7 @@ class DrbdManageServer(object):
         resource = None
         try:
            resource = self._resources.get(name)
-        except Exception as exvc:
+        except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
         return resource
     
@@ -643,7 +643,7 @@ class DrbdManageServer(object):
                 assignment.undeploy()
             else:
                 assignment.remove()
-            for assignment in node.iterate_assignments():
+            for assignment in resource.iterate_assignments():
                 if assignment.get_node() != node \
                   and assignment.is_deployed():
                     assignment.update_connections()
@@ -728,6 +728,40 @@ class DrbdManageServer(object):
                         rc = DM_EINVAL
                     else: # count > number of nodes
                         rc = DM_ENODECNT
+        except KeyError:
+            rc = DM_ENOENT
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def undeploy(self, resource_name, force):
+        """
+        Undeploys a resource from all nodes
+        """
+        rc      = DM_EPERSIST
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._resources[resource_name]
+                removable = []
+                for assg in resource.iterate_assignments():
+                    if (not force) and assg.is_deployed():
+                        assg.disconnect()
+                        assg.undeploy()
+                    else:
+                        removable.append(assg)
+                for assg in removable:
+                    assg.remove()
+                self.cleanup()
+                self.save_conf_data(persist)
+                rc = DM_SUCCESS
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
@@ -1123,7 +1157,6 @@ class DrbdManageServer(object):
     
     
     def load_conf_data(self, persist):
-        hash_obj = None
         persist.load(self._nodes, self._resources)
         self._conf_hash = persist.get_stored_hash()
     
