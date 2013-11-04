@@ -56,13 +56,18 @@ class DrbdManageServer(object):
     KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
+    DEFAULT_MAX_NODE_ID   =   31
+    DEFAULT_MIN_MINOR_NR =  100
+    DEFAULT_MIN_PORT_NR  = 7000
+    DEFAULT_MAX_PORT_NR  = 7999
+    
     # defaults
     CONF_DEFAULTS = {
-      KEY_PLUGIN_NAME  : "drbdmanage.storage.lvm.LVM",
-      KEY_MAX_NODE_ID  :   31,
-      KEY_MIN_MINOR_NR :  100,
-      KEY_MIN_PORT_NR  : 7000,
-      KEY_MAX_PORT_NR  : 7999,
+      KEY_PLUGIN_NAME    : "drbdmanage.storage.lvm.LVM",
+      KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
+      KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
+      KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
+      KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
       KEY_CMD_UP         : "dm-up",
       KEY_CMD_DOWN       : "dm-down",
       KEY_CMD_ATTACH     : "dm-attach",
@@ -647,6 +652,92 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
         return DM_SUCCESS
+    
+    
+    def deploy(self, resource_name, count):
+        """
+        Deploys a resource to a number of nodes
+        """
+        rc      = DM_EPERSIST
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                maxnodes = self.DEFAULT_MAX_NODE_ID
+                try:
+                    maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
+                except ValueError:
+                    pass
+                crtnodes = len(self._nodes)
+                maxcount = maxnodes if maxnodes < crtnodes else crtnodes
+                resource = self._resources[resource_name]
+                if ((not resource.has_assignments()) and count >= 1
+                  and count <= maxcount):
+                    """
+                    calculate the amount of memory required to deploy all
+                    volumes of the resource
+                    """
+                    size_sum = 0
+                    for vol in resource.iterate_volumes():
+                        size_sum += vol.get_size_MiB()
+                    """
+                    filter nodes that either have enough memory to deploy the
+                    resource or that do not know the state of their
+                    storage pool
+                    """
+                    # nodes with enough free memory
+                    capable = []
+                    # nodes with unknown free memory
+                    wildcat = []
+                    for node in self._nodes.itervalues():
+                        poolfree = node.get_poolfree()
+                        if poolfree != -1:
+                            if poolfree >= size_sum:
+                                capable.append(node)
+                        else:
+                            wildcat.append(node)
+                    capable = sorted(capable,
+                      key=lambda node: node.get_poolfree(), reverse=True)
+                    print capable
+                    if len(capable) + len(wildcat) >= count:
+                        if len(capable) < count:
+                            """
+                            Since there are not enough nodes that are expected
+                            to have enough free memory to deploy the resource,
+                            integrate those nodes that could possibly have
+                            enough memory
+                            """
+                            capable = capable + wildcat
+                        self._assign(capable[0], resource, 0,
+                          Assignment.FLAG_DEPLOY | Assignment.FLAG_OVERWRITE
+                          | Assignment.FLAG_CONNECT)
+                        ctr = 1
+                        tstate = (Assignment.FLAG_DEPLOY
+                          | Assignment.FLAG_CONNECT)
+                        while ctr < count:
+                            self._assign(capable[ctr], resource, 0, tstate)
+                            ctr += 1
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+                    else:
+                        rc = DM_ENOSPC
+                else:
+                    if resource.has_assignments():
+                        rc = DM_EEXIST
+                    elif not count >= 1:
+                        rc = DM_EINVAL
+                    else: # count > number of nodes
+                        rc = DM_ENODECNT
+        except KeyError:
+            rc = DM_ENOENT
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
     
     
     def modify_state(self, node_name, resource_name,

@@ -131,6 +131,12 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="si", out_signature="i")
+    def deploy(self, res_name, count):
+        return self._server.deploy(res_name, count)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="i")
     def update_pool(self):
         return self._server.update_pool()

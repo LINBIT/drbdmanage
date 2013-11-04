@@ -173,6 +173,8 @@ class DrbdManage(object):
             rc = self.cmd_assign(args)
         elif arg == "unassign":
             rc = self.cmd_unassign(args)
+        elif arg == "deploy":
+            rc = self.cmd_deploy(args)
         elif arg == "reconfigure":
             rc = self.cmd_reconfigure()
         elif arg == "update-pool":
@@ -757,6 +759,51 @@ class DrbdManage(object):
           "  --overwrite and --client\n"
           "  --overwrite and --discard\n")
     
+    
+    def cmd_deploy(self, args):
+        rc    = 1
+        cstate = 0
+        tstate = 0
+        # Command parser configuration
+        order    = [ "res", "count" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            res_name  = params["res"]
+            count_str = params["count"]
+            count = 0
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise SyntaxException
+            
+            if count < 1:
+                raise SyntaxException
+
+            server_rc = self._server.deploy(dbus.String(res_name),
+              dbus.Int32(count))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_deploy()
+        return rc
+    
+    
+    def syntax_deploy(self):
+        sys.stderr.write("Syntax: deploy <resource> <redundancy-count>\n")
+        sys.stderr.write("    The redundancy count specifies the number of\n"
+          "    nodes to which the resource should be deployed. It must be at\n"
+          "    least 1 and less than the maximum allowable number of nodes\n"
+          "    in the cluster\n")
     
     def cmd_update_pool(self):
         rc = 1
