@@ -10,13 +10,15 @@ Prerequisites:
     LVM installed
 Control volume configuration steps:
     *  Create a VG named drbdpool
-    *  Create a logical volume named drbdctrl (in whatever VG you want) with size of at least 4 MiB
+    *  Create a logical volume named drbdctrl (in whatever VG you want) with
+       a size of at least 4 MiB
     *  Configure the drbdctrl resource for DRBD
        (see /etc/drbd.d/drbdctrl.res in the last section of this document)
     *  Create the drbdmanage server configuration file
-       (see /etc/drbdmanage.conf in the last section of this document)
+       (see /etc/drbdmanaged.conf in the last section of this document)
     *  Create the configuration file for the drbdmanage storage plugin
-       (see /etc/drbdmanage-lvm.conf in the last section of this document)
+       (see /etc/drbdmanaged-lvm.conf in the last section of this document)
+    *  Create the /var/lib/drbdmanage directory on all nodes
 Clone the drbdmanage repository:
     git clone git@bk:drbd/PUBLIC-GPL/drbdmanage /root/dmdemo
     (since you have this file, you have possibly done that already)
@@ -36,7 +38,8 @@ Finally, start the drbdmanage server:
 Configure your nodes for drbdmanage:
 ------------------------------------------------------------------------------
 Steps:
-    *  Create entries for all nodes managed by drbdmanage using the drbdmanage client:
+    *  Create entries for all nodes managed by drbdmanage using the
+       drbdmanage client:
        cd /root/dmdemo
        ./drbdmanage new-node node_1 ip-address-1
        [...]
@@ -54,8 +57,9 @@ volumes
 //  Display the list of resources and volumes defined in drbdmanage
 
 assignments
-//  Display the list of resources and volumes that have been assigned to nodes, and the current status of the as-
-//  signment (e.g., whether the volume has been created already)
+//  Display the list of resources and volumes that have been assigned to
+//  nodes, and the current status of the assignment
+//  (e.g., whether the volume has been created already)
 
 new-node [ options ] <name> <ip>
   Options:
@@ -72,31 +76,39 @@ new-volume [ options ] <name> <size>
     --unit | -u : { MB | GB | TB | PB | MiB | GiB | TiB | PiB }
     --minor | -m : <minor-number>
   The default size unit is GiB.
-// Add a volume definition to a resource. If the specified resource does not exist, it is created automatically.
+// Add a volume definition to a resource. If the specified resource does not
+// exist, it is created automatically.
 
 remove-node [ --quiet | -q ] <node>
-// Remove a node from drbdmanage. This will remove all volumes from the specified node.
+// Remove a node from drbdmanage. This will remove all volumes from the
+// specified node.
 
 remove-volume [ --quiet | -q ] <resource> <volume-id>
 // Remove a volume from drbdmanage. This will remove the volume from all nodes.
 
 remove-resource [ --quiet | -q ] <resource>
-// Remove a resource from drbdmanage. This will remove the resource and all its volumes from all nodes.
+// Remove a resource from drbdmanage. This will remove the resource and all
+// its volumes from all nodes.
 
 connect <node> <resource>
-// On the specified node, connect the specified DRBD resource to its peer resources on other nodes.
+// On the specified node, connect the specified DRBD resource to its peer
+// resources on other nodes.
 
 disconnect <node> <resource>
-// On the specified node, disconnect the specified DRBD resource from all other nodes.
+// On the specified node, disconnect the specified DRBD resource from all
+// other nodes.
 
 reconnect <node> <resource>
-// On the specified node, reconnect the specified DRBD resource to its peer resources on other nodes.
+// On the specified node, reconnect the specified DRBD resource to its peer
+// resources on other nodes.
 
 attach <node> <resource> <volume-id>
-// On the specified node, attach the backend storage device of the specified volume.
+// On the specified node, attach the backend storage device of the specified
+// volume.
 
 detach <node> <resource> <volume-id>
-// On the specified node, detach the backend storage device of the specified volume.
+// On the specified node, detach the backend storage device of the specified
+// volume.
 
 assign [ options ] <node> <resource>
   Options:
@@ -111,25 +123,27 @@ assign [ options ] <node> <resource>
     The following options are mutually exclusive:
       --overwrite and --client
       --overwrite and --discard
-// Assign a resource to a node. This will create the resource’s volumes on the specified node.
+// Assign a resource to a node. This will create the resource’s volumes on the
+// specified node.
 
 unassign [ options ] <node> <resource>
   Options:
     --quiet | -q disable the safety question
-// Remove the assignment of a resource to a node. This will remove the resource and all its volumes from the
-// specified node.
+// Remove the assignment of a resource to a node. This will remove the
+// resource and all its volumes from the specified node.
 
 deploy <resource> <redundancy-count>
     The redundancy count specifies the number of
     nodes to which the resource should be deployed. It must be at
     least 1 and less than the maximum allowable number of nodes
     in the cluster
-// Automatically deploy the volume to the specified number of nodes. The target nodes will be automatically
-// selected by the drbdmanage server.
+// Automatically deploy the volume to the specified number of nodes. The
+// target nodes will be automatically selected by the drbdmanage server.
 
 undeploy [ --quiet | -q ] <resource>
-// Automatically undeploy a resource and all of its volumes from all nodes. Other than with the remove-re-
-// source command, the definition of the resource and its volumes is kept.
+// Automatically undeploy a resource and all of its volumes from all nodes.
+// Other than with the remove-resource command, the definition of the
+// resource and its volumes is kept.
 
 flags <node> <resource> [ flags ]
   flags:
@@ -140,26 +154,32 @@ flags <node> <resource> [ flags ]
 // Manually set flags on the assignment of a resource to a node.
 
 reconfigure
-// Reconfigure the drbdmanage server on the local node (reread configuration files, etc.)
+// Reconfigure the drbdmanage server on the local node
+// (reread configuration files, etc.)
 
 update-pool
-// Determine total and free space on the local node and update the drbdmanage database. This is also done
-// automatically upon start of the drbdmanage server.
+// Determine total and free space on the local node and update the
+// drbdmanage database. This is also done automatically upon start of
+// the drbdmanage server.
 
 save
-// Write the current state to the drbdmanage database. Normally, issuing this command is not necessary, as the
-// database is saved automatically whenever changes are performed.
+// Write the current state to the drbdmanage database. Normally, issuing
+// this command is not necessary, as the database is saved automatically
+// whenever changes are performed.
 
 load
-// Load the current state of the drbdmanage database. Normally, issuing this command is not necessary, as
-// changes to the database on backend storage are detected automatically.
-// Background replication after a link had failed previously is not detected yet, in this case, the command may
-// be used to cause an immediate update of the information on the local node.
+// Load the current state of the drbdmanage database. Normally, issuing
+// this command is not necessary, as changes to the database on
+// backendstorage are detected automatically.
+// Background replication after a link had failed previously is not
+// detected yet, in this case, the command may be used to cause an
+// immediate update of the information on the local node.
 
 export <resource>
 export *
-// Export configuration files for use with drbdadm from the drbdmanage database. If the command is issued
-// from the shell with the * joker, the * must be quoted (“*”).
+// Export configuration files for use with drbdadm from the
+// drbdmanage database. If the command is issued from the shell with
+// the * joker, the * must be quoted (“*”).
 
 
 Configuration files: 

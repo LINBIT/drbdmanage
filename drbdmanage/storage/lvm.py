@@ -19,7 +19,7 @@ class LVM(object):
     KEY_LVM_PATH  = "lvm-path"
     
     LVM_CONFFILE = "/etc/drbdmanaged-lvm.conf"
-    LVM_SAVEFILE = "/opt/tmp/drbdmanaged-lvm.local.json"
+    LVM_SAVEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
     
     LVM_CREATE   = "lvcreate"
     LVM_REMOVE   = "lvremove"
