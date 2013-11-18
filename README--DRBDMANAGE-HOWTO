@@ -19,6 +19,10 @@ Control volume configuration steps:
     *  Create the configuration file for the drbdmanage storage plugin
        (see /etc/drbdmanaged-lvm.conf in the last section of this document)
     *  Create the /var/lib/drbdmanage directory on all nodes
+    *  Start the control volume on all nodes:
+       drbdadm up drbdctrl
+    *  Zero out the initial blocks of the control volume:
+       dd if=/dev/zero of=/dev/drbd0 bs=4096 count=4
 Clone the drbdmanage repository:
     git clone git@bk:drbd/PUBLIC-GPL/drbdmanage /root/dmdemo
     (since you have this file, you have possibly done that already)
@@ -41,37 +45,37 @@ Steps:
     *  Create entries for all nodes managed by drbdmanage using the
        drbdmanage client:
        cd /root/dmdemo
-       ./drbdmanage new-node node_1 ip-address-1
+       ./drbdmanage.py new-node node_1 ip-address-1
        [...]
-       ./drbdmanage new-node node_n ip-address-n
+       ./drbdmanage.py new-node node_n ip-address-n
 
 
 drbdmanage commands overview
 ------------------------------------------------------------------------------
 
-nodes
+drbdmanaged.py nodes
 //  Display the list of nodes defined in drbdmanage
 
-resources
-volumes
+drbdmanaged.py resources
+drbdmanaged.py volumes
 //  Display the list of resources and volumes defined in drbdmanage
 
-assignments
+drbdmanaged.py assignments
 //  Display the list of resources and volumes that have been assigned to
 //  nodes, and the current status of the assignment
 //  (e.g., whether the volume has been created already)
 
-new-node [ options ] <name> <ip>
+drbdmanaged.py new-node [ options ] <name> <ip>
   Options:
     --address-family | -a : { ipv4 | ipv6 }
 //  Define a node for use with drbdmanage
 
-new-resource [ options ] <name>
+drbdmanaged.py new-resource [ options ] <name>
   Options:
     --port | -p : <port-number>
 //  Define a resource for use with drbdmanage
 
-new-volume [ options ] <name> <size>
+drbdmanaged.py new-volume [ options ] <name> <size>
   Options:
     --unit | -u : { MB | GB | TB | PB | MiB | GiB | TiB | PiB }
     --minor | -m : <minor-number>
@@ -79,38 +83,38 @@ new-volume [ options ] <name> <size>
 // Add a volume definition to a resource. If the specified resource does not
 // exist, it is created automatically.
 
-remove-node [ --quiet | -q ] <node>
+drbdmanaged.py remove-node [ --quiet | -q ] <node>
 // Remove a node from drbdmanage. This will remove all volumes from the
 // specified node.
 
-remove-volume [ --quiet | -q ] <resource> <volume-id>
+drbdmanaged.py remove-volume [ --quiet | -q ] <resource> <volume-id>
 // Remove a volume from drbdmanage. This will remove the volume from all nodes.
 
-remove-resource [ --quiet | -q ] <resource>
+drbdmanaged.py remove-resource [ --quiet | -q ] <resource>
 // Remove a resource from drbdmanage. This will remove the resource and all
 // its volumes from all nodes.
 
-connect <node> <resource>
+drbdmanaged.py connect <node> <resource>
 // On the specified node, connect the specified DRBD resource to its peer
 // resources on other nodes.
 
-disconnect <node> <resource>
+drbdmanaged.py disconnect <node> <resource>
 // On the specified node, disconnect the specified DRBD resource from all
 // other nodes.
 
-reconnect <node> <resource>
+drbdmanaged.py reconnect <node> <resource>
 // On the specified node, reconnect the specified DRBD resource to its peer
 // resources on other nodes.
 
-attach <node> <resource> <volume-id>
+drbdmanaged.py attach <node> <resource> <volume-id>
 // On the specified node, attach the backend storage device of the specified
 // volume.
 
-detach <node> <resource> <volume-id>
+drbdmanaged.py detach <node> <resource> <volume-id>
 // On the specified node, detach the backend storage device of the specified
 // volume.
 
-assign [ options ] <node> <resource>
+drbdmanaged.py assign [ options ] <node> <resource>
   Options:
     --client
       make this node a DRBD client only
@@ -126,13 +130,13 @@ assign [ options ] <node> <resource>
 // Assign a resource to a node. This will create the resource’s volumes on the
 // specified node.
 
-unassign [ options ] <node> <resource>
+drbdmanaged.py unassign [ options ] <node> <resource>
   Options:
     --quiet | -q disable the safety question
 // Remove the assignment of a resource to a node. This will remove the
 // resource and all its volumes from the specified node.
 
-deploy <resource> <redundancy-count>
+drbdmanaged.py deploy <resource> <redundancy-count>
     The redundancy count specifies the number of
     nodes to which the resource should be deployed. It must be at
     least 1 and less than the maximum allowable number of nodes
@@ -140,12 +144,12 @@ deploy <resource> <redundancy-count>
 // Automatically deploy the volume to the specified number of nodes. The
 // target nodes will be automatically selected by the drbdmanage server.
 
-undeploy [ --quiet | -q ] <resource>
+drbdmanaged.py undeploy [ --quiet | -q ] <resource>
 // Automatically undeploy a resource and all of its volumes from all nodes.
 // Other than with the remove-resource command, the definition of the
 // resource and its volumes is kept.
 
-flags <node> <resource> [ flags ]
+drbdmanaged.py flags <node> <resource> [ flags ]
   flags:
     --reconnect={0|1}
     --updcon={0|1}
@@ -153,21 +157,21 @@ flags <node> <resource> [ flags ]
     --discard={0|1}
 // Manually set flags on the assignment of a resource to a node.
 
-reconfigure
+drbdmanaged.py reconfigure
 // Reconfigure the drbdmanage server on the local node
 // (reread configuration files, etc.)
 
-update-pool
+drbdmanaged.py update-pool
 // Determine total and free space on the local node and update the
 // drbdmanage database. This is also done automatically upon start of
 // the drbdmanage server.
 
-save
+drbdmanaged.py save
 // Write the current state to the drbdmanage database. Normally, issuing
 // this command is not necessary, as the database is saved automatically
 // whenever changes are performed.
 
-load
+drbdmanaged.py load
 // Load the current state of the drbdmanage database. Normally, issuing
 // this command is not necessary, as changes to the database on
 // backendstorage are detected automatically.
@@ -175,8 +179,8 @@ load
 // detected yet, in this case, the command may be used to cause an
 // immediate update of the information on the local node.
 
-export <resource>
-export *
+drbdmanaged.py export <resource>
+drbdmanaged.py export *
 // Export configuration files for use with drbdadm from the
 // drbdmanage database. If the command is issued from the shell with
 // the * joker, the * must be quoted (“*”).
