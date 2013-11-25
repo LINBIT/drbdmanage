@@ -34,6 +34,7 @@ class DrbdManageServer(object):
     EVT_SRC_RES     = "resource"
     EVT_ARG_NAME    = "name"
     EVT_ARG_ROLE    = "role"
+    EVT_ARG_CON     = "connection"
     
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
@@ -41,22 +42,16 @@ class DrbdManageServer(object):
     
     KEY_PLUGIN_NAME  = "storage-plugin"
     KEY_MAX_NODE_ID  = "max-node-id"
+    KEY_MAX_PEERS    = "max-peers"
     KEY_MIN_MINOR_NR = "min-minor-nr"
     KEY_MIN_PORT_NR  = "min-port-nr"
     KEY_MAX_PORT_NR  = "max-port-nr"
     
-    KEY_CMD_UP         = "cmd-up"
-    KEY_CMD_DOWN       = "cmd-down"
-    KEY_CMD_ATTACH     = "cmd-attach"
-    KEY_CMD_DETACH     = "cmd-detach"
-    KEY_CMD_CONNECT    = "cmd-connect"
-    KEY_CMD_DISCONNECT = "cmd-disconnect"
-    KEY_CMD_CREATEMD   = "cmd-create-md"
-    KEY_CMD_ADJUST     = "cmd-adjust"
     KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
-    DEFAULT_MAX_NODE_ID   =   31
+    DEFAULT_MAX_NODE_ID  =   31
+    DEFAULT_MAX_PEERS    =    7
     DEFAULT_MIN_MINOR_NR =  100
     DEFAULT_MIN_PORT_NR  = 7000
     DEFAULT_MAX_PORT_NR  = 7999
@@ -65,17 +60,10 @@ class DrbdManageServer(object):
     CONF_DEFAULTS = {
       KEY_PLUGIN_NAME    : "drbdmanage.storage.lvm.LVM",
       KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
+      KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),
       KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
       KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
-      KEY_CMD_UP         : "dm-up",
-      KEY_CMD_DOWN       : "dm-down",
-      KEY_CMD_ATTACH     : "dm-attach",
-      KEY_CMD_DETACH     : "dm-detach",
-      KEY_CMD_CONNECT    : "dm-connect",
-      KEY_CMD_DISCONNECT : "dm-disconnect",
-      KEY_CMD_CREATEMD   : "dm-create-md",
-      KEY_CMD_ADJUST     : "dm-adjust",
       KEY_DRBDADM_PATH   : "/usr/local/sbin",
       KEY_DRBD_CONFPATH  : "/etc/drbd.d"
     }
@@ -125,10 +113,14 @@ class DrbdManageServer(object):
             pass
         self._nodes     = dict()
         self._resources = dict()
+        # load the server configuration file
         self.load_server_conf()
         self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_PLUGIN_NAME])
         self._drbd_mgr  = DrbdManager(self)
+        self._drbd_mgr.drbdctrl_res_up()
+        # load the drbdmanage database from the control volume
         self.load_conf()
+        # start up the resources deployed by drbdmanage on the current node
         self._drbd_mgr.initial_up()
         self.init_events()
         # update storage pool information if it is unknown
@@ -191,7 +183,13 @@ class DrbdManageServer(object):
                             event_role = get_event_arg(line, self.EVT_ARG_ROLE)
                             if event_res == self.DRBDCTRL_RES_NAME and \
                               event_role == self.EVT_ROLE_SECONDARY:
-                                changed = True
+                                event_con = get_event_arg(line,
+                                  self.EVT_ARG_CON)
+                                # if there is no "connection:" change
+                                # (peer connecting/disconnecting),
+                                # then the event is assumed to be a role change
+                                if event_con is None:
+                                  changed = True
         if changed:
             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler

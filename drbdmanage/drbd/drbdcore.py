@@ -218,6 +218,16 @@ class DrbdManager(object):
         return state_changed
     
     
+    def drbdctrl_res_up(self):
+        # FIXME
+        # begin experimental
+        # call drbdadm to bring up the resource
+        drbd_proc = self._drbdadm.ext_conf_adjust(
+          self._server.DRBDCTRL_RES_NAME)
+        rc = drbd_proc.wait()
+        # end experimental
+    
+    
     def initial_up(self):
         """
         Attempt to bring up all deployed resources.
@@ -248,7 +258,7 @@ class DrbdManager(object):
         # FIXME
         # begin experimental
         # call drbdadm to bring up the resource
-        drbd_proc = self._drbdadm.up(resource.get_name())
+        drbd_proc = self._drbdadm.adjust(resource.get_name())
         self._resconf.write(drbd_proc.stdin, assignment, False)
         drbd_proc.stdin.close()
         rc = drbd_proc.wait()
@@ -299,14 +309,30 @@ class DrbdManager(object):
                 
                 # FIXME
                 # begin experimental
-                # call drbdadm to initialize the DRBD on top of the blockdevice
-                drbd_md = self._server.get_conf_value(
-                  self._server.KEY_CMD_CREATEMD)
-                args = [drbd_md, str(minor.get_value()), bd.get_path()]
-                drbd_proc = subprocess.Popen(args, 0, drbd_md,
-                  stdin=subprocess.PIPE, close_fds=True)
+                max_node_id = 0
+                try:
+                    max_node_id = int(self._server.get_conf_value(
+                      self._server.KEY_MAX_NODE_ID))
+                except ValueError:
+                    pass
+                finally:
+                    if max_node_id < 1:
+                        max_node_id = self._server.DEFAULT_MAX_NODE_ID
+                
+                max_peers = 0
+                try:
+                    max_peers = int(self._server.get_conf_value(
+                      self._server.KEY_MAX_PEERS))
+                except ValueError:
+                    pass
+                finally:
+                    if max_peers < 1 or max_peers > max_node_id:
+                        max_peers = self._server.DEFAULT_MAX_NODE_ID
+                
+                drbd_proc = self._drbdadm.create_md(resource.get_name(),
+                  vol_state.get_id(), max_peers)
                 drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
-                drbdadm_conf.write(drbd_proc.stdin, assignment, False)
+                self._resconf.write(drbd_proc.stdin, assignment, False)
                 drbd_proc.stdin.close()
                 rc = drbd_proc.wait()
                 # end experimental
@@ -325,8 +351,9 @@ class DrbdManager(object):
     
     def _undeploy_volume(self, assignment, vol_state):
         """
-        Undeploy a volume, then reset the state values of the volume state entry,
-        so it can be removed from the assignment by the cleanup function.
+        Undeploy a volume, then reset the state values of the volume state
+        entry, so it can be removed from the assignment by the cleanup
+        function.
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()

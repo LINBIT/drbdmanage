@@ -63,9 +63,18 @@ class PersistenceImpl(object):
     _writeable  = False
     _hash_obj   = None
     
+    IDX_NAME       = "index"
+    NODES_OFF_NAME = "nodes_off"
+    NODES_LEN_NAME = "nodes_len"
+    RES_OFF_NAME   = "res_off"
+    RES_LEN_NAME   = "res_len"
+    ASSG_OFF_NAME  = "assg_off"
+    ASSG_LEN_NAME  = "assg_len"
+    
     BLKSZ       = 0x1000 # 4096
     IDX_OFFSET  = 0x1800 # 6144
-    HASH_OFFSET = 0x1900 # 6400
+    IDX_MAXLEN  =  0x400 # 1024
+    HASH_OFFSET = 0x1C00 # 6400
     DATA_OFFSET = 0x2000 # 8192
     ZEROFILLSZ  = 0x0400 # 1024
     CONF_FILE   = "/dev/drbd/by-res/drbdctrl/0"
@@ -85,44 +94,6 @@ class PersistenceImpl(object):
     
     def __init__(self):
         pass
-    
-    
-    def open_new(self, modify):
-        rc = False
-        fail_ctr = 0
-        if modify:
-            mode = (os.O_RDWR | os.O_DIRECT)
-        else:
-            mode = (os.O_RDONLY | os.O_DIRECT)
-        while fail_ctr < self.MAX_FAIL_COUNT:
-            try:
-                self._i_file    = os.open(self.CONF_FILE, mode)
-                # self._file      = mmap.mmap(self._i_file, self.MMAP_BUFSZ)
-                # FIXME -- length is still fixed to 16384
-                self._file      = mmap.mmap(self._i_file, 16384, MAP_SHARED,
-                  PROT_READ | PROT_WRITE, 0)
-                self._writeable = modify
-                rc = True
-                break
-            except IOError as io_err:
-                fail_ctr += 1
-                if io_err.errno == errno.ENOENT:
-                    sys.stderr.write("Cannot open %s: not found\n"
-                      % (self.CONF_FILE))
-                    cs = self.ENOENT_REOPEN_TIMER
-                else:
-                    b = os.urandom(1)
-                    cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
-                time.sleep(cs)
-        try:
-            if rc:
-                fcntl.ioctl(self._i_file, self.BLKFLSBUF)
-        except IOError:
-            pass
-        if not fail_ctr < 10:
-            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
-              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
-        return rc
     
     
     def open(self, modify):
@@ -185,6 +156,7 @@ class PersistenceImpl(object):
     def save(self, nodes, resources):
         if self._writeable:
             try:
+                p_index_con = dict()
                 p_nodes_con = dict()
                 p_res_con   = dict()
                 p_assg_con  = dict()
@@ -215,6 +187,7 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_nodes_con)
                 hash.update(save_data)
                 self._file.write(save_data)
+                self._file.write("\0")
                 nodes_len = self._file.tell() - nodes_off
                 
                 self._align_zero_fill()
@@ -223,6 +196,7 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_res_con)
                 self._file.write(save_data)
                 hash.update(save_data)
+                self._file.write("\0")
                 res_len = self._file.tell() - res_off
                 
                 self._align_zero_fill()
@@ -231,16 +205,32 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_assg_con)
                 self._file.write(save_data)
                 hash.update(save_data)
+                self._file.write("\0")
                 assg_len = self._file.tell() - assg_off
                 
+                # clean up behind the assignment
+                self._align_zero_fill()
+                
                 self._file.seek(self.IDX_OFFSET)
-                self._file.write(
-                  long_to_bin(nodes_off)
-                  + long_to_bin(nodes_len)
-                  + long_to_bin(res_off)
-                  + long_to_bin(res_len)
-                  + long_to_bin(assg_off)
-                  + long_to_bin(assg_len))
+                p_index = {
+                  self.NODES_OFF_NAME : nodes_off,
+                  self.NODES_LEN_NAME : nodes_len,
+                  self.RES_OFF_NAME   : res_off,
+                  self.RES_LEN_NAME   : res_len,
+                  self.ASSG_OFF_NAME  : assg_off,
+                  self.ASSG_LEN_NAME  : assg_len
+                }
+                p_index_con[self.IDX_NAME] = p_index
+                save_data = self._container_to_json(p_index_con)
+                self._file.write(save_data)
+                self._file.write("\0")
+                #self._file.write(
+                #  long_to_bin(nodes_off)
+                #  + long_to_bin(nodes_len)
+                #  + long_to_bin(res_off)
+                #  + long_to_bin(res_len)
+                #  + long_to_bin(assg_off)
+                #  + long_to_bin(assg_len))
                 self._file.seek(self.HASH_OFFSET)
                 self._file.write(hash.get_hash())
                 sys.stderr.write("%sDEBUG: persistence save/hash: %s%s\n"
@@ -279,13 +269,21 @@ class PersistenceImpl(object):
             try:
                 hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
-                f_index = self._file.read(48)
-                nodes_off = long_from_bin(f_index[0:8])
-                nodes_len = long_from_bin(f_index[8:16])
-                res_off   = long_from_bin(f_index[16:24])
-                res_len   = long_from_bin(f_index[24:32])
-                assg_off  = long_from_bin(f_index[32:40])
-                assg_len  = long_from_bin(f_index[40:48])
+                f_index = self._null_trunc(self._file.read(self.IDX_MAXLEN))
+                p_index_con = self._json_to_container(f_index)
+                p_index = p_index_con[self.IDX_NAME]
+                nodes_off  = p_index[self.NODES_OFF_NAME]
+                nodes_len  = p_index[self.NODES_LEN_NAME]
+                res_off    = p_index[self.RES_OFF_NAME]
+                res_len    = p_index[self.RES_LEN_NAME]
+                assg_off   = p_index[self.ASSG_OFF_NAME]
+                assg_len   = p_index[self.ASSG_LEN_NAME]
+                #nodes_off = long_from_bin(f_index[0:8])
+                #nodes_len = long_from_bin(f_index[8:16])
+                #res_off   = long_from_bin(f_index[16:24])
+                #res_len   = long_from_bin(f_index[24:32])
+                #assg_off  = long_from_bin(f_index[32:40])
+                #assg_len  = long_from_bin(f_index[40:48])
                 
                 nodes_con = None
                 res_con   = None
@@ -434,6 +432,17 @@ class PersistenceImpl(object):
                     ctr += 1
                 diff -= (self.ZEROFILLSZ * fillnr)
                 self._file.write(fillbuf[:diff])
+    
+    
+    def _null_trunc(self, data):
+        """
+        Truncate the data area to the end of the string, marked by
+        a null byte
+        """
+        idx = data.find(chr(0))
+        if idx != -1:
+            data = data[:idx]
+        return data
     
     
     def _next_json(self, stream):

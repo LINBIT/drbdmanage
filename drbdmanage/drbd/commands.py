@@ -19,6 +19,15 @@ class DrbdAdm(object):
         if not prefix.endswith("/"):
             prefix += "/"
         self.execpath = prefix + self.EXECUTABLE
+    
+    
+    def ext_conf_adjust(self, res_name):
+        """
+        Adjust a resource that has an external configuration file
+        (Normally used to start up the control volume for drbdmanage)
+        """
+        args = [self.EXECUTABLE, "adjust", res_name]
+        return self._run_drbdadm(args)
 
 
     def adjust(self, res_name):
@@ -29,8 +38,8 @@ class DrbdAdm(object):
     
     
     def up(self, res_name):
-        sys.stdout.write("%sDEBUG: DrbdAdm: up %s%s\n"
-          % (COLOR_GREEN, res_name, COLOR_NONE))
+        sys.stdout.write("%sDEBUG: === !! OBSOLETE !! === DrbdAdm: up %s%s\n"
+          % (COLOR_RED, res_name, COLOR_NONE))
         args = [self.EXECUTABLE, "-c", "-", "up", res_name]
         return self._run_drbdadm(args)
     
@@ -105,11 +114,11 @@ class DrbdAdm(object):
         return self._run_drbdadm(args)
     
     
-    def create_md(self, res_name, vol_id):
+    def create_md(self, res_name, vol_id, peers):
         sys.stdout.write("%sDEBUG: DrbdAdm: create-md %s %d%s\n"
           % (COLOR_GREEN, res_name, vol_id, COLOR_NONE))
-        args = [self.EXECUTABLE, "-c", "-", "create-md",
-          res_name + "/" + str(vol_id)]
+        args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
+          "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
     
     
