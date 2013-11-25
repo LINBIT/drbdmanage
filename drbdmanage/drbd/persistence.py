@@ -187,8 +187,8 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_nodes_con)
                 hash.update(save_data)
                 self._file.write(save_data)
-                self._file.write("\0")
                 nodes_len = self._file.tell() - nodes_off
+                self._file.write("\0")
                 
                 self._align_zero_fill()
                 
@@ -196,8 +196,8 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_res_con)
                 self._file.write(save_data)
                 hash.update(save_data)
-                self._file.write("\0")
                 res_len = self._file.tell() - res_off
+                self._file.write("\0")
                 
                 self._align_zero_fill()
                 
@@ -205,8 +205,8 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_assg_con)
                 self._file.write(save_data)
                 hash.update(save_data)
-                self._file.write("\0")
                 assg_len = self._file.tell() - assg_off
+                self._file.write("\0")
                 
                 # clean up behind the assignment
                 self._align_zero_fill()
@@ -290,7 +290,7 @@ class PersistenceImpl(object):
                 assg_con  = None
                 
                 self._file.seek(nodes_off)
-                load_data = self._file.read(nodes_len)
+                load_data = self._null_trunc(self._file.read(nodes_len))
                 hash.update(load_data)
                 try:
                     nodes_con = self._json_to_container(load_data)
@@ -298,7 +298,7 @@ class PersistenceImpl(object):
                     pass
                 
                 self._file.seek(res_off)
-                load_data = self._file.read(res_len)
+                load_data = self._null_trunc(self._file.read(res_len))
                 hash.update(load_data)
                 try:
                     res_con   = self._json_to_container(load_data)
@@ -306,7 +306,7 @@ class PersistenceImpl(object):
                     pass
                 
                 self._file.seek(assg_off)
-                load_data = self._file.read(assg_len)
+                load_data = self._null_trunc(self._file.read(assg_len))
                 hash.update(load_data)
                 try:
                     assg_con  = self._json_to_container(load_data)
