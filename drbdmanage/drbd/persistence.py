@@ -77,7 +77,8 @@ class PersistenceImpl(object):
     HASH_OFFSET = 0x1C00 # 6400
     DATA_OFFSET = 0x2000 # 8192
     ZEROFILLSZ  = 0x0400 # 1024
-    CONF_FILE   = "/dev/drbd/by-res/drbdctrl/0"
+    # FIXME: This should probably use the DRBDCTRL_RES_NAME from server.py
+    CONF_FILE   = "/dev/drbd/by-res/.drbdctrl/0"
     
     MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
     

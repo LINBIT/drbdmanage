@@ -38,7 +38,7 @@ class DrbdManageServer(object):
     
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
-    DRBDCTRL_RES_NAME  = "drbdctrl"
+    DRBDCTRL_RES_NAME  = ".drbdctrl"
     
     KEY_PLUGIN_NAME  = "storage-plugin"
     KEY_MAX_NODE_ID  = "max-node-id"
