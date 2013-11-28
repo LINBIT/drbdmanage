@@ -1164,7 +1164,7 @@ class DrbdManageServer(object):
         persist.save(self._nodes, self._resources)
         hash_obj = persist.get_hash_obj()
         if hash_obj is not None:
-            self._conf_hash = hash_obj.get_hash()
+            self._conf_hash = hash_obj.get_hex_hash()
     
     
     def open_conf(self):

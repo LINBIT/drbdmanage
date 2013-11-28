@@ -44,7 +44,7 @@ class DrbdManager(object):
             persist = self._server.open_conf()
             if persist is not None:
                 sys.stderr.write("%sDEBUG: drbdcore check/hash: %s%s\n"
-                  % (COLOR_DARKPINK, hex_from_bin(persist.get_stored_hash()),
+                  % (COLOR_DARKPINK, persist.get_stored_hash(),
                   COLOR_NONE))
                 if self._server.hashes_match(persist.get_stored_hash()):
                     # configuration did not change, bail out

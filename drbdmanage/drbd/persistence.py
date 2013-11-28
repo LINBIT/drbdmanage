@@ -41,7 +41,7 @@ class PersistenceImplDummy(object):
     
     def get_stored_hash(self):
         dh = DataHash()
-        dh.get_hash()
+        dh.get_hex_hash()
     
     
     def load(self, nodes, resources):
@@ -70,15 +70,18 @@ class PersistenceImpl(object):
     RES_LEN_NAME   = "res_len"
     ASSG_OFF_NAME  = "assg_off"
     ASSG_LEN_NAME  = "assg_len"
+    HASH_NAME      = "hash"
     
     BLKSZ       = 0x1000 # 4096
     IDX_OFFSET  = 0x1800 # 6144
     IDX_MAXLEN  =  0x400 # 1024
     HASH_OFFSET = 0x1C00 # 6400
+    HASH_MAXLEN = 0x0100 #  256
     DATA_OFFSET = 0x2000 # 8192
     ZEROFILLSZ  = 0x0400 # 1024
     # FIXME: This should probably use the DRBDCTRL_RES_NAME from server.py
-    CONF_FILE   = "/dev/drbd/by-res/.drbdctrl/0"
+    #CONF_FILE   = "/dev/drbd/by-res/.drbdctrl/0"
+    CONF_FILE   = "/dev/drbd0"
     
     MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
     
@@ -232,10 +235,11 @@ class PersistenceImpl(object):
                 #  + long_to_bin(res_len)
                 #  + long_to_bin(assg_off)
                 #  + long_to_bin(assg_len))
-                self._file.seek(self.HASH_OFFSET)
-                self._file.write(hash.get_hash())
+                
+                computed_hash = hash.get_hex_hash()
+                self.update_stored_hash(computed_hash)
                 sys.stderr.write("%sDEBUG: persistence save/hash: %s%s\n"
-                  % (COLOR_BLUE, hash.get_hex_hash(), COLOR_NONE))
+                  % (COLOR_BLUE, computed_hash, COLOR_NONE))
                 self._hash_obj = hash
             except Exception as exc:
                 sys.stderr.write("persistence save(): " + str(exc) + "\n")
@@ -253,14 +257,31 @@ class PersistenceImpl(object):
             try:
                 hash = DataHash()
                 self._file.seek(self.HASH_OFFSET)
-                stored_hash = self._file.read(hash.get_hash_len())
+                hash_json = self._null_trunc(self._file.read(self.HASH_MAXLEN))
+                hash_con = self._json_to_container(hash_json)
+                stored_hash = hash_con.get(self.HASH_NAME)
             except Exception:
                 raise PersistenceException
         else:
             # file not open
-            raise IOError("Persistence load() without an "
+            raise IOError("Persistence get_stored_hash() without an "
               "open file descriptor")
         return stored_hash
+    
+    
+    def update_stored_hash(self, hex_hash):
+        if self._file is not None and self._writeable:
+            try:
+                self._file.seek(self.HASH_OFFSET)
+                hash_con = { self.HASH_NAME : hex_hash }
+                hash_json = self._container_to_json(hash_con)
+                self._file.write(hash_json)
+                self._file.write("\0")
+            except Exception:
+                raise PersistenceException
+        else:
+            raise IOError("Persistence update_stored_hash() without a "
+              "writeable file descriptor")
     
     
     # TODO: clean implementation - this is a prototype
@@ -314,11 +335,10 @@ class PersistenceImpl(object):
                 except Exception:
                     pass
                 
-                self._file.seek(self.HASH_OFFSET)
-                computed_hash = hash.get_hash()
-                stored_hash   = self._file.read(hash.get_hash_len())
+                computed_hash = hash.get_hex_hash()
+                stored_hash   = self.get_stored_hash()
                 sys.stderr.write("%sDEBUG: persistence load/hash: %s%s\n"
-                  % (COLOR_BLUE, hex_from_bin(stored_hash), COLOR_NONE))
+                  % (COLOR_BLUE, stored_hash, COLOR_NONE))
                 if computed_hash != stored_hash:
                     sys.stderr.write("Warning: configuration data does not "
                       "match its signature\n")
