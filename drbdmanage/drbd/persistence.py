@@ -58,7 +58,6 @@ class PersistenceImplDummy(object):
 
 class PersistenceImpl(object):
     _file       = None
-    _i_file     = None
     _server     = None
     _writeable  = False
     _hash_obj   = None
@@ -375,33 +374,18 @@ class PersistenceImpl(object):
                     self._hash_obj = hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                sys.stderr.write("DEBUG: Exception %s (%s), %s\n%s\n"
+                sys.stderr.write("DEBUG: drbd/persistence load(): "
+                  "Exception %s (%s), %s\n%s\n"
                   % (str(exc), exc_type, exc_obj, exc_tb))
                 raise PersistenceException
         else:
-            sys.stderr.write("DEBUG: File not open\n" % str(exc))
             # file not open
+            sys.stderr.write("DEBUG: drbd/persistence load(): "
+              "File not open\n" % str(exc))
             raise IOError("Persistence load() without an "
               "open file descriptor")
         if errors:
             raise PersistenceException
-    
-    
-    def close_new(self):
-        try:
-            if self._i_file is not None:
-                if self._writeable:
-                    self._writeable = False
-                    if self._file is not None:
-                        self._file.flush()
-                    os.fsync(self._i_file)
-                if self._file is not None:
-                    self._file.close()
-                os.close(self._i_file)
-                self._i_file    = None
-                self._file      = None
-        except IOError:
-            pass
     
     
     def close(self):

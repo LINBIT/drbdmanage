@@ -167,8 +167,8 @@ class DrbdManageServer(object):
             else:
                 if line.endswith("\n"):
                     line = line[:len(line) - 1]
-                sys.stderr.write("%sDEBUG: drbd_event() (%s%s%s)%s\n"
-                  % (COLOR_RED, COLOR_NONE, line, COLOR_RED, COLOR_NONE))
+                # sys.stderr.write("%sDEBUG: drbd_event() (%s%s%s)%s\n"
+                #   % (COLOR_RED, COLOR_NONE, line, COLOR_RED, COLOR_NONE))
                 sys.stderr.flush();
                 if not changed:
                     event_type   = get_event_type(line)
@@ -410,9 +410,9 @@ class DrbdManageServer(object):
                 resource = self._resources[name]
                 if (not force) and resource.has_assignments():
                     for assg in resource.iterate_assignments():
-                        sys.stderr.write("DEBUG: remove-resource: undeploying "
-                          "assignment %s:%s\n" % (assg.get_node().get_name(),
-                          assg.get_resource().get_name()))
+                        # sys.stderr.write("DEBUG: remove-resource: undeploying "
+                        #  "assignment %s:%s\n" % (assg.get_node().get_name(),
+                        #  assg.get_resource().get_name()))
                         assg.undeploy()
                     resource.remove()
                     self._drbd_mgr.perform_changes()
@@ -966,8 +966,8 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                sys.stdout.write(
-                  "DEBUG: updating storage pool information\n")
+                # sys.stdout.write(
+                #   "DEBUG: updating storage pool information\n")
                 rc = self.update_pool_data()
                 self.save_conf_data(persist)
         except PersistenceException:

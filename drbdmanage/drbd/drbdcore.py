@@ -55,12 +55,13 @@ class DrbdManager(object):
             persist = self._server.begin_modify_conf()
             if persist is not None:
                 if self.perform_changes():
-                    sys.stdout.write("%sDEBUG: DrbdManager: state changed%s\n"
-                      % (COLOR_GREEN, COLOR_NONE))
+                    # sys.stdout.write("%sDEBUG: DrbdManager: state changed%s\n"
+                    #   % (COLOR_GREEN, COLOR_NONE))
                     self._server.save_conf_data(persist)
                 else:
-                    sys.stdout.write("%sDEBUG: DrbdManager: state unchanged%s\n"
-                      %(COLOR_DARKGREEN, COLOR_NONE))
+                    # sys.stdout.write("%sDEBUG: DrbdManager: state unchanged%s\n"
+                    #   %(COLOR_DARKGREEN, COLOR_NONE))
+                    pass
             else:
                 # Could not instantiate PersistenceImpl
                 # TODO: Error logging
@@ -111,9 +112,9 @@ class DrbdManager(object):
             #   assg.get_resource().get_name(), COLOR_NONE))
             
             if assg.requires_action():
-                sys.stdout.write("%sDEBUG: %s cstate(%x)->tstate(%x)%s\n"
-                  % (COLOR_GREEN, assg.get_resource().get_name(),
-                  assg.get_cstate(), assg.get_tstate(), COLOR_NONE))
+                # sys.stdout.write("%sDEBUG: %s cstate(%x)->tstate(%x)%s\n"
+                #   % (COLOR_GREEN, assg.get_resource().get_name(),
+                #   assg.get_cstate(), assg.get_tstate(), COLOR_NONE))
                 
                 state_changed = True
                 
@@ -236,8 +237,8 @@ class DrbdManager(object):
         node = self._server.get_instance_node()
         if node is not None:
             for assg in node.iterate_assignments():
-                sys.stderr.write("DEBUG: initial_up %s\n"
-                  % (assg.get_resource().get_name()))
+                # sys.stderr.write("DEBUG: initial_up %s\n"
+                #   % (assg.get_resource().get_name()))
                 cstate = assg.get_cstate()
                 tstate = assg.get_tstate()
                 if assg.is_deployed():
@@ -294,7 +295,7 @@ class DrbdManager(object):
             minor    = volume.get_minor()
 
             if resource is None:
-                sys.stderr.write("DEBUG: resource == NULL\n")
+                sys.stderr.write("DEBUG: _deploy_volume(): resource == NULL\n")
             
             bd = bd_mgr.create_blockdevice(resource.get_name(),
               volume.get_id(), volume.get_size_MiB())
