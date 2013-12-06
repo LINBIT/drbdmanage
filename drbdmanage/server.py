@@ -1237,18 +1237,20 @@ class DrbdManageServer(object):
             if len(res_name) > 0 and res_name != "*":
                 assg = node.get_assignment(res_name)
                 if assg is not None:
-                    if self._export_assignment_conf(assg) != 0:
+                    if self.export_assignment_conf(assg) != 0:
                         rc = DM_DEBUG
                 else:
                     rc = DM_ENOENT
             else:
                 for assg in node.iterate_assignments():
-                    if self._export_assignment_conf(assg) != 0:
+                    if self.export_assignment_conf(assg) != 0:
                         rc = DM_DEBUG
         return rc
     
     
-    def _export_assignment_conf(self, assignment):
+    # TODO: move over existing file instead of directly overwriting an
+    #       existing file
+    def export_assignment_conf(self, assignment):
         rc = 0
         resource = assignment.get_resource()
         file_path = self._conf[self.KEY_DRBD_CONFPATH]
@@ -1267,6 +1269,21 @@ class DrbdManageServer(object):
         finally:
             if assg_conf is not None:
                 assg_conf.close()
+        return rc
+    
+    
+    def remove_assignment_conf(self, resource_name):
+        rc = 0
+        file_path = self._conf[self.KEY_DRBD_CONFPATH]
+        if not file_path.endswith("/"):
+            file_path += "/"
+        file_path += "drbdmanage_" + resource_name + ".res"
+        try:
+            os.unlink(file_path)
+        except OSError as oserr:
+            sys.stderr.write("Cannot remove configuration file '%s'\n"
+              % (file_path))
+            rc = 1
         return rc
     
     

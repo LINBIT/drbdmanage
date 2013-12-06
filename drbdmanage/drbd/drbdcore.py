@@ -115,7 +115,7 @@ class DrbdManager(object):
                 # sys.stdout.write("%sDEBUG: %s cstate(%x)->tstate(%x)%s\n"
                 #   % (COLOR_GREEN, assg.get_resource().get_name(),
                 #   assg.get_cstate(), assg.get_tstate(), COLOR_NONE))
-                
+                               
                 state_changed = True
                 
                 """
@@ -136,12 +136,10 @@ class DrbdManager(object):
                     continue
                 
                 """
-                Connect/disconnect an assignment/resource
+                Disconnect an assignment/resource
                 """
                 if assg.requires_disconnect():
                     self._disconnect(assg)
-                elif assg.requires_connect():
-                    self._connect(assg)
                 
                 """
                 Update connections
@@ -197,6 +195,9 @@ class DrbdManager(object):
                 if assg.requires_deploy():
                     pool_changed = True
                     self._deploy_assignment(assg)
+                
+                if assg.requires_connect():
+                    self._connect(assg)
                 
                 if assg.get_tstate() & Assignment.FLAG_DISKLESS != 0:
                     assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
@@ -338,6 +339,10 @@ class DrbdManager(object):
                 rc = drbd_proc.wait()
                 # end experimental
                 
+                # update configuration file, so drbdadm before-resync-target
+                # can work properly
+                self._server.export_assignment_conf(assignment)
+                
                 # FIXME
                 # begin experimental
                 # call drbdadm to bring up the resource
@@ -370,6 +375,8 @@ class DrbdManager(object):
         if rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS != 0):
             vol_state.set_cstate(0)
             vol_state.set_tstate(0)
+        # update configuration file
+        self._server.export_assignment_conf(assignment)
     
     
     def _deploy_assignment(self, assignment):
@@ -380,16 +387,19 @@ class DrbdManager(object):
         """
         deploy_fail = False
         resource = assignment.get_resource()
+        tstate   = assignment.get_tstate()
         for vol_state in assignment.iterate_volume_states():
             if (vol_state.get_tstate() & DrbdVolumeState.FLAG_DEPLOY != 0
               and vol_state.get_cstate() & DrbdVolumeState.FLAG_DEPLOY == 0):
                 deploy_fail = True
-        if assignment.get_tstate() & Assignment.FLAG_OVERWRITE != 0:
+        if tstate & Assignment.FLAG_OVERWRITE != 0:
             drbd_proc = self._drbdadm.primary(resource.get_name(), True)
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
             rc = drbd_proc.wait()
             assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
+        if tstate & Assignment.FLAG_DISCARD != 0:
+            self._reconnect(assignment)
         if not deploy_fail:
             assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
     
@@ -400,8 +410,6 @@ class DrbdManager(object):
         values, so it can be removed by the cleanup function.
         """
         resource = assignment.get_resource()
-        for vol_state in assignment.iterate_volume_states():
-            self._undeploy_volume(assignment, vol_state)
         # FIXME
         # begin experimental
         # call drbdadm to stop the DRBD on top of the blockdevice
@@ -409,6 +417,14 @@ class DrbdManager(object):
         self._resconf.write(drbd_proc.stdin, assignment, True)
         drbd_proc.stdin.close()
         rc = drbd_proc.wait()
+        
+        # undeploy all volumes
+        for vol_state in assignment.iterate_volume_states():
+            self._undeploy_volume(assignment, vol_state)
+            
+        # FIXME
+        # begin experimental
+        # call drbdadm to stop the DRBD on top of the blockdevice
         drbd_proc = self._drbdadm.down(resource.get_name())
         self._resconf.write(drbd_proc.stdin, assignment, True)
         drbd_proc.stdin.close()
@@ -416,6 +432,9 @@ class DrbdManager(object):
         # end experimental
         assignment.set_cstate(0)
         assignment.set_tstate(0)
+        
+        # remove the configuration file
+        self._server.remove_assignment_conf(resource.get_name())
     
     
     def _connect(self, assignment):
@@ -423,7 +442,6 @@ class DrbdManager(object):
         Connect a resource on the current node to all peer nodes
         """
         resource = assignment.get_resource()
-        # TODO: order drbdadm to connect (full mesh)
         # FIXME
         # begin experimental
         discard_flag = True if ((assignment.get_tstate()
@@ -442,7 +460,6 @@ class DrbdManager(object):
         Disconnect a resource on the current node from all peer nodes
         """
         resource = assignment.get_resource()
-        # TODO: order drbdadm/drbdsetup to disconnect
         # FIXME
         # begin experimental
         drbd_proc = self._drbdadm.disconnect(resource.get_name())
@@ -510,7 +527,6 @@ class DrbdManager(object):
     
     def _detach(self, assignment, vol_state):
         resource = assignment.get_resource()
-        # TODO: order drbdadm to attach the volume
         # FIXME
         # begin experimental
         drbd_proc = self._drbdadm.detach(resource.get_name(),

@@ -109,7 +109,7 @@ class DrbdAdm(object):
     def detach(self, res_name, vol_id):
         sys.stdout.write("%sDEBUG: DrbdAdm: detach %s %d%s\n"
           % (COLOR_GREEN, res_name, vol_id, COLOR_NONE))
-        args = [self.EXECUTABLE, "-c", "-", "detach", res_name,
+        args = [self.EXECUTABLE, "-c", "-", "detach",
           res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
     
