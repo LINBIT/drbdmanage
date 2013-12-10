@@ -19,9 +19,12 @@ __date__ ="$Sep 24, 2013 3:33:50 PM$"
 
 def persistence_impl():
     """
-    Return the persistence implementation.
+    Return the persistence implementation of the drbdmanage control volume
+    
     This function serves for easy and centralized replacement of
     the class that implements persistence (saving object state to disk)
+    
+    @return: persistence layer object
     """
     return PersistenceImpl()
 
@@ -57,6 +60,11 @@ class PersistenceImplDummy(object):
     
 
 class PersistenceImpl(object):
+    
+    """
+    Persistence layer for the drbdmanage control volume
+    """
+    
     _file       = None
     _server     = None
     _writeable  = False
@@ -84,6 +92,8 @@ class PersistenceImpl(object):
     
     MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
     
+    # FIXME: That constant should probably not be here, but there does not
+    #        seem to be a good way to get it otherwise
     BLKFLSBUF = 0x00001261 # <include/linux/fs.h>
     
     # fail counter for attempts to open the config file (CONF_FILE)
@@ -155,8 +165,16 @@ class PersistenceImpl(object):
         return rc
         
     
-    # TODO: clean implementation - this is a prototype
     def save(self, nodes, resources):
+        """
+        Saves the configuration to the drbdmanage control volume
+        
+        The persistent storage must have been opened for writing before
+        calling save(). See open().
+        
+        @raise   PersistenceException: on I/O error
+        @raise   IOError: if no writable file descriptor is open
+        """
         if self._writeable:
             try:
                 p_index_con = dict()
@@ -227,13 +245,6 @@ class PersistenceImpl(object):
                 save_data = self._container_to_json(p_index_con)
                 self._file.write(save_data)
                 self._file.write("\0")
-                #self._file.write(
-                #  long_to_bin(nodes_off)
-                #  + long_to_bin(nodes_len)
-                #  + long_to_bin(res_off)
-                #  + long_to_bin(res_len)
-                #  + long_to_bin(assg_off)
-                #  + long_to_bin(assg_len))
                 
                 computed_hash = hash.get_hex_hash()
                 self.update_stored_hash(computed_hash)
@@ -251,6 +262,18 @@ class PersistenceImpl(object):
     
     # Get the hash of the configuration on persistent storage
     def get_stored_hash(self):
+        """
+        Retrieves the hash code of the stored configuration
+        
+        The hash code stored with the configuration on the drbdmanage
+        control volume is read and returned without updating the
+        hash code currently known to the server.
+        Used to compare the server's known hash code with the hash code on
+        the control volume, to detect whether the configuration has changed.
+        
+        @return: hash code from the drbdmanage control volume
+        @rtype:  str
+        """
         stored_hash = None
         if self._file is not None:
             try:
@@ -269,6 +292,11 @@ class PersistenceImpl(object):
     
     
     def update_stored_hash(self, hex_hash):
+        """
+        Updates the hash code of the stored configuration
+        
+        @param   hex_hash: hexadecimal string representation of the hash code
+        """
         if self._file is not None and self._writeable:
             try:
                 self._file.seek(self.HASH_OFFSET)
@@ -283,8 +311,16 @@ class PersistenceImpl(object):
               "writeable file descriptor")
     
     
-    # TODO: clean implementation - this is a prototype
     def load(self, nodes, resources):
+        """
+        Loads the configuration from the drbdmanage control volume
+        
+        The persistent storage must have been opened before calling load().
+        See open().
+        
+        @raise   PersistenceException: on I/O error
+        @raise   IOError: if no file descriptor is open
+        """
         errors = False
         if self._file is not None:
             try:
@@ -299,12 +335,6 @@ class PersistenceImpl(object):
                 res_len    = p_index[self.RES_LEN_NAME]
                 assg_off   = p_index[self.ASSG_OFF_NAME]
                 assg_len   = p_index[self.ASSG_LEN_NAME]
-                #nodes_off = long_from_bin(f_index[0:8])
-                #nodes_len = long_from_bin(f_index[8:16])
-                #res_off   = long_from_bin(f_index[16:24])
-                #res_len   = long_from_bin(f_index[24:32])
-                #assg_off  = long_from_bin(f_index[32:40])
-                #assg_len  = long_from_bin(f_index[40:48])
                 
                 nodes_con = None
                 res_con   = None
@@ -389,33 +419,71 @@ class PersistenceImpl(object):
     
     
     def close(self):
+        """
+        Closes the persistent storage
+        
+        Can be called multiple times and/or no matter whether the persistent
+        storage is actually open without causing any error.
+        """
         try:
             if self._file is not None:
                 if self._writeable:
                     self._file.flush()
                     os.fsync(self._file.fileno())
-                    self._writeable = False
-                # fcntl.ioctl(self._file.fileno(), self.BLKFLSBUF)
         except IOError:
             pass
         finally:
-            self._file.close()
+            if self._file is not None:
+                self._file.close()
+            self._writeable = False
             self._file = None
     
     
     def get_hash_obj(self):
+        """
+        Returns the DataHash object used by this instance
+        
+        The DataHash object that is used to calculate the hash code of the
+        configuration is returned.
+        
+        @return: DataHash object. See drbdmanage.utils
+        """
         return self._hash_obj
     
     
     def _container_to_json(self, container):
+        """
+        Serializes a dictionary into a JSON string
+        
+        Indent level is 4 spaces, keys are sorted.
+        
+        @param   container: the data collection to serialize into a JSON string
+        @type    container: dict
+        @return: JSON representation of the container
+        @rtype:  str
+        """
         return (json.dumps(container, indent=4, sort_keys=True) + "\n")
     
     
     def _json_to_container(self, json_doc):
+        """
+        Deserializes a JSON string into a dictionary
+        
+        @param   json_doc: the JSON string to deserialize
+        @type    json_doc: str (or compatible)
+        @return: data collection (key/value) deserialized from the JSON string
+        @rtype:  dict
+        """
         return json.loads(json_doc)
     
     
     def _align_offset(self):
+        """
+        Aligns the file offset on the next block boundary
+        
+        The file offset for reading or writing is advanced to the next block
+        boundary as specified by BLKSZ.
+        """
         if self._file is not None:
             offset = self._file.tell()
             if offset % self.BLKSZ != 0:
@@ -424,6 +492,13 @@ class PersistenceImpl(object):
     
     
     def _align_zero_fill(self):
+        """
+        Fills the file with zero bytes up to the next block boundary
+        
+        The file is filled with zero bytes from the current file offset up to
+        the next block boundary as specified by BLKSZ.
+        """
+        
         if self._file is not None:
             offset = self._file.tell()
             if offset % self.BLKSZ != 0:
@@ -441,8 +516,14 @@ class PersistenceImpl(object):
     
     def _null_trunc(self, data):
         """
-        Truncate the data area to the end of the string, marked by
-        a null byte
+        Returns the supplied data truncated at the first zero byte
+        
+        Used for sanitizing JSON strings read from the persistent storage
+        before passing them to the JSON parser, because the JSON parser does
+        not like to see any data behind the end of a JSON string.
+        
+        @return: data truncated at the first zero byte
+        @rtype:  str
         """
         idx = data.find(chr(0))
         if idx != -1:
@@ -451,6 +532,19 @@ class PersistenceImpl(object):
     
     
     def _next_json(self, stream):
+        """
+        Extracts JSON documents from a stream of multiple JSON documents
+        
+        Looks for lines that only contain a single "{" or "}" byte to identify
+        beginning and end of JSON documents.
+        
+        The current persistence implementation does not write or read multiple
+        JSON documents to or from the same string, so this function is
+        currently unused.
+        
+        @return: the next JSON document
+        @rtype:  str
+        """
         read = False
         json_blk = None
         cfgline = stream.readline()
@@ -468,6 +562,11 @@ class PersistenceImpl(object):
 
 
 class DrbdNodePersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes DrbdNode objects
+    """
+    
     SERIALIZABLE = [ "_name", "_ip", "_af", "_state",
       "_poolsize", "_poolfree" ]
     
@@ -501,6 +600,11 @@ class DrbdNodePersistence(GenericPersistence):
 
 
 class DrbdResourcePersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes DrbdResource objects
+    """
+    
     SERIALIZABLE = [ "_name", "_secret", "_port", "_state" ]
     
     def __init__(self, resource):
@@ -538,6 +642,11 @@ class DrbdResourcePersistence(GenericPersistence):
     
     
 class DrbdVolumePersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes DrbdVolume objects
+    """
+    
     SERIALIZABLE = [ "_id", "_state", "_size_MiB" ]
     
     
@@ -572,6 +681,11 @@ class DrbdVolumePersistence(GenericPersistence):
 
 
 class AssignmentPersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes Assignment objects
+    """
+    
     SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc" ]
     
     
@@ -630,6 +744,11 @@ class AssignmentPersistence(GenericPersistence):
 
 
 class DrbdVolumeStatePersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes DrbdVolumeState objects
+    """
+    
     SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate" ]
     
     

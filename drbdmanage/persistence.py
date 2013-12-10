@@ -19,6 +19,14 @@ class GenericPersistence(object):
     
     
     def load_dict(self, serializable):
+        """
+        Load a dictionary with serializable variables of an object
+        
+        @param   serializable: list of object variable names to add to
+                 the dictionary
+        @return: object variables for serialization
+        @rtype:  dict
+        """
         properties = dict()
         for key in serializable:
             try:
@@ -30,4 +38,11 @@ class GenericPersistence(object):
     
     
     def serialize(self, properties):
+        """
+        Serialize a dictionary (dict) into a JSON string
+        
+        @param   properties: dictionary of serializable variables
+        @return: JSON string of serialized data
+        @rtype:  str
+        """
         return json.dumps(properties, indent=4, sort_keys=True)

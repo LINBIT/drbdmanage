@@ -14,6 +14,15 @@ __date__ ="$Sep 12, 2013 10:49:42 AM$"
 
 
 class LVM(object):
+    
+    """
+    LVM logical volume backing store plugin for the drbdmanage server
+    
+    Provides backing store block devices for DRBD volumes by managing the
+    allocation of logical volumes inside a volume group of the
+    logical volume manager (LVM).
+    """
+    
     KEY_DEV_PATH  = "dev-path"
     KEY_VG_NAME   = "volume-group"
     KEY_LVM_PATH  = "lvm-path"
@@ -59,6 +68,18 @@ class LVM(object):
     
     
     def create_blockdevice(self, name, id, size):
+        """
+        Allocates a block device as backing storage for a DRBD volume
+        
+        @param   name: resource name; subject to name constraints
+        @type    name: str
+        @param   id: volume id
+        @type    id: int
+        @param   size: size of the block device in MiB (binary megabytes)
+        @type    size: long
+        @return: block device of the specified size
+        @rtype:  BlockDevice object; None if the allocation fails
+        """
         bd = None
         lv_name = self._lv_name(name, id)
         try:
@@ -74,6 +95,13 @@ class LVM(object):
     
     
     def remove_blockdevice(self, blockdevice):
+        """
+        Deallocates a block device
+        
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @return: standard return code (see drbdmanage.exceptions)
+        """
         # FIXME: this function should also return whether lvremove succeeded
         try:
             self._remove_lv(blockdevice.get_name())
@@ -85,6 +113,15 @@ class LVM(object):
     
     
     def get_blockdevice(self, name, id):
+        """
+        Retrieves a registered BlockDevice object
+        
+        The BlockDevice object allocated and registered under the supplied
+        resource name and volume id is returned.
+        
+        @return: the specified block device; None on error
+        @rtype:  BlockDevice object
+        """
         bd = None
         try:
             bd = self._lvs[self._lv_name(name, id)]
@@ -94,14 +131,37 @@ class LVM(object):
     
     
     def up_blockdevice(self, blockdevice):
+        """
+        Activates a block device (e.g., connects an iSCSI resource)
+        
+        @param blockdevice: the block device to deactivate
+        @type  blockdevice: BlockDevice object
+        """
         return DM_SUCCESS
     
     
     def down_blockdevice(self, blockdevice):
+        """
+        Deactivates a block device (e.g., disconnects an iSCSI resource)
+        
+        @param blockdevice: the block device to deactivate
+        @type  blockdevice: BlockDevice object
+        """
         return DM_SUCCESS
     
     
     def update_pool(self, node):
+        """
+        Updates the DrbdNode object with the current storage status
+        
+        Determines the current total and free space that is available for
+        allocation on the host this instance of the drbdmanage server is
+        running on and updates the DrbdNode object with that information.
+        
+        @param   node: The node to update
+        @type    node: DrbdNode object
+        @return: standard return code (see drbdmanage.exceptions)
+        """
         rc = 1
         poolsize = -1
         poolfree = -1
@@ -271,4 +331,7 @@ class LVM(object):
     
     
     def reconfigure(self):
+        """
+        Reconfigures the storage plugin
+        """
         pass

@@ -17,10 +17,28 @@ class GenericStorage(object):
     
     
     def get_size_MiB(self):
+        """
+        Returns the size of the volume in binary megabytes
+        
+        This is the size of the volume in units of (2 to the power of 20) bytes
+        (bytes = size * 1048576).
+        
+        @return: volume size in MeBiByte (2 ** 20 bytes, binary megabytes)
+        @rtype:  long
+        """
         return self._size_MiB
 
 
     def get_size(self, unit):
+        """
+        Returns the size of the volume converted to the selected scale unit
+        
+        See the functions of the SizeCalc class in drbdmanage.utils for
+        the unit selector constants.
+        
+        @return: volume size in the selected scale unit
+        @rtype:  long
+        """
         return drbdmanage.utils.SizeCalc.convert(self._size_MiB,
           drbdmanage.utils.SizeCalc.UNIT_MiB, unit)
 
@@ -127,6 +145,9 @@ class MinorNr(object):
     MINOR_NR_MAX = 0xfffff
     
     MINOR_NR_AUTO     = -1
+    # FIXME: MINOR_NR_AUTODRBD will probably never be useful for anything.
+    #        Reserved for automatic minor number allocation by the kernel
+    #        module; should possibly be removed.
     MINOR_NR_AUTODRBD = -2
     MINOR_NR_ERROR    = -3
     
@@ -191,33 +212,102 @@ class DevNr(object):
 
 
 class StoragePlugin(object):
+    
+    """
+    Interface for storage plugins
+    
+    Storage plugins are loaded dynamically at runtime. The block device manager
+    expects storage plugins to implement the functions in this interface.
+    Storage plugins should be subclasses of this interface, although
+    technically, this is not strictly required, because Python does not care
+    about the class hierarchy of objects as long as it finds all the
+    functions it looks for.
+    """
+    
     def __init__(self):
+        """
+        Initializes the storage plugin
+        """
         pass
     
     
     def get_blockdevice(self, name, id):
+        """
+        Retrieves a registered BlockDevice object
+        
+        The BlockDevice object allocated and registered under the supplied
+        resource name and volume id is returned.
+        
+        @return: the specified block device; None on error
+        @rtype:  BlockDevice object
+        """
         raise NotImplementedError
     
     
     def create_blockdevice(self, name, id, size):
+        """
+        Allocates a block device as backing storage for a DRBD volume
+        
+        @param   name: resource name; subject to name constraints
+        @type    name: str
+        @param   id: volume id
+        @type    id: int
+        @param   size: size of the block device in MiB (binary megabytes)
+        @type    size: long
+        @return: block device of the specified size
+        @rtype:  BlockDevice object; None if the allocation fails
+        """
         raise NotImplementedError
     
     
     def remove_blockdevice(self, blockdevice):
+        """
+        Deallocates a block device
+        
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @return: standard return code (see drbdmanage.exceptions)
+        """
         raise NotImplementedError
     
     
     def up_blockdevice(self, blockdevice):
+        """
+        Activates a block device (e.g., connects an iSCSI resource)
+        
+        @param blockdevice: the block device to deactivate
+        @type  blockdevice: BlockDevice object
+        """
         raise NotImplementedError
     
     
     def down_blockdevice(self, blockdevice):
+        """
+        Deactivates a block device (e.g., disconnects an iSCSI resource)
+        
+        @param blockdevice: the block device to deactivate
+        @type  blockdevice: BlockDevice object
+        """
         raise NotImplementedError
     
     
     def update_pool(self, drbdnode):
+        """
+        Updates the DrbdNode object with the current storage status
+        
+        Determines the current total and free space that is available for
+        allocation on the host this instance of the drbdmanage server is
+        running on and updates the DrbdNode object with that information.
+        
+        @param   node: The node to update
+        @type    node: DrbdNode object
+        @return: standard return code (see drbdmanage.exceptions)
+        """
         raise NotImplementedError
     
     
     def reconfigure(self):
+        """
+        Reconfigures the storage plugin
+        """
         raise NotImplementedError

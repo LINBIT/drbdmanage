@@ -8,6 +8,13 @@ __date__ ="$Sep 30, 2013 12:19:56 PM$"
 
 
 class BlockDevicePersistence(GenericPersistence):
+    
+    """
+    Serializes/deserializes BlockDevice objects
+    
+    This class is for use by storage plugins.
+    """
+    
     SERIALIZABLE = [ "_name", "_path" ]
     def __init__(self, bd):
         super(BlockDevicePersistence, self).__init__(bd)

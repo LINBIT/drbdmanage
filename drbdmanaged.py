@@ -7,10 +7,13 @@ __date__ ="$Sep 12, 2013 5:21:53 PM$"
 
 
 def main():
+    """
+    Starts up the server and its communication layer
+    """
     server      = DrbdManageServer()
     dbus_server = DBusServer(server)
     try:
-        dbus_server.run()
+        server.run()
     except KeyboardInterrupt:
         sys.stdout.write("Server shutdown (received SIGINT)\n")
     return 0

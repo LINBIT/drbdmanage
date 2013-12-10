@@ -18,6 +18,11 @@ from drbdmanage.utils import *
 
 
 class DrbdManager(object):
+    
+    """
+    Manages deployment/undeployment of DRBD resources
+    """
+    
     _server  = None
     _drbdadm = None
     _resconf = None
@@ -37,10 +42,20 @@ class DrbdManager(object):
     #       to load the configuration, it should probably rather stop
     #       than loop at some point.
     def run(self):
+        """
+        Performs actions to reflect changes to the drbdmanage configuration
+        
+        If the configuration on the drbdmanage control volume has changed,
+        this function attempts to reach the target state that is set for
+        each resource in the configuration.
+        According to the target state of each resource, resources/volumes
+        are deployed/undeployed/attached/detached/connected/disconnected/etc...
+        """
         persist = None
         sys.stdout.write("%sDEBUG: DrbdManager invoked%s\n"
           % (COLOR_YELLOW, COLOR_NONE))
         try:
+            # check whether the configuration hash has changed
             persist = self._server.open_conf()
             if persist is not None:
                 sys.stderr.write("%sDEBUG: drbdcore check/hash: %s%s\n"
@@ -50,6 +65,7 @@ class DrbdManager(object):
                     # configuration did not change, bail out
                     sys.stdout.write("  hash unchanged, abort\n")
                     return
+            # configuration hash has changed
             # lock and reload the configuration
             persist.close()
             persist = self._server.begin_modify_conf()
@@ -83,6 +99,15 @@ class DrbdManager(object):
     
     # FIXME
     def perform_changes(self):
+        """
+        Calls worker functions for required resource state changes
+        
+        Determines which state changes are required for each resource and
+        calls functions to attempt to reach the desired target state.
+        
+        @return: True if the state of any resource has changed, False otherwise
+        @rtype:  bool
+        """
         state_changed = False
         pool_changed  = False
         # sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
@@ -232,7 +257,7 @@ class DrbdManager(object):
     
     def initial_up(self):
         """
-        Attempt to bring up all deployed resources.
+        Attempts to bring up all deployed resources.
         Used when the drbdmanage server starts up.
         """
         node = self._server.get_instance_node()
@@ -252,7 +277,7 @@ class DrbdManager(object):
     
     def _up_resource(self, assignment):
         """
-        Bring up DRBD resources
+        Brings up DRBD resources
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
@@ -269,7 +294,7 @@ class DrbdManager(object):
     
     def _down_resource(self, assignment):
         """
-        Bring down DRBD resources
+        Brings down DRBD resources
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
@@ -286,7 +311,7 @@ class DrbdManager(object):
     
     def _deploy_volume(self, assignment, vol_state):
         """
-        Deploy a volume and update its state values
+        Deploys a volume and update its state values
         """
         # do not create block devices for clients
         if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
@@ -357,7 +382,7 @@ class DrbdManager(object):
     
     def _undeploy_volume(self, assignment, vol_state):
         """
-        Undeploy a volume, then reset the state values of the volume state
+        Undeploys a volume, then reset the state values of the volume state
         entry, so it can be removed from the assignment by the cleanup
         function.
         """
@@ -381,7 +406,7 @@ class DrbdManager(object):
     
     def _deploy_assignment(self, assignment):
         """
-        Finish deployment of an assignment. The actual deployment of the
+        Finishes deployment of an assignment. The actual deployment of the
         assignment's/resource's volumes takes place in per-volume actions
         of the DrbdManager.perform_changes() function.
         """
@@ -406,7 +431,7 @@ class DrbdManager(object):
     
     def _undeploy_assignment(self, assignment):
         """
-        Undeploy all volumes of a resource, then reset the assignment's state
+        Undeploys all volumes of a resource, then reset the assignment's state
         values, so it can be removed by the cleanup function.
         """
         resource = assignment.get_resource()
@@ -439,7 +464,7 @@ class DrbdManager(object):
     
     def _connect(self, assignment):
         """
-        Connect a resource on the current node to all peer nodes
+        Connects a resource on the current node to all peer nodes
         """
         resource = assignment.get_resource()
         # FIXME
@@ -457,7 +482,7 @@ class DrbdManager(object):
     
     def _disconnect(self, assignment):
         """
-        Disconnect a resource on the current node from all peer nodes
+        Disconnects a resource on the current node from all peer nodes
         """
         resource = assignment.get_resource()
         # FIXME
@@ -472,7 +497,7 @@ class DrbdManager(object):
     
     def _update_connections(self, assignment):
         """
-        Update connections
+        Updates connections
         * Disconnect from nodes that do not have the same resource
           connected anymore
         * Connect to nodes that have newly deployed a resource
@@ -481,7 +506,7 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         # TODO:
         """
-        * Find active connections
+        * Finds active connections
         * ... disconnect those that do not match any
           of the assignments for that resource.
         * ... connect those where there is an assignment for that resource
@@ -500,7 +525,7 @@ class DrbdManager(object):
     
     def _reconnect(self, assignment):
         """
-        Disconnect, then connect again
+        Disconnects, then connect again
         """
         # disconnect
         self._disconnect(assignment)
@@ -510,6 +535,9 @@ class DrbdManager(object):
     
     
     def _attach(self, assignment, vol_state):
+        """
+        Attaches a volume
+        """
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
         # FIXME
@@ -526,6 +554,9 @@ class DrbdManager(object):
     
     
     def _detach(self, assignment, vol_state):
+        """
+        Detaches a volume
+        """
         resource = assignment.get_resource()
         # FIXME
         # begin experimental
@@ -539,6 +570,11 @@ class DrbdManager(object):
     
     
     def reconfigure(self):
+        """
+        Reconfigures the DrbdManager instance
+        
+        Called by the server's reconfigure() function
+        """
         self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(
           self._server.get_conf_value(self._server.KEY_DRBDADM_PATH))
     
@@ -595,6 +631,9 @@ class DrbdResource(object):
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
     
+    # STATE_MASK must include all valid flags;
+    # used to mask the value supplied to set_state() to prevent setting
+    # non-existent flags
     STATE_MASK   = FLAG_REMOVE | FLAG_NEW
     
     # maximum volumes per resource
@@ -682,6 +721,16 @@ class DrbdResource(object):
     
     
 class DrbdResourceView(object):
+    
+    """
+    Serializes and deserializes resource list entries
+    
+    This class is used by the drbdmanage server to serialize resource list
+    entries for the resources and volumes list. The drbdmanage client uses this
+    class to deserialize and display the information received from the
+    drbdmanage server.
+    """
+    
     # array indexes
     RV_NAME     = 0
     RV_SECRET   = 1
@@ -763,14 +812,26 @@ class DrbdResourceView(object):
         return self._volumes
     
     
-class DrbdVolume(GenericStorage):    
+class DrbdVolume(GenericStorage):
+    
+    """
+    Representation of a DRBD volume specification in drbdmanage's object model
+    
+    This class represents the specification of a DRBD volume in
+    drbdmanage's configuration. DrbdVolume objects are referenced in
+    DrbdResource objects.
+    """
+    
     _id          = None
-    _size_MiB    = None    
+    _size_MiB    = None
     _minor       = None
     _state       = None
     
     FLAG_REMOVE  = 0x1
     
+    # STATE_MASK must include all valid flags;
+    # used to mask the value supplied to set_state() to prevent setting
+    # non-existent flags
     STATE_MASK   = FLAG_REMOVE
     
     def __init__(self, id, size_MiB, minor):
@@ -807,6 +868,16 @@ class DrbdVolume(GenericStorage):
 
 
 class DrbdVolumeView(object):
+    
+    """
+    Serializes and deserializes volume list entries
+    
+    This class is used by the drbdmanage server to serialize volume list
+    entries for the resources and volumes list. The drbdmanage client uses this
+    class to deserialize and display the information received from the
+    drbdmanage server.
+    """
+    
     # array indexes
     VV_ID       = 0
     VV_SIZE_MiB = 1
@@ -858,6 +929,9 @@ class DrbdVolumeView(object):
         if self._minor == -1:
             return "auto"
         elif self._minor == -2:
+            # FIXME: Reserved for automatic selection of a minor number by
+            #        the DRBD kernel module. This is probably nonsense,
+            #        and if it is, it should be removed.
             return "auto-drbd"
         else:
             return str(self._minor)
@@ -876,6 +950,11 @@ class DrbdVolumeView(object):
 
 
 class DrbdNode(object):
+    
+    """
+    Represents a drbdmanage host node in drbdmanage's object model.
+    """
+    
     NAME_MAXLEN = 16
     
     AF_IPV4 = 4
@@ -896,6 +975,9 @@ class DrbdNode(object):
     FLAG_REMOVE   =     0x1
     FLAG_UPD_POOL = 0x10000
     
+    # STATE_MASK must include all valid flags;
+    # used to mask the value supplied to set_state() to prevent setting
+    # non-existent flags
     STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL
     
     
@@ -1004,6 +1086,15 @@ class DrbdNode(object):
 
 
 class DrbdNodeView(object):
+    
+    """
+    Serializes and deserializes node list entries
+    
+    This class is used by the drbdmanage server to serialize node list entries.
+    The drbdmanage client uses this class to deserialize and display the
+    information received from the drbdmanage server.
+    """
+    
     # array indexes
     NV_NAME     = 0
     NV_AF_LABEL = 1
@@ -1086,6 +1177,16 @@ class DrbdNodeView(object):
     
     
 class DrbdVolumeState(object):
+    
+    """
+    Represents the state of a resource's volume assigned to a node
+    
+    A DrbdVolumeState object represents the state of a volume that is part
+    of a resource that has been assigned to a node by means of an
+    Assignment object. DrbdVolumeState objects are referenced by Assignment
+    objects.
+    """
+    
     _volume      = None
     _bd_path     = None
     _blockdevice = None
@@ -1095,7 +1196,14 @@ class DrbdVolumeState(object):
     FLAG_DEPLOY    = 0x1
     FLAG_ATTACH    = 0x2
     
+    # CSTATE_MASK must include all valid current state flags;
+    # used to mask the value supplied to set_cstate() to prevent setting
+    # non-existent flags
     CSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
+    
+    # TSTATE_MASK must include all valid target state flags;
+    # used to mask the value supplied to set_tstate() to prevent setting
+    # non-existent flags
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
     
     def __init__(self, volume):
@@ -1150,19 +1258,19 @@ class DrbdVolumeState(object):
     
     
     def set_cstate(self, cstate):
-        self._cstate = cstate
+        self._cstate = cstate & self.CSTATE_MASK
     
     
     def set_tstate(self, tstate):
-        self._tstate = tstate
+        self._tstate = tstate & self.TSTATE_MASK
     
     
     def get_cstate(self):
-        return self._cstate & self.CSTATE_MASK
+        return self._cstate
     
     
     def get_tstate(self):
-        return self._tstate & self.TSTATE_MASK
+        return self._tstate
     
     
     def deploy(self):
@@ -1198,6 +1306,16 @@ class DrbdVolumeState(object):
 
 
 class DrbdVolumeStateView(object):
+    
+    """
+    Serializes and deserializes volume state list entries
+    
+    This class is used by the drbdmanage server to serialize volume state list
+    entries for the assignments view. The drbdmanage client uses this class
+    to deserialize and display the information received from the drbdmanage
+    server.
+    """
+    
     # array indexes
     SV_ID       = 0
     SV_BD_PATH  = 1
@@ -1291,6 +1409,14 @@ class DrbdVolumeStateView(object):
 
 
 class Assignment(object):
+    
+    """
+    Representation of a resource assignment to a node
+    
+    An Assignment object represents the state of a resource that has been
+    assigned to a node.
+    """
+    
     _node        = None
     _resource    = None
     _vol_states  = None
@@ -1311,10 +1437,20 @@ class Assignment(object):
     # --discard-my-data upon connect / resolve split-brain
     FLAG_DISCARD   = 0x80000
     
+    # CSTATE_MASK must include all valid current state flags;
+    # used to mask the value supplied to set_cstate() to prevent setting
+    # non-existent flags
     CSTATE_MASK    = FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
+    
+    # TSTATE_MASK must include all valid target state flags;
+    # used to mask the value supplied to set_tstate() to prevent setting
+    # non-existent flags
     TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
                        | FLAG_UPD_CON | FLAG_RECONNECT
                        | FLAG_OVERWRITE | FLAG_DISCARD)
+    
+    # Mask applied to ignore action flags on the target state
+    # of an assignment.
     ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
     
     NODE_ID_ERROR  = -1
@@ -1404,54 +1540,123 @@ class Assignment(object):
     
     
     def deploy(self):
+        """
+        Sets the assignment's target state to deployed
+        
+        Used to indicate that an assignment's volumes should be deployed
+        (installed) on the node
+        """
         self._tstate = self._tstate | self.FLAG_DEPLOY
     
     
     def undeploy(self):
+        """
+        Sets the assignment's target state to undeployed
+        
+        Used to indicate that an assignment's volumes should be undeployed
+        (removed) from a node
+        """
         self._tstate = 0
     
     
     def connect(self):
+        """
+        Sets the assignment's target state to connected
+        
+        Used to trigger a connect action on the assignment's resource
+        """
         self._tstate = self._tstate | self.FLAG_CONNECT
     
     
     def reconnect(self):
+        """
+        Sets the reconnect action flag on the assignment's target state
+        
+        Used to trigger reconnection of the assignment's resource's network
+        connections (effectively, disconnect immediately followed by connect)
+        """
         self._tstate = self._tstate | self.FLAG_RECONNECT
     
     
     def disconnect(self):
+        """
+        Sets the assignment's target state to disconnected
+        
+        Used to trigger a disconnect action on the assignment's resource
+        """
         self._tstate = (self._tstate | self.FLAG_CONNECT) ^ self.FLAG_CONNECT
     
     
     def deploy_client(self):
+        """
+        Sets the assignment's target state to diskless/deployed
+        
+        Used to indicate that an assignment's volumes should be connected
+        on a node in DRBD9 client mode (without local storage)
+        """
         self._tstate = self._tstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
     
     
     def update_connections(self):
+        """
+        Sets the UPDCON flag on an assignment's target state
+        
+        Used to indicate that the network connections of an assignment's
+        resource have changed and should be updated. This should be achieved
+        without disconnecting connections that are still valid
+        (e.g., NOT disconnect/connect or reconnect)
+        Commonly, drbdadm adjust should be a good candidate to update
+        connections.
+        """
         self._tstate = self._tstate | self.FLAG_UPD_CON
     
     
     def set_rc(self, rc):
+        """
+        Sets the return code of an action performed on the assignment
+        
+        Used to indicate the return code of failed actions, so the reason
+        for a failed action can be queried on a remote node.
+        """
         self._rc = rc
     
     
     def get_rc(self):
+        """
+        Retrieves the return code of an action performed on the assignment
+        
+        See set_rc.
+        """
         return self._rc
     
     
     def is_deployed(self):
+        """
+        Returns the deployment state of an assignment.
+        
+        @return: True if the resource is currently deployed; False otherwise
+        """
         return (self._cstate & self.FLAG_DEPLOY) != 0
     
     
     def is_connected(self):
+        """
+        Returns the connection state of an assignment.
+        
+        @return: True if the resource is currently connected; False otherwise
+        """
         return (self._cstate & self.FLAG_CONNECT) != 0
     
     
     def requires_action(self):
         """
-        If the state of the assignment itself requires action, or the
-        state of any of the volumes of the resource associated with this
-        assignment requires action, return True
+        Checks whether an assignment requires any action to be taken
+        
+        Actions can be required by either the assignment's state or by the
+        state of one of the assignment's volume state objects.
+        
+        @returns: True if the assignment or a volume state requires action;
+                  False otherwise
         """
         req_act = False
         for vol_state in self._vol_states.itervalues():
@@ -1461,21 +1666,58 @@ class Assignment(object):
     
     
     def requires_deploy(self):
+        """
+        Returns whether the assignment needs to be deployed
+        
+        If an assignment is not currently deployed, but its target state
+        requires it to be deployed, this function returns True to indicate
+        that action must be taken to deploy this assignment.
+        
+        @returns: True if the assignment needs to be deployed; False otherwise
+        """
         return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
           and (self._cstate & self.FLAG_DEPLOY == 0))
     
     
     def requires_connect(self):
+        """
+        Returns whether the assignment requires a connect action
+        
+        Returns True only if the assignment's resource's current state is
+        disconnected and its target state is connected.
+        
+        @returns: True if the assignment requires a connect action;
+                  False otherwise
+        """
         return ((self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
           and (self._cstate & self.FLAG_CONNECT == 0))
     
     
     def requires_undeploy(self):
+        """
+        Returns whether the assignment needs to be undeployed
+        
+        If an assignment is currently deployed, but its target state
+        requires it to be undeployed, this function returns True to indicate
+        that action must be taken to undeploy this assignment.
+        
+        @returns: True if the assignment needs to be undeployed;
+                  False otherwise
+        """
         return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
           and (self._tstate & self.FLAG_DEPLOY == 0))
     
     
     def requires_disconnect(self):
+        """
+        Returns whether the assignment requires a disconnect action
+        
+        Returns True only if the assignment's resource's current state is
+        connected and its target state is disconnected.
+        
+        @returns: True if the assignment requires a disconnect action;
+                  False otherwise
+        """
         return ((self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
           and (self._tstate & self.FLAG_CONNECT == 0))
     
@@ -1497,6 +1739,15 @@ class Assignment(object):
 
 
 class AssignmentView(object):
+    
+    """
+    Serializes and deserializes assignments list entries
+    
+    This class is used by the drbdmanage server to serialize assignment list
+    entries. The drbdmanage client uses this class to deserialize and display
+    the information received from the drbdmanage server.
+    """
+    
     # array indexes
     AV_NODE_NAME  = 0
     AV_RES_NAME   = 1

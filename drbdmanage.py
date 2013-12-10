@@ -22,6 +22,11 @@ __date__ ="$Sep 16, 2013 1:11:20 PM$"
 
 
 class DrbdManage(object):
+    
+    """
+    drbdmanage dbus client, the CLI for controlling the drbdmanage server
+    """
+    
     _server = None
     _interactive = False
     _noerr       = False

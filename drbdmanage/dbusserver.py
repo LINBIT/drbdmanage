@@ -20,6 +20,11 @@ __date__ ="$Sep 12, 2013 4:43:41 PM$"
 
 
 class DBusServer(dbus.service.Object):
+    
+    """
+    dbus API to the drbdmanage server API
+    """
+    
     DBUS_DRBDMANAGED = "org.drbd.drbdmanaged"
     DBUS_SERVICE     = "/interface"
     
@@ -36,7 +41,11 @@ class DBusServer(dbus.service.Object):
     
     
     def run(self):
-        gobject.MainLoop().run()
+        """
+        Calls the run() function of the server. It is recommended to call
+        that function directly instead of going through the dbus interface.
+        """
+        self._server.run()
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,

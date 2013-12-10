@@ -7,6 +7,24 @@ import sys
 from drbdmanage.exceptions import *
 
 class ConfFile(object):
+    
+    """
+    Configuration file parser for drbdmanage configuration files
+    
+    Basic rules of the configuration file format:
+      key = value free format
+      leading spaces and tabs removed from key and value
+      backslash ( \ ) acts as an escape character
+        backslash followed by 'n' creates a newline character
+        backslash followed by 't' creates a tab
+        backslash followed by anything else creates the respective character
+          (useful to intentionally add leading or trailing spaces)
+      backslash at the end of a line extends the line with the contents of the
+      following line
+      lines starting with a hash sign as the first non-space, non-tab character
+        are comment lines
+    """
+    
     _input = None
     
     
