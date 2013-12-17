@@ -146,6 +146,18 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sib", out_signature="i")
+    def extend(self, res_name, count, extend):
+        return self._server.extend(res_name, count, extend)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sib", out_signature="i")
+    def reduce(self, res_name, count, reduce):
+        return self._server.reduce(res_name, count, reduce)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sb", out_signature="i")
     def undeploy(self, res_name, count):
         return self._server.undeploy(res_name, count)

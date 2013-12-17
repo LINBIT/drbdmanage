@@ -180,6 +180,10 @@ class DrbdManage(object):
             rc = self.cmd_unassign(args)
         elif arg == "deploy":
             rc = self.cmd_deploy(args)
+        elif arg == "extend":
+            rc = self.cmd_extend(args)
+        elif arg == "reduce":
+            rc = self.cmd_reduce(args)
         elif arg == "undeploy":
             rc = self.cmd_undeploy(args)
         elif arg == "reconfigure":
@@ -769,8 +773,6 @@ class DrbdManage(object):
     
     def cmd_deploy(self, args):
         rc    = 1
-        cstate = 0
-        tstate = 0
         # Command parser configuration
         order    = [ "res", "count" ]
         params   = {}
@@ -809,8 +811,114 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: deploy <resource> <redundancy-count>\n")
         sys.stderr.write("    The redundancy count specifies the number of\n"
           "    nodes to which the resource should be deployed. It must be at\n"
-          "    least 1 and less than the maximum allowable number of nodes\n"
-          "    in the cluster\n")
+          "    least 1 and at most the number of nodes in the cluster\n")
+    
+    
+    def cmd_extend(self, args):
+        rc    = 1
+        extend = False
+        # Command parser configuration
+        order    = [ "res", "count" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            res_name  = params["res"]
+            count_str = params["count"]
+            if count_str.startswith("+"):
+                count_str = count_str[1:]
+                extend = True
+            count = 0
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise SyntaxException
+            
+            if count < 1:
+                raise SyntaxException
+
+            server_rc = self._server.extend(dbus.String(res_name),
+              dbus.Int32(count), dbus.Boolean(extend))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_extend()
+        return rc
+    
+    
+    def syntax_extend(self):
+        sys.stderr.write("Syntax: extend <resource> [+]<redundancy-count>\n")
+        sys.stderr.write("    The redundancy count specifies the number of\n"
+          "    nodes to which the resource should be deployed. It must be\n"
+          "    greater than the number of nodes the resource is currently\n"
+          "    assigned to and no more than the number of nodes in the\n"
+          "    cluster.\n"
+          "    If the redundancy count is prepended with a plus sign (+),\n"
+          "    the resource is deployed to the specified number of nodes\n"
+          "    in addition to those nodes where the resource is deployed\n"
+          "    already.\n")
+    
+    
+    def cmd_reduce(self, args):
+        rc    = 1
+        reduce = False
+        try:
+            res_name  = None
+            count_str = None
+            while True:
+                arg = args.next_arg()
+                if arg is None:
+                    break
+                if res_name is None:
+                    res_name = arg
+                elif count_str is None:
+                    count_str = arg
+                else:
+                    raise SyntaxException
+            
+            if res_name is None or count_str is None:
+                raise SyntaxException
+            
+            if count_str.startswith("-"):
+                count_str = count_str[1:]
+                reduce = True
+            count = 0
+            try:
+                count = int(count_str)
+            except ValueError:
+                raise SyntaxException
+            
+            if count < 1:
+                raise SyntaxException
+
+            server_rc = self._server.reduce(dbus.String(res_name),
+              dbus.Int32(count), dbus.Boolean(reduce))
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_reduce()
+        return rc
+    
+    
+    def syntax_reduce(self):
+        sys.stderr.write("Syntax: reduce <resource> [-]<redundancy-count>\n")
+        sys.stderr.write("    The redundancy count specifies the number of\n"
+          "    nodes to which the resource should be deployed. It must be\n"
+          "    less than the number of nodes the resource is currently\n"
+          "    assigned to and must be at least one.\n"
+          "    If the redundancy count is prepended with a minus sign (-),\n"
+          "    the resource is undeployed from the specified number\n"
+          "    of nodes.\n")
     
     
     def cmd_undeploy(self, args):

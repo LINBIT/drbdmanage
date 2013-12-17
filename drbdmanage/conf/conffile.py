@@ -257,14 +257,16 @@ class DrbdAdmConf(object):
                 minor = volume.get_minor()
                 if minor is None:
                     raise InvalidMinorNrException
-                stream.write("    volume %d {\n"
-                  "        device /dev/drbd%d minor %d;\n"
-                  "        disk %s;\n"
-                  "        meta-disk internal;\n"
-                  "    }\n"
-                  % (volume.get_id(), minor.get_value(), minor.get_value(),
-                    bd_path)
-                  )
+                if (vol_state.get_cstate() & vol_state.FLAG_DEPLOY != 0
+                  and vol_state.get_tstate() & vol_state.FLAG_DEPLOY != 0):
+                    stream.write("    volume %d {\n"
+                      "        device /dev/drbd%d minor %d;\n"
+                      "        disk %s;\n"
+                      "        meta-disk internal;\n"
+                      "    }\n"
+                      % (volume.get_id(), minor.get_value(), minor.get_value(),
+                        bd_path)
+                      )
             # end resource/volumes
             
             # begin resource/nodes
