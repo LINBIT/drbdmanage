@@ -34,6 +34,9 @@ class LVM(object):
     LVM_REMOVE   = "lvremove"
     LVM_LVS      = "lvs"
     
+    # LV exists error code
+    LVM_EEXIST   = 5
+    
     CONF_DEFAULTS = {
       KEY_DEV_PATH : "/dev/mapper/",
       KEY_VG_NAME  : "drbdpool",
@@ -83,11 +86,22 @@ class LVM(object):
         bd = None
         lv_name = self._lv_name(name, id)
         try:
-            if self._create_lv(lv_name, size) == 0:
-                bd = storagecore.BlockDevice(lv_name, size,
-                  self._lv_path_prefix() + lv_name)
-                self._lvs[lv_name] = bd
-                self.save_state()
+            tries = 0
+            while tries < 2:
+                rc = self._create_lv(lv_name, size)
+                if rc == 0:
+                    bd = storagecore.BlockDevice(lv_name, size,
+                      self._lv_path_prefix() + lv_name)
+                    self._lvs[lv_name] = bd
+                    self.save_state()
+                    break
+                elif rc == self.LVM_EEXIST:
+                    # LV with the same name exists, remote it and try again
+                    self._remove_lv(lv_name)
+                else:
+                    # Some other LVM error, fail
+                    break
+                tries += 1
         except Exception as exc:
             sys.stderr.write("DEBUG: LVM: create_blockdevice failed\n")
             print exc
