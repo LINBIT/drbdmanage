@@ -215,7 +215,12 @@ class DrbdManager(object):
                                   assg, False)
                                 drbd_proc.stdin.close()
                                 rc = drbd_proc.wait()
-                                if rc != 0:
+                                if rc == 0:
+                                    vol_state.set_cstate_flags(
+                                      DrbdVolumeState.FLAG_ATTACH)
+                                    assg.set_cstate_flags(
+                                      Assignment.FLAG_CONNECT)
+                                else:
                                     failed_actions = True
                         elif vol_state.requires_undeploy():
                             pool_changed = True
@@ -586,8 +591,12 @@ class DrbdManager(object):
         self._resconf.write(drbd_proc.stdin, assignment, False)
         drbd_proc.stdin.close()
         rc = drbd_proc.wait()
+        if rc == 0:
+            assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+            assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
+            for vol_state in assignment.iterate_volume_states():
+                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         # end experimental
-        assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
         
         return rc
     

@@ -1009,7 +1009,7 @@ class DrbdManageServer(object):
                               != 0)
                               and (assg.get_cstate() & Assignment.FLAG_DEPLOY
                               != 0)):
-                                assg.undeploy()
+                                self._unassign(assg, False)
                                 ctr -= 1
                             if not ctr > final_count:
                                 break
