@@ -40,12 +40,13 @@ class DrbdManageServer(object):
     EVT_ROLE_SECONDARY = "Secondary"
     DRBDCTRL_RES_NAME  = ".drbdctrl"
     
-    KEY_PLUGIN_NAME  = "storage-plugin"
-    KEY_MAX_NODE_ID  = "max-node-id"
-    KEY_MAX_PEERS    = "max-peers"
-    KEY_MIN_MINOR_NR = "min-minor-nr"
-    KEY_MIN_PORT_NR  = "min-port-nr"
-    KEY_MAX_PORT_NR  = "max-port-nr"
+    KEY_STOR_NAME      = "storage-plugin"
+    KEY_DEPLOYER_NAME  = "deployer-plugin"
+    KEY_MAX_NODE_ID    = "max-node-id"
+    KEY_MAX_PEERS      = "max-peers"
+    KEY_MIN_MINOR_NR   = "min-minor-nr"
+    KEY_MIN_PORT_NR    = "min-port-nr"
+    KEY_MAX_PORT_NR    = "max-port-nr"
     
     KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
@@ -58,7 +59,8 @@ class DrbdManageServer(object):
     
     # defaults
     CONF_DEFAULTS = {
-      KEY_PLUGIN_NAME    : "drbdmanage.storage.lvm.LVM",
+      KEY_STOR_NAME      : "drbdmanage.storage.lvm.LVM",
+      KEY_DEPLOYER_NAME  : "drbdmanage.deployers.BalancedDeployer",
       KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
       KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),
       KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
@@ -121,7 +123,7 @@ class DrbdManageServer(object):
         self._resources = dict()
         # load the server configuration file
         self.load_server_conf()
-        self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_PLUGIN_NAME])
+        self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
         self._drbd_mgr  = DrbdManager(self)
         self._drbd_mgr.drbdctrl_res_up()
         # load the drbdmanage database from the control volume
@@ -188,8 +190,7 @@ class DrbdManageServer(object):
         if self._evt_in_h is not None:
             gobject.source_remove(self._evt_in_h)
         self.init_events()
-        self.load_conf()
-        self._drbd_mgr.perform_changes()
+        self._drbd_mgr.run()
         # Unregister this event handler
         return False
     
@@ -788,79 +789,66 @@ class DrbdManageServer(object):
         
         @return: standard return code defined in drbdmanage.exceptions
         """
-        rc      = DM_EPERSIST
+        rc      = DM_DEBUG
         persist = None
         try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                maxnodes = self.DEFAULT_MAX_NODE_ID
-                try:
-                    maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
-                except ValueError:
-                    pass
-                crtnodes = len(self._nodes)
-                maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-                resource = self._resources[resource_name]
-                if ((not resource.has_assignments()) and count >= 1
-                  and count <= maxcount):
-                    """
-                    calculate the amount of memory required to deploy all
-                    volumes of the resource
-                    """
-                    size_sum = 0
-                    for vol in resource.iterate_volumes():
-                        size_sum += vol.get_size_MiB()
-                    """
-                    filter nodes that either have enough memory to deploy the
-                    resource or that do not know the state of their
-                    storage pool
-                    """
-                    # nodes with enough free memory
-                    capable = []
-                    # nodes with unknown free memory
-                    wildcat = []
-                    for node in self._nodes.itervalues():
-                        poolfree = node.get_poolfree()
-                        if poolfree != -1:
-                            if poolfree >= size_sum:
-                                capable.append(node)
-                        else:
-                            wildcat.append(node)
-                    capable = sorted(capable,
-                      key=lambda node: node.get_poolfree(), reverse=True)
-                    if len(capable) + len(wildcat) >= count:
-                        if len(capable) < count:
-                            """
-                            Since there are not enough nodes that are expected
-                            to have enough free memory to deploy the resource,
-                            integrate those nodes that could possibly have
-                            enough memory
-                            """
-                            capable = capable + wildcat
-                        self._assign(capable[0], resource, 0,
-                          Assignment.FLAG_DEPLOY | Assignment.FLAG_OVERWRITE
-                          | Assignment.FLAG_CONNECT)
-                        ctr = 1
-                        tstate = (Assignment.FLAG_DEPLOY
-                          | Assignment.FLAG_CONNECT)
-                        while ctr < count:
-                            self._assign(capable[ctr], resource, 0, tstate)
-                            ctr += 1
-                        self.save_conf_data(persist)
-                        rc = DM_SUCCESS
-                    else:
-                        rc = DM_ENOSPC
-                else:
-                    if resource.has_assignments():
-                        rc = DM_EEXIST
-                    elif not count >= 1:
-                        rc = DM_EINVAL
-                    else: # count > number of nodes
-                        rc = DM_ENODECNT
+            deployer = plugin_import(
+              self.get_conf_value(self.KEY_DEPLOYER_NAME))
+            if deployer is None:
+                raise PluginException
+
+            persist  = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+            
+            maxnodes = self.DEFAULT_MAX_NODE_ID
+            try:
+                maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
+            except ValueError:
+                pass
+            crtnodes = len(self._nodes)
+            maxcount = maxnodes if maxnodes < crtnodes else crtnodes
+            resource = self._resources[resource_name]
+            if ((not resource.has_assignments()) and count >= 1
+              and count <= maxcount):
+                """
+                calculate the amount of memory required to deploy all
+                volumes of the resource
+                """
+                size_sum = 0
+                for vol in resource.iterate_volumes():
+                    size_sum += vol.get_size_MiB()
+                """
+                Call the deployer plugin to select nodes for deploying the
+                resource
+                """
+                selected = []
+                rc = deployer.deploy_select(self._nodes, selected, count,
+                  size_sum, True)
+                if rc == DM_SUCCESS:
+                    self._assign(selected[0], resource, 0,
+                      Assignment.FLAG_DEPLOY | Assignment.FLAG_OVERWRITE
+                      | Assignment.FLAG_CONNECT)
+                    tstate = (Assignment.FLAG_DEPLOY
+                      | Assignment.FLAG_CONNECT)
+                    for node in selected:
+                        self._assign(node, resource, 0, tstate)
+                    self._drbd_mgr.perform_changes()
+                    self.save_conf_data(persist)
+                    rc = DM_SUCCESS
+            else:
+                if resource.has_assignments():
+                    rc = DM_EEXIST
+                elif not count >= 1:
+                    rc = DM_EINVAL
+                else: # count > number of nodes
+                    rc = DM_ENODECNT
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
-            pass
+            rc = DM_EPERSIST
+        except PluginException:
+            rc = DM_EPLUGIN
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
@@ -875,91 +863,83 @@ class DrbdManageServer(object):
         
         @return: standard return code defined in drbdmanage.exceptions
         """
-        rc      = DM_EPERSIST
+        rc      = DM_DEBUG
         persist = None
         try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                maxnodes = self.DEFAULT_MAX_NODE_ID
-                try:
-                    maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
-                except ValueError:
-                    pass
-                crtnodes = len(self._nodes)
-                maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-                resource = self._resources[resource_name]
-                assigned_count = resource.assigned_count()
-                if extend:
-                    final_count = count + assigned_count
+            deployer = plugin_import(
+              self.get_conf_value(self.KEY_DEPLOYER_NAME))
+            if deployer is None:
+                raise PluginException
+
+            persist  = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+            
+            maxnodes = self.DEFAULT_MAX_NODE_ID
+            try:
+                maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
+            except ValueError:
+                pass
+            crtnodes = len(self._nodes)
+            maxcount = maxnodes if maxnodes < crtnodes else crtnodes
+            resource = self._resources[resource_name]
+            assigned_count = resource.assigned_count()
+            if extend:
+                final_count = count + assigned_count
+            else:
+                final_count = count
+                if count > assigned_count:
+                    count -= assigned_count
                 else:
-                    final_count = count
-                    if count > assigned_count:
-                        count -= assigned_count
-                    else:
-                        count = 0
-                if ((resource.has_assignments()) and count >= 1
-                  and final_count <= maxcount):
-                    """
-                    calculate the amount of memory required to deploy all
-                    volumes of the resource
-                    """
-                    size_sum = 0
-                    for vol in resource.iterate_volumes():
-                        size_sum += vol.get_size_MiB()
-                    """
-                    filter nodes that either have enough memory to deploy the
-                    resource or that do not know the state of their
-                    storage pool
-                    """
-                    # nodes with enough free memory
-                    capable = []
-                    # nodes with unknown free memory
-                    wildcat = []
-                    for node in self._nodes.itervalues():
-                        if (resource.get_assignment(node.get_name())
-                          is not None):
-                            # skip nodes, where:
-                            #   - resource is deployed already
-                            #   - resource is being deployed
-                            #   - resource is being undeployed
-                            continue
-                        poolfree = node.get_poolfree()
-                        if poolfree != -1:
-                            if poolfree >= size_sum:
-                                capable.append(node)
-                        else:
-                            wildcat.append(node)
-                    capable = sorted(capable,
-                      key=lambda node: node.get_poolfree(), reverse=True)
-                    if len(capable) + len(wildcat) >= count:
-                        if len(capable) < count:
-                            """
-                            Since there are not enough nodes that are expected
-                            to have enough free memory to deploy the resource,
-                            integrate those nodes that could possibly have
-                            enough memory
-                            """
-                            capable = capable + wildcat
-                        ctr = 0
-                        while ctr < count:
-                            self._assign(capable[ctr], resource, 0,
-                              Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT)
-                            ctr += 1
-                        self.save_conf_data(persist)
-                        rc = DM_SUCCESS
-                    else:
-                        rc = DM_ENOSPC
-                else:
-                    if not resource.has_assignments():
-                        rc = DM_ENOENT
-                    elif not count >= 1:
-                        rc = DM_EINVAL
-                    else: # count > number of nodes
-                        rc = DM_ENODECNT
+                    count = 0
+            if ((resource.has_assignments()) and count >= 1
+              and final_count <= maxcount):
+                """
+                calculate the amount of memory required to deploy all
+                volumes of the resource
+                """
+                size_sum = 0
+                for vol in resource.iterate_volumes():
+                    size_sum += vol.get_size_MiB()
+                """
+                filter nodes that do not have the resource deployed yet
+                """
+                undeployed = dict()
+                for node in self._nodes.itervalues():
+                    if (resource.get_assignment(node.get_name())
+                      is not None):
+                        # skip nodes, where:
+                        #   - resource is deployed already
+                        #   - resource is being deployed
+                        #   - resource is being undeployed
+                        continue
+                    undeployed[node.get_name()] = node
+                """
+                Call the deployer plugin to select nodes for deploying the
+                resource
+                """
+                selected = []
+                rc = deployer.deploy_select(undeployed, selected, count,
+                  size_sum, True)
+                if rc == DM_SUCCESS:
+                    for node in selected:
+                        self._assign(node, resource, 0,
+                          Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT)
+                    self._drbd_mgr.perform_changes()
+                    self.save_conf_data(persist)
+            else:
+                if not resource.has_assignments():
+                    rc = DM_ENOENT
+                elif not count >= 1:
+                    rc = DM_EINVAL
+                else: # count > number of nodes
+                    rc = DM_ENODECNT
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
-            pass
+            rc = DM_EPERSIST
+        except PluginException:
+            rc = DM_EPLUGIN
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
@@ -976,55 +956,75 @@ class DrbdManageServer(object):
         """
         rc      = DM_EPERSIST
         persist = None
+        rc      = DM_DEBUG
+        persist = None
         try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                resource = self._resources[resource_name]
-                assigned_count = resource.assigned_count()
-                if reduce:
-                    final_count = assigned_count - count
+            deployer = plugin_import(
+              self.get_conf_value(self.KEY_DEPLOYER_NAME))
+            if deployer is None:
+                raise PluginException
+
+            persist  = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+        
+            resource = self._resources[resource_name]
+            assigned_count = resource.assigned_count()
+            if reduce:
+                final_count = assigned_count - count
+            else:
+                final_count = count
+                if not final_count < assigned_count:
+                    final_count = 0
+            if (resource.has_assignments()) and final_count >= 1:
+                ctr = assigned_count
+                # If there are assignments that are waiting for deployment,
+                # but do not have the resource deployed yet, undeploy those
+                # first
+                if ctr > final_count:
+                    for assg in resource.iterate_assignments():
+                        if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
+                          != 0)
+                          and (assg.get_cstate() & Assignment.FLAG_DEPLOY
+                          == 0)):
+                            assg.undeploy()
+                            ctr -= 1
+                        if not ctr > final_count:
+                            break
+                # Undeploy from nodes that have the resource deployed
+                if ctr > final_count:
+                    deployed = dict()
+                    for assg in resource.iterate_assignments():
+                        if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
+                          != 0)
+                          and (assg.get_cstate() & Assignment.FLAG_DEPLOY
+                          != 0)):
+                            node = assg.get_node()
+                            deployed[node.get_name()] = node
+                    """
+                    Call the deployer plugin to select nodes for undeployment
+                    of the resource
+                    """
+                    selected = []
+                    deployer.undeploy_select(deployed, selected,
+                      (ctr - final_count), True)
+                    for node in selected:
+                        assg = node.get_assignment(resource.get_name())
+                        self._unassign(assg, False)
+                self._drbd_mgr.perform_changes()
+                self.save_conf_data(persist)
+                rc = DM_SUCCESS
+            else:
+                if not resource.has_assignments():
+                    rc = DM_ENOENT
                 else:
-                    final_count = count
-                    if not final_count < assigned_count:
-                        final_count = 0
-                if (resource.has_assignments()) and final_count >= 1:
-                    ctr = assigned_count
-                    # If there are assignments that are waiting for deployment,
-                    # but do not have the resource deployed yet, undeploy those
-                    # first
-                    if ctr > final_count:
-                        for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
-                              != 0)
-                              and (assg.get_cstate() & Assignment.FLAG_DEPLOY
-                              == 0)):
-                                assg.undeploy()
-                                ctr -= 1
-                            if not ctr > final_count:
-                                break
-                    # Undeploy from nodes that have the resource deployed
-                    if ctr > final_count:
-                        for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
-                              != 0)
-                              and (assg.get_cstate() & Assignment.FLAG_DEPLOY
-                              != 0)):
-                                self._unassign(assg, False)
-                                ctr -= 1
-                            if not ctr > final_count:
-                                break
-                    self.cleanup()
-                    self.save_conf_data(persist)
-                    rc = DM_SUCCESS
-                else:
-                    if not resource.has_assignments():
-                        rc = DM_ENOENT
-                    else:
-                        rc = DM_EINVAL
+                    rc = DM_EINVAL
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
-            pass
+            rc = DM_EPERSIST
+        except PluginException:
+            rc = DM_EPLUGIN
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
@@ -1039,28 +1039,29 @@ class DrbdManageServer(object):
         
         @return: standard return code defined in drbdmanage.exceptions
         """
-        rc      = DM_EPERSIST
+        rc      = DM_DEBUG
         persist = None
         try:
             persist = self.begin_modify_conf()
-            if persist is not None:
-                resource = self._resources[resource_name]
-                removable = []
-                for assg in resource.iterate_assignments():
-                    if (not force) and assg.is_deployed():
-                        assg.disconnect()
-                        assg.undeploy()
-                    else:
-                        removable.append(assg)
-                for assg in removable:
-                    assg.remove()
-                self.cleanup()
-                self.save_conf_data(persist)
-                rc = DM_SUCCESS
+            if persist is None:
+                raise PersistenceException
+            resource = self._resources[resource_name]
+            removable = []
+            for assg in resource.iterate_assignments():
+                if (not force) and assg.is_deployed():
+                    assg.disconnect()
+                    assg.undeploy()
+                else:
+                    removable.append(assg)
+            for assg in removable:
+                assg.remove()
+            self._drbd_mgr.perform_changes()
+            self.save_conf_data(persist)
+            rc = DM_SUCCESS
         except KeyError:
             rc = DM_ENOENT
         except PersistenceException:
-            pass
+            rc = DM_EPERSIST
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
@@ -1278,6 +1279,7 @@ class DrbdManageServer(object):
                 # sys.stdout.write(
                 #   "DEBUG: updating storage pool information\n")
                 rc = self.update_pool_data()
+                self.cleanup()
                 self.save_conf_data(persist)
         except PersistenceException:
             sys.stderr.write("DEBUG: could not write to persistent "
@@ -1720,7 +1722,7 @@ class DrbdManageServer(object):
             self.load_server_conf()
             rc = self.load_conf()
             self._drbd_mgr.reconfigure()
-            self._bd_mgr.reconfigure()
+            self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
         except PersistenceException:
             pass
         except Exception as exc:

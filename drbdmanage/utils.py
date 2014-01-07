@@ -201,6 +201,53 @@ def get_free_number(min, max, nr_list):
     return fnr
 
 
+def fill_list(in_list, out_list, count):
+    """
+    Append items to a list until the list's length is (at least) equal to
+    count.
+    
+    @param   in_list: List with items to append to out_list
+    @param   out_list: List where items from in_list should be appended
+    @param   count: Fill target for out_list
+    """
+    out_len = len(out_list)
+    if out_len < count:
+        out_len = count - out_len
+        in_len  = len(in_list)
+        ctr     = 0
+        max     = out_len if out_len < in_len else in_len
+        while ctr < max:
+            out_list.append(in_list[ctr])
+            ctr += 1
+
+
+def plugin_import(path):
+    """
+    Imports a plugin
+    
+    @param   path: Python path specification
+    @return: new instance of the plugin
+    """
+    p_mod   = None
+    p_class = None
+    p_inst  = None
+    try:
+        if path is not None:
+            idx = path.rfind(".")
+            if idx != -1:
+                p_name = path[idx + 1:]
+                p_path = path[:idx]
+            else:
+                p_name = path
+                p_path = ""
+            p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
+            p_class = getattr(p_mod, p_name)
+            p_inst  = p_class()
+    except Exception as exc:
+        print exc
+    return p_inst
+
+
 class DataHash(object):
     HASH_LEN  = 32 # SHA-256
     _hashalgo = None

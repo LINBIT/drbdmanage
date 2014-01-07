@@ -3,6 +3,7 @@
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:13 AM$"
 
+import sys
 import drbdmanage.storage.lvm
 import drbdmanage.utils
 from drbdmanage.exceptions import *
@@ -77,7 +78,8 @@ class BlockDeviceManager(object):
     
     
     def __init__(self, plugin_name):
-        self._plugin = self._plugin_import(plugin_name)
+        # self._plugin = self._plugin_import(plugin_name)
+        self._plugin = drbdmanage.utils.plugin_import(plugin_name)
         if self._plugin is None:
             sys.stderr.write("DEBUG: BlockDeviceManager(): Cannot import the "
               "storage management plugin (%s)\n" % plugin_name)
@@ -113,7 +115,7 @@ class BlockDeviceManager(object):
     
     
     def reconfigure(self):
-        return self._plugin.reconfigure()
+        pass
     
     
     def _plugin_import(self, path):

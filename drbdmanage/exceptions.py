@@ -56,6 +56,9 @@ DM_ENOSPC   = 112
 # Not enough nodes for deployment
 DM_ENODECNT = 113
 
+# Plugin load failed
+DM_EPLUGIN  = 114
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -81,6 +84,7 @@ _DM_EXC_TEXTS[DM_ESTORAGE] = "The storage subsystem failed to perform the " \
 _DM_EXC_TEXTS[DM_ENOSPC]   = "Not enough free memory"
 _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
   "nodes in the cluster"
+_DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 
 
 def dm_exc_text(id):
@@ -175,6 +179,16 @@ class PersistenceException(Exception):
     
     """
     Raised if access to persistent storage fails
+    """
+    
+    def __init__(self):
+        pass
+
+
+class PluginException(Exception):
+    
+    """
+    Raised if a plugin cannot be loaded
     """
     
     def __init__(self):
