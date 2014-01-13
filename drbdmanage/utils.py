@@ -221,6 +221,30 @@ def fill_list(in_list, out_list, count):
             ctr += 1
 
 
+def build_path(prefix, file):
+    """
+    Builds a full path name from a prefix (commonly loaded from a configuration
+    file) and a filename. If no prefix is specified, the full path will be
+    just the filename to allow loading files from the current directory or
+    from $PATH (if that is supported by whatever function requested the
+    full path). If a prefix is specified, it can be a relative or absolute
+    path with or without a trailing slash.
+    
+    @param   prefix: path to the file
+    @type    prefix: str
+    @param   file: a file name to append to the path
+    @type    file: str
+    @return: path assembled from prefix and file name
+    @rtype:  str
+    """
+    full_path = file
+    if prefix is not None:
+        if len(prefix) > 0 and (not prefix.endswith("/")):
+            prefix += "/"
+        full_path = prefix + file
+    return full_path
+
+
 def plugin_import(path):
     """
     Imports a plugin

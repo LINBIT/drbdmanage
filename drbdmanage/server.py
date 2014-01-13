@@ -12,6 +12,7 @@ from drbdmanage.drbd.drbdcore import *
 from drbdmanage.drbd.persistence import *
 from drbdmanage.storage.storagecore import *
 from drbdmanage.conf.conffile import *
+from drbdmanage.utils import *
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
@@ -163,10 +164,8 @@ class DrbdManageServer(object):
             restart_events    when the pipe needs to be reopened
         """
         # FIXME: maybe any existing subprocess should be killed first?
-        prefix = self.get_conf_value(self.KEY_DRBDADM_PATH)
-        if not prefix.endswith("/"):
-            prefix += "/"
-        evt_util = prefix + self.EVT_UTIL
+        evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
+          self.EVT_UTIL)
         self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events", "all"], 0,
           evt_util, stdout=subprocess.PIPE, close_fds=True)
         self._evt_file = self._proc_evt.stdout

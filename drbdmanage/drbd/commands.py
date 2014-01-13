@@ -6,6 +6,7 @@ __date__ ="$Oct 24, 2013 4:04:23 PM$"
 import os
 import sys
 import subprocess
+import errno
 
 from drbdmanage.utils import *
 
@@ -20,10 +21,7 @@ class DrbdAdm(object):
     execpath = None
     
     def __init__(self, path):
-        prefix = path
-        if not prefix.endswith("/"):
-            prefix += "/"
-        self.execpath = prefix + self.EXECUTABLE
+        self.execpath = build_path(path, self.EXECUTABLE)
     
     
     def ext_conf_adjust(self, res_name):
@@ -180,7 +178,19 @@ class DrbdAdm(object):
         Runs the drbdadm command as a child process with its standard input
         redirected to a pipe from the drbdmanage server
         """
-        drbd_proc = subprocess.Popen(args, 0, self.execpath,
-          stdin=subprocess.PIPE, close_fds=True)
+        drbd_proc = None
+        try:
+            drbd_proc = subprocess.Popen(args, 0, self.execpath,
+              stdin=subprocess.PIPE, close_fds=True)
+        except OSError as oserr:
+            if oserr.errno == errno.ENOENT:
+                sys.stderr.write("Error: Cannot find the drbdadm utility\n")
+            elif oserr.errno == errno.EPERM:
+                sys.stderr.write("Error: Cannot execute the drbdadm utility, "
+                  "permission denied\n")
+            else:
+                sys.stderr.write("Error: Cannot execute the drbdadm utility ,"
+                  "the OS returned the following error:\n"
+                  "%s\n" % (oserr.strerror))
         return drbd_proc
     

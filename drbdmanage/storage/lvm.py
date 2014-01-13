@@ -5,6 +5,7 @@ import sys
 import json
 from ..exceptions import *
 from ..utils import DataHash
+from ..utils import build_path
 from ..conf.conffile import *
 from persistence import BlockDevicePersistence
 import storagecore
@@ -220,7 +221,6 @@ class LVM(object):
     
     
     def _create_lv(self, name, size):
-        # FIXME experimental/hardcoded
         lvcreate = self._lv_command_path(self.LVM_CREATE)
         
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
@@ -232,10 +232,6 @@ class LVM(object):
     
     
     def _remove_lv(self, name):
-        # FIXME experimental/hardcoded
-        lvm_dir = self._conf[self.KEY_LVM_PATH]
-        if not lvm_dir.endswith("/"):
-            lvm_dir += "/"
         lvremove = self._lv_command_path(self.LVM_REMOVE)
         
         lvm_proc = subprocess.Popen([lvremove, "--force",
@@ -247,11 +243,7 @@ class LVM(object):
     
     
     def _lv_command_path(self, cmd):
-        lvm_dir = self._conf[self.KEY_LVM_PATH]
-        if not lvm_dir.endswith("/"):
-            lvm_dir += "/"
-        cmd_path = lvm_dir + cmd
-        return cmd_path
+        return build_path(self._conf[self.KEY_LVM_PATH], cmd)
     
     
     def _lv_name(self, name, id):
@@ -261,11 +253,7 @@ class LVM(object):
     def _lv_path_prefix(self):
         vg_name  = self._conf[self.KEY_VG_NAME]
         dev_path = self._conf[self.KEY_DEV_PATH]
-        if not dev_path.endswith("/"):
-            lv_path_prefix = dev_path + "/" + vg_name + "-"
-        else:
-            lv_path_prefix = dev_path + vg_name + "-"
-        return lv_path_prefix
+        return build_path(dev_path, vg_name) + "-"
         
     
     def load_conf(self):

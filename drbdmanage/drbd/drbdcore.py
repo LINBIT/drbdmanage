@@ -27,6 +27,9 @@ class DrbdManager(object):
     _drbdadm = None
     _resconf = None
     
+    # Used as a return code to indicate that drbdadm could not be executed
+    DRBDADM_EXEC_FAILED = 127
+    
     
     def __init__(self, server):
         self._server  = server
@@ -98,6 +101,12 @@ class DrbdManager(object):
     
     
     # FIXME
+    # - still requires more error handling
+    # - external configuration file (for drbdadm before-resync-target, etc.)
+    #   probably needs to be updated in some more locations
+    # - some things, like deploying a resource, still need to become more
+    #   robust, because sometimes meta data fails to initialize, etc., and
+    #   there needs to be correction code for those cases
     def perform_changes(self):
         """
         Calls worker functions for required resource state changes
@@ -303,13 +312,10 @@ class DrbdManager(object):
     
     
     def drbdctrl_res_up(self):
-        # FIXME
-        # begin experimental
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
           self._server.DRBDCTRL_RES_NAME)
         rc = drbd_proc.wait()
-        # end experimental
     
     
     def initial_up(self):
@@ -339,14 +345,14 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         
-        # FIXME
-        # begin experimental
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.adjust(resource.get_name())
-        self._resconf.write(drbd_proc.stdin, assignment, False)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -358,14 +364,14 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         
-        # FIXME
-        # begin experimental
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.down(resource.get_name())
-        self._resconf.write(drbd_proc.stdin, assignment, False)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -423,10 +429,13 @@ class DrbdManager(object):
                 # Initialize DRBD metadata
                 drbd_proc = self._drbdadm.create_md(resource.get_name(),
                   vol_state.get_id(), max_peers)
-                drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
-                self._resconf.write(drbd_proc.stdin, assignment, False)
-                drbd_proc.stdin.close()
-                rc = drbd_proc.wait()                
+                if drbd_proc is not None:
+                    drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
+                    self._resconf.write(drbd_proc.stdin, assignment, False)
+                    drbd_proc.stdin.close()
+                    rc = drbd_proc.wait()
+                else:
+                    rc = DrbdManager.DRBDADM_EXEC_FAILED
             else:
                 # block device allocation failed
                 rc = -1
@@ -481,11 +490,14 @@ class DrbdManager(object):
                 deploy_fail = True
         if tstate & Assignment.FLAG_OVERWRITE != 0:
             drbd_proc = self._drbdadm.primary(resource.get_name(), True)
-            self._resconf.write(drbd_proc.stdin, assignment, False)
-            drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            if drbd_proc is not None:
+                self._resconf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                rc = drbd_proc.wait()
+            else:
+                rc = DrbdManager.DRBDADM_EXEC_FAILED
             assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
-        if tstate & Assignment.FLAG_DISCARD != 0:
+        elif tstate & Assignment.FLAG_DISCARD != 0:
             rc = self._reconnect(assignment)
         if deploy_fail:
             rc = -1
@@ -500,32 +512,33 @@ class DrbdManager(object):
         values, so it can be removed by the cleanup function.
         """
         resource = assignment.get_resource()
-        # FIXME
-        # begin experimental
         # call drbdadm to stop the DRBD on top of the blockdevice
         drbd_proc = self._drbdadm.secondary(resource.get_name())
-        self._resconf.write(drbd_proc.stdin, assignment, True)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, True)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         if rc == 0:
             # undeploy all volumes
             for vol_state in assignment.iterate_volume_states():
                 self._undeploy_volume(assignment, vol_state)
 
-            # FIXME
-            # begin experimental
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
-            self._resconf.write(drbd_proc.stdin, assignment, True)
-            drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
-            # end experimental
-            assignment.set_cstate(0)
-            assignment.set_tstate(0)
-
-            # remove the configuration file
-            self._server.remove_assignment_conf(resource.get_name())
+            if drbd_proc is not None:
+                self._resconf.write(drbd_proc.stdin, assignment, True)
+                drbd_proc.stdin.close()
+                rc = drbd_proc.wait()
+                if rc == 0:
+                    # remove the configuration file
+                    self._server.remove_assignment_conf(resource.get_name())
+                    assignment.set_cstate(0)
+                    assignment.set_tstate(0)
+            else:
+                DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -535,17 +548,17 @@ class DrbdManager(object):
         Connects a resource on the current node to all peer nodes
         """
         resource = assignment.get_resource()
-        # FIXME
-        # begin experimental
         discard_flag = True if ((assignment.get_tstate()
           & Assignment.FLAG_DISCARD) != 0) else False
         drbd_proc = self._drbdadm.connect(resource.get_name(), discard_flag)
-        self._resconf.write(drbd_proc.stdin, assignment, False)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
-        assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
-        assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+            assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+            assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -555,14 +568,14 @@ class DrbdManager(object):
         Disconnects a resource on the current node from all peer nodes
         """
         resource = assignment.get_resource()
-        # FIXME
-        # begin experimental
         drbd_proc = self._drbdadm.disconnect(resource.get_name())
-        self._resconf.write(drbd_proc.stdin, assignment, True)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
-        assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, True)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+            assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -584,19 +597,19 @@ class DrbdManager(object):
         * ... connect those where there is an assignment for that resource
           but no matching connection
         """
-        # FIXME
-        # begin experimental
         # call drbdadm to update connections
         drbd_proc = self._drbdadm.adjust(resource.get_name())
-        self._resconf.write(drbd_proc.stdin, assignment, False)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         if rc == 0:
             assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
             for vol_state in assignment.iterate_volume_states():
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
-        # end experimental
         
         return rc
     
@@ -620,17 +633,17 @@ class DrbdManager(object):
         """
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
-        # FIXME
-        # begin experimental
         drbd_proc = self._drbdadm.attach(resource.get_name(),
           vol_state.get_id())
-        self._resconf.write(drbd_proc.stdin, assignment, False)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
-        if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
-            # TODO: order drbdadm to attach the volume
-            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+            if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
+                # TODO: order drbdadm to attach the volume
+                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
@@ -640,15 +653,15 @@ class DrbdManager(object):
         Detaches a volume
         """
         resource = assignment.get_resource()
-        # FIXME
-        # begin experimental
         drbd_proc = self._drbdadm.detach(resource.get_name(),
           vol_state.get_id())
-        self._resconf.write(drbd_proc.stdin, assignment, True)
-        drbd_proc.stdin.close()
-        rc = drbd_proc.wait()
-        # end experimental
-        vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, True)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+            vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
     
