@@ -17,24 +17,27 @@ def install(inst_path):
     mkdir(inst_path + "var/drbd.d")
     mkdir(inst_path + "etc/drbd.d")
     install_file(inst_path, "conf/drbdmanage-resources.res",
-      "etc/drbd.d/")
+      "etc/drbd.d/drbdmanage-resources.res", I_REPLACE)
     install_file(inst_path, "conf/drbdctrl.res",
-      "etc/drbd.d/")
+      "etc/drbd.d/drbdctrl.res", I_NOREPLACE)
     install_file(inst_path, "conf/drbdmanaged.conf",
-      "etc/")
+      "etc/drbdmanaged.conf", I_NOREPLACE)
     install_file(inst_path, "conf/drbdmanaged-lvm.conf",
-      "etc/")
+      "etc/drbdmanaged-lvm.conf", I_NOREPLACE)
     # TODO: should an empty template of the LVM state file be installed?
     # install_file(inst_path, "conf/drbdmanaged-lvm.local.json",
     #   "var/lib/drbdmanage/")
     mkdir(inst_path + "etc/dbus-1/system.d")
     install_file(inst_path, "conf/org.drbd.drbdmanaged.conf",
-      "etc/dbus-1/system.d/")
+      "etc/dbus-1/system.d/org.drbd.drbdmanaged.conf", I_REPLACE)
     mkdir(inst_path + "usr/bin/drbdmanage")
     install_dir(inst_path, "drbdmanage", "usr/bin/")
-    install_file(inst_path, "drbdmanage.py", "usr/bin/")
-    install_file(inst_path, "drbdmanaged.py", "usr/bin")
-    install_file(inst_path, "drbdctrl_init.py", "usr/bin")
+    install_file(inst_path, "drbdmanage.py", "usr/bin/drbdmanage.py",
+      I_REPLACE)
+    install_file(inst_path, "drbdmanaged.py", "usr/bin/drbdmanaged.py",
+      I_REPLACE)
+    install_file(inst_path, "drbdctrl_init.py", "usr/bin/drbdctrl_init.py",
+      I_REPLACE)
     
     #setup(
     #  name='drbdmanage',
@@ -52,16 +55,22 @@ def install(inst_path):
     #)
 
 
-def install_file(path, source, dest):
+def install_file(path, source, dest, replace):
     """
     Call Unix's cp utility to copy a file into its installation directory
     """
-    rc = subprocess.call(["cp", source, path + dest])
-    if rc != 0:
-        install_error_exit(
-          "Cannot install file %s to %s\n"
-          % (source, path + dest)
-        )
+    dest_file = path + dest
+    # Install the file if it does not exist already
+    if os.access(dest_file, os.F_OK) == False or replace:
+        rc = subprocess.call(["cp", source, dest_file])
+        if rc != 0:
+            install_error_exit(
+              "Cannot install file %s to %s\n"
+              % (source, dest_file)
+            )
+    else:
+        sys.stderr.write("Skipped: %s -> %s, file exists\n"
+          % (source, dest_file))
 
 
 def install_dir(path, source, dest):
@@ -69,11 +78,12 @@ def install_dir(path, source, dest):
     Call Unix's cp utility to recursively copy a directory to its
     installation directory
     """
-    rc = subprocess.call(["cp", "-r", source, path + dest])
+    dest_file = path + dest
+    rc = subprocess.call(["cp", "-r", source, dest_file])
     if rc != 0:
         install_error_exit(
           "Cannot install directory %s to %s\n"
-          % (source, path + dest)
+          % (source, dest_file)
         )
 
 
@@ -171,6 +181,10 @@ def syntax_exit(myname):
 
 arg_idx = 1
 arg_len = len(sys.argv)
+
+# Flags for install_file()
+I_REPLACE   = True
+I_NOREPLACE = False
 
 if __name__ == "__main__":
     main()
