@@ -825,13 +825,18 @@ class DrbdManageServer(object):
                 rc = deployer.deploy_select(self._nodes, selected, count,
                   size_sum, True)
                 if rc == DM_SUCCESS:
-                    self._assign(selected[0], resource, 0,
-                      Assignment.FLAG_DEPLOY | Assignment.FLAG_OVERWRITE
-                      | Assignment.FLAG_CONNECT)
+                    # first node overwrites all the others (primary --force)
+                    first = True
                     tstate = (Assignment.FLAG_DEPLOY
+                      | Assignment.FLAG_OVERWRITE
                       | Assignment.FLAG_CONNECT)
                     for node in selected:
                         self._assign(node, resource, 0, tstate)
+                        if first:
+                            # all the other nodes sync to the first one
+                            first = False
+                            tstate = (Assignment.FLAG_DEPLOY
+                              | Assignment.FLAG_CONNECT)
                     self._drbd_mgr.perform_changes()
                     self.save_conf_data(persist)
                     rc = DM_SUCCESS

@@ -456,7 +456,15 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
        
-        rc = self._detach(assignment, vol_state)
+        drbd_proc = self._drbdadm.adjust(resource.get_name())
+        if drbd_proc is not None:
+            self._resconf.write(drbd_proc.stdin, assignment, True)
+            drbd_proc.stdin.close()
+            rc = drbd_proc.wait()
+            if rc == 0:
+                vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        else:
+            rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         if rc == 0:
             rc = -1
