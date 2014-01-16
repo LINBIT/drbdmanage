@@ -307,3 +307,87 @@ class DrbdAdmConf(object):
         except Exception as exc:
             # TODO: handle errors (stream I/O?)
             print exc
+    
+    
+    def write_excerpt(self, stream, assignment, nodes, vol_states):
+        """
+        Writes an excerpt of the configuration file to a stream.
+        Used for adjusting resources to an intermediate state
+        (a state somewhere between current state and target state),
+        for example, when deploying or undeploying multiple volumes
+        or when removing or deploying peer nodes.
+        In all of these cases, not-yet-deployed or not-yet-undeployed
+        objects may be selected to be included or excluded from the
+        configuration passed to drbdadm in order to adjust the DRBD
+        resource's state while multiple operations are in progress
+        (some of which may have failed, too, and the corresponding
+        objects excluded from the configuration for that reason).
+        """
+        try:
+            resource = assignment.get_resource()
+            secret   = resource.get_secret()
+            if secret is None:
+                secret = ""
+            
+            # begin resource
+            stream.write("resource %s {\n"
+              "    net {\n"
+              "        cram-hmac-alg sha1;\n"
+              "        shared-secret \"%s\";\n"
+              "    }\n"
+              % (resource.get_name(), secret)
+              )
+            
+            # begin resource/volumes
+            for vol_state in vol_states:
+                volume = vol_state.get_volume()
+                bd_path = vol_state.get_bd_path()
+                if bd_path is None:
+                    bd_path = "none"
+                minor = volume.get_minor()
+                if minor is None:
+                    raise InvalidMinorNrException
+                stream.write("    volume %d {\n"
+                  "        device /dev/drbd%d minor %d;\n"
+                  "        disk %s;\n"
+                  "        meta-disk internal;\n"
+                  "    }\n"
+                  % (volume.get_id(), minor.get_value(), minor.get_value(),
+                    bd_path)
+                  )
+            # end resource/volumes
+            
+            # begin resource/nodes
+            for node in nodes:
+                assg = node.get_assignment(resource.get_name())
+                if assg is not None:
+                    stream.write("    on %s {\n"
+                      "        node-id %s;\n"
+                      "        address %s:%d;\n"
+                      "    }\n"
+                      % (node.get_name(), assg.get_node_id(),
+                        node.get_ip(), resource.get_port())
+                      )
+            # end resource/nodes
+            
+            # begin resource/connection
+            stream.write("    connection-mesh {\n"
+              "        hosts"
+              )
+            for node in nodes:
+                stream.write(" %s" % (node.get_name()))
+            stream.write(";\n")
+            stream.write("        net {\n"
+              "            protocol C;\n"
+              "        }\n"
+              )
+            stream.write("    }\n")
+            # end resource/connection
+            
+            stream.write("}\n")
+            # end resource
+        except InvalidMinorNrException as min_exc:
+            sys.stderr.write("DEBUG: DrbdAdmConf: No minor number\n")
+        except Exception as exc:
+            # TODO: handle errors (stream I/O?)
+            print exc

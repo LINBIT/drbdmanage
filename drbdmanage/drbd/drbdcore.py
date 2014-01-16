@@ -217,35 +217,12 @@ class DrbdManager(object):
                             assg.set_rc(rc)
                             if rc != 0:
                                 failed_actions = True
-                            else:
-                                drbd_proc = self._drbdadm.adjust(
-                                  assg.get_resource().get_name())
-                                self._resconf.write(drbd_proc.stdin,
-                                  assg, False)
-                                drbd_proc.stdin.close()
-                                rc = drbd_proc.wait()
-                                if rc == 0:
-                                    vol_state.set_cstate_flags(
-                                      DrbdVolumeState.FLAG_ATTACH)
-                                    assg.set_cstate_flags(
-                                      Assignment.FLAG_CONNECT)
-                                else:
-                                    failed_actions = True
                         elif vol_state.requires_undeploy():
                             pool_changed = True
                             rc = self._undeploy_volume(assg, vol_state)
                             assg.set_rc(rc)
                             if rc != 0:
                                 failed_actions = True
-                            else:
-                                drbd_proc = self._drbdadm.adjust(
-                                  assg.get_resource().get_name())
-                                self._resconf.write(drbd_proc.stdin,
-                                  assg, False)
-                                drbd_proc.stdin.close()
-                                rc = drbd_proc.wait()
-                                if rc != 0:
-                                    failed_actions = True
                     
                     """
                     Attach a volume to or detach a volume from local storage
@@ -398,10 +375,6 @@ class DrbdManager(object):
                 vol_state.set_blockdevice(bd.get_name(), bd.get_path())
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
                 
-                # DEBUG
-                drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
-                drbdadm_conf.write(sys.stdout, assignment, False)
-                
                 max_node_id = 0
                 try:
                     max_node_id = int(self._server.get_conf_value(
@@ -426,16 +399,50 @@ class DrbdManager(object):
                 # before-resync-target can work properly
                 self._server.export_assignment_conf(assignment)
                 
+                nodes      = []
+                vol_states = []
+                # add all the (peer) nodes that have or will have this
+                # resource deployed
+                for assg in resource.iterate_assignments():
+                    if (assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
+                        nodes.append(assg.get_node())
+                # add the current volume state object no matter what its
+                # current state or target state is, so drbdadm can see
+                # it in the configuration and operate on it
+                vol_states.append(vol_state)
+                for vstate in assignment.iterate_volume_states():
+                    if ((vstate.get_tstate() & DrbdVolumeState.FLAG_DEPLOY)
+                      != 0 and
+                      (vstate.get_cstate() & DrbdVolumeState.FLAG_DEPLOY)
+                      != 0):
+                        # ensure that the current volume state object is
+                        # not added twice
+                        if vstate != vol_state:
+                            vol_states.append(vstate)
+                
                 # Initialize DRBD metadata
                 drbd_proc = self._drbdadm.create_md(resource.get_name(),
                   vol_state.get_id(), max_peers)
                 if drbd_proc is not None:
                     drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
-                    self._resconf.write(drbd_proc.stdin, assignment, False)
+                    self._resconf.write_excerpt(drbd_proc.stdin,
+                      assignment, nodes, vol_states)
                     drbd_proc.stdin.close()
                     rc = drbd_proc.wait()
                 else:
                     rc = DrbdManager.DRBDADM_EXEC_FAILED
+                
+                # Adjust the DRBD resource to configure the volume
+                drbd_proc = self._drbdadm.adjust(resource.get_name())
+                self._resconf.write_excerpt(drbd_proc.stdin,
+                  assignment, nodes, vol_states)
+                drbd_proc.stdin.close()
+                rc = drbd_proc.wait()
+                if rc == 0:
+                    vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH |
+                      DrbdVolumeState.FLAG_DEPLOY)
+                    # drbdadm adjust implicitly connects the resource
+                    assg.set_cstate_flags(Assignment.FLAG_CONNECT)
             else:
                 # block device allocation failed
                 rc = -1
@@ -456,9 +463,19 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         volume   = vol_state.get_volume()
        
+        nodes      = []
+        vol_states = []
+        for assg in resource.iterate_assignments():
+            if (assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
+                nodes.append(assg.get_node())
+        for vstate in assignment.iterate_volume_states():
+            if ((vstate.get_tstate() & DrbdVolumeState.FLAG_DEPLOY) != 0 and
+              (vstate.get_cstate() & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                vol_states.append(vstate)
         drbd_proc = self._drbdadm.adjust(resource.get_name())
         if drbd_proc is not None:
-            self._resconf.write(drbd_proc.stdin, assignment, True)
+            self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+              nodes, vol_states)
             drbd_proc.stdin.close()
             rc = drbd_proc.wait()
             if rc == 0:
@@ -514,11 +531,20 @@ class DrbdManager(object):
         return rc
     
     
+    # FIXME: fails to undeploy, because undeploying the last volume
+    # gets an error from drbdadm, and then does not remove the
+    # blockdevice, but this function removes the entire assignment
+    # anyway.
+    # Should first perform drbdadm down, then remove the blockdevices,
+    # and only if everything worked as intended, remove the assignment;
+    # otherwise, single volumes may be removed after their blockdevice
+    # has been undeployed successfully
     def _undeploy_assignment(self, assignment):
         """
         Undeploys all volumes of a resource, then reset the assignment's state
         values, so it can be removed by the cleanup function.
         """
+        bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         # call drbdadm to stop the DRBD on top of the blockdevice
         drbd_proc = self._drbdadm.secondary(resource.get_name())
@@ -530,10 +556,6 @@ class DrbdManager(object):
             rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         if rc == 0:
-            # undeploy all volumes
-            for vol_state in assignment.iterate_volume_states():
-                self._undeploy_volume(assignment, vol_state)
-
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
             if drbd_proc is not None:
@@ -547,6 +569,22 @@ class DrbdManager(object):
                     assignment.set_tstate(0)
             else:
                 DrbdManager.DRBDADM_EXEC_FAILED
+        
+            # undeploy all volumes
+            tstate = assignment.get_tstate()
+            if (tstate & Assignment.FLAG_DISKLESS) == 0:
+                for vol_state in assignment.iterate_volume_states():
+                    stor_rc = bd_mgr.remove_blockdevice(resource.get_name(),
+                      vol_state.get_id())
+                    if stor_rc == DM_SUCCESS:
+                        vol_state.set_cstate(0)
+                        vol_state.set_tstate(0)
+                    # update configuration file
+                    self._server.export_assignment_conf(assignment)
+            else:
+                for vol_state in assignment.iterate_volume_states():
+                    vol_state.set_cstate(0)
+                    vol_state.set_tstate(0)
         
         return rc
     
@@ -624,7 +662,7 @@ class DrbdManager(object):
     
     def _reconnect(self, assignment):
         """
-        Disconnects, then connect again
+        Disconnects, then connects again
         """
         # disconnect
         self._disconnect(assignment)
