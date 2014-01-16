@@ -1,2 +1,5 @@
 /dm
 *.pyc
+MANIFEST
+build/
+dist/

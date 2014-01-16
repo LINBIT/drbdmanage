@@ -1,0 +1,25 @@
+resource drbdctrl {
+    net {
+        cram-hmac-alg sha1;
+        shared-secret “<your-shared-secret>”;
+    }
+    volume 0 {
+        device /dev/drbd0 minor 0;
+        disk /dev/mapper/<vgname>-drbdctrl;
+        meta-disk internal;
+    }
+    on <node_1> {
+        node-id 0;
+        address <ipaddress>:<port>;
+    }
+    on <node_n> {
+        node-id <x>;
+        address <ipaddress>:<port>;
+    }
+    connection-mesh {
+        hosts <node_1> <node_2> ... <node_n>;
+        net {
+            protocol C;
+        }
+    }
+}
