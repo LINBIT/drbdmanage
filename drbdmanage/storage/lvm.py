@@ -3,12 +3,12 @@
 import subprocess
 import sys
 import json
-from ..exceptions import *
-from ..utils import DataHash
-from ..utils import build_path
-from ..conf.conffile import *
-from persistence import BlockDevicePersistence
-import storagecore
+from drbdmanage.exceptions import *
+from drbdmanage.utils import DataHash
+from drbdmanage.utils import build_path
+from drbdmanage.conf.conffile import *
+from drbdmanage.storage.persistence import BlockDevicePersistence
+import drbdmanage.storage.storagecore
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:49:42 AM$"
@@ -91,8 +91,8 @@ class LVM(object):
             while tries < 2:
                 rc = self._create_lv(lv_name, size)
                 if rc == 0:
-                    bd = storagecore.BlockDevice(lv_name, size,
-                      self._lv_path_prefix() + lv_name)
+                    bd = drbdmanage.storage.storagecore.BlockDevice(
+                      lv_name, size, self._lv_path_prefix() + lv_name)
                     self._lvs[lv_name] = bd
                     self.save_state()
                     break
@@ -312,7 +312,7 @@ class LVM(object):
     
     
     def save_state(self):
-        print "DEBUG: save_state"
+        print "DEBUG: LVM: save_state"
         lvm_con = dict()
         for bd in self._lvs.itervalues():
             bd_persist = BlockDevicePersistence(bd)
@@ -326,6 +326,7 @@ class LVM(object):
             file.write(save_data)
             file.write("sig:" + hash.get_hex_hash() + "\n")
         except Exception as exc:
+            print exc
             raise PersistenceException
         finally:
             if file is not None:

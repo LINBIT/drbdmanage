@@ -493,8 +493,21 @@ class DrbdManager(object):
                 rc = 0
                 vol_state.set_cstate(0)
                 vol_state.set_tstate(0)
+        
+        # if there are any deployed volumes left in the configuration, write
+        # a new configuration file, otherwise delete the configuration file
+        keep_conf = False
+        for remaining in assignment.iterate_volume_states():
+            if ((remaining.get_tstate() & DrbdVolumeState.FLAG_DEPLOY) != 0
+              and (remaining.get_cstate() & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                keep_conf = True
+                break
+        if keep_conf:
             # update configuration file
             self._server.export_assignment_conf(assignment)
+        else:
+            # delete configuration file
+            self._server.remove_assignment_conf(assignment)
         
         return rc
     

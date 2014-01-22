@@ -67,7 +67,7 @@ class DrbdManageServer(object):
       KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
       KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
-      KEY_DRBDADM_PATH   : "/usr/local/sbin",
+      KEY_DRBDADM_PATH   : "/usr/sbin",
       KEY_DRBD_CONFPATH  : "/etc/drbd.d"
     }
     

@@ -23,10 +23,12 @@ setup(
         'drbdmanage.conf',
         'drbdmanage.drbd',
         'drbdmanage.storage'],
-    scripts=['drbdmanaged.py', 'drbdmanage.py', 'drbdctrl_init.py'],
-    data_files=[('/etc/drbd.d', ['conf/drbdctrl.res',
-                                 'conf/drbdmanage-resources.res']),
-                ('/etc', ['conf/drbdmanaged.conf', 'conf/drbdmanaged-lvm.conf']),
+    py_modules=['drbdmanage_server', 'drbdmanage_client', 'drbdctrl_init'],
+    scripts=['scripts/drbdmanage', 'scripts/drbdctrl_init'],
+    data_files=[('/etc/drbd.d', ['conf/drbdctrl.res_template',
+                    'conf/drbdmanage-resources.res']),
+                ('/etc', ['conf/drbdmanaged.conf',
+                    'conf/drbdmanaged-lvm.conf']),
                 ('/etc/dbus-1/system.d', ['conf/org.drbd.drbdmanaged.conf']),
-                ]
+               ]
     )
