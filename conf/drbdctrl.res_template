@@ -5,7 +5,7 @@ resource .drbdctrl {
     }
     volume 0 {
         device      /dev/drbd0 minor 0;
-        disk        /dev/mapper/<vgname>-drbdctrl;
+        disk        /dev/mapper/<vgname>-.drbdctrl;
         meta-disk   internal;
     }
     on <node_1> {

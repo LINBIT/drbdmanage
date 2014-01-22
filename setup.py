@@ -30,5 +30,7 @@ setup(
                 ('/etc', ['conf/drbdmanaged.conf',
                     'conf/drbdmanaged-lvm.conf']),
                 ('/etc/dbus-1/system.d', ['conf/org.drbd.drbdmanaged.conf']),
+                ('/var/drbd.d', []),
+                ('/var/lib/drbdmanage', [])
                ]
     )

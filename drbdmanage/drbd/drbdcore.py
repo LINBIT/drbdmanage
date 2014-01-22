@@ -576,8 +576,6 @@ class DrbdManager(object):
                 drbd_proc.stdin.close()
                 rc = drbd_proc.wait()
                 if rc == 0:
-                    # remove the configuration file
-                    self._server.remove_assignment_conf(resource.get_name())
                     assignment.set_cstate(0)
                     assignment.set_tstate(0)
             else:
@@ -592,12 +590,13 @@ class DrbdManager(object):
                     if stor_rc == DM_SUCCESS:
                         vol_state.set_cstate(0)
                         vol_state.set_tstate(0)
-                    # update configuration file
-                    self._server.export_assignment_conf(assignment)
             else:
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.set_cstate(0)
                     vol_state.set_tstate(0)
+            
+            # Remove the external configuration file
+            self._server.remove_assignment_conf(resource.get_name())
         
         return rc
     
