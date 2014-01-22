@@ -1,6 +1,21 @@
 #!/usr/bin/python
 
-from distutils.core import setup
+from distutils.core import setup, Command
+import os, sys
+
+class BuildManCommand(Command):
+    description = "Build manual pages"
+    user_options = []
+    def initialize_options(self):
+        self.cwd = None
+    def finalize_options(self):
+        self.cwd = os.getcwd()
+    def run(self):
+        assert os.getcwd() == self.cwd, 'Must be in package root: %s' % self.cwd
+        os.system('cd man-pages; '+
+                  'xsltproc --xinclude --stringparam variablelist.term.break.after 1 '+
+                  'http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl '+
+                  'drbdmanage.xml');
 
 setup(
     name='drbdmanage',
@@ -30,7 +45,11 @@ setup(
                 ('/etc', ['conf/drbdmanaged.conf',
                     'conf/drbdmanaged-lvm.conf']),
                 ('/etc/dbus-1/system.d', ['conf/org.drbd.drbdmanaged.conf']),
+                ('/usr/share/man', ['man-pages/drbdmanage.8']),
                 ('/var/drbd.d', []),
                 ('/var/lib/drbdmanage', [])
-               ]
+               ],
+    cmdclass={
+        'build_man': BuildManCommand
+        }
     )

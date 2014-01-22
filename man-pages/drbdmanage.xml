@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN" "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+<refentry>
+  <refentryinfo>
+    <date>22 Januar 2014</date>
+    <productname>drbdmanage</productname>
+    <productnumber>1.0</productnumber>
+  </refentryinfo>
+  <refmeta>
+    <refentrytitle>drbdmanage</refentrytitle>
+    <manvolnum>8</manvolnum>
+    <refmiscinfo class="manual">System Administration</refmiscinfo>
+  </refmeta>
+  <refnamediv>
+    <refname>drbdmanage</refname>
+    <refpurpose>Distributed configuration management for DRBD<indexterm significance="normal">
+      <primary>drbdmanage</primary>
+    </indexterm>
+    </refpurpose>
+  </refnamediv>
+  <refsynopsisdiv>
+    <cmdsynopsis sepchar=" ">
+      <command moreinfo="none">drbdmanage</command>
+      <group choice="req" rep="norepeat">
+        <arg choice="plain" rep="norepeat">new-node
+	  <arg choice="opt" rep="norepeat">-a 
+	    <group choice="req" rep="norepeat">
+	      <arg choice="plain" rep="norepeat">ipv4</arg>
+	      <arg choice="plain" rep="norepeat">ipv6</arg>
+	    </group>
+	  </arg>
+	  <arg choice="plain" rep="norepeat"><replaceable>name</replaceable></arg>
+	  <arg choice="plain" rep="norepeat"><replaceable>ip</replaceable></arg>
+	</arg><sbr/>
+        <arg choice="plain" rep="norepeat">new-resource
+	  <arg choice="opt" rep="norepeat">-p <replaceable>port-number</replaceable></arg>
+	  <arg choice="plain" rep="norepeat"><replaceable>name</replaceable></arg>
+	</arg><sbr/>
+	<arg choice="plain" rep="norepeat">new-volume</arg><sbr/>
+	<arg choice="plain" rep="norepeat">remove-node</arg>
+      </group>
+      </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+    <para>The <option>drbdmanage</option> utility is ...
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <para><citerefentry>
+        <refentrytitle>drbd.conf</refentrytitle>
+        <manvolnum>5</manvolnum></citerefentry>,
+
+	<citerefentry>
+        <refentrytitle>drbd</refentrytitle>
+        <manvolnum>8</manvolnum></citerefentry>,
+
+	<citerefentry>
+        <refentrytitle>drbdadm</refentrytitle>
+        <manvolnum>8</manvolnum></citerefentry>
+    </para>
+  </refsect1>
+</refentry>
