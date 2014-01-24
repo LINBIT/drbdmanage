@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.drbd.drbdmanaged
+Exec=/usr/bin/dbus-drbdmanaged-service
+User=root

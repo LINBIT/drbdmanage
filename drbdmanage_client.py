@@ -35,14 +35,15 @@ class DrbdManage(object):
     VIEW_SEPARATOR_LEN = 78
     
     def __init__(self):
-        self.dbus_init()
+        pass
     
     
     def dbus_init(self):
         try:
-            dbus_con = dbus.SystemBus()
-            self._server = dbus_con.get_object(DBusServer.DBUS_DRBDMANAGED,
-              DBusServer.DBUS_SERVICE)
+            if self._server is None:
+                dbus_con = dbus.SystemBus()
+                self._server = dbus_con.get_object(DBusServer.DBUS_DRBDMANAGED,
+                  DBusServer.DBUS_SERVICE)
         except dbus.exceptions.DBusException as exc:
             sys.stderr.write("Error: Cannot connect to the drbdmanaged "
               "process using DBus\n")
@@ -227,6 +228,7 @@ class DrbdManage(object):
             af   = opt["-a"]
             if af is None:
                 af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+            self.dbus_init()
             server_rc = self._server.create_node(name, ip, af)
             if server_rc == 0:
                 rc = 0
@@ -264,7 +266,8 @@ class DrbdManage(object):
                     port = int(port_str)
                 except ValueError:
                     raise SyntaxException
-
+            
+            self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
               port)
             if server_rc == 0:
@@ -341,6 +344,7 @@ class DrbdManage(object):
             if unit != SizeCalc.UNIT_MiB:
                 size = SizeCalc.convert_round_up(size, unit,
                   SizeCalc.UNIT_MiB)
+            self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
               DrbdResource.PORT_NR_AUTO)
             if server_rc == 0 or server_rc == DM_EEXIST:
@@ -387,6 +391,7 @@ class DrbdManage(object):
                   "from the cluster. This will remove all resources from "
                   "the node.\nPlease confirm:")
             if quiet:
+                self.dbus_init()
                 server_rc = self._server.remove_node(dbus.String(node_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
@@ -427,6 +432,7 @@ class DrbdManage(object):
                   "and all of its volumes from all nodes of the cluster.\n"
                   "Please confirm:")
             if quiet:
+                self.dbus_init()
                 server_rc = self._server.remove_resource(dbus.String(res_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
@@ -472,6 +478,7 @@ class DrbdManage(object):
                   "from all nodes of the cluster.\n"
                   "Please confirm:")
             if quiet:
+                self.dbus_init()
                 server_rc = self._server.remove_volume(dbus.String(vol_name),
                   dbus.Int32(id), dbus.Boolean(force))
                 if server_rc == 0:
@@ -508,6 +515,7 @@ class DrbdManage(object):
             node_name = params["node"]
             res_name  = params["res"]
             
+            self.dbus_init()
             server_rc = self._server.connect(dbus.String(node_name),
               dbus.String(res_name), dbus.Boolean(reconnect))
             if server_rc == 0:
@@ -545,6 +553,7 @@ class DrbdManage(object):
             node_name = params["node"]
             res_name  = params["res"]
 
+            self.dbus_init()
             server_rc = self._server.disconnect(dbus.String(node_name),
               dbus.String(res_name))
             if server_rc == 0:
@@ -602,6 +611,7 @@ class DrbdManage(object):
             if node_name is None or res_name is None:
                 raise SyntaxException
             
+            self.dbus_init()
             server_rc = self._server.modify_state(dbus.String(node_name),
               dbus.String(res_name), dbus.Int64(0), dbus.Int64(0),
               dbus.Int64(clear_mask), dbus.Int64(set_mask))
@@ -654,6 +664,7 @@ class DrbdManage(object):
             except ValueError:
                 raise SyntaxException
 
+            self.dbus_init()
             server_rc = self._server.attach(dbus.String(node_name),
               dbus.String(res_name), dbus.Int32(id))
             if server_rc == 0:
@@ -692,6 +703,7 @@ class DrbdManage(object):
             except ValueError:
                 raise SyntaxException
 
+            self.dbus_init()
             server_rc = self._server.detach(dbus.String(node_name),
               dbus.String(res_name), dbus.Int32(id))
             if server_rc == 0:
@@ -748,6 +760,8 @@ class DrbdManage(object):
                 tstate = tstate | Assignment.FLAG_DISCARD
             if connect:
                 tstate = tstate | Assignment.FLAG_CONNECT
+            
+            self.dbus_init()
             server_rc = self._server.assign(dbus.String(node_name),
               dbus.String(vol_name), dbus.Int64(cstate), dbus.Int64(tstate))
             if server_rc == 0:
@@ -796,6 +810,7 @@ class DrbdManage(object):
             if count < 1:
                 raise SyntaxException
 
+            self.dbus_init()
             server_rc = self._server.deploy(dbus.String(res_name),
               dbus.Int32(count))
             if server_rc == 0:
@@ -843,6 +858,7 @@ class DrbdManage(object):
             if count < 1:
                 raise SyntaxException
 
+            self.dbus_init()
             server_rc = self._server.extend(dbus.String(res_name),
               dbus.Int32(count), dbus.Boolean(extend))
             if server_rc == 0:
@@ -899,6 +915,7 @@ class DrbdManage(object):
             if count < 1:
                 raise SyntaxException
 
+            self.dbus_init()
             server_rc = self._server.reduce(dbus.String(res_name),
               dbus.Int32(count), dbus.Boolean(reduce))
             if server_rc == 0:
@@ -944,6 +961,7 @@ class DrbdManage(object):
                   "resource from all nodes of the cluster.\n"
                   "Please confirm:")
             if quiet:
+                self.dbus_init()
                 server_rc = self._server.undeploy(dbus.String(res_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
@@ -963,6 +981,7 @@ class DrbdManage(object):
     
     def cmd_update_pool(self):
         rc = 1
+        self.dbus_init()
         server_rc = self._server.update_pool()
         if server_rc == 0:
             rc = 0
@@ -973,6 +992,7 @@ class DrbdManage(object):
     
     def cmd_reconfigure(self):
         rc = 1
+        self.dbus_init()
         server_rc = self._server.reconfigure()
         if server_rc == 0:
             rc = 0
@@ -983,6 +1003,7 @@ class DrbdManage(object):
     
     def cmd_save(self):
         rc = 1
+        self.dbus_init()
         server_rc = self._server.save_conf()
         if server_rc == 0:
             rc = 0
@@ -993,6 +1014,7 @@ class DrbdManage(object):
     
     def cmd_load(self):
         rc = 1
+        self.dbus_init()
         server_rc = self._server.load_conf()
         if server_rc == 0:
             rc = 0
@@ -1015,6 +1037,7 @@ class DrbdManage(object):
             node_name = params["node"]
             vol_name  = params["vol"]
             force     = flags["-f"]
+            self.dbus_init()
             server_rc = self._server.unassign(node_name, vol_name, force)
             if server_rc == 0:
                 rc = 0
@@ -1057,6 +1080,7 @@ class DrbdManage(object):
                   "drbdmanaged server process on this node.\nPlease confirm:")
             if quiet:
                 try:
+                    self.dbus_init()
                     self._server.shutdown()
                 except dbus.exceptions.DBusException:
                     # An exception is expected here, as the server
@@ -1082,6 +1106,8 @@ class DrbdManage(object):
           flags, flagsalias) != 0:
               self.syntax_list_nodes()
               return 1
+        
+        self.dbus_init()
         
         machine_readable = flags["-m"]
         
@@ -1155,6 +1181,8 @@ class DrbdManage(object):
           flags, flagsalias) != 0:
               self.syntax_list_resources()
               return 1
+        
+        self.dbus_init()
         
         machine_readable = flags["-m"]
         
@@ -1231,6 +1259,8 @@ class DrbdManage(object):
           flags, flagsalias) != 0:
               self.syntax_list_assignments()
               return 1
+        
+        self.dbus_init()
         
         machine_readable = flags["-m"]
         
@@ -1325,6 +1355,7 @@ class DrbdManage(object):
             if res_name == "*":
                 res_name = ""
 
+            self.dbus_init()
             server_rc = self._server.export_conf(dbus.String(res_name))
             if server_rc == 0:
                 rc = 0

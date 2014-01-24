@@ -1,0 +1,9 @@
+#!/usr/bin/python
+
+import drbdmanage_server
+
+"""
+Run the drbdmanage server
+"""
+if __name__ == "__main__":
+    drbdmanage_server.main()
