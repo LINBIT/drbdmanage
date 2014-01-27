@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env /usr/bin/python
 
 import drbdmanage_server
 

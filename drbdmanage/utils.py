@@ -180,24 +180,25 @@ def get_free_number(min, max, nr_list):
     @return: first free number within min..max; or -1 on error
     """
     fnr = -1
-    items = len(nr_list)
-    if items == 0:
-        fnr = min
-    else:
-        nr_list.sort()
-        idx = 0
-        lnr = min - 1
-        while True:
-            nr = nr_list[idx]
-            if nr - lnr > 1:
-                fnr = lnr + 1
-                break
-            idx += 1
-            if not idx < items:
-                if nr < max:
-                    fnr = nr + 1
-                break
-            lnr = nr
+    if min <= max:
+        items = len(nr_list)
+        if items == 0:
+            fnr = min
+        else:
+            nr_list.sort()
+            idx = 0
+            lnr = min - 1
+            while True:
+                nr = nr_list[idx]
+                if nr - lnr > 1:
+                    fnr = lnr + 1
+                    break
+                idx += 1
+                if not idx < items:
+                    if nr < max:
+                        fnr = nr + 1
+                    break
+                lnr = nr
     return fnr
 
 

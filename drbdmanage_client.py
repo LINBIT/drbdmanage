@@ -729,8 +729,8 @@ class DrbdManage(object):
         opt      = {}
         optalias = {}
         flags    = { "--overwrite" : False, "--client" : False,
-          "--discard" : False, "-c" : False }
-        flagsalias = { "--connect" : "-c" }
+          "--discard" : False }
+        flagsalias = {}
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
               flags, flagsalias) != 0:
@@ -742,7 +742,11 @@ class DrbdManage(object):
             client    = flags["--client"]
             overwrite = flags["--overwrite"]
             discard   = flags["--discard"]
-            connect   = flags["-c"]
+            # Turn on the connect flag by default; drbdadm adjust connects
+            # anyway, so this flag does not make a lot of sense at this time,
+            # but it may be useful in the future
+            connect   = True
+            # connect   = flags["-c"]
             
             if (overwrite and client):
                 sys.stderr.write("Error: --overwrite and --client "

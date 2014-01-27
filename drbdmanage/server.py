@@ -669,13 +669,22 @@ class DrbdManageServer(object):
                     if assignment is not None:
                         rc = DM_EEXIST
                     else:
-                        if ((tstate & Assignment.FLAG_DISKLESS) != 0
-                          and (tstate & Assignment.FLAG_OVERWRITE) != 0):
+                        overwrite = (True if (tstate
+                          & Assignment.FLAG_OVERWRITE) != 0 else False)
+                        if (overwrite and
+                          (tstate & Assignment.FLAG_DISKLESS) != 0):
                             rc = DM_EINVAL
-                        elif ((tstate & Assignment.FLAG_DISCARD) != 0
-                          and (tstate & Assignment.FLAG_OVERWRITE) != 0):
+                        elif (overwrite and
+                          (tstate & Assignment.FLAG_DISCARD) != 0):
                             rc = DM_EINVAL
                         else:
+                            # If the overwrite flag is set on this
+                            # assignment, turn it off on all the assignments
+                            # to other nodes
+                            if overwrite:
+                                for assg in resource.iterate_assignments():
+                                    assg.clear_tstate_flags(
+                                      Assignment.FLAG_OVERWRITE)
                             rc = self._assign(node, resource, cstate, tstate)
                             if rc == DM_SUCCESS:
                                 self._drbd_mgr.perform_changes()
@@ -825,18 +834,9 @@ class DrbdManageServer(object):
                 rc = deployer.deploy_select(self._nodes, selected, count,
                   size_sum, True)
                 if rc == DM_SUCCESS:
-                    # first node overwrites all the others (primary --force)
-                    first = True
-                    tstate = (Assignment.FLAG_DEPLOY
-                      | Assignment.FLAG_OVERWRITE
-                      | Assignment.FLAG_CONNECT)
+                    tstate = (Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT)
                     for node in selected:
                         self._assign(node, resource, 0, tstate)
-                        if first:
-                            # all the other nodes sync to the first one
-                            first = False
-                            tstate = (Assignment.FLAG_DEPLOY
-                              | Assignment.FLAG_CONNECT)
                     self._drbd_mgr.perform_changes()
                     self.save_conf_data(persist)
                     rc = DM_SUCCESS
@@ -1094,10 +1094,26 @@ class DrbdManageServer(object):
                     if assg is None:
                         rc = DM_ENOENT
                     else:
+                        # OVERWRITE overrides DISCARD
+                        if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
+                            tstate_clear_mask |= Assignment.FLAG_DISCARD
+                            tstate_set_mask = ((tstate_set_mask
+                              | Assignment.FLAG_DISCARD)
+                              ^ Assignment.FLAG_DISCARD)
+                        elif (tstate_set_mask & Assignment.FLAG_DISCARD ) != 0:
+                            tstate_clear_mask |= Assignment.FLAG_OVERWRITE
                         assg.clear_cstate_flags(cstate_clear_mask)
                         assg.set_cstate_flags(cstate_set_mask)
                         assg.clear_tstate_flags(tstate_clear_mask)
                         assg.set_tstate_flags(tstate_set_mask)
+                        # Upon setting the OVERWRITE flag on this assignment,
+                        # clear it on all other assignments
+                        if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
+                            resource = assg.get_resource()
+                            for peer_assg in resource.iterate_assignments():
+                                if peer_assg != assg:
+                                    peer_assg.clear_tstate_flags(
+                                      Assignment.FLAG_OVERWRITE)
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
                         rc = DM_SUCCESS

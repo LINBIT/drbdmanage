@@ -403,9 +403,9 @@ class DrbdManager(object):
                 vol_states = []
                 # add all the (peer) nodes that have or will have this
                 # resource deployed
-                for assg in resource.iterate_assignments():
-                    if (assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
-                        nodes.append(assg.get_node())
+                for peer_assg in resource.iterate_assignments():
+                    if (peer_assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
+                        nodes.append(peer_assg.get_node())
                 # add the current volume state object no matter what its
                 # current state or target state is, so drbdadm can see
                 # it in the configuration and operate on it
@@ -442,7 +442,7 @@ class DrbdManager(object):
                     vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH |
                       DrbdVolumeState.FLAG_DEPLOY)
                     # drbdadm adjust implicitly connects the resource
-                    assg.set_cstate_flags(Assignment.FLAG_CONNECT)
+                    assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             else:
                 # block device allocation failed
                 rc = -1
@@ -465,9 +465,9 @@ class DrbdManager(object):
        
         nodes      = []
         vol_states = []
-        for assg in resource.iterate_assignments():
-            if (assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
-                nodes.append(assg.get_node())
+        for peer_assg in resource.iterate_assignments():
+            if (peer_assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
+                nodes.append(peer_assg.get_node())
         for vstate in assignment.iterate_volume_states():
             if ((vstate.get_tstate() & DrbdVolumeState.FLAG_DEPLOY) != 0 and
               (vstate.get_cstate() & DrbdVolumeState.FLAG_DEPLOY) != 0):
@@ -522,11 +522,12 @@ class DrbdManager(object):
         deploy_fail = False
         resource = assignment.get_resource()
         tstate   = assignment.get_tstate()
+        primary  = self.primary_deployment(assignment)
         for vol_state in assignment.iterate_volume_states():
             if (vol_state.get_tstate() & DrbdVolumeState.FLAG_DEPLOY != 0
               and vol_state.get_cstate() & DrbdVolumeState.FLAG_DEPLOY == 0):
                 deploy_fail = True
-        if tstate & Assignment.FLAG_OVERWRITE != 0:
+        if primary:
             drbd_proc = self._drbdadm.primary(resource.get_name(), True)
             if drbd_proc is not None:
                 self._resconf.write(drbd_proc.stdin, assignment, False)
@@ -722,6 +723,43 @@ class DrbdManager(object):
             rc = DrbdManager.DRBDADM_EXEC_FAILED
         
         return rc
+    
+    
+    def primary_deployment(self, assignment):
+        """
+        Checks whether this assignment should switch to the primary role
+        after deployment (primary --force).
+        
+        Decision rules:
+        DO NOT switch to the primary role,
+        * if there are other nodes that have the resource deployed already;
+          instead, replicate the data from those other nodes, even if the
+          resource is marked for undeployment on those other nodes
+        * if there is another node that has the overwrite flag set
+          on this resource
+        * if this assignment has the discard flag set
+        DO switch to the primary role,
+        * if this assignment is the first one to deploy the resource on a node
+        * if this assignment has the overwrite flag set
+          (overrides the discard flag, too, although it should not be
+          possible to set both at the same time, anyway)
+        """
+        primary = True
+        tstate = assignment.get_tstate()
+        resource = assignment.get_resource()
+        if (tstate & Assignment.FLAG_OVERWRITE) == 0:
+            if (tstate & Assignment.FLAG_DISCARD) == 0:
+                for peer_assg in resource.iterate_assignments():
+                    if peer_assg == assignment:
+                        continue
+                    if ((peer_assg.get_cstate() & Assignment.FLAG_DEPLOY) != 0
+                      or (peer_assg.get_tstate() & Assignment.FLAG_OVERWRITE)
+                      != 0):
+                        primary = False
+                        break
+            else:
+                primary = False
+        return primary
     
     
     def reconfigure(self):
