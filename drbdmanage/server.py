@@ -13,6 +13,7 @@ from drbdmanage.drbd.persistence import *
 from drbdmanage.storage.storagecore import *
 from drbdmanage.conf.conffile import *
 from drbdmanage.utils import *
+from drbdmanage.consts import *
 
 __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
@@ -52,6 +53,8 @@ class DrbdManageServer(object):
     KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
+    KEY_DEFAULT_SECRET = "default-secret"
+    
     DEFAULT_MAX_NODE_ID  =   31
     DEFAULT_MAX_PEERS    =    7
     DEFAULT_MIN_MINOR_NR =  100
@@ -68,7 +71,8 @@ class DrbdManageServer(object):
       KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
       KEY_DRBDADM_PATH   : "/usr/sbin",
-      KEY_DRBD_CONFPATH  : "/var/drbd.d"
+      KEY_DRBD_CONFPATH  : "/var/drbd.d",
+      KEY_DEFAULT_SECRET : "default"
     }
     
     # BlockDevice manager
@@ -396,7 +400,7 @@ class DrbdManageServer(object):
         return server._instance_node_name
     
     
-    def create_node(self, name, ip, af):
+    def create_node(self, name, props):
         """
         Registers a DRBD cluster node
         
@@ -411,11 +415,28 @@ class DrbdManageServer(object):
                 if self._nodes.get(name) is not None:
                     rc = DM_EEXIST
                 else:
+                    ip = None
+                    af = DrbdNode.AF_IPV4
                     try:
-                        node = DrbdNode(name, ip, af)
-                        self._nodes[node.get_name()] = node
-                        self.save_conf_data(persist)
-                        rc = DM_SUCCESS
+                        ip       = props[NODE_ADDR]
+                    except KeyError:
+                        pass
+                    try:
+                        af_label = props[NODE_AF]
+                        if af_label == DrbdNode.AF_IPV4_LABEL:
+                            af = DrbdNode.AF_IPV4
+                        elif af_label == DrbdNode.AF_IPV6_LABEL:
+                            af = DrbdNode.AF_IPV6
+                    except KeyError:
+                        pass
+                    try:
+                        if ip is not None and af is not None:
+                            node = DrbdNode(name, ip, af)
+                            self._nodes[node.get_name()] = node
+                            self.save_conf_data(persist)
+                            rc = DM_SUCCESS
+                        else:
+                            rc = DM_EINVAL
                     except InvalidNameException:
                         rc = DM_ENAME
         except PersistenceException:
@@ -475,7 +496,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def create_resource(self, name, port):
+    def create_resource(self, name, props):
         """
         Registers a new resource that can be deployed to DRBD cluster nodes
         
@@ -491,12 +512,75 @@ class DrbdManageServer(object):
                 if resource is not None:
                     rc = DM_EEXIST
                 else:
+                    port = DrbdResource.PORT_NR_AUTO
+                    secret = self.get_conf_value(self.KEY_DEFAULT_SECRET)
+                    try:
+                        port = int(props[RES_PORT])
+                    except KeyError:
+                        pass
+                    try:
+                        secret = props[RES_SECRET]
+                    except KeyError:
+                        pass
                     if port == DrbdResource.PORT_NR_AUTO:
                         port = self.get_free_port_nr()
                     if port < 1 or port > 65535:
                         rc = DM_EPORT
                     else:
                         resource = DrbdResource(name, port)
+                        resource.set_secret(secret)
+                        self._resources[resource.get_name()] = resource
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+        except ValueError:
+            rc = DM_EINVAL
+        except PersistenceException:
+            pass
+        except InvalidNameException:
+            rc = DM_ENAME
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return rc
+    
+    
+    def modify_resource(self, name, props):
+        """
+        Modifies resource properties
+        
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        rc = DM_EPERSIST
+        resource = None
+        persist  = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._resources.get(name)
+                if resource is None:
+                    rc = DM_ENOENT
+                else:
+                    port_nr = None
+                    secret  = None
+                    for keyval in props.iteritems():
+                        key = keyval[0]
+                        val = keyval[1]
+                        sys.stderr.write("DEBUG: props(%s)=%s\n"
+                          % (key, val))
+                        if key == RES_PORT:
+                            try:
+                                port_nr = int(val)
+                            except ValueError:
+                                rc = DM_EINVAL
+                        elif key == RES_SECRET:
+                                secret = val
+                        else:
+                            rc = DM_EINVAL
+                        # TODO: port change - not implemented
+                        if secret is not None:
+                            resource.set_secret(secret)
                         self._resources[resource.get_name()] = resource
                         self.save_conf_data(persist)
                         rc = DM_SUCCESS
@@ -553,7 +637,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def create_volume(self, name, size, minor):
+    def create_volume(self, name, size, props):
         """
         Adds a volume to a resource
         
@@ -569,32 +653,38 @@ class DrbdManageServer(object):
                 if resource is None:
                     rc = DM_ENOENT
                 else:
+                    minor = MinorNr.MINOR_NR_AUTO
                     try:
-                        vol_id = self.get_free_volume_id(resource)
-                        if minor == MinorNr.MINOR_NR_AUTO:
-                            minor = self.get_free_minor_nr()
-                            if minor == MinorNr.MINOR_NR_ERROR:
-                                raise InvalidMinorNrException
-                        if vol_id == -1:
-                            rc = DM_EVOLID
-                        else:
-                            volume = DrbdVolume(vol_id, size, MinorNr(minor))
-                            resource.add_volume(volume)
-                            for assg in resource.iterate_assignments():
-                                assg.update_volume_states()
-                                vol_st = assg.get_volume_state(volume.get_id())
-                                if vol_st is not None:
-                                    vol_st.deploy()
-                                    vol_st.attach()
-                            self._drbd_mgr.perform_changes()
-                            self.save_conf_data(persist)
-                            rc = DM_SUCCESS
-                    except InvalidNameException:
-                        rc = DM_ENAME
-                    except InvalidMinorNrException:
-                        rc = DM_EMINOR
-                    except VolSizeRangeException:
-                        rc = DM_EVOLSZ
+                        minor = int(props[VOL_MINOR])
+                    except KeyError:
+                        pass
+                    except ValueError:
+                        raise InvalidMinorNrException
+                    if minor == MinorNr.MINOR_NR_AUTO:
+                        minor = self.get_free_minor_nr()
+                    if minor == MinorNr.MINOR_NR_ERROR:
+                        raise InvalidMinorNrException
+                    vol_id = self.get_free_volume_id(resource)
+                    if vol_id == -1:
+                        rc = DM_EVOLID
+                    else:
+                        volume = DrbdVolume(vol_id, size, MinorNr(minor))
+                        resource.add_volume(volume)
+                        for assg in resource.iterate_assignments():
+                            assg.update_volume_states()
+                            vol_st = assg.get_volume_state(volume.get_id())
+                            if vol_st is not None:
+                                vol_st.deploy()
+                                vol_st.attach()
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
+                        rc = DM_SUCCESS
+        except InvalidNameException:
+            rc = DM_ENAME
+        except InvalidMinorNrException:
+            rc = DM_EMINOR
+        except VolSizeRangeException:
+            rc = DM_EVOLSZ
         except PersistenceException:
             pass
         except Exception as exc:

@@ -49,14 +49,10 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="sss", out_signature="i")
-    def create_node(self, name, ip, af):
+      in_signature="sa{ss}", out_signature="i")
+    def create_node(self, name, props):
         try:
-            if af == drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6_LABEL:
-                af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV6
-            else:
-                af_n = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4
-            return self._server.create_node(name, ip, af_n)
+            return self._server.create_node(name, props)
         except Exception as exc:
             # FIXME
             sys.stderr.write("Oops, " + str(exc))
@@ -69,9 +65,15 @@ class DBusServer(dbus.service.Object):
         
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="si", out_signature="i")
-    def create_resource(self, name, port):
-        return self._server.create_resource(name, port)
+      in_signature="sa{ss}", out_signature="i")
+    def create_resource(self, name, props):
+        return self._server.create_resource(name, props)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sa{ss}", out_signature="i")
+    def modify_resource(self, name, props):
+        return self._server.modify_resource(name, props)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -81,9 +83,9 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="sxi", out_signature="i")
-    def create_volume(self, name, size_MiB, minor):
-        return self._server.create_volume(name, size_MiB, minor)
+      in_signature="sxa{ss}", out_signature="i")
+    def create_volume(self, name, size_MiB, props):
+        return self._server.create_volume(name, size_MiB, props)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,

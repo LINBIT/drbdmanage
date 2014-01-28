@@ -9,12 +9,13 @@ from drbdmanage.dbusserver import DBusServer
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
-from drbdmanage.exceptions import *
 from drbdmanage.drbd.drbdcore import DrbdNodeView
 from drbdmanage.drbd.drbdcore import DrbdResourceView
 from drbdmanage.drbd.drbdcore import DrbdVolumeView
 from drbdmanage.drbd.drbdcore import DrbdVolumeStateView
 from drbdmanage.drbd.drbdcore import AssignmentView
+from drbdmanage.exceptions import *
+from drbdmanage.consts import *
 
 
 __author__="raltnoeder"
@@ -159,6 +160,8 @@ class DrbdManage(object):
             rc = self.cmd_new_volume(args)
         elif arg == "new-resource":
             rc = self.cmd_new_resource(args)
+        elif arg == "modify-resource":
+            rc = self.cmd_modify_resource(args)
         elif arg == "remove-volume":
             rc = self.cmd_remove_volume(args)
         elif arg == "remove-resource":
@@ -228,8 +231,13 @@ class DrbdManage(object):
             af   = opt["-a"]
             if af is None:
                 af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+            
+            props = dbus.Dictionary(signature="ss")
+            props[NODE_ADDR] = ip
+            props[NODE_AF]   = af
+            
             self.dbus_init()
-            server_rc = self._server.create_node(name, ip, af)
+            server_rc = self._server.create_node(name, props)
             if server_rc == 0:
                 rc = 0
             else:
@@ -251,8 +259,8 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
-        opt        = { "-p" : "auto" }
-        optalias   = { "--port" : "-p" }
+        opt        = { "-p" : "auto", "-s" : "default" }
+        optalias   = { "--port" : "-p", "--secret" : "-s" }
         flags      = {}
         flagsalias = {}
         try:
@@ -261,15 +269,21 @@ class DrbdManage(object):
                 raise SyntaxException
             name      = params["name"]
             port_str  = opt["-p"]
+            secret    = opt["-s"]
             if port_str != "auto":
                 try:
                     port = int(port_str)
                 except ValueError:
                     raise SyntaxException
             
+            props = dbus.Dictionary(signature="ss")
+            props[RES_PORT] = str(port)
+            if secret is not None:
+                props[RES_SECRET] = secret
+            
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
-              port)
+              props)
             if server_rc == 0:
                 rc = 0
             else:
@@ -293,30 +307,35 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name", "size" ]
         params     = {}
-        opt        = { "-u" : None, "-m" : None }
-        optalias   = { "--unit" : "-u", "--minor" : "-m", }
+        opt        = { "-u" : None, "-m" : None, "-d" : None }
+        optalias   = { "--unit" : "-u", "--minor" : "-m", "--deploy" : "-d" }
         flags      = {}
         flagsalias = {}
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
               flags, flagsalias) != 0:
                 raise SyntaxException
-            name      = params["name"]
-            size_str  = params["size"]
-            unit_str  = opt["-u"]
-            minor_str = opt["-m"]
+            name       = params["name"]
+            size_str   = params["size"]
+            unit_str   = opt["-u"]
+            minor_str  = opt["-m"]
+            deploy_str = opt["-d"]
             if minor_str is not None:
                 if minor_str == "auto":
                     minor = MinorNr.MINOR_NR_AUTO
-                elif minor_str == "auto-drbd":
-                    minor = MinorNr.MINOR_NR_AUTODRBD
                 else:
                     try:
                         minor = int(minor_str)
                     except Exception as exc:
                         sys.stderr.write("Error: <minor> must be a number "
-                          "or \"auto\" or \"auto-drbd\"\n")
+                          "or \"auto\"\n")
                         raise SyntaxException
+            deploy = None
+            if deploy_str is not None:
+                try:
+                    deploy = int(deploy_str)
+                except ValueError:
+                    pass
             try:
                 size = long(size_str)
             except Exception as exc:
@@ -344,12 +363,20 @@ class DrbdManage(object):
             if unit != SizeCalc.UNIT_MiB:
                 size = SizeCalc.convert_round_up(size, unit,
                   SizeCalc.UNIT_MiB)
+            
+            props = dbus.Dictionary(signature="ss")
+            
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
-              DrbdResource.PORT_NR_AUTO)
+              props)
             if server_rc == 0 or server_rc == DM_EEXIST:
+                props = dbus.Dictionary(signature="ss")
+                props[VOL_MINOR] = str(minor)
                 server_rc = self._server.create_volume(dbus.String(name),
-                  dbus.Int64(size), dbus.Int32(minor))
+                  dbus.Int64(size), props)
+            if server_rc == 0 and deploy is not None:
+                server_rc = self._server.deploy(dbus.String(name),
+                  dbus.Int32(deploy))
             if server_rc == 0:
                 rc = 0
             else:
@@ -366,6 +393,55 @@ class DrbdManage(object):
           "| PiB }\n"
           "    --minor | -m : <minor-number>\n"
           "The default size unit is GiB.\n")
+    
+    
+    def cmd_modify_resource(self, args):
+        rc    = 1
+        port  = DrbdResource.PORT_NR_AUTO
+        # Command parser configuration
+        order      = [ "name" ]
+        params     = {}
+        opt        = { "-p" : None, "-s" : None }
+        optalias   = { "--port" : "-p", "--secret" : "-s" }
+        flags      = {}
+        flagsalias = {}
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+            name     = params["name"]
+            port_str = opt["-p"]
+            secret   = opt["-s"]
+            
+            if port_str is not None:
+                if not port_str == "auto":
+                    try:
+                        port = int(port_str)
+                    except ValueError:
+                        raise SyntaxException
+            
+            props = dbus.Dictionary(signature="ss")
+            if port_str is not None:
+                props[RES_PORT]   = str(port)
+            if secret is not None:
+                props[RES_SECRET] = secret
+            
+            self.dbus_init()
+            server_rc = self._server.modify_resource(dbus.String(name), props)
+            if server_rc == 0:
+                rc = 0
+            else:
+                self.error_msg_text(server_rc)
+        except SyntaxException:
+            self.syntax_modify_resource()
+        return rc
+    
+    
+    def syntax_modify_resource(self):
+        sys.stderr.write("Syntax: modify-resource [ options ] <name>\n")
+        sys.stderr.write("  Options:\n"
+          "    --port   | -p : <port-number>\n"
+          "    --secret | -s : <shared-secret>\n")
     
     
     def cmd_remove_node(self, args):
