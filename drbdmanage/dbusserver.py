@@ -246,6 +246,12 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="", out_signature="i")
+    def ping(self):
+        return 0
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="")
     def shutdown(self):
         self._server.shutdown()

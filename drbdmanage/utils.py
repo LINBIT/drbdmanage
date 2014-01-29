@@ -4,6 +4,7 @@ __author__="raltnoeder"
 __date__ ="$Sep 16, 2013 1:40:12 PM$"
 
 import sys
+import os
 import hashlib
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
@@ -272,6 +273,36 @@ def plugin_import(path):
         print exc
     return p_inst
 
+
+def extend_path(ext_path):
+    """
+    Extends the PATH environment variable exported to subprocesses
+    
+    Mainly required for D-Bus activation, because the D-Bus helper clears
+    all environment variables, and most utilities that get called by
+    drbdmanage require a sane PATH or else they fail.
+    
+    This function checks whether all the directories supplied in the ext_path
+    arguments are already present in PATH, and for those that are not present
+    yet, it appends each directory stated in ext_path to PATH in the order
+    of occurrence in ext_path.
+    """
+    path = ""
+    sep  = ":"
+    try:
+        path = os.environ["PATH"]
+    except KeyError:
+        pass
+    path_items = path.split(sep)
+    ext_path_items = ext_path.split(sep)
+    for item in ext_path_items:
+        if item not in path_items:
+            path_items.append(item)
+    path = sep.join(path_items)
+    # this will implicitly update the actual PATH environment variable
+    # by means of a call to putenv() according to python documentation
+    os.environ["PATH"] = path
+    
 
 class DataHash(object):
     HASH_LEN  = 32 # SHA-256

@@ -51,6 +51,7 @@ class DrbdManageServer(object):
     KEY_MAX_PORT_NR    = "max-port-nr"
     
     KEY_DRBDADM_PATH   = "drbdadm-path"
+    KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
     KEY_DEFAULT_SECRET = "default-secret"
@@ -71,6 +72,7 @@ class DrbdManageServer(object):
       KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
       KEY_DRBDADM_PATH   : "/usr/sbin",
+      KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
       KEY_DRBD_CONFPATH  : "/var/drbd.d",
       KEY_DEFAULT_SECRET : "default"
     }
@@ -128,6 +130,8 @@ class DrbdManageServer(object):
         self._resources = dict()
         # load the server configuration file
         self.load_server_conf()
+        # ensure that the PATH environment variable is set up
+        extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
         self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
         self._drbd_mgr  = DrbdManager(self)
         self._drbd_mgr.drbdctrl_res_up()

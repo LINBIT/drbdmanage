@@ -145,70 +145,11 @@ class DrbdManage(object):
         rc = 1
         arg = args.next_arg()
         if arg is None:
-            arg = ""
-        if arg == "assignments":
-            rc = self.cmd_list_assignments(args)
-        elif arg == "resources" or arg == "volumes":
-            rc = self.cmd_list_resources(args)
-        elif arg == "nodes":
-            rc = self.cmd_list_nodes(args)
-        elif arg == "new-node":
-            rc = self.cmd_new_node(args)
-        elif arg == "remove-node":
-            rc = self.cmd_remove_node(args)
-        elif arg == "new-volume":
-            rc = self.cmd_new_volume(args)
-        elif arg == "new-resource":
-            rc = self.cmd_new_resource(args)
-        elif arg == "modify-resource":
-            rc = self.cmd_modify_resource(args)
-        elif arg == "remove-volume":
-            rc = self.cmd_remove_volume(args)
-        elif arg == "remove-resource":
-            rc = self.cmd_remove_resource(args)
-        elif arg == "connect":
-            rc = self.cmd_connect(args, False)
-        elif arg == "reconnect":
-            rc = self.cmd_connect(args, True)
-        elif arg == "disconnect":
-            rc = self.cmd_disconnect(args)
-        elif arg == "flags":
-            rc = self.cmd_flags(args)
-        elif arg == "attach":
-            rc = self.cmd_attach(args)
-        elif arg == "detach":
-            rc = self.cmd_detach(args)
-        elif arg == "assign":
-            rc = self.cmd_assign(args)
-        elif arg == "unassign":
-            rc = self.cmd_unassign(args)
-        elif arg == "deploy":
-            rc = self.cmd_deploy(args)
-        elif arg == "extend":
-            rc = self.cmd_extend(args)
-        elif arg == "reduce":
-            rc = self.cmd_reduce(args)
-        elif arg == "undeploy":
-            rc = self.cmd_undeploy(args)
-        elif arg == "reconfigure":
-            rc = self.cmd_reconfigure()
-        elif arg == "update-pool":
-            rc = self.cmd_update_pool()
-        elif arg == "save":
-            rc = self.cmd_save()
-        elif arg == "load":
-            rc = self.cmd_load()
-        elif arg == "shutdown":
-            rc = self.cmd_shutdown(args)
-        elif arg == "debug":
-            rc = self._server.debug_cmd("list")
-        elif arg == "export":
-            rc = self.cmd_export_conf(args)
-        elif arg == "exit":
-            exit(0)
+            rc = 0
         else:
-            if arg == "":
-                rc = 0
+            cmd_func = self.COMMANDS.get(arg)
+            if cmd_func is not None:
+                rc = cmd_func(self, args)
             else:
                 # writing nonsense on the command line is considered an error
                 sys.stderr.write("Error: unknown command '" + arg + "'\n")
@@ -573,7 +514,15 @@ class DrbdManage(object):
           " <id>\n")
     
     
-    def cmd_connect(self, args, reconnect):
+    def cmd_connect(self, args):
+        return self._connect(args, False)
+    
+    
+    def cmd_reconnect(self, args):
+        return self._connect(args, True)
+    
+    
+    def _connect(self, args, reconnect):
         rc    = 1
         state = []
         # Command parser configuration
@@ -1059,7 +1008,7 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: undeploy [ --quiet | -q ] <resource>\n")
     
     
-    def cmd_update_pool(self):
+    def cmd_update_pool(self, args):
         rc = 1
         self.dbus_init()
         server_rc = self._server.update_pool()
@@ -1070,7 +1019,7 @@ class DrbdManage(object):
         return rc
     
     
-    def cmd_reconfigure(self):
+    def cmd_reconfigure(self, args):
         rc = 1
         self.dbus_init()
         server_rc = self._server.reconfigure()
@@ -1081,7 +1030,7 @@ class DrbdManage(object):
         return rc
     
     
-    def cmd_save(self):
+    def cmd_save(self, args):
         rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
@@ -1092,7 +1041,7 @@ class DrbdManage(object):
         return rc
     
     
-    def cmd_load(self):
+    def cmd_load(self, args):
         rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
@@ -1249,6 +1198,14 @@ class DrbdManage(object):
     
     
     def cmd_list_resources(self, args):
+        return self._list_resources(args, False)
+    
+    
+    def cmd_list_volumes(self, args):
+        return self._list_resources(args, True)
+    
+    
+    def _list_resources(self, args, list_volumes):
         color = self.color
         # Command parser configuration
         order    = []
@@ -1279,12 +1236,13 @@ class DrbdManage(object):
                     color(COLOR_NONE), "Port",
                     color(COLOR_RED), "state", color(COLOR_NONE))
                   )
-            sys.stdout.write(
-              "  %s*%s%6s%s %14s %7s  %s%s\n"
-                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                "id#", color(COLOR_BROWN), "size (MiB)", "minor#", "state",
-                color(COLOR_NONE))
-              )
+            if list_volumes:
+                sys.stdout.write(
+                  "  %s*%s%6s%s %14s %7s  %s%s\n"
+                    % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                    "id#", color(COLOR_BROWN), "size (MiB)", "minor#", "state",
+                    color(COLOR_NONE))
+                  )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
         
         for properties in resource_list:
@@ -1298,24 +1256,25 @@ class DrbdManage(object):
                         color(COLOR_NONE), view.get_port(),
                         color(COLOR_RED), view.get_state(), color(COLOR_NONE))
                       )
-                volume_list = view.get_volumes()
-                for vol_view in volume_list:
-                    if not machine_readable:
-                        sys.stdout.write(
-                          "  %s*%s%6d%s %14d %7s %s%s\n"
-                            % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                            vol_view.get_id(), color(COLOR_BROWN),
-                            vol_view.get_size_MiB(),
-                            vol_view.get_minor(), vol_view.get_state(),
-                            color(COLOR_NONE))
-                          )
-                    else:
-                        sys.stdout.write(
-                          "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
-                            view.get_state(), vol_view.get_id(),
-                            vol_view.get_size_MiB(), view.get_port(),
-                            vol_view.get_minor(), vol_view.get_state())
-                          )
+                if list_volumes:
+                    volume_list = view.get_volumes()
+                    for vol_view in volume_list:
+                        if not machine_readable:
+                            sys.stdout.write(
+                              "  %s*%s%6d%s %14d %7s %s%s\n"
+                                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                                vol_view.get_id(), color(COLOR_BROWN),
+                                vol_view.get_size_MiB(),
+                                vol_view.get_minor(), vol_view.get_state(),
+                                color(COLOR_NONE))
+                              )
+                        else:
+                            sys.stdout.write(
+                              "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
+                                view.get_state(), vol_view.get_id(),
+                                vol_view.get_size_MiB(), view.get_port(),
+                                vol_view.get_minor(), vol_view.get_state())
+                              )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
@@ -1444,6 +1403,24 @@ class DrbdManage(object):
         except SyntaxException:
             self.syntax_export_conf()
         return rc
+    
+    
+    def cmd_ping(self, args):
+        rc = 1
+        self.dbus_init()
+        try:
+            server_rc = self._server.ping()
+            if server_rc == 0:
+                sys.stdout.write("pong\n")
+                rc = 0
+        except dbus.exceptions.DBusException:
+            sys.stderr.write("drbdmanage: cannot connect to the drbdmanage "
+              "server through D-Bus.\n")
+        return rc
+    
+    
+    def cmd_exit(self, args):
+        exit(0)
         
     
     def syntax_export_conf(self):
@@ -1489,6 +1466,46 @@ class DrbdManage(object):
             return col
         else:
             return ""
+    
+    
+    COMMANDS = {
+        "assignments"       : cmd_list_assignments,
+        "a"                 : cmd_list_assignments,
+        "resources"         : cmd_list_resources,
+        "r"                 : cmd_list_resources,
+        "volumes"           : cmd_list_volumes,
+        "v"                 : cmd_list_volumes,
+        "nodes"             : cmd_list_nodes,
+        "n"                 : cmd_list_nodes,
+        "new-node"          : cmd_new_node,
+        "remove-node"       : cmd_remove_node,
+        "new-volume"        : cmd_new_volume,
+        "new-resource"      : cmd_new_resource,
+        "modify-resource"   : cmd_modify_resource,
+        "remove-volume"     : cmd_remove_volume,
+        "remove-resource"   : cmd_remove_resource,
+        "connect"           : cmd_connect,
+        "reconnect"         : cmd_connect,
+        "disconnect"        : cmd_disconnect,
+        "flags"             : cmd_flags,
+        "attach"            : cmd_attach,
+        "detach"            : cmd_detach,
+        "assign"            : cmd_assign,
+        "unassign"          : cmd_unassign,
+        "deploy"            : cmd_deploy,
+        "extend"            : cmd_extend,
+        "reduce"            : cmd_reduce,
+        "undeploy"          : cmd_undeploy,
+        "reconfigure"       : cmd_reconfigure,
+        "update-pool"       : cmd_update_pool,
+        "save"              : cmd_save,
+        "load"              : cmd_load,
+        "shutdown"          : cmd_shutdown,
+        "export"            : cmd_export_conf,
+        "ping"              : cmd_ping,
+        "exit"              : cmd_exit
+      }
+
     
     
 def main():
