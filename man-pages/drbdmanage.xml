@@ -115,6 +115,13 @@
             </group>
 	    <replaceable>port-number</replaceable>
           </arg>
+          <arg choice="opt" rep="norepeat">
+            <group choice="req" rep="norepeat">
+              <arg choice="plain" rep="norepeat">-s</arg>
+              <arg choice="plain" req="norepeat">--secret</arg>
+            </group>
+	    <replaceable>shared-secret</replaceable>
+          </arg>
 	  <arg choice="plain" rep="norepeat">
             <replaceable>resname</replaceable>
           </arg>
@@ -236,10 +243,6 @@
         </arg><sbr/>
         
         <arg choice="plain" rep="norepeat">assign
-          <group choice="opt" rep="norepeat">
-            <arg choice="plain" rep="norepeat">-c</arg>
-            <arg choice="plain" req="norepeat">--connect</arg>
-          </group>
           <arg choice="opt" rep="norepeat">--client</arg>
           <arg choice="opt" rep="norepeat">--discard</arg>
           <arg choice="opt" rep="norepeat">--overwrite</arg>
@@ -548,6 +551,13 @@
                 </group>
                 <replaceable>port-number</replaceable>
               </arg>
+              <arg choice="opt" rep="norepeat">
+                <group choice="req" rep="norepeat">
+                  <arg choice="plain" rep="norepeat">-s</arg>
+                  <arg choice="plain" req="norepeat">--secret</arg>
+                </group>
+                <replaceable>shared-secret</replaceable>
+              </arg>
               <arg choice="plain" rep="norepeat">
                 <replaceable>resname</replaceable>
               </arg>
@@ -559,6 +569,10 @@
               Unless a specific IP <replaceable>port-number</replaceable> is
               supplied, the port-number is automatically selected by the
               drbdmanage server on the current node.<sbr/>
+              If <replaceable>shared-secret</replaceable> is not present,
+              the shared-secret from the server's configuration file
+              will be used if it is configured, otherwise the server will
+              use the string &quot;default&quot; as the shared-secret.
               Note that the new resource entry does not contain any volumes.
               Use the <option>new-volume</option> command to define volumes
               for the newly created DRBD resource.
@@ -888,10 +902,6 @@
           <term>
             <command moreinfo="none">drbdmanage</command>
             <arg choice="plain" rep="norepeat">assign
-              <group choice="opt" rep="norepeat">
-                <arg choice="plain" rep="norepeat">-c</arg>
-                <arg choice="plain" req="norepeat">--connect</arg>
-              </group>
               <arg choice="opt" rep="norepeat">--client</arg>
               <arg choice="opt" rep="norepeat">--discard</arg>
               <arg choice="opt" rep="norepeat">--overwrite</arg>
@@ -963,7 +973,125 @@
           </listitem>
         </varlistentry>
         
-        <!--     
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">reconfigure</arg>
+          </term>
+          <listitem>
+            <para>
+              Orders the drbdmanage server to re-read its configuration
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">load</arg>
+          </term>
+          <listitem>
+            <para>
+              Orders the drbdmanage server to reload the current configuration
+              of drbdmanage's resources from the data tables on the
+              drbdmanage control volume
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">save</arg>
+          </term>
+          <listitem>
+            <para>
+              Orders the drbdmanage server to save the current configuration
+              of drbdmanage's resources to the data tables on the drbdmanaege
+              control volume
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">load</arg>
+          </term>
+          <listitem>
+            <para>
+              Orders the drbdmanage server to reload the current configuration
+              of drbdmanage's resources from the data tables on the
+              drbdmanage control volume
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">update-pool</arg>
+          </term>
+          <listitem>
+            <para>
+              Checks the storage pool total size and free space on the local
+              node and updates the associated values in the data tables on
+              the control volume.
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">
+              export
+              <group choice="req" rep="norepeat">
+                <arg choice="plain" rep="norepeat">*</arg>
+                <arg choice="plain" rep="norepeat">
+                    <replaceable>resname</replaceable>
+                </arg>
+              </group>
+            </arg><sbr/>
+          </term>
+          <listitem>
+            <para>
+                Exports the configuration files of the drbdmanage resource
+                <replaceable>resname</replaceable> for use with
+                <option>drbdadm</option>. If <replaceable>*</replaceable> is
+                used instead of <replaceable>resname</replaceable>, the
+                configuration files of all drbdmanage resources deployed on
+                the local node are exported.
+                The configuration files will be created (or updated) in
+                the drbdmanage directory for temporary configuration files,
+                typically <option>/var/drbd.d</option>.
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        <varlistentry>
+          <term>
+            <command moreinfo="none">drbdmanage</command>
+            <arg choice="plain" rep="norepeat">shutdown
+              <group choice="opt" rep="norepeat">
+                <arg choice="plain" rep="norepeat">-q</arg>
+                <arg choice="plain" req="norepeat">--quiet</arg>
+              </group>
+            </arg>
+          </term>
+          <listitem>
+            <para>
+                Stops the local drbdmanage server process. Unless the <option>-q</option>
+                or <option>--quiet</option> option is present, the client will
+                ask for confirmation before sending the shutdown command to the
+                drbdmanage server.
+            </para>
+          </listitem>
+        </varlistentry>
+        
+        
+        <!--
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>

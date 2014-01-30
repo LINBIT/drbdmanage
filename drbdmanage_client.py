@@ -1419,6 +1419,42 @@ class DrbdManage(object):
         return rc
     
     
+    def cmd_init(self, args):
+        rc = 1
+        # Command parser configuration
+        order    = [ "dev" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { "-q" : False }
+        flagsalias = { "--quiet" : "-q" }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+        
+            drbdctrl_file = params["dev"]
+            quiet         = flags["-q"]
+            
+            if not quiet:
+                quiet = self.user_confirm((
+                  "You are going to initalize a new "
+                  "drbdmanage control volume on:\n"
+                  "  %s\n"
+                  "Existing data will be lost, confirm:\n"
+                  % drbdctrl_file))
+            if quiet:
+                rc = self._drbdctrl_init(drbdctrl_file)
+            else:
+                rc = 0
+        except SyntaxException:
+            self.syntax_init()
+        return rc
+    
+    
+    def syntax_init(self):
+        sys.stderr.write("Syntax: init [ -q | --quiet ] device\n")
+    
     def cmd_exit(self, args):
         exit(0)
         
@@ -1467,6 +1503,82 @@ class DrbdManage(object):
         else:
             return ""
     
+        
+    def _drbdctrl_init(self, drbdctrl_file):
+        rc = 1
+        
+        init_blks = 4
+        pers_impl = drbdmanage.drbd.persistence.PersistenceImpl
+        blksz     = pers_impl.BLKSZ
+
+        index_name = pers_impl.IDX_NAME
+        index_off  = pers_impl.IDX_OFFSET
+        hash_name  = pers_impl.HASH_NAME
+        hash_off   = pers_impl.HASH_OFFSET
+        data_off   = pers_impl.DATA_OFFSET
+
+        assg_len_name  = pers_impl.ASSG_LEN_NAME
+        assg_off_name  = pers_impl.ASSG_OFF_NAME
+        nodes_len_name = pers_impl.NODES_LEN_NAME
+        nodes_off_name = pers_impl.NODES_OFF_NAME
+        res_len_name   = pers_impl.RES_LEN_NAME
+        res_off_name   = pers_impl.RES_OFF_NAME
+
+        drbdctrl = None
+        try:
+            hash = drbdmanage.utils.DataHash()
+
+            index_str = (
+                    "{\n"
+                    "    \"" + index_name + "\": {\n"
+                    "        \"" + assg_len_name + "\": 3,\n"
+                    "        \"" + assg_off_name + "\": " 
+                    + str(data_off) + ",\n"
+                    "        \"" + nodes_len_name + "\": 3,\n"
+                    "        \"" + nodes_off_name + "\": "
+                    + str(data_off) + ",\n"
+                    "        \"" + res_len_name + "\": 3,\n"
+                    "        \"" + res_off_name + "\": "
+                    + str(data_off) + "\n"
+                    "    }\n"
+                    "}\n"
+            )
+            data_str = "{}\n"
+
+            pos = 0
+            while pos < 3:
+                hash.update(data_str)
+                pos += 1
+
+            drbdctrl = open(drbdctrl_file, "rb+")
+            zeroblk  = bytearray('\0' * blksz)
+            pos      = 0
+            while pos < init_blks:
+                drbdctrl.write(zeroblk)
+                pos += 1
+            drbdctrl.seek(index_off)
+            drbdctrl.write(index_str)
+            drbdctrl.seek(data_off)
+            drbdctrl.write(data_str)
+            drbdctrl.seek(hash_off)
+            drbdctrl.write(
+                "{\n"
+                "    \"hash\": \"" + hash.get_hex_hash() + "\"\n"
+                "}\n"
+            )
+            rc = 0
+        except IOError as ioexc:
+            sys.stderr.write("Initialization failed: " + str(ioexc) + "\n")
+        finally:
+            if drbdctrl is not None:
+                try:
+                    drbdctrl.close()
+                except IOError:
+                    pass
+        sys.stdout.write("empty drbdmanage control volume initialized.\n")
+        
+        return rc
+    
     
     COMMANDS = {
         "assignments"       : cmd_list_assignments,
@@ -1503,9 +1615,9 @@ class DrbdManage(object):
         "shutdown"          : cmd_shutdown,
         "export"            : cmd_export_conf,
         "ping"              : cmd_ping,
+        "init"              : cmd_init,
         "exit"              : cmd_exit
       }
-
     
     
 def main():
