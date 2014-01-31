@@ -18,7 +18,7 @@ class BalancedDeployer(object):
         pass
     
     
-    def deploy_select(self, nodes, result, count, size_MiB, deploy_unknown):
+    def deploy_select(self, nodes, result, count, size_kiB, deploy_unknown):
         """
         Find nodes that have enough memory to deploy the resource
         if deploy_unknown is set and there are not enough nodes that have
@@ -27,7 +27,7 @@ class BalancedDeployer(object):
         
         @param   nodes: nodes that may be eligible for deploying the resource
         @type    nodes: dict of DrbdNode objects
-        @param   size_MiB: amount of free storage required on a node for
+        @param   size_kiB: amount of free storage required on a node for
                    deploying the resource
         @param   count: number of required nodes
         @param   deploy_unknown: allow deploying to nodes with unknown
@@ -41,7 +41,7 @@ class BalancedDeployer(object):
         for node in nodes.itervalues():
             poolfree = node.get_poolfree()
             if poolfree != -1:
-                if poolfree >= size_MiB:
+                if poolfree >= size_kiB:
                     selected.append(node)
             else:
                 wildcat.append(node)

@@ -641,7 +641,7 @@ class DrbdManageServer(object):
         return rc
     
     
-    def create_volume(self, name, size, props):
+    def create_volume(self, name, size_kiB, props):
         """
         Adds a volume to a resource
         
@@ -672,7 +672,7 @@ class DrbdManageServer(object):
                     if vol_id == -1:
                         rc = DM_EVOLID
                     else:
-                        volume = DrbdVolume(vol_id, size, MinorNr(minor))
+                        volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
                         resource.add_volume(volume)
                         for assg in resource.iterate_assignments():
                             assg.update_volume_states()
@@ -919,7 +919,7 @@ class DrbdManageServer(object):
                 """
                 size_sum = 0
                 for vol in resource.iterate_volumes():
-                    size_sum += vol.get_size_MiB()
+                    size_sum += vol.get_size_kiB()
                 """
                 Call the deployer plugin to select nodes for deploying the
                 resource
@@ -998,7 +998,7 @@ class DrbdManageServer(object):
                 """
                 size_sum = 0
                 for vol in resource.iterate_volumes():
-                    size_sum += vol.get_size_MiB()
+                    size_sum += vol.get_size_kiB()
                 """
                 filter nodes that do not have the resource deployed yet
                 """

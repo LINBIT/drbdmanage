@@ -84,8 +84,8 @@ class DBusServer(dbus.service.Object):
     
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sxa{ss}", out_signature="i")
-    def create_volume(self, name, size_MiB, props):
-        return self._server.create_volume(name, size_MiB, props)
+    def create_volume(self, name, size_kiB, props):
+        return self._server.create_volume(name, size_kiB, props)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -261,56 +261,4 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="s", out_signature="i")
     def debug_cmd(self, cmd):
-        try:
-            for node in self._server._nodes.itervalues():
-                sys.stdout.write("Node(%s) af=%s ip=%s\n" %
-                  (node.get_name(), node.get_af_label(), node.get_ip()))
-            sys.stdout.write("\n")
-            for resource in self._server.iterate_resources():
-                sys.stdout.write("Resource(%s)\n" % (resource.get_name()))
-                for volume in resource.iterate_volumes():
-                    sys.stdout.write("  --(%d) size(%d) minor(%d)\n"
-                      % (volume.get_id(), volume.get_size_MiB(),
-                      volume.get_minor().get_value()))
-            sys.stdout.write("\n")
-            for node in self._server.iterate_nodes():
-                sys.stdout.write("on %s:\n" % (node.get_name()))
-                for assg in node.iterate_assignments():
-                    resource = assg.get_resource()
-                    sys.stdout.write("  resource %s:\n" % (resource.get_name()))
-                    for vol_st in assg.iterate_volume_states():
-                        id = vol_st.get_id()
-                        cstate = vol_st.get_cstate()
-                        tstate = vol_st.get_tstate()
-                        if tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-                            deploy = "deploy"
-                        else:
-                            deploy = "~deploy"
-                        if tstate & DrbdVolumeState.FLAG_ATTACH != 0:
-                            attach = "attach"
-                        else:
-                            attach = "~attach"
-                        sys.stdout.write("    %d: %d (%s,%s)\n"
-                          % (vol_st.get_id(),
-                          vol_st.get_volume().get_size_MiB(), deploy, attach))
-            for key in self._server._conf.iterkeys():
-                sys.stdout.write("conf[%s] = (%s)\n" % (key,
-                  self._server._conf[key]))
-            """
-            BEGIN Test DrbdAdmConf drbdadm config file writer
-            """
-            conffile = drbdmanage.conf.conffile.DrbdAdmConf()
-            for resource in self._server.iterate_resources():
-                for assg in resource.iterate_assignments():
-                    conffile.write(sys.stdout, assg, True)
-                    sys.stdout.write("\n")
-                    # quick'n'dirty print the first assignment only
-                    break
-            """
-            END Test DrbdAdmConf drbdadm config file writer
-            """
-            sys.stdout.write("--------------------\n\n")
-        except Exception:
-            sys.stderr.write("Caught exception:\n"
-              + traceback.format_exc() + "\n")
-        return DM_SUCCESS
+        pass

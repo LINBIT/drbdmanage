@@ -689,7 +689,7 @@ class SizeCalc(object):
     _base_10 = 0x0A00
     
     UNIT_B   =  0 | _base_2
-    UNIT_KiB = 10 | _base_2
+    UNIT_kiB = 10 | _base_2
     UNIT_MiB = 20 | _base_2
     UNIT_GiB = 30 | _base_2
     UNIT_TiB = 40 | _base_2
@@ -698,7 +698,7 @@ class SizeCalc(object):
     UNIT_ZiB = 70 | _base_2
     UNIT_YiB = 80 | _base_2
     
-    UNIT_KB =   3 | _base_10
+    UNIT_kB =   3 | _base_10
     UNIT_MB =   6 | _base_10
     UNIT_GB =   9 | _base_10
     UNIT_TB =  12 | _base_10

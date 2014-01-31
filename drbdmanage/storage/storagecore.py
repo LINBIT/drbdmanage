@@ -10,24 +10,24 @@ from drbdmanage.exceptions import *
 
 
 class GenericStorage(object):
-    _size_MiB = None
+    _size_kiB = None
     
     
-    def __init__(self, size_MiB):
-        self._size_MiB = long(size_MiB)
+    def __init__(self, size_kiB):
+        self._size_kiB = long(size_kiB)
     
     
-    def get_size_MiB(self):
+    def get_size_kiB(self):
         """
         Returns the size of the volume in binary megabytes
         
-        This is the size of the volume in units of (2 to the power of 20) bytes
-        (bytes = size * 1048576).
+        This is the size of the volume in units of (2 to the power of 10) bytes
+        (bytes = size * 1024).
         
-        @return: volume size in MeBiByte (2 ** 20 bytes, binary megabytes)
+        @return: volume size in kiBiByte (2 ** 10 bytes, binary kilobytes)
         @rtype:  long
         """
-        return self._size_MiB
+        return self._size_kiB
 
 
     def get_size(self, unit):
@@ -40,8 +40,8 @@ class GenericStorage(object):
         @return: volume size in the selected scale unit
         @rtype:  long
         """
-        return drbdmanage.utils.SizeCalc.convert(self._size_MiB,
-          drbdmanage.utils.SizeCalc.UNIT_MiB, unit)
+        return drbdmanage.utils.SizeCalc.convert(self._size_kiB,
+          drbdmanage.utils.SizeCalc.UNIT_kiB, unit)
 
 
 class BlockDevice(GenericStorage):
@@ -54,8 +54,8 @@ class BlockDevice(GenericStorage):
     _name     = None
     
     
-    def __init__(self, name, size_MiB, path):
-        super(BlockDevice, self).__init__(size_MiB)
+    def __init__(self, name, size_kiB, path):
+        super(BlockDevice, self).__init__(size_kiB)
         self._path     = path
         self._name     = self.name_check(name)
     
@@ -254,7 +254,7 @@ class StoragePlugin(object):
         @type    name: str
         @param   id: volume id
         @type    id: int
-        @param   size: size of the block device in MiB (binary megabytes)
+        @param   size: size of the block device in kiB (binary kilobytes)
         @type    size: long
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails

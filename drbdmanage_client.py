@@ -283,7 +283,9 @@ class DrbdManage(object):
                 sys.stderr.write("Error: <size> must be a number\n")
                 raise SyntaxException
             if unit_str is not None:
-                if unit_str  == "MiB":
+                if unit_str  == "kiB":
+                    unit = SizeCalc.UNIT_kiB
+                elif unit_str  == "MiB":
                     unit = SizeCalc.UNIT_MiB
                 elif unit_str == "GiB":
                     unit = SizeCalc.UNIT_GiB
@@ -291,6 +293,8 @@ class DrbdManage(object):
                     unit = SizeCalc.UNIT_TiB
                 elif unit_str == "PiB":
                     unit = SizeCalc.UNIT_PiB
+                elif unit_str == "kB":
+                    unit = SizeCalc.UNIT_kB
                 elif unit_str == "MB":
                     unit = SizeCalc.UNIT_MB
                 elif unit_str == "GB":
@@ -301,9 +305,9 @@ class DrbdManage(object):
                     unit = SizeCalc.UNIT_PB
                 else:
                     raise SyntaxException
-            if unit != SizeCalc.UNIT_MiB:
+            if unit != SizeCalc.UNIT_kiB:
                 size = SizeCalc.convert_round_up(size, unit,
-                  SizeCalc.UNIT_MiB)
+                  SizeCalc.UNIT_kiB)
             
             props = dbus.Dictionary(signature="ss")
             
@@ -330,8 +334,8 @@ class DrbdManage(object):
     def syntax_new_volume(self):
         sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
         sys.stderr.write("  Options:\n"
-          "    --unit | -u  : { MB | GB | TB | PB | MiB | GiB | TiB "
-          "| PiB }\n"
+          "    --unit | -u  : { kB | MB | GB | TB | PB | kiB | MiB | GiB "
+          "| TiB | PiB }\n"
           "    --minor | -m : <minor-number>\n"
           "The default size unit is GiB.\n")
     
@@ -1160,14 +1164,22 @@ class DrbdManage(object):
             try:
                 view = DrbdNodeView(properties, machine_readable)
                 if not machine_readable:
-                    poolsize = view.get_poolsize()
-                    poolfree = view.get_poolfree()
+                    poolsize = SizeCalc.convert(view.get_poolsize(),
+                      SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
+                    poolfree = SizeCalc.convert(view.get_poolfree(),
+                      SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
                     if poolsize >= 0:
-                        poolsize_text = "%14d" % (poolsize)
+                        if poolsize < 1:
+                            poolsize_text = "< 1"
+                        else:
+                            poolsize_text = str(poolsize)
                     else:
                         poolsize_text = "unknown"
                     if poolfree >= 0:
-                        poolfree_text = "%14d" % (poolfree)
+                        if poolfree < 1:
+                            poolfree_text = "< 1"
+                        else:
+                            poolfree_text = str(poolfree)
                     else:
                         poolfree_text = "unknown"
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
@@ -1260,11 +1272,18 @@ class DrbdManage(object):
                     volume_list = view.get_volumes()
                     for vol_view in volume_list:
                         if not machine_readable:
+                            size_MiB = SizeCalc.convert(
+                              vol_view.get_size_kiB(),
+                              SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
+                            if size_MiB < 1:
+                                size_MiB_str = "< 1"
+                            else:
+                                size_MiB_str = str(size_MiB)
                             sys.stdout.write(
-                              "  %s*%s%6d%s %14d %7s %s%s\n"
+                              "  %s*%s%6d%s %14s %7s %s%s\n"
                                 % (color(COLOR_BROWN), color(COLOR_DARKPINK),
                                 vol_view.get_id(), color(COLOR_BROWN),
-                                vol_view.get_size_MiB(),
+                                size_MiB_str,
                                 vol_view.get_minor(), vol_view.get_state(),
                                 color(COLOR_NONE))
                               )
@@ -1272,7 +1291,7 @@ class DrbdManage(object):
                             sys.stdout.write(
                               "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
                                 view.get_state(), vol_view.get_id(),
-                                vol_view.get_size_MiB(), view.get_port(),
+                                vol_view.get_size_kiB(), view.get_port(),
                                 vol_view.get_minor(), vol_view.get_state())
                               )
             except IncompatibleDataException:

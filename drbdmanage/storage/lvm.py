@@ -79,7 +79,7 @@ class LVM(object):
         @type    name: str
         @param   id: volume id
         @type    id: int
-        @param   size: size of the block device in MiB (binary megabytes)
+        @param   size: size of the block device in kiB (binary kilobytes)
         @type    size: long
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
@@ -186,7 +186,7 @@ class LVM(object):
         
         try:
             lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
-              "--units", "m", "--separator", ",", "--options",
+              "--units", "k", "--separator", ",", "--options",
               "vg_size,vg_free", self._conf[self.KEY_VG_NAME]], 0, lvs,
               stdout=subprocess.PIPE, close_fds=True)
             pool_str = lvm_proc.stdout.readline()
@@ -224,7 +224,7 @@ class LVM(object):
         lvcreate = self._lv_command_path(self.LVM_CREATE)
         
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
-          str(size) + "m", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
+          str(size) + "k", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         rc = lvm_proc.wait()

@@ -22,7 +22,7 @@ class BlockDevicePersistence(GenericPersistence):
     def save(self, container):
         bd = self.get_object()
         properties = self.load_dict(self.SERIALIZABLE)
-        properties["size_MiB"] = bd.get_size_MiB()
+        properties["size_kiB"] = bd.get_size_kiB()
         container[bd.get_name()] = properties
     
     @classmethod
@@ -32,7 +32,7 @@ class BlockDevicePersistence(GenericPersistence):
         try:
             bd = BlockDevice(
               properties["_name"],
-              properties["size_MiB"],
+              properties["size_kiB"],
               properties["_path"]
               )
         except Exception as exc:

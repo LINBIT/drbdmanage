@@ -647,7 +647,7 @@ class DrbdVolumePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolume objects
     """
     
-    SERIALIZABLE = [ "_id", "_state", "_size_MiB" ]
+    SERIALIZABLE = [ "_id", "_state", "_size_kiB" ]
     
     
     def __init__(self, volume):
@@ -670,7 +670,7 @@ class DrbdVolumePersistence(GenericPersistence):
             minor = MinorNr(minor_nr)
             volume = DrbdVolume(
               properties["_id"],
-              long(properties["_size_MiB"]),
+              long(properties["_size_kiB"]),
               minor
               )
             volume.set_state(long(properties["_state"]))

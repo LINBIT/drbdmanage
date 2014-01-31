@@ -369,7 +369,7 @@ class DrbdManager(object):
                 sys.stderr.write("DEBUG: _deploy_volume(): resource == NULL\n")
             
             bd = bd_mgr.create_blockdevice(resource.get_name(),
-              volume.get_id(), volume.get_size_MiB())
+              volume.get_id(), volume.get_size_kiB())
             
             if bd is not None:
                 vol_state.set_blockdevice(bd.get_name(), bd.get_path())
@@ -1049,7 +1049,7 @@ class DrbdVolume(GenericStorage):
     """
     
     _id          = None
-    _size_MiB    = None
+    _size_kiB    = None
     _minor       = None
     _state       = None
     
@@ -1060,14 +1060,14 @@ class DrbdVolume(GenericStorage):
     # non-existent flags
     STATE_MASK   = FLAG_REMOVE
     
-    def __init__(self, id, size_MiB, minor):
-        if not size_MiB > 0:
+    def __init__(self, id, size_kiB, minor):
+        if not size_kiB > 0:
             raise VolSizeRangeException
-        super(DrbdVolume, self).__init__(size_MiB)
+        super(DrbdVolume, self).__init__(size_kiB)
         self._id       = int(id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
-        self._size_MiB = size_MiB
+        self._size_kiB = size_kiB
         self._minor    = minor
         self._state    = 0
     
@@ -1106,13 +1106,13 @@ class DrbdVolumeView(object):
     
     # array indexes
     VV_ID       = 0
-    VV_SIZE_MiB = 1
+    VV_SIZE_kiB = 1
     VV_MINOR    = 2
     VV_STATE    = 3
     VV_PROP_LEN = 4
     
     _id       = None
-    _size_MiB = None
+    _size_kiB = None
     _minor    = None
     _state    = None
     
@@ -1124,7 +1124,7 @@ class DrbdVolumeView(object):
             raise IncompatibleDataException
         self._id = properties[self.VV_ID]
         try:
-            self._size_MiB = long(properties[self.VV_SIZE_MiB])
+            self._size_kiB = long(properties[self.VV_SIZE_kiB])
             self._minor    = int(properties[self.VV_MINOR])
             self._state    = long(properties[self.VV_STATE])
         except ValueError:
@@ -1137,7 +1137,7 @@ class DrbdVolumeView(object):
         properties = []
         minor   = volume.get_minor()
         properties.append(volume.get_id())
-        properties.append(volume.get_size_MiB())
+        properties.append(volume.get_size_kiB())
         properties.append(minor.get_value())
         properties.append(volume.get_state())
         return properties
@@ -1147,8 +1147,8 @@ class DrbdVolumeView(object):
         return self._id
     
     
-    def get_size_MiB(self):
-        return self._size_MiB
+    def get_size_kiB(self):
+        return self._size_kiB
     
     
     def get_minor(self):
