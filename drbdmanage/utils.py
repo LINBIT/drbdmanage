@@ -111,14 +111,12 @@ def get_event_type(logline):
     @rtype:  str
     """
     event_type = None
-    s_idx = logline.find(" ")
-    if s_idx != -1:
-        s_idx += 1
-        e_idx = logline.find(" ", s_idx)
-        if e_idx != -1:
-            event_type = logline[s_idx:e_idx]
-        else:
-            event_type = logline[s_idx:]
+    s_idx = 0
+    e_idx = logline.find(" ", s_idx)
+    if e_idx != -1:
+        event_type = logline[s_idx:e_idx]
+    else:
+        event_type = logline[s_idx:]
     return event_type
 
 
@@ -133,14 +131,12 @@ def get_event_source(logline):
     event_source = None
     s_idx = logline.find(" ")
     if s_idx != -1:
-        s_idx = logline.find(" ", s_idx + 1)
-        if s_idx != -1:
-            s_idx += 1
-            e_idx = logline.find(" ", s_idx)
-            if e_idx != -1:
-                event_source = logline[s_idx:e_idx]
-            else:
-                event_source = logline[s_idx:]
+        s_idx += 1
+        e_idx = logline.find(" ", s_idx)
+        if e_idx != -1:
+            event_source = logline[s_idx:e_idx]
+        else:
+            event_source = logline[s_idx:]
     return event_source
 
 
