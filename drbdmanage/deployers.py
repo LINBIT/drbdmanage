@@ -1,10 +1,8 @@
 #!/usr/bin/python
 
-import sys
-
-import utils
-import drbd.drbdcore
-from exceptions import *
+import drbdmanage.utils
+import drbdmanage.drbd.drbdcore
+from drbdmanage.exceptions import *
 
 class BalancedDeployer(object):
     
@@ -34,7 +32,7 @@ class BalancedDeployer(object):
                    storage status
         @type    deploy_unknown: bool
         """
-        rc = DM_SUCCESS
+        fn_rc = DM_SUCCESS
         selected = []
         # nodes with unknown free memory
         wildcat = []
@@ -47,7 +45,7 @@ class BalancedDeployer(object):
                 wildcat.append(node)
         selected = sorted(selected,
           key=lambda node: node.get_poolfree(), reverse=True)
-        utils.fill_list(selected, result, count)
+        drbdmanage.utils.fill_list(selected, result, count)
         if len(result) < count:
             if deploy_unknown:
                 """
@@ -56,15 +54,15 @@ class BalancedDeployer(object):
                 integrate those nodes that could possibly have
                 enough memory
                 """
-                utils.fill_list(wildcat, result, count)
+                drbdmanage.utils.fill_list(wildcat, result, count)
         """
         If there are still not enough nodes in the result list, return an error
         indicating that there are not enough nodes that may have enough free
         storage to deploy the resource
         """
         if len(result) < count:
-            rc = DM_ENOSPC
-        return rc
+            fn_rc = DM_ENOSPC
+        return fn_rc
     
     
     def undeploy_select(self, nodes, result, count, unknown_first):
@@ -93,9 +91,9 @@ class BalancedDeployer(object):
             else:
                 wildcat.append(node)
         if unknown_first:
-            utils.fill_list(wildcat, result, count)
+            drbdmanage.utils.fill_list(wildcat, result, count)
         if len(result) < count:
             selected = sorted(selected, key=lambda node: node.get_poolfree())
-            utils.fill_list(selected, result, count)
+            drbdmanage.utils.fill_list(selected, result, count)
         if not unknown_first:
-            utils.fill_list(wildcat, result, count)
+            drbdmanage.utils.fill_list(wildcat, result, count)

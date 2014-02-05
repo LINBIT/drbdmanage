@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Oct 10, 2013 9:57:03 AM$"
+__author__ = "raltnoeder"
+__date__   = "$Oct 10, 2013 9:57:03 AM$"
 
 import sys
 import logging
@@ -34,7 +34,7 @@ class ConfFile(object):
     
     
     def get_conf(self):
-        input        = self._input
+        in_file      = self._input
         split_idx    = self._split_idx
         unescape     = self._unescape
         extend_line  = self._extend_line
@@ -45,7 +45,7 @@ class ConfFile(object):
         conf = dict()
         
         while True:
-            line = input.readline()
+            line = in_file.readline()
             if not len(line) > 0:
                 break
             
@@ -77,14 +77,14 @@ class ConfFile(object):
         return conf
     
     
-    """
-    Override values from the default configuration with values from a
-    configuration loaded from a configuration file, without importing
-    any keys that had not been defined in the default configuration.
-    The new configuration contains only keys from the default configuration.
-    """
     @classmethod
     def conf_defaults_merge(cls, conf_defaults, conf_loaded):
+        """
+        Overrides values from the default configuration with values from a
+        configuration loaded from a configuration file, without importing
+        any keys that had not been defined in the default configuration.
+        The new configuration contains only keys from the default configuration.
+        """
         conf = dict()
         for key in conf_defaults.iterkeys():
             val = conf_loaded.get(key)
@@ -95,18 +95,18 @@ class ConfFile(object):
         return conf
     
     
-    """
-    Override values from the default configuration with values from a
-    configuration loaded from a configuration file, and also load new
-    key/value pairs into the new configuration.
-    The new configuration contains all keys from the default configuration
-    plus any keys defined by the configuration loaded from the configuration
-    file.
-    """
     @classmethod
     def conf_defaults_union(cls, conf_defaults, conf_loaded):
+        """
+        Overrides values from the default configuration with values from a
+        configuration loaded from a configuration file, and also load new
+        key/value pairs into the new configuration.
+        The new configuration contains all keys from the default configuration
+        plus any keys defined by the configuration loaded from the configuration
+        file.
+        """
         conf = dict()
-        conf = self.conf_defaults_merge(conf_defaults, conf_loaded)
+        conf = cls.conf_defaults_merge(conf_defaults, conf_loaded)
         for key in conf_loaded.iterkeys():
             val = conf.get(key)
             if val is None:
@@ -115,6 +115,9 @@ class ConfFile(object):
     
     
     def _split_idx(self, line, s_char):
+        """
+        Returns the index of an unescaped occurrence of s_char in a string
+        """
         lidx = 0
         idx  = 0
         split_idx = -1
@@ -136,36 +139,45 @@ class ConfFile(object):
     
     
     def _comment_line(self, line):
-        rc = False
+        """
+        Indicates whether a line is a comment line (True) or not (False)
+        """
+        fn_rc = False
         idx  = 0
         midx = len(line)
         while idx < midx:
-            c = line[idx]
-            if not (c == ' ' or c == '\t'):
-                if c == '#':
-                    rc = True
+            item = line[idx]
+            if not (item == ' ' or item == '\t'):
+                if item == '#':
+                    fn_rc = True
                 break
             idx += 1
-        return rc
+        return fn_rc
     
     
-    def _min_idx(self, x, y):
-        if x < y:
-            idx = x if x != -1 else y
+    def _min_idx(self, x_idx, y_idx):
+        """
+        Returns the lesser value unless it is -1, or -1 if both are -1
+        """
+        if x_idx < y_idx:
+            idx = x_idx if x_idx != -1 else y_idx
         else:
-            idx = y if y != -1 else x
+            idx = y_idx if y_idx != -1 else x_idx
         return idx
     
     
     def _unescape(self, line):
+        """
+        Resolves escape sequences, removes leading/trailing whitespaces
+        """
         u_line = ""
         lidx = 0
         idx  = 0
         midx = len(line)
         # remove leading tabs and spaces
         while idx < midx:
-            c = line[idx]
-            if not (c == ' ' or c == '\t'):
+            item = line[idx]
+            if not (item == ' ' or item == '\t'):
                 line = line[idx:]
                 break
             idx += 1
@@ -191,14 +203,14 @@ class ConfFile(object):
         idx = lidx
         spaces = True
         while idx <= midx:
-            c = line[idx]
+            item = line[idx]
             if spaces:
-                if not (c == ' ' or c == '\t'):
+                if not (item == ' ' or item == '\t'):
                     spaces = False
                     u_line += line[lidx:idx]
                     lidx = idx
             else:
-                if (c == ' ' or c == '\t'):
+                if (item == ' ' or item == '\t'):
                     spaces = True
                     u_line += line[lidx:idx]
                     lidx = idx
@@ -209,7 +221,13 @@ class ConfFile(object):
     
     
     def _extend_line(self, line):
-        rc   = False
+        """
+        Indicates whether a line needs to be extended with the next line
+        
+        If a line ends with an unescaped backslash, it shall be extended
+        with the next line
+        """
+        fn_rc   = False
         lidx = 0
         idx  = 0
         midx = len(line) - 1
@@ -217,13 +235,13 @@ class ConfFile(object):
             idx = line.find("\\", lidx)
             if idx != -1:
                 if idx >= midx:
-                    rc = True
+                    fn_rc = True
                     break
                 else:
                     lidx = idx + 2
             if lidx > midx:
                 break
-        return rc
+        return fn_rc
 
 
 class DrbdAdmConf(object):
@@ -280,7 +298,7 @@ class DrbdAdmConf(object):
                       "        address %s:%d;\n"
                       "    }\n"
                       % (node.get_name(), assignment.get_node_id(),
-                        node.get_ip(), resource.get_port())
+                        node.get_addr(), resource.get_port())
                       )
             # end resource/nodes
             
@@ -303,7 +321,7 @@ class DrbdAdmConf(object):
             
             stream.write("}\n")
             # end resource
-        except InvalidMinorNrException as min_exc:
+        except InvalidMinorNrException:
             logging.critical("DrbdAdmConf: Volume configuration has no "
               "MinorNr object")
         except Exception as exc:
@@ -368,7 +386,7 @@ class DrbdAdmConf(object):
                       "        address %s:%d;\n"
                       "    }\n"
                       % (node.get_name(), assg.get_node_id(),
-                        node.get_ip(), resource.get_port())
+                        node.get_addr(), resource.get_port())
                       )
             # end resource/nodes
             
@@ -388,7 +406,7 @@ class DrbdAdmConf(object):
             
             stream.write("}\n")
             # end resource
-        except InvalidMinorNrException as min_exc:
+        except InvalidMinorNrException:
             logging.critical("DrbdAdmConf: Volume configuration has no "
               "MinorNr object")
         except Exception as exc:

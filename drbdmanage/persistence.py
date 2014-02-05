@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 30, 2013 12:17:49 PM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 30, 2013 12:17:49 PM$"
 
 import json
 

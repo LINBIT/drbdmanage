@@ -14,8 +14,8 @@ import json
 import mmap
 import logging
 
-__author__="raltnoeder"
-__date__ ="$Sep 24, 2013 3:33:50 PM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 24, 2013 3:33:50 PM$"
 
 
 def persistence_impl():
@@ -44,8 +44,8 @@ class PersistenceImplDummy(object):
     
     
     def get_stored_hash(self):
-        dh = DataHash()
-        dh.get_hex_hash()
+        data_hash = DataHash()
+        data_hash.get_hex_hash()
     
     
     def load(self, nodes, resources):
@@ -116,7 +116,7 @@ class PersistenceImpl(object):
         the modify flag. If (modify == True), open for writing, otherwise
         open readonly.
         """
-        rc = False
+        fn_rc = False
         fail_ctr = 0
         error    = 0
         if modify:
@@ -128,21 +128,21 @@ class PersistenceImpl(object):
         while fail_ctr < self.MAX_FAIL_COUNT:
             try:
                 fail = False
-                fd = os.open(self.CONF_FILE, modeflags)
+                file_fd = os.open(self.CONF_FILE, modeflags)
                 
                 # Try to flush the buffer cache
                 # This can fail depending on the type of the file's
                 # underlying device
                 try:
-                    fcntl.ioctl(fd, self.BLKFLSBUF)
+                    fcntl.ioctl(file_fd, self.BLKFLSBUF)
                 except OSError:
                     pass
                 except IOError:
                     pass
                 
-                self._file = os.fdopen(fd, mode)
+                self._file = os.fdopen(file_fd, mode)
                 self._writeable = modify
-                rc = True
+                fn_rc = True
                 break
             except IOError as ioerr:
                 fail  = True
@@ -155,16 +155,16 @@ class PersistenceImpl(object):
                 if error == errno.ENOENT:
                     logging.error("cannot open control volume '%s': "
                       "object not found" % self.CONF_FILE)
-                    cs = self.ENOENT_REOPEN_TIMER
+                    secs = self.ENOENT_REOPEN_TIMER
                 else:
-                    b = os.urandom(1)
-                    cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
-                time.sleep(cs)
+                    rnd_byte = os.urandom(1)
+                    secs = float(ord(rnd_byte)) / 100 + self.MIN_REOPEN_TIMER
+                time.sleep(secs)
         if not fail_ctr < self.MAX_FAIL_COUNT:
             logging.error("cannot open control volume '%s' "
               "(%d failed attempts)"
               % (self.CONF_FILE, self.MAX_FAIL_COUNT))
-        return rc
+        return fn_rc
         
     
     def save(self, nodes, resources):
@@ -183,7 +183,7 @@ class PersistenceImpl(object):
                 p_nodes_con = dict()
                 p_res_con   = dict()
                 p_assg_con  = dict()
-                hash        = DataHash()
+                data_hash   = DataHash()
                 
                 # Prepare nodes container (and build assignments list)
                 assignments = []
@@ -208,28 +208,28 @@ class PersistenceImpl(object):
                 
                 nodes_off = self._file.tell()
                 save_data = self._container_to_json(p_nodes_con)
-                hash.update(save_data)
+                data_hash.update(save_data)
                 self._file.write(save_data)
                 nodes_len = self._file.tell() - nodes_off
-                self._file.write("\0")
+                self._file.write(chr(0))
                 
                 self._align_zero_fill()
                 
                 res_off = self._file.tell()
                 save_data = self._container_to_json(p_res_con)
                 self._file.write(save_data)
-                hash.update(save_data)
+                data_hash.update(save_data)
                 res_len = self._file.tell() - res_off
-                self._file.write("\0")
+                self._file.write(chr(0))
                 
                 self._align_zero_fill()
                 
                 assg_off = self._file.tell()
                 save_data = self._container_to_json(p_assg_con)
                 self._file.write(save_data)
-                hash.update(save_data)
+                data_hash.update(save_data)
                 assg_len = self._file.tell() - assg_off
-                self._file.write("\0")
+                self._file.write(chr(0))
                 
                 # clean up behind the assignment
                 self._align_zero_fill()
@@ -246,12 +246,12 @@ class PersistenceImpl(object):
                 p_index_con[self.IDX_NAME] = p_index
                 save_data = self._container_to_json(p_index_con)
                 self._file.write(save_data)
-                self._file.write("\0")
+                self._file.write(chr(0))
                 
-                computed_hash = hash.get_hex_hash()
+                computed_hash = data_hash.get_hex_hash()
                 self.update_stored_hash(computed_hash)
                 logging.debug("save/hash: %s" % computed_hash)
-                self._hash_obj = hash
+                self._hash_obj = data_hash
             except Exception as exc:
                 logging.error("cannot save data tables, "
                   "encountered exception: %s" % str(exc))
@@ -279,7 +279,7 @@ class PersistenceImpl(object):
         stored_hash = None
         if self._file is not None:
             try:
-                hash = DataHash()
+                data_hash = DataHash()
                 self._file.seek(self.HASH_OFFSET)
                 hash_json = self._null_trunc(self._file.read(self.HASH_MAXLEN))
                 hash_con = self._json_to_container(hash_json)
@@ -305,7 +305,7 @@ class PersistenceImpl(object):
                 hash_con = { self.HASH_NAME : hex_hash }
                 hash_json = self._container_to_json(hash_con)
                 self._file.write(hash_json)
-                self._file.write("\0")
+                self._file.write(chr(0))
             except Exception:
                 raise PersistenceException
         else:
@@ -326,7 +326,7 @@ class PersistenceImpl(object):
         errors = False
         if self._file is not None:
             try:
-                hash = DataHash()
+                data_hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
                 f_index = self._null_trunc(self._file.read(self.IDX_MAXLEN))
                 p_index_con = self._json_to_container(f_index)
@@ -344,7 +344,7 @@ class PersistenceImpl(object):
                 
                 self._file.seek(nodes_off)
                 load_data = self._null_trunc(self._file.read(nodes_len))
-                hash.update(load_data)
+                data_hash.update(load_data)
                 try:
                     nodes_con = self._json_to_container(load_data)
                 except Exception:
@@ -352,7 +352,7 @@ class PersistenceImpl(object):
                 
                 self._file.seek(res_off)
                 load_data = self._null_trunc(self._file.read(res_len))
-                hash.update(load_data)
+                data_hash.update(load_data)
                 try:
                     res_con   = self._json_to_container(load_data)
                 except Exception:
@@ -360,13 +360,13 @@ class PersistenceImpl(object):
                 
                 self._file.seek(assg_off)
                 load_data = self._null_trunc(self._file.read(assg_len))
-                hash.update(load_data)
+                data_hash.update(load_data)
                 try:
                     assg_con  = self._json_to_container(load_data)
                 except Exception:
                     pass
                 
-                computed_hash = hash.get_hex_hash()
+                computed_hash = data_hash.get_hex_hash()
                 stored_hash   = self.get_stored_hash()
                 logging.debug("load/hash: %s" % stored_hash)
                 if computed_hash != stored_hash:
@@ -405,7 +405,7 @@ class PersistenceImpl(object):
                             logging.debug("persistence: Failed to load an "
                               "Assignment object")
                             errors = True
-                    self._hash_obj = hash
+                    self._hash_obj = data_hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 logging.debug("persistence: load failed: "
@@ -508,7 +508,7 @@ class PersistenceImpl(object):
             if offset % self.BLKSZ != 0:
                 fillbuf = ('\0' * self.ZEROFILLSZ)
                 blk  = ((offset / self.BLKSZ) + 1) * self.BLKSZ
-                diff = blk - offset;
+                diff = blk - offset
                 fillnr = diff / self.ZEROFILLSZ
                 ctr = 0
                 while ctr < fillnr:
@@ -571,7 +571,7 @@ class DrbdNodePersistence(GenericPersistence):
     Serializes/deserializes DrbdNode objects
     """
     
-    SERIALIZABLE = [ "_name", "_ip", "_af", "_state",
+    SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_state",
       "_poolsize", "_poolfree" ]
     
     
@@ -591,8 +591,8 @@ class DrbdNodePersistence(GenericPersistence):
         try:
             node = DrbdNode(
               properties["_name"],
-              properties["_ip"],
-              int(properties["_af"])
+              properties["_addr"],
+              int(properties["_addrfam"])
               )
             node.set_state(long(properties["_state"]))
             node.set_poolsize(long(properties["_poolsize"]))
@@ -761,11 +761,11 @@ class DrbdVolumeStatePersistence(GenericPersistence):
     
     
     def save(self, container):
-            vol_state = self.get_object()
-            id = vol_state.get_id()
-            properties = self.load_dict(self.SERIALIZABLE)
-            properties["id"] = id
-            container[id] = properties
+        vol_state = self.get_object()
+        vol_id = vol_state.get_id()
+        properties = self.load_dict(self.SERIALIZABLE)
+        properties["id"] = vol_id
+        container[vol_id] = properties
     
     
     @classmethod

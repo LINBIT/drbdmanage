@@ -1,16 +1,23 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 12, 2013 11:15:38 AM$"
+"""
+Global exceptions and error codes for drbdmanage
 
+This module defines exceptions, numeric error codes and the corresponding
+default error messages for drbdmanage and utility functions to work with
+those objects.
 """
-return code for successful operations
-"""
+
+__author__ = "raltnoeder"
+__date__   = "$Sep 12, 2013 11:15:38 AM$"
+
+# return code for successful operations
 DM_SUCCESS  = 0
 
-"""
-return codes for failed operations
-"""
+# ========================================
+# return codes for failed operations
+# ========================================
+
 # function not implemented
 DM_ENOTIMPL = 0x7fffffff
 
@@ -87,14 +94,14 @@ _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 
 
-def dm_exc_text(id):
+def dm_exc_text(exc_id):
     """
     Retrieve the default error message for a standard return code
     """
     try:
-        text = _DM_EXC_TEXTS[id]
+        text = _DM_EXC_TEXTS[exc_id]
     except KeyError:
-        text = "<<No error message for id %d>>" % (str(id))
+        text = "<<No error message for id %d>>" % (str(exc_id))
     return text
 
 
@@ -106,7 +113,7 @@ class InvalidNameException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(InvalidNameException, self).__init__()
 
 
 class InvalidAddrFamException(Exception):
@@ -116,7 +123,7 @@ class InvalidAddrFamException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(InvalidAddrFamException, self).__init__()
 
 
 class VolSizeRangeException(Exception):
@@ -126,7 +133,7 @@ class VolSizeRangeException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(VolSizeRangeException, self).__init__()
 
 
 class InvalidMinorNrException(Exception):
@@ -136,7 +143,7 @@ class InvalidMinorNrException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(InvalidMinorNrException, self).__init__()
 
 
 class InvalidMajorNrException(Exception):
@@ -146,7 +153,7 @@ class InvalidMajorNrException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(InvalidMajorNrException, self).__init__()
 
 
 class IncompatibleDataException(Exception):
@@ -162,7 +169,7 @@ class IncompatibleDataException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(IncompatibleDataException, self).__init__()
 
 
 class SyntaxException(Exception):
@@ -172,7 +179,7 @@ class SyntaxException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(SyntaxException, self).__init__()
 
 
 class PersistenceException(Exception):
@@ -182,7 +189,7 @@ class PersistenceException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(PersistenceException, self).__init__()
 
 
 class PluginException(Exception):
@@ -192,4 +199,4 @@ class PluginException(Exception):
     """
     
     def __init__(self):
-        pass
+        super(PluginException, self).__init__()

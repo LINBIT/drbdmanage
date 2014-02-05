@@ -1,9 +1,8 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 12, 2013 10:43:13 AM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 12, 2013 10:43:13 AM$"
 
-import sys
 import logging
 import drbdmanage.storage.lvm
 import drbdmanage.utils
@@ -62,8 +61,8 @@ class BlockDevice(GenericStorage):
     
     
     def name_check(self, name):
-        DrbdManager = drbdmanage.drbd.drbdcore.DrbdManager
-        return DrbdManager.name_check(name, self.NAME_MAXLEN)
+        return drbdmanage.drbd.drbdcore.DrbdManager.name_check(
+            name, self.NAME_MAXLEN)
     
     
     def get_name(self):
@@ -86,28 +85,28 @@ class BlockDeviceManager(object):
               % plugin_name)
     
     
-    def create_blockdevice(self, name, id, size):
-        return self._plugin.create_blockdevice(name, id, size)
+    def create_blockdevice(self, name, vol_id, size):
+        return self._plugin.create_blockdevice(name, vol_id, size)
     
     
-    def remove_blockdevice(self, name, id):
-        bd = self._plugin.get_blockdevice(name, id)
-        if bd is not None:
-            return self._plugin.remove_blockdevice(bd)
+    def remove_blockdevice(self, name, vol_id):
+        blockdev = self._plugin.get_blockdevice(name, vol_id)
+        if blockdev is not None:
+            return self._plugin.remove_blockdevice(blockdev)
         return DM_ENOENT
     
     
-    def up_blockdevice(self, name, id):
-        bd = self._plugin.get_blockdevice(name, id)
-        if bd is not None:
-            return self._plugin.up_blockdevice(bd)
+    def up_blockdevice(self, name, vol_id):
+        blockdev = self._plugin.get_blockdevice(name, vol_id)
+        if blockdev is not None:
+            return self._plugin.up_blockdevice(blockdev)
         return DM_ENOENT
     
     
-    def down_blockdevice(self, name, id):
-        bd = self._plugin.get_blockdevice(name, id)
-        if bd is not None:
-            return self._plugin.down_blockdevice(bd)
+    def down_blockdevice(self, name, vol_id):
+        blockdev = self._plugin.get_blockdevice(name, vol_id)
+        if blockdev is not None:
+            return self._plugin.down_blockdevice(blockdev)
         return DM_ENOENT
     
     
@@ -154,8 +153,8 @@ class MinorNr(object):
     MINOR_NR_AUTODRBD = -2
     MINOR_NR_ERROR    = -3
     
-    def __init__(self, nr):
-        self._minor = MinorNr.minor_check(nr)
+    def __init__(self, minor):
+        self._minor = MinorNr.minor_check(minor)
     
     
     def get_value(self):
@@ -163,11 +162,11 @@ class MinorNr(object):
     
     
     @classmethod
-    def minor_check(cls, nr):
-        if nr != cls.MINOR_NR_AUTO and nr != cls.MINOR_NR_AUTODRBD:
-            if nr < 0 or nr > cls.MINOR_NR_MAX:
+    def minor_check(cls, minor):
+        if minor != cls.MINOR_NR_AUTO and minor != cls.MINOR_NR_AUTODRBD:
+            if minor < 0 or minor > cls.MINOR_NR_MAX:
                 raise InvalidMinorNrException
-        return nr
+        return minor
 
 
 class MajorNr(object):
@@ -178,8 +177,8 @@ class MajorNr(object):
     MAJOR_NR_MAX = 0xfff
     
     
-    def __init__(self, nr):
-        self._major = MajorNr.major_check(nr)
+    def __init__(self, major):
+        self._major = MajorNr.major_check(major)
     
     
     def get_value(self):
@@ -187,10 +186,10 @@ class MajorNr(object):
     
     
     @classmethod
-    def major_check(cls, nr):
-        if nr < 0 or nr > cls.MAJOR_NR_MAX:
+    def major_check(cls, major):
+        if major < 0 or major > cls.MAJOR_NR_MAX:
             raise InvalidMajorNrException
-        return nr
+        return major
 
 
 class DevNr(object):
@@ -234,7 +233,7 @@ class StoragePlugin(object):
         pass
     
     
-    def get_blockdevice(self, name, id):
+    def get_blockdevice(self, name, vol_id):
         """
         Retrieves a registered BlockDevice object
         
@@ -247,7 +246,7 @@ class StoragePlugin(object):
         raise NotImplementedError
     
     
-    def create_blockdevice(self, name, id, size):
+    def create_blockdevice(self, name, vol_id, size):
         """
         Allocates a block device as backing storage for a DRBD volume
         

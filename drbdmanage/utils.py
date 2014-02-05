@@ -1,7 +1,11 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 16, 2013 1:40:12 PM$"
+"""
+Generalized utility functions and classes for drbdmanage
+"""
+
+__author__ = "raltnoeder"
+__date__   = "$Sep 16, 2013 1:40:12 PM$"
 
 import sys
 import os
@@ -75,25 +79,25 @@ def hex_from_bin(field):
     @rtype:  str
     """
     flen = len(field)
-    hexfield = bytearray('\0' * flen * 2)
+    hexfield = bytearray(chr(0) * flen * 2)
     idx = 0
     while idx < flen:
         num = ord(field[idx])
         
-        hi  = (num & 0xf0) >> 4;
-        lo  = (num & 0x0f)
+        hi_bits  = (num & 0xf0) >> 4
+        lo_bits  = (num & 0x0f)
         
-        if hi < 0xa:
+        if hi_bits < 0xa:
             # 0x30 is '0'
-            hi_chr = hi | 0x30
+            hi_chr = hi_bits | 0x30
         else:
             # 0x57 is 'a' minus 10 (because hi_chr is >= 10 here)
-            hi_chr = hi + 0x57
+            hi_chr = hi_bits + 0x57
         
-        if lo < 0xa:
-            lo_chr = lo | 0x30
+        if lo_bits < 0xa:
+            lo_chr = lo_bits | 0x30
         else:
-            lo_chr = lo + 0x57
+            lo_chr = lo_bits + 0x57
         
         hexfield[(idx * 2)]     = hi_chr
         hexfield[(idx * 2) + 1] = lo_chr
@@ -161,7 +165,7 @@ def get_event_arg(logline, name):
     return event_arg
 
 
-def get_free_number(min, max, nr_list):
+def get_free_number(min_nr, max_nr, nr_list):
     """
     Returns the first number in the range min..max that is not in nr_list
     
@@ -170,32 +174,32 @@ def get_free_number(min, max, nr_list):
     min and max must be positive integers, and nr_list must be a list of
     positive integers in the range from min to max
     
-    @param   min: range start, positive number, less than or equal to max
-    @param   max: range end, positive number, greater than or equal to min
+    @param   min_nr:  range start, positive number, less than or equal to max
+    @param   max_nr:  range end, positive number, greater than or equal to min
     @param   nr_list: list of numbers within the range min..max
     @type    nr_list: list of int or long values
     @return: first free number within min..max; or -1 on error
     """
     fnr = -1
-    if min <= max:
+    if min_nr <= max_nr:
         items = len(nr_list)
         if items == 0:
-            fnr = min
+            fnr = min_nr
         else:
             nr_list.sort()
             idx = 0
-            lnr = min - 1
+            lnr = min_nr - 1
             while True:
-                nr = nr_list[idx]
-                if nr - lnr > 1:
+                cnr = nr_list[idx]
+                if cnr - lnr > 1:
                     fnr = lnr + 1
                     break
                 idx += 1
                 if not idx < items:
-                    if nr < max:
-                        fnr = nr + 1
+                    if cnr < max_nr:
+                        fnr = cnr + 1
                     break
-                lnr = nr
+                lnr = cnr
     return fnr
 
 
@@ -213,13 +217,13 @@ def fill_list(in_list, out_list, count):
         out_len = count - out_len
         in_len  = len(in_list)
         ctr     = 0
-        max     = out_len if out_len < in_len else in_len
-        while ctr < max:
+        max_len = out_len if out_len < in_len else in_len
+        while ctr < max_len:
             out_list.append(in_list[ctr])
             ctr += 1
 
 
-def build_path(prefix, file):
+def build_path(prefix, filename):
     """
     Builds a full path name from a prefix (commonly loaded from a configuration
     file) and a filename. If no prefix is specified, the full path will be
@@ -230,16 +234,16 @@ def build_path(prefix, file):
     
     @param   prefix: path to the file
     @type    prefix: str
-    @param   file: a file name to append to the path
-    @type    file: str
+    @param   filename: a file name to append to the path
+    @type    filename: str
     @return: path assembled from prefix and file name
     @rtype:  str
     """
-    full_path = file
+    full_path = filename
     if prefix is not None:
         if len(prefix) > 0 and (not prefix.endswith("/")):
             prefix += "/"
-        full_path = prefix + file
+        full_path = prefix + filename
     return full_path
 
 
@@ -248,7 +252,7 @@ def plugin_import(path):
     Imports a plugin
     
     @param   path: Python path specification
-    @return: new instance of the plugin
+    @return: new instance of the plugin; None on error
     """
     p_mod   = None
     p_class = None
@@ -265,8 +269,8 @@ def plugin_import(path):
             p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
             p_class = getattr(p_mod, p_name)
             p_inst  = p_class()
-    except Exception as exc:
-        print exc
+    except Exception:
+        pass
     return p_inst
 
 
@@ -301,13 +305,18 @@ def extend_path(ext_path):
     
 
 class DataHash(object):
+    
+    """
+    Encapsulates drbdmanage's hashing algorithm; (SHA-256, currently)
+    """
+    
     HASH_LEN  = 32 # SHA-256
     _hashalgo = None
     _hash     = None
     
     
     def __init__(self):
-        self._hashalgo = hashlib.sha256()
+        self._hashalgo = hashlib.new("sha256")
     
     
     def update(self, data):
@@ -362,6 +371,11 @@ class DataHash(object):
 
 
 class ArgvReader(object):
+    
+    """
+    Arguments parsing from a string array (such as the system's argv[])
+    """
+    
     _argv = None
     _idx  = None
     _max  = None
@@ -435,6 +449,9 @@ class ArgvReader(object):
 
 
 class CmdLineReader(object):
+    """
+    Arguments parsing from a command line supplied as a single string
+    """
     _cmdline = None
     
     
@@ -514,14 +531,22 @@ class CmdLineReader(object):
         Remove spaces and tabs leading the next argument in the string
         """
         cmdline_b = bytearray(self._cmdline)
-        for idx in xrange(0, len(cmdline_b)):
+        cmdlen = len(cmdline_b)
+        idx = 0
+        while idx < cmdlen:
             if cmdline_b[idx] != 0x20 and cmdline_b[idx] != 0x9:
                 cmdline_b = cmdline_b[idx:]
                 self._cmdline = str(cmdline_b)
                 break
+            idx += 1
 
 
 class CommandParser(object):
+    
+    """
+    Standard parser for positional parameters, options and flags
+    """
+    
     def __init__(self):
         pass
     
@@ -556,10 +581,12 @@ class CommandParser(object):
         @return: 0 on success, 1 on error
         @rtype:  int
         """
-        rc = 0
+        fn_rc = 0
         olen = len(order)
-        for ctr in xrange(0, olen):
+        ctr = 0
+        while ctr < olen:
             params[order[ctr]] = None
+            ctr += 1
         ctr = 0
         arg = args.next_arg()
         while arg is not None:
@@ -570,7 +597,7 @@ class CommandParser(object):
                     if val is None:
                         sys.stderr.write("Error: Missing argument for "
                           "option '%s'\n" % (arg))
-                        rc = 1
+                        fn_rc = 1
                         break
                     else:
                         opt[key] = val
@@ -581,7 +608,7 @@ class CommandParser(object):
                     else:
                         sys.stderr.write("Error: Unknown option name '%s'\n"
                           % (arg))
-                        rc = 1
+                        fn_rc = 1
                         break
             else:
                 if ctr < olen:
@@ -590,13 +617,13 @@ class CommandParser(object):
                 else:
                     sys.stderr.write("Error: Unexpected extra argument '%s'\n"
                       % (arg))
-                    rc = 1
+                    fn_rc = 1
                     break
             arg = args.next_arg()
         if ctr < olen:
             sys.stderr.write("Error: Incomplete command line\n")
-            rc = 1
-        return rc
+            fn_rc = 1
+        return fn_rc
     
     
     def _get_key(self, in_key, tbl, tblalias):
@@ -615,14 +642,19 @@ class CommandParser(object):
 
 
 class NioLineReader(object):
+    
+    """
+    Nonblocking I/O implementation for 'drbdsetup events' tracing
+    """
+    
     READBUFSZ   =  512
     
     _file     = None
     _data     = None
     _lines    = None
     
-    def __init__(self, file):
-        self._file     = file
+    def __init__(self, in_file):
+        self._file     = in_file
         self._text     = ""
         self._lines    = []
     
@@ -648,7 +680,7 @@ class NioLineReader(object):
                 try:
                     # may the force be with you:
                     data = self._file.read(self.READBUFSZ)
-                except IOError as ioerr:
+                except IOError:
                     # Resource temporarily unavailable (errno 11)
                     # check for len(data) == 0 below skipped, as it does
                     # not help either
@@ -681,6 +713,11 @@ class NioLineReader(object):
 
 
 class SizeCalc(object):
+    
+    """
+    Methods for converting decimal and binary sizes of different magnitudes
+    """
+    
     _base_2  = 0x0200
     _base_10 = 0x0A00
     
@@ -705,7 +742,7 @@ class SizeCalc(object):
     
     
     @classmethod
-    def convert(self, size, unit_in, unit_out):
+    def convert(cls, size, unit_in, unit_out):
         """
         Convert a size value into a different scale unit
         
@@ -725,7 +762,7 @@ class SizeCalc(object):
     
     
     @classmethod
-    def convert_round_up(self, size, unit_in, unit_out):
+    def convert_round_up(cls, size, unit_in, unit_out):
         """
         Convert a size value into a different scale unit and round up
         
@@ -746,9 +783,9 @@ class SizeCalc(object):
         """
         fac_in   = ((unit_in & 0xffffff00) >> 8) ** (unit_in & 0xff)
         div_out  = ((unit_out & 0xffffff00) >> 8) ** (unit_out & 0xff)
-        bytes    = size * fac_in
-        if bytes % div_out != 0:
-            result = (bytes / div_out) + 1
+        byte_sz  = size * fac_in
+        if byte_sz % div_out != 0:
+            result = (byte_sz / div_out) + 1
         else:
-            result = bytes / div_out
+            result = byte_sz / div_out
         return result

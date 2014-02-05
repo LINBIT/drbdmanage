@@ -1,10 +1,10 @@
 #!/usr/bin/python
 
-from drbdmanage.persistence import *
+from drbdmanage.persistence import GenericPersistence
 import drbdmanage.storage.storagecore
 
-__author__="raltnoeder"
-__date__ ="$Sep 30, 2013 12:19:56 PM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 30, 2013 12:19:56 PM$"
 
 
 class BlockDevicePersistence(GenericPersistence):
@@ -16,25 +16,24 @@ class BlockDevicePersistence(GenericPersistence):
     """
     
     SERIALIZABLE = [ "_name", "_path" ]
-    def __init__(self, bd):
-        super(BlockDevicePersistence, self).__init__(bd)
+    def __init__(self, blockdev):
+        super(BlockDevicePersistence, self).__init__(blockdev)
     
     def save(self, container):
-        bd = self.get_object()
+        blockdev = self.get_object()
         properties = self.load_dict(self.SERIALIZABLE)
-        properties["size_kiB"] = bd.get_size_kiB()
-        container[bd.get_name()] = properties
+        properties["size_kiB"] = blockdev.get_size_kiB()
+        container[blockdev.get_name()] = properties
     
     @classmethod
     def load(cls, properties):
-        BlockDevice = drbdmanage.storage.storagecore.BlockDevice
-        bd = None
+        blockdev = None
         try:
-            bd = BlockDevice(
+            blockdev = drbdmanage.storage.storagecore.BlockDevice(
               properties["_name"],
               properties["size_kiB"],
               properties["_path"]
               )
-        except Exception as exc:
+        except Exception:
             pass
-        return bd
+        return blockdev

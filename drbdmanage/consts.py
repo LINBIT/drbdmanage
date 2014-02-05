@@ -1,7 +1,11 @@
 #!/usr/bin/python
 
-NODE_ADDR           = "ip"
-NODE_AF             = "af"
+"""
+Global constants for drbdmanage
+"""
+
+NODE_ADDR           = "addr"
+NODE_AF             = "addrfam"
 RES_PORT            = "port"
 RES_SECRET          = "secret"
 VOL_MINOR           = "minor"

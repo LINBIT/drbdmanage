@@ -1,18 +1,23 @@
 #!/usr/bin/python
 
-import logging
-from drbdmanage.server import *
+"""
+Initialize the drbdmanage server and its D-Bus communication layer
+"""
 
-__author__="raltnoeder"
-__date__ ="$Sep 12, 2013 5:21:53 PM$"
+import logging
+import drbdmanage.server
+import drbdmanage.dbusserver
+
+__author__ = "raltnoeder"
+__date__   = "$Sep 12, 2013 5:21:53 PM$"
 
 
 def main():
     """
     Starts up the server and its communication layer
     """
-    server      = DrbdManageServer()
-    dbus_server = DBusServer(server)
+    server = drbdmanage.server.DrbdManageServer()
+    drbdmanage.dbusserver.DBusServer(server)
     try:
         server.run()
     except KeyboardInterrupt:

@@ -1,5 +1,12 @@
 #!/usr/bin/python
 
+"""
+drbdmanage command line interface (cli)
+
+This drbdmanage client communicates with a
+local drbdmanage server through D-Bus.
+"""
+
 import sys
 import dbus
 import string
@@ -56,7 +63,7 @@ class DrbdManage(object):
     
     def run(self):
         color = self.color
-        rc = 1
+        fn_rc = 1
         cl_cmd = False
         try:
             args = ArgvReader(sys.argv)
@@ -68,8 +75,8 @@ class DrbdManage(object):
                 if not arg.startswith("-"):
                     # begin of drbdmanage command
                     cl_cmd = True
-                    rc = self.exec_cmd(args, False)
-                    if rc != 0:
+                    fn_rc = self.exec_cmd(args, False)
+                    if fn_rc != 0:
                         sys.stderr.write("  %sOperation failed%s\n"
                           % (color(COLOR_RED), color(COLOR_NONE)))
                     break
@@ -97,7 +104,7 @@ class DrbdManage(object):
                   "       are mutually exclusive options\n")
                 exit(1)
             if self._interactive or script:
-                rc = self.cli()
+                fn_rc = self.cli()
             else:
                 if not cl_cmd:
                     # neither interactive nor script mode and no command
@@ -109,7 +116,7 @@ class DrbdManage(object):
             sys.stderr.write("The DBus subsystem returned the following "
               + "error description:\n")
             sys.stderr.write(str(exc) + "\n")
-        exit(rc)
+        exit(fn_rc)
     
     
     def cli(self):
@@ -135,32 +142,32 @@ class DrbdManage(object):
                 # empty line
                 continue
             else:
-                rc = self.exec_cmd(args, True)
-                if rc != 0 and self._interactive:
+                fn_rc = self.exec_cmd(args, True)
+                if fn_rc != 0 and self._interactive:
                     sys.stderr.write("  %sOperation failed%s\n"
                           % (color(COLOR_RED), color(COLOR_NONE)))
-                if rc != 0 and not self._interactive and not self._noerr:
-                    return rc
+                if fn_rc != 0 and not self._interactive and not self._noerr:
+                    return fn_rc
         return 0
     
     
     def exec_cmd(self, args, interactive):
-        rc = 1
+        fn_rc = 1
         arg = args.next_arg()
         if arg is None:
-            rc = 0
+            fn_rc = 0
         else:
             cmd_func = self.COMMANDS.get(arg)
             if cmd_func is not None:
-                rc = cmd_func(self, args)
+                fn_rc = cmd_func(self, args)
             else:
                 # writing nonsense on the command line is considered an error
                 sys.stderr.write("Error: unknown command '" + arg + "'\n")
-        return rc
+        return fn_rc
     
     
     def cmd_new_node(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order      = [ "name", "ip" ]
         params     = {}
@@ -183,12 +190,12 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         else:
             self.syntax_new_node()
-        return rc
+        return fn_rc
     
     
     def syntax_new_node(self):
@@ -198,7 +205,7 @@ class DrbdManage(object):
     
     
     def cmd_new_resource(self, args):
-        rc    = 1
+        fn_rc    = 1
         port  = DrbdResource.PORT_NR_AUTO
         # Command parser configuration
         order      = [ "name" ]
@@ -229,12 +236,12 @@ class DrbdManage(object):
             server_rc = self._server.create_resource(dbus.String(name),
               props)
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_new_resource()
-        return rc
+        return fn_rc
     
     
     def syntax_new_resource(self):
@@ -244,7 +251,7 @@ class DrbdManage(object):
     
     
     def cmd_new_volume(self, args):
-        rc    = 1
+        fn_rc    = 1
         unit  = SizeCalc.UNIT_GiB
         size  = None
         minor = MinorNr.MINOR_NR_AUTO
@@ -270,7 +277,7 @@ class DrbdManage(object):
                 else:
                     try:
                         minor = int(minor_str)
-                    except Exception as exc:
+                    except Exception:
                         sys.stderr.write("Error: <minor> must be a number "
                           "or \"auto\"\n")
                         raise SyntaxException
@@ -282,7 +289,7 @@ class DrbdManage(object):
                     pass
             try:
                 size = long(size_str)
-            except Exception as exc:
+            except Exception:
                 sys.stderr.write("Error: <size> must be a number\n")
                 raise SyntaxException
             if unit_str is not None:
@@ -323,15 +330,15 @@ class DrbdManage(object):
                 server_rc = self._server.create_volume(dbus.String(name),
                   dbus.Int64(size), props)
             if server_rc == 0 and deploy is not None:
-                server_rc = self._server.deploy(dbus.String(name),
+                server_rc = self._server.auto_deploy(dbus.String(name),
                   dbus.Int32(deploy))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_new_volume()
-        return rc
+        return fn_rc
     
     
     def syntax_new_volume(self):
@@ -344,7 +351,7 @@ class DrbdManage(object):
     
     
     def cmd_modify_resource(self, args):
-        rc    = 1
+        fn_rc    = 1
         port  = DrbdResource.PORT_NR_AUTO
         # Command parser configuration
         order      = [ "name" ]
@@ -377,12 +384,12 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.modify_resource(dbus.String(name), props)
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_modify_resource()
-        return rc
+        return fn_rc
     
     
     def syntax_modify_resource(self):
@@ -393,7 +400,7 @@ class DrbdManage(object):
     
     
     def cmd_remove_node(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order = [ "node" ]
         params = {}
@@ -419,14 +426,14 @@ class DrbdManage(object):
                 server_rc = self._server.remove_node(dbus.String(node_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
-                    rc = 0
+                    fn_rc = 0
                 else:
                     self.error_msg_text(server_rc)
             else:
-                rc = 0
+                fn_rc = 0
         except SyntaxException:
             self.syntax_remove_node()
-        return rc
+        return fn_rc
     
     
     def syntax_remove_node(self):
@@ -434,7 +441,7 @@ class DrbdManage(object):
     
     
     def cmd_remove_resource(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order = [ "resource" ]
         params = {}
@@ -460,14 +467,14 @@ class DrbdManage(object):
                 server_rc = self._server.remove_resource(dbus.String(res_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
-                    rc = 0
+                    fn_rc = 0
                 else:
                     self.error_msg_text(server_rc)
             else:
-                rc = 0
+                fn_rc = 0
         except SyntaxException:
             self.syntax_remove_resource()
-        return rc
+        return fn_rc
     
     
     def syntax_remove_resource(self):
@@ -475,7 +482,7 @@ class DrbdManage(object):
     
     
     def cmd_remove_volume(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order = [ "volume", "id" ]
         params = {}
@@ -492,7 +499,7 @@ class DrbdManage(object):
             vol_name = params["volume"]
             id_str   = params["id"]
             try:
-                id   = int(id_str)
+                vol_id   = int(id_str)
             except ValueError:
                 raise SyntaxException
             force    = flags["-f"]
@@ -504,16 +511,16 @@ class DrbdManage(object):
             if quiet:
                 self.dbus_init()
                 server_rc = self._server.remove_volume(dbus.String(vol_name),
-                  dbus.Int32(id), dbus.Boolean(force))
+                  dbus.Int32(vol_id), dbus.Boolean(force))
                 if server_rc == 0:
-                    rc = 0
+                    fn_rc = 0
                 else:
                     self.error_msg_text(server_rc)
             else:
-                rc = 0
+                fn_rc = 0
         except SyntaxException:
             self.syntax_remove_volume()
-        return rc
+        return fn_rc
     
     
     def syntax_remove_volume(self):
@@ -530,8 +537,7 @@ class DrbdManage(object):
     
     
     def _connect(self, args, reconnect):
-        rc    = 1
-        state = []
+        fn_rc    = 1
         # Command parser configuration
         order    = [ "node", "res" ]
         params   = {}
@@ -551,12 +557,12 @@ class DrbdManage(object):
             server_rc = self._server.connect(dbus.String(node_name),
               dbus.String(res_name), dbus.Boolean(reconnect))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
-            self.syntax_connect(reconnect)
-        return rc
+            self.syntax_connect()
+        return fn_rc
     
     
     def syntax_connect(self):
@@ -568,8 +574,7 @@ class DrbdManage(object):
     
     
     def cmd_disconnect(self, args):
-        rc    = 1
-        state = []
+        fn_rc    = 1
         # Command parser configuration
         order    = [ "node", "res" ]
         params   = {}
@@ -589,12 +594,12 @@ class DrbdManage(object):
             server_rc = self._server.disconnect(dbus.String(node_name),
               dbus.String(res_name))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_disconnect()
-        return rc
+        return fn_rc
     
     
     def syntax_disconnect(self):
@@ -602,7 +607,7 @@ class DrbdManage(object):
     
     
     def cmd_flags(self, args):
-        rc         = 1
+        fn_rc         = 1
         clear_mask = 0
         set_mask   = 0
         node_name  = None
@@ -648,12 +653,12 @@ class DrbdManage(object):
               dbus.String(res_name), dbus.Int64(0), dbus.Int64(0),
               dbus.Int64(clear_mask), dbus.Int64(set_mask))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_flags()
-        return rc
+        return fn_rc
     
     
     def syntax_flags(self):
@@ -674,8 +679,7 @@ class DrbdManage(object):
     
     
     def cmd_attach(self, args):
-        rc    = 1
-        state = []
+        fn_rc    = 1
         # Command parser configuration
         order    = [ "node", "res", "id" ]
         params   = {}
@@ -692,20 +696,20 @@ class DrbdManage(object):
             res_name  = params["res"]
             id_str    = params["id"]
             try:
-                id   = int(id_str)
+                vol_id   = int(id_str)
             except ValueError:
                 raise SyntaxException
 
             self.dbus_init()
             server_rc = self._server.attach(dbus.String(node_name),
-              dbus.String(res_name), dbus.Int32(id))
+              dbus.String(res_name), dbus.Int32(vol_id))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_attach()
-        return rc
+        return fn_rc
     
     
     def syntax_attach(self):
@@ -713,8 +717,7 @@ class DrbdManage(object):
     
     
     def cmd_detach(self, args):
-        rc    = 1
-        state = []
+        fn_rc    = 1
         # Command parser configuration
         order    = [ "node", "res", "id" ]
         params   = {}
@@ -731,20 +734,20 @@ class DrbdManage(object):
             res_name  = params["res"]
             id_str    = params["id"]
             try:
-                id   = int(id_str)
+                vol_id   = int(id_str)
             except ValueError:
                 raise SyntaxException
 
             self.dbus_init()
             server_rc = self._server.detach(dbus.String(node_name),
-              dbus.String(res_name), dbus.Int32(id))
+              dbus.String(res_name), dbus.Int32(vol_id))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_detach()
-        return rc
+        return fn_rc
     
     
     def syntax_detach(self):
@@ -752,7 +755,7 @@ class DrbdManage(object):
     
     
     def cmd_assign(self, args):
-        rc    = 1
+        fn_rc    = 1
         cstate = 0
         tstate = 0
         # Command parser configuration
@@ -801,12 +804,12 @@ class DrbdManage(object):
             server_rc = self._server.assign(dbus.String(node_name),
               dbus.String(vol_name), dbus.Int64(cstate), dbus.Int64(tstate))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_assign()
-        return rc
+        return fn_rc
     
     
     def syntax_assign(self):
@@ -822,7 +825,7 @@ class DrbdManage(object):
     
     
     def cmd_deploy(self, args):
-        rc    = 1
+        fn_rc    = 1
         # Command parser configuration
         order    = [ "res", "count" ]
         params   = {}
@@ -847,15 +850,15 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.deploy(dbus.String(res_name),
+            server_rc = self._server.auto_deploy(dbus.String(res_name),
               dbus.Int32(count))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_deploy()
-        return rc
+        return fn_rc
     
     
     def syntax_deploy(self):
@@ -866,8 +869,8 @@ class DrbdManage(object):
     
     
     def cmd_extend(self, args):
-        rc    = 1
-        extend = False
+        fn_rc    = 1
+        rel_flag = False
         # Command parser configuration
         order    = [ "res", "count" ]
         params   = {}
@@ -884,7 +887,7 @@ class DrbdManage(object):
             count_str = params["count"]
             if count_str.startswith("+"):
                 count_str = count_str[1:]
-                extend = True
+                rel_flag = True
             count = 0
             try:
                 count = int(count_str)
@@ -895,15 +898,15 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.extend(dbus.String(res_name),
-              dbus.Int32(count), dbus.Boolean(extend))
+            server_rc = self._server.auto_extend(dbus.String(res_name),
+              dbus.Int32(count), dbus.Boolean(rel_flag))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_extend()
-        return rc
+        return fn_rc
     
     
     def syntax_extend(self):
@@ -920,8 +923,8 @@ class DrbdManage(object):
     
     
     def cmd_reduce(self, args):
-        rc    = 1
-        reduce = False
+        fn_rc    = 1
+        rel_flag = False
         try:
             res_name  = None
             count_str = None
@@ -941,7 +944,7 @@ class DrbdManage(object):
             
             if count_str.startswith("-"):
                 count_str = count_str[1:]
-                reduce = True
+                rel_flag = True
             count = 0
             try:
                 count = int(count_str)
@@ -952,15 +955,15 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.reduce(dbus.String(res_name),
-              dbus.Int32(count), dbus.Boolean(reduce))
+            server_rc = self._server.auto_reduce(dbus.String(res_name),
+              dbus.Int32(count), dbus.Boolean(rel_flag))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_reduce()
-        return rc
+        return fn_rc
     
     
     def syntax_reduce(self):
@@ -975,7 +978,7 @@ class DrbdManage(object):
     
     
     def cmd_undeploy(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order = [ "resource" ]
         params = {}
@@ -998,17 +1001,17 @@ class DrbdManage(object):
                   "Please confirm:")
             if quiet:
                 self.dbus_init()
-                server_rc = self._server.undeploy(dbus.String(res_name),
+                server_rc = self._server.auto_undeploy(dbus.String(res_name),
                   dbus.Boolean(force))
                 if server_rc == 0:
-                    rc = 0
+                    fn_rc = 0
                 else:
                     self.error_msg_text(server_rc)
             else:
-                rc = 0
+                fn_rc = 0
         except SyntaxException:
             self.syntax_undeploy()
-        return rc
+        return fn_rc
     
     
     def syntax_undeploy(self):
@@ -1016,51 +1019,51 @@ class DrbdManage(object):
     
     
     def cmd_update_pool(self, args):
-        rc = 1
+        fn_rc = 1
         self.dbus_init()
         server_rc = self._server.update_pool()
         if server_rc == 0:
-            rc = 0
+            fn_rc = 0
         else:
             self.error_msg_text(server_rc)
-        return rc
+        return fn_rc
     
     
     def cmd_reconfigure(self, args):
-        rc = 1
+        fn_rc = 1
         self.dbus_init()
         server_rc = self._server.reconfigure()
         if server_rc == 0:
-            rc = 0
+            fn_rc = 0
         else:
             self.error_msg_text(server_rc)
-        return rc
+        return fn_rc
     
     
     def cmd_save(self, args):
-        rc = 1
+        fn_rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
         if server_rc == 0:
-            rc = 0
+            fn_rc = 0
         else:
             self.error_msg_text(server_rc)
-        return rc
+        return fn_rc
     
     
     def cmd_load(self, args):
-        rc = 1
+        fn_rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
         if server_rc == 0:
-            rc = 0
+            fn_rc = 0
         else:
             self.error_msg_text(server_rc)
-        return rc
+        return fn_rc
     
     
     def cmd_unassign(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order      = [ "node", "vol" ]
         params     = {}
@@ -1076,12 +1079,12 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.unassign(node_name, vol_name, force)
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         else:
             self.syntax_unassign()
-        return rc
+        return fn_rc
 
 
     def syntax_unassign(self):
@@ -1122,7 +1125,8 @@ class DrbdManage(object):
                     # An exception is expected here, as the server
                     # probably will not answer
                     pass
-                # Continuing the client without a server does not make sense, so:
+                # Continuing the client without a server
+                # does not make sense, therefore exit
                 exit(0)
         except SyntaxException:
             sys.stderr.write("Syntax: shutdown [ --quiet | -q ]\n")
@@ -1139,9 +1143,9 @@ class DrbdManage(object):
         flags    = { "-m" : False }
         flagsalias = { "--machine-readable" : "-m" }
         if CommandParser().parse(args, order, params, opt, optalias,
-          flags, flagsalias) != 0:
-              self.syntax_list_nodes()
-              return 1
+            flags, flagsalias) != 0:
+                self.syntax_list_nodes()
+                return 1
         
         self.dbus_init()
         
@@ -1187,8 +1191,8 @@ class DrbdManage(object):
                         poolfree_text = "unknown"
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
                       % (color(COLOR_TEAL), view.get_name_maxlen(),
-                        view.get_name(), color(COLOR_NONE), view.get_af(),
-                        view.get_ip(), color(COLOR_RED), view.get_state(),
+                        view.get_name(), color(COLOR_NONE), view.get_addrfam(),
+                        view.get_addr(), color(COLOR_RED), view.get_state(),
                         color(COLOR_NONE))
                       )
                     sys.stdout.write("  %s* pool size: %14s / free: %14s%s\n"
@@ -1198,8 +1202,8 @@ class DrbdManage(object):
                       )
                 else:
                     sys.stdout.write("%s,%s,%s,%d,%d,%s\n"
-                      % (view.get_name(), view.get_af(),
-                        view.get_ip(), view.get_poolsize(),
+                      % (view.get_name(), view.get_addrfam(),
+                        view.get_addr(), view.get_poolsize(),
                         view.get_poolfree(), view.get_state())
                       )
             except IncompatibleDataException:
@@ -1399,7 +1403,7 @@ class DrbdManage(object):
     
     
     def cmd_export_conf(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order    = [ "res" ]
         params   = {}
@@ -1419,30 +1423,30 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.export_conf(dbus.String(res_name))
             if server_rc == 0:
-                rc = 0
+                fn_rc = 0
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
             self.syntax_export_conf()
-        return rc
+        return fn_rc
     
     
     def cmd_ping(self, args):
-        rc = 1
+        fn_rc = 1
         try:
             self.dbus_init()
             server_rc = self._server.ping()
             if server_rc == 0:
                 sys.stdout.write("pong\n")
-                rc = 0
+                fn_rc = 0
         except dbus.exceptions.DBusException:
             sys.stderr.write("drbdmanage: cannot connect to the drbdmanage "
               "server through D-Bus.\n")
-        return rc
+        return fn_rc
     
     
     def cmd_init(self, args):
-        rc = 1
+        fn_rc = 1
         # Command parser configuration
         order    = [ "dev" ]
         params   = {}
@@ -1466,12 +1470,12 @@ class DrbdManage(object):
                   "Existing data will be lost, confirm:\n"
                   % drbdctrl_file))
             if quiet:
-                rc = self._drbdctrl_init(drbdctrl_file)
+                fn_rc = self._drbdctrl_init(drbdctrl_file)
             else:
-                rc = 0
+                fn_rc = 0
         except SyntaxException:
             self.syntax_init()
-        return rc
+        return fn_rc
     
     
     def syntax_init(self):
@@ -1483,7 +1487,7 @@ class DrbdManage(object):
         
     
     def cmd_debug(self, args):
-        rc = 1
+        fn_rc = 1
         command = ""
         first   = True
         while True:
@@ -1498,12 +1502,12 @@ class DrbdManage(object):
                 break
         try:
             self.dbus_init()
-            rc = self._server.debug_console(dbus.String(command))
-            sys.stderr.write("%s rc=%d\n" % (command, rc))
+            fn_rc = self._server.debug_console(dbus.String(command))
+            sys.stderr.write("%s fn_rc=%d\n" % (command, fn_rc))
         except dbus.exceptions.DBusException:
             sys.stderr.write("drbdmanage: cannot connect to the drbdmanage "
               "server through D-Bus.\n")
-        return rc
+        return fn_rc
     
     
     def syntax_export_conf(self):
@@ -1519,14 +1523,14 @@ class DrbdManage(object):
         sys.stdout.write(question + "\n")
         sys.stdout.write("  yes/no: ")
         sys.stdout.flush()
-        rc = False
+        fn_rc = False
         while True:
             answer = sys.stdin.readline()
             if len(answer) != 0:
                 if answer.endswith("\n"):
                     answer = answer[:len(answer) - 1]
                 if answer == "yes":
-                    rc = True
+                    fn_rc = True
                     break
                 elif answer == "no":
                     break
@@ -1537,7 +1541,7 @@ class DrbdManage(object):
                 # end of stream, no more input
                 sys.stdout.write("\n")
                 break
-        return rc
+        return fn_rc
     
     
     def error_msg_text(self, error):
@@ -1552,7 +1556,7 @@ class DrbdManage(object):
     
         
     def _drbdctrl_init(self, drbdctrl_file):
-        rc = 1
+        fn_rc = 1
         
         init_blks = 4
         pers_impl = drbdmanage.drbd.persistence.PersistenceImpl
@@ -1560,7 +1564,6 @@ class DrbdManage(object):
 
         index_name = pers_impl.IDX_NAME
         index_off  = pers_impl.IDX_OFFSET
-        hash_name  = pers_impl.HASH_NAME
         hash_off   = pers_impl.HASH_OFFSET
         data_off   = pers_impl.DATA_OFFSET
 
@@ -1573,7 +1576,7 @@ class DrbdManage(object):
 
         drbdctrl = None
         try:
-            hash = drbdmanage.utils.DataHash()
+            data_hash = drbdmanage.utils.DataHash()
 
             index_str = (
                     "{\n"
@@ -1594,7 +1597,7 @@ class DrbdManage(object):
 
             pos = 0
             while pos < 3:
-                hash.update(data_str)
+                data_hash.update(data_str)
                 pos += 1
 
             drbdctrl = open(drbdctrl_file, "rb+")
@@ -1610,10 +1613,10 @@ class DrbdManage(object):
             drbdctrl.seek(hash_off)
             drbdctrl.write(
                 "{\n"
-                "    \"hash\": \"" + hash.get_hex_hash() + "\"\n"
+                "    \"hash\": \"" + data_hash.get_hex_hash() + "\"\n"
                 "}\n"
             )
-            rc = 0
+            fn_rc = 0
         except IOError as ioexc:
             sys.stderr.write("Initialization failed: " + str(ioexc) + "\n")
         finally:
@@ -1624,7 +1627,7 @@ class DrbdManage(object):
                     pass
         sys.stdout.write("empty drbdmanage control volume initialized.\n")
         
-        return rc
+        return fn_rc
     
     
     COMMANDS = {
@@ -1668,8 +1671,8 @@ class DrbdManage(object):
     
     
 def main():
-    drbdmanage = DrbdManage()
-    drbdmanage.run()
+    client = DrbdManage()
+    client.run()
 
 if __name__ == "__main__":
     main()

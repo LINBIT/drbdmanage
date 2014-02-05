@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Sep 12, 2013 10:43:21 AM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 12, 2013 10:43:21 AM$"
 
 import subprocess
 import logging
@@ -150,9 +150,9 @@ class DrbdManager(object):
                 """
                 if (not failed_actions) and assg.requires_undeploy():
                     pool_changed = True
-                    rc = self._undeploy_assignment(assg)
-                    assg.set_rc(rc)
-                    if rc != 0:
+                    fn_rc = self._undeploy_assignment(assg)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
                         failed_actions = True
                     # ignore other actions for the same assignment
                     # after undeploy
@@ -162,9 +162,9 @@ class DrbdManager(object):
                 Disconnect an assignment/resource
                 """
                 if (not failed_actions) and assg.requires_disconnect():
-                    rc = self._disconnect(assg)
-                    assg.set_rc(rc)
-                    if rc != 0:
+                    fn_rc = self._disconnect(assg)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
                         failed_actions = True
                 
                 """
@@ -173,14 +173,14 @@ class DrbdManager(object):
                 assg_actions = assg.get_tstate()
                 if (not failed_actions):
                     if (assg_actions & Assignment.FLAG_UPD_CON) != 0:
-                        rc = self._update_connections(assg)
-                        assg.set_rc(rc)
-                        if rc != 0:
+                        fn_rc = self._update_connections(assg)
+                        assg.set_rc(fn_rc)
+                        if fn_rc != 0:
                             failed_actions = True
                     if (assg_actions & Assignment.FLAG_RECONNECT) != 0:
-                        rc = self._reconnect(assg)
-                        assg.set_rc(rc)
-                        if rc != 0:
+                        fn_rc = self._reconnect(assg)
+                        assg.set_rc(fn_rc)
+                        if fn_rc != 0:
                             failed_actions = True
                 
                 """
@@ -198,15 +198,15 @@ class DrbdManager(object):
                     if (not failed_actions):
                         if vol_state.requires_deploy():
                             pool_changed = True
-                            rc = self._deploy_volume(assg, vol_state)
-                            assg.set_rc(rc)
-                            if rc != 0:
+                            fn_rc = self._deploy_volume(assg, vol_state)
+                            assg.set_rc(fn_rc)
+                            if fn_rc != 0:
                                 failed_actions = True
                         elif vol_state.requires_undeploy():
                             pool_changed = True
-                            rc = self._undeploy_volume(assg, vol_state)
-                            assg.set_rc(rc)
-                            if rc != 0:
+                            fn_rc = self._undeploy_volume(assg, vol_state)
+                            assg.set_rc(fn_rc)
+                            if fn_rc != 0:
                                 failed_actions = True
                     
                     """
@@ -214,14 +214,14 @@ class DrbdManager(object):
                     """
                     if (not failed_actions):
                         if vol_state.requires_attach():
-                            rc = self._attach(assg, vol_state)
-                            assg.set_rc(rc)
-                            if rc != 0:
+                            fn_rc = self._attach(assg, vol_state)
+                            assg.set_rc(fn_rc)
+                            if fn_rc != 0:
                                 failed_actions = True
                         elif vol_state.requires_detach():
-                            rc = self._detach(assg, vol_state)
-                            assg.set_rc(rc)
-                            if rc != 0:
+                            fn_rc = self._detach(assg, vol_state)
+                            assg.set_rc(fn_rc)
+                            if fn_rc != 0:
                                 failed_actions = True
                         
                 
@@ -241,15 +241,15 @@ class DrbdManager(object):
                 """
                 if (not failed_actions) and assg.requires_deploy():
                     pool_changed = True
-                    rc = self._deploy_assignment(assg)
-                    assg.set_rc(rc)
-                    if rc != 0:
+                    fn_rc = self._deploy_assignment(assg)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
                         failed_actions = True
                 
                 if (not failed_actions) and assg.requires_connect():
-                    rc = self._connect(assg)
-                    assg.set_rc(rc)
-                    if rc != 0:
+                    fn_rc = self._connect(assg)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
                         failed_actions = True
                 
                 if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
@@ -271,7 +271,8 @@ class DrbdManager(object):
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
           self._server.DRBDCTRL_RES_NAME)
-        rc = drbd_proc.wait()
+        fn_rc = drbd_proc.wait()
+        return fn_rc
     
     
     def initial_up(self):
@@ -282,8 +283,6 @@ class DrbdManager(object):
         node = self._server.get_instance_node()
         if node is not None:
             for assg in node.iterate_assignments():
-                cstate = assg.get_cstate()
-                tstate = assg.get_tstate()
                 if assg.is_deployed():
                     try:
                         self._up_resource(assg)
@@ -297,7 +296,6 @@ class DrbdManager(object):
         """
         Brings up DRBD resources
         """
-        bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         
         logging.info("starting resource '%s'"
@@ -308,11 +306,11 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def _down_resource(self, assignment):
@@ -330,11 +328,11 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def _deploy_volume(self, assignment, vol_state):
@@ -346,13 +344,13 @@ class DrbdManager(object):
             bd_mgr   = self._server.get_bd_mgr()
             resource = assignment.get_resource()
             volume   = vol_state.get_volume()
-            minor    = volume.get_minor()
 
-            bd = bd_mgr.create_blockdevice(resource.get_name(),
+            blockdev = bd_mgr.create_blockdevice(resource.get_name(),
               volume.get_id(), volume.get_size_kiB())
             
-            if bd is not None:
-                vol_state.set_blockdevice(bd.get_name(), bd.get_path())
+            if blockdev is not None:
+                vol_state.set_blockdevice(blockdev.get_name(),
+                    blockdev.get_path())
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
                 
                 max_node_id = 0
@@ -404,33 +402,32 @@ class DrbdManager(object):
                 drbd_proc = self._drbdadm.create_md(resource.get_name(),
                   vol_state.get_id(), max_peers)
                 if drbd_proc is not None:
-                    drbdadm_conf = drbdmanage.conf.conffile.DrbdAdmConf()
                     self._resconf.write_excerpt(drbd_proc.stdin,
                       assignment, nodes, vol_states)
                     drbd_proc.stdin.close()
-                    rc = drbd_proc.wait()
+                    fn_rc = drbd_proc.wait()
                 else:
-                    rc = DrbdManager.DRBDADM_EXEC_FAILED
+                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 
                 # Adjust the DRBD resource to configure the volume
                 drbd_proc = self._drbdadm.adjust(resource.get_name())
                 self._resconf.write_excerpt(drbd_proc.stdin,
                   assignment, nodes, vol_states)
                 drbd_proc.stdin.close()
-                rc = drbd_proc.wait()
-                if rc == 0:
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
                     vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH |
                       DrbdVolumeState.FLAG_DEPLOY)
                     # drbdadm adjust implicitly connects the resource
                     assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             else:
                 # block device allocation failed
-                rc = -1
+                fn_rc = -1
         else:
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
-            rc = 0
+            fn_rc = 0
         
-        return rc
+        return fn_rc
     
     
     def _undeploy_volume(self, assignment, vol_state):
@@ -441,7 +438,6 @@ class DrbdManager(object):
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
-        volume   = vol_state.get_volume()
        
         nodes      = []
         vol_states = []
@@ -457,20 +453,20 @@ class DrbdManager(object):
             self._resconf.write_excerpt(drbd_proc.stdin, assignment,
               nodes, vol_states)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
-            if rc == 0:
+            fn_rc = drbd_proc.wait()
+            if fn_rc == 0:
                 vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        if rc == 0:
-            rc = -1
+        if fn_rc == 0:
+            fn_rc = -1
             tstate = assignment.get_tstate()
             if (tstate & Assignment.FLAG_DISKLESS) == 0:
-                rc = bd_mgr.remove_blockdevice(resource.get_name(),
+                fn_rc = bd_mgr.remove_blockdevice(resource.get_name(),
                   vol_state.get_id())
-            if rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS) != 0:
-                rc = 0
+            if fn_rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS) != 0:
+                fn_rc = 0
                 vol_state.set_cstate(0)
                 vol_state.set_tstate(0)
         
@@ -489,7 +485,7 @@ class DrbdManager(object):
             # delete configuration file
             self._server.remove_assignment_conf(assignment)
         
-        return rc
+        return fn_rc
     
     
     def _deploy_assignment(self, assignment):
@@ -498,7 +494,7 @@ class DrbdManager(object):
         assignment's/resource's volumes takes place in per-volume actions
         of the DrbdManager.perform_changes() function.
         """
-        rc = 0
+        fn_rc = 0
         deploy_fail = False
         resource = assignment.get_resource()
         tstate   = assignment.get_tstate()
@@ -512,17 +508,17 @@ class DrbdManager(object):
             if drbd_proc is not None:
                 self._resconf.write(drbd_proc.stdin, assignment, False)
                 drbd_proc.stdin.close()
-                rc = drbd_proc.wait()
+                fn_rc = drbd_proc.wait()
             else:
-                rc = DrbdManager.DRBDADM_EXEC_FAILED
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
             assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
         elif tstate & Assignment.FLAG_DISCARD != 0:
-            rc = self._reconnect(assignment)
+            fn_rc = self._reconnect(assignment)
         if deploy_fail:
-            rc = -1
+            fn_rc = -1
         else:
             assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
-        return rc
+        return fn_rc
     
     
     # FIXME: fails to undeploy, because undeploying the last volume
@@ -545,18 +541,18 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, True)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        if rc == 0:
+        if fn_rc == 0:
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
             if drbd_proc is not None:
                 self._resconf.write(drbd_proc.stdin, assignment, True)
                 drbd_proc.stdin.close()
-                rc = drbd_proc.wait()
-                if rc == 0:
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
                     assignment.set_cstate(0)
                     assignment.set_tstate(0)
             else:
@@ -579,7 +575,7 @@ class DrbdManager(object):
             # Remove the external configuration file
             self._server.remove_assignment_conf(resource.get_name())
         
-        return rc
+        return fn_rc
     
     
     def _connect(self, assignment):
@@ -593,13 +589,13 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
             assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def _disconnect(self, assignment):
@@ -611,12 +607,12 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, True)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
             assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def _update_connections(self, assignment):
@@ -641,16 +637,16 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
-        if rc == 0:
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+        if fn_rc == 0:
             assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
             for vol_state in assignment.iterate_volume_states():
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         
-        return rc
+        return fn_rc
     
     
     def _reconnect(self, assignment):
@@ -660,10 +656,10 @@ class DrbdManager(object):
         # disconnect
         self._disconnect(assignment)
         # connect
-        rc = self._connect(assignment)
+        fn_rc = self._connect(assignment)
         assignment.clear_tstate_flags(Assignment.FLAG_RECONNECT)
         
-        return rc
+        return fn_rc
     
     
     def _attach(self, assignment, vol_state):
@@ -677,14 +673,14 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
             if not assignment.get_tstate() & Assignment.FLAG_DISKLESS != 0:
                 # TODO: order drbdadm to attach the volume
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def _detach(self, assignment, vol_state):
@@ -697,12 +693,12 @@ class DrbdManager(object):
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, True)
             drbd_proc.stdin.close()
-            rc = drbd_proc.wait()
+            fn_rc = drbd_proc.wait()
             vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
         else:
-            rc = DrbdManager.DRBDADM_EXEC_FAILED
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         
-        return rc
+        return fn_rc
     
     
     def primary_deployment(self, assignment):
@@ -773,14 +769,14 @@ class DrbdManager(object):
         alpha = False
         idx = 0
         while idx < name_len:
-            b = name_b[idx]
-            if b >= ord('a') and b <= ord('z'):
+            item = name_b[idx]
+            if item >= ord('a') and item <= ord('z'):
                 alpha = True
-            elif b >= ord('A') and b <= ord('Z'):
+            elif item >= ord('A') and item <= ord('Z'):
                 alpha = True
             else:
-                if not ((b >= ord('0') and b <= ord('9') and idx >= 1)
-                  or b == ord("_")):
+                if not ((item >= ord('0') and item <= ord('9') and idx >= 1)
+                  or item == ord("_")):
                     raise InvalidNameException
             idx += 1
         if not alpha:
@@ -891,12 +887,12 @@ class DrbdResource(object):
         self._volumes[volume.get_id()] = volume
     
     
-    def get_volume(self, id):
-        return self._volumes.get(id)
+    def get_volume(self, vol_id):
+        return self._volumes.get(vol_id)
     
     
-    def remove_volume(self, id):
-        volume = self._volumes.get(id)
+    def remove_volume(self, vol_id):
+        volume = self._volumes.get(vol_id)
         if volume is not None:
             del self._volumes[volume.get_id()]
     
@@ -970,7 +966,7 @@ class DrbdResourceView(object):
     
     
     @classmethod
-    def get_name_maxlen(self):
+    def get_name_maxlen(cls):
         return DrbdResource.NAME_MAXLEN
     
     
@@ -1039,11 +1035,11 @@ class DrbdVolume(GenericStorage):
     # non-existent flags
     STATE_MASK   = FLAG_REMOVE
     
-    def __init__(self, id, size_kiB, minor):
+    def __init__(self, vol_id, size_kiB, minor):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
-        self._id       = int(id)
+        self._id       = int(vol_id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
         self._size_kiB = size_kiB
@@ -1169,8 +1165,8 @@ class DrbdNode(object):
     AF_IPV6_LABEL = "ipv6"
     
     _name     = None
-    _ip       = None
-    _af       = None
+    _addr     = None
+    _addrfam  = None
     _state    = None
     _poolsize = None
     _poolfree = None
@@ -1186,15 +1182,15 @@ class DrbdNode(object):
     STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL
     
     
-    def __init__(self, name, ip, af):
+    def __init__(self, name, addr, addrfam):
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on ip
-        af_n = int(af)
+        af_n = int(addrfam)
         if af_n == self.AF_IPV4 or af_n == self.AF_IPV6:
-            self._af = af_n
+            self._addrfam = af_n
         else:
             raise InvalidAddrFamException
-        self._ip          = ip
+        self._addr          = addr
         self._assignments = dict()
         self._state       = 0
         self._poolfree    = -1
@@ -1205,19 +1201,19 @@ class DrbdNode(object):
         return self._name
     
     
-    def get_ip(self):
-        return self._ip
+    def get_addr(self):
+        return self._addr
     
     
-    def get_af(self):
-        return self._af
+    def get_addrfam(self):
+        return self._addrfam
     
     
-    def get_af_label(self):
+    def get_addrfam_label(self):
         label = "unknown"
-        if self._af == self.AF_IPV4:
+        if self._addrfam == self.AF_IPV4:
             label = self.AF_IPV4_LABEL
-        elif self._af == self.AF_IPV6:
+        elif self._addrfam == self.AF_IPV6:
             label = self.AF_IPV6_LABEL
         return label
     
@@ -1310,8 +1306,8 @@ class DrbdNodeView(object):
     NV_PROP_LEN = 6
     
     _name     = None
-    _af       = None
-    _ip       = None
+    _addrfam  = None
+    _addr     = None
     _poolsize = None
     _poolfree = None
     _state    = None
@@ -1323,8 +1319,8 @@ class DrbdNodeView(object):
         if len(properties) < self.NV_PROP_LEN:
             raise IncompatibleDataException
         self._name     = properties[self.NV_NAME]
-        self._af       = properties[self.NV_AF_LABEL]
-        self._ip       = properties[self.NV_IP]
+        self._addrfam  = properties[self.NV_AF_LABEL]
+        self._addr       = properties[self.NV_IP]
         try:
             self._poolsize = long(properties[self.NV_POOLSIZE])
             self._poolfree = long(properties[self.NV_POOLFREE])
@@ -1335,7 +1331,7 @@ class DrbdNodeView(object):
     
     
     @classmethod
-    def get_name_maxlen(self):
+    def get_name_maxlen(cls):
         return DrbdNode.NAME_MAXLEN
     
     
@@ -1343,8 +1339,8 @@ class DrbdNodeView(object):
     def get_properties(cls, node):
         properties = []
         properties.append(node.get_name())
-        properties.append(node.get_af_label())
-        properties.append(node.get_ip())
+        properties.append(node.get_addrfam_label())
+        properties.append(node.get_addr())
         properties.append(node.get_poolsize())
         properties.append(node.get_poolfree())
         properties.append(node.get_state())
@@ -1355,12 +1351,12 @@ class DrbdNodeView(object):
         return self._name
     
     
-    def get_af(self):
-        return self._af
+    def get_addrfam(self):
+        return self._addrfam
     
     
-    def get_ip(self):
-        return self._ip
+    def get_addr(self):
+        return self._addr
     
     
     def get_poolsize(self):
@@ -1549,7 +1545,6 @@ class DrbdVolumeStateView(object):
     @classmethod
     def get_properties(cls, vol_state):
         properties = []
-        volume  = vol_state.get_volume()
         bd_path = vol_state.get_bd_path()
         if bd_path is None:
             bd_path = "-"
@@ -1569,12 +1564,12 @@ class DrbdVolumeStateView(object):
     
     
     def get_cstate(self):
-        mr = self._machine_readable
+        mach_read = self._machine_readable
         text = ""
         if self._cstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-            text = state_text_append(mr, text, "DEPLOY", "deployed")
+            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
         if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
-            text = state_text_append(mr, text, "ATTACH", "attached")
+            text = state_text_append(mach_read, text, "ATTACH", "attached")
         # FIXME: experimental human-readable mask output
         if not self._machine_readable:
             if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
@@ -1589,12 +1584,12 @@ class DrbdVolumeStateView(object):
     
     
     def get_tstate(self):
-        mr = self._machine_readable
+        mach_read = self._machine_readable
         text = ""
         if self._tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-            text = state_text_append(mr, text, "DEPLOY", "deploy")
+            text = state_text_append(mach_read, text, "DEPLOY", "deploy")
         if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
-            text = state_text_append(mr, text, "ATTACH", "attach")
+            text = state_text_append(mach_read, text, "ATTACH", "attach")
         # FIXME: experimental human-readable mask output
         if not self._machine_readable:
             if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
@@ -1692,14 +1687,14 @@ class Assignment(object):
         return self._vol_states.itervalues()
     
     
-    def get_volume_state(self, id):
-        return self._vol_states.get(id)
+    def get_volume_state(self, vol_id):
+        return self._vol_states.get(vol_id)
     
     
-    def remove_volume_state(self, id):
-        vol_st = self._vol_states.get(id)
+    def remove_volume_state(self, vol_id):
+        vol_st = self._vol_states.get(vol_id)
         if vol_st is not None:
-            del self._vol_states[id]
+            del self._vol_states[vol_id]
     
     
     def update_volume_states(self):
@@ -1816,14 +1811,14 @@ class Assignment(object):
         self._tstate = self._tstate | self.FLAG_UPD_CON
     
     
-    def set_rc(self, rc):
+    def set_rc(self, assg_rc):
         """
         Sets the return code of an action performed on the assignment
         
         Used to indicate the return code of failed actions, so the reason
         for a failed action can be queried on a remote node.
         """
-        self._rc = rc
+        self._rc = assg_rc
     
     
     def get_rc(self):
@@ -2019,23 +2014,19 @@ class AssignmentView(object):
         return self._vol_states
     
     
-    def get_blockdevice(self):
-        return self._blockdevice
-    
-    
     def get_node_id(self):
         return self._node_id
     
     
     def get_cstate(self):
-        mr = self._machine_readable
+        mach_read = self._machine_readable
         text = ""
         if self._cstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mr, text, "DEPLOY", "deployed")
+            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
         if self._cstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mr, text, "CONNECT", "connected")
+            text = state_text_append(mach_read, text, "CONNECT", "connected")
         if self._cstate & Assignment.FLAG_DISKLESS != 0:
-            text = state_text_append(mr, text, "DISKLESS", "client")
+            text = state_text_append(mach_read, text, "DISKLESS", "client")
         if len(text) == 0:
             text = "-"
         # FIXME: experimental human-readable mask output
@@ -2056,20 +2047,20 @@ class AssignmentView(object):
     
     
     def get_tstate(self):
-        mr = self._machine_readable
+        mach_read = self._machine_readable
         text = ""
         if self._tstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mr, text, "DEPLOY", "deploy")
+            text = state_text_append(mach_read, text, "DEPLOY", "deploy")
         if self._tstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mr, text, "CONNECT", "connect")
+            text = state_text_append(mach_read, text, "CONNECT", "connect")
         if self._tstate & Assignment.FLAG_UPD_CON != 0:
-            text = state_text_append(mr, text, "UPD_CON", "update")
+            text = state_text_append(mach_read, text, "UPD_CON", "update")
         if self._tstate & Assignment.FLAG_RECONNECT != 0:
-            text = state_text_append(mr, text, "RECONNECT", "reconnect")
+            text = state_text_append(mach_read, text, "RECONNECT", "reconnect")
         if self._tstate & Assignment.FLAG_OVERWRITE != 0:
-            text = state_text_append(mr, text, "OVERWRITE", "init-master")
+            text = state_text_append(mach_read, text, "OVERWRITE", "init-master")
         if self._tstate & Assignment.FLAG_DISCARD != 0:
-            text = state_text_append(mr, text, "DISCARD", "discard")
+            text = state_text_append(mach_read, text, "DISCARD", "discard")
         if len(text) == 0:
             text = "-"
         # FIXME: experimental human-readable mask output
@@ -2108,28 +2099,26 @@ class AssignmentView(object):
     
     
     def get_state(self):
-        mr = self._machine_readable
+        mach_read = self._machine_readable
         text = ""
         if self._tstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mr, text, "DEPLOY", "deployed")
-        if self._tstate & Assignment.FLAG_ATTACH != 0:
-            text = state_text_append(mr, text, "ATTACH", "attached")
+            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
         if self._tstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mr, text, "CONNECT", "connected")
+            text = state_text_append(mach_read, text, "CONNECT", "connected")
         if self._tstate & Assignment.FLAG_DISKLESS != 0:
-            text = state_text_append(mr, text, "DISKLESS", "client")
+            text = state_text_append(mach_read, text, "DISKLESS", "client")
         if len(text) == 0:
             text = "-"
         return text
 
 
-def state_text_append(machine_readable, text, mr_text, hr_text):
-    if machine_readable:
+def state_text_append(mach_read, text, mr_text, hr_text):
+    if mach_read:
         if len(text) > 0:
             text += "|"
         text += mr_text
     else:
         if len(text) > 0:
-            text+= ","
+            text += ","
         text += hr_text
     return text

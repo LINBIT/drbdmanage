@@ -1,9 +1,8 @@
 #!/usr/bin/python
 
-__author__="raltnoeder"
-__date__ ="$Oct 24, 2013 4:04:23 PM$"
+__author__ = "raltnoeder"
+__date__   = "$Oct 24, 2013 4:04:23 PM$"
 
-import os
 import sys
 import subprocess
 import errno

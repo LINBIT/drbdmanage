@@ -12,8 +12,8 @@ from drbdmanage.conf.conffile import *
 from drbdmanage.storage.persistence import BlockDevicePersistence
 import drbdmanage.storage.storagecore
 
-__author__="raltnoeder"
-__date__ ="$Sep 12, 2013 10:49:42 AM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 12, 2013 10:49:42 AM$"
 
 
 class LVM(object):
@@ -56,12 +56,12 @@ class LVM(object):
             conf_loaded = None
             try:
                 self.load_state()
-            except PersistenceException as p_exc:
+            except PersistenceException:
                 logging.warning("LVM plugin: Cannot load state file '%s'"
                   % self.LVM_SAVEFILE)
             try:
                 conf_loaded = self.load_conf()
-            except IOError as io_err:
+            except IOError:
                 logging.warning("LVM plugin: Cannot load "
                   "configuration file '%s'" % self.LVM_CONFFILE)
             if conf_loaded is None:
@@ -74,7 +74,7 @@ class LVM(object):
               "unhandled exception: %s" % str(exc))
     
     
-    def create_blockdevice(self, name, id, size):
+    def create_blockdevice(self, name, vol_id, size):
         """
         Allocates a block device as backing storage for a DRBD volume
         
@@ -87,19 +87,19 @@ class LVM(object):
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
         """
-        bd = None
-        lv_name = self._lv_name(name, id)
+        blockdev = None
+        lv_name = self._lv_name(name, vol_id)
         try:
             tries = 0
             while tries < 2:
-                rc = self._create_lv(lv_name, size)
-                if rc == 0:
-                    bd = drbdmanage.storage.storagecore.BlockDevice(
+                fn_rc = self._create_lv(lv_name, size)
+                if fn_rc == 0:
+                    blockdev = drbdmanage.storage.storagecore.BlockDevice(
                       lv_name, size, self._lv_path_prefix() + lv_name)
-                    self._lvs[lv_name] = bd
+                    self._lvs[lv_name] = blockdev
                     self.save_state()
                     break
-                elif rc == self.LVM_EEXIST:
+                elif fn_rc == self.LVM_EEXIST:
                     # LV with the same name exists, remote it and try again
                     self._remove_lv(lv_name)
                 else:
@@ -109,7 +109,7 @@ class LVM(object):
         except Exception as exc:
             logging.error("LVM plugin: Block device creation failed,"
               "unhandled exception: %s" % str(exc))
-        return bd
+        return blockdev
     
     
     def remove_blockdevice(self, blockdevice):
@@ -130,7 +130,7 @@ class LVM(object):
         return DM_SUCCESS
     
     
-    def get_blockdevice(self, name, id):
+    def get_blockdevice(self, name, vol_id):
         """
         Retrieves a registered BlockDevice object
         
@@ -140,15 +140,15 @@ class LVM(object):
         @return: the specified block device; None on error
         @rtype:  BlockDevice object
         """
-        bd = None
+        blockdev = None
         try:
-            bd = self._lvs[self._lv_name(name, id)]
+            blockdev = self._lvs[self._lv_name(name, vol_id)]
         except KeyError:
             pass
-        return bd
+        return blockdev
     
     
-    def up_blockdevice(self, blockdevice):
+    def up_blockdevice(self, blockdev):
         """
         Activates a block device (e.g., connects an iSCSI resource)
         
@@ -158,7 +158,7 @@ class LVM(object):
         return DM_SUCCESS
     
     
-    def down_blockdevice(self, blockdevice):
+    def down_blockdevice(self, blockdev):
         """
         Deactivates a block device (e.g., disconnects an iSCSI resource)
         
@@ -180,7 +180,7 @@ class LVM(object):
         @type    node: DrbdNode object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        rc = 1
+        fn_rc    = 1
         poolsize = -1
         poolfree = -1
         
@@ -212,7 +212,7 @@ class LVM(object):
                         poolsize = -1
                         poolfree = -1
                     node.set_pool(poolsize, poolfree)
-                    rc = 0
+                    fn_rc = 0
         finally:
             if lvm_proc is not None:
                 try:
@@ -220,7 +220,7 @@ class LVM(object):
                 except Exception:
                     pass
                 lvm_proc.wait()
-        return rc
+        return fn_rc
     
     
     def _create_lv(self, name, size):
@@ -230,8 +230,8 @@ class LVM(object):
           str(size) + "k", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
-        rc = lvm_proc.wait()
-        return rc
+        fn_rc = lvm_proc.wait()
+        return fn_rc
     
     
     def _remove_lv(self, name):
@@ -241,16 +241,16 @@ class LVM(object):
           self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove,
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
-        rc = lvm_proc.wait()
-        return rc
+        fn_rc = lvm_proc.wait()
+        return fn_rc
     
     
     def _lv_command_path(self, cmd):
         return build_path(self._conf[self.KEY_LVM_PATH], cmd)
     
     
-    def _lv_name(self, name, id):
-        return ("%s_%.2d" % (name, id));
+    def _lv_name(self, name, vol_id):
+        return ("%s_%.2d" % (name, vol_id))
     
     
     def _lv_path_prefix(self):
@@ -260,11 +260,11 @@ class LVM(object):
         
     
     def load_conf(self):
-        file = None
+        in_file = None
         conf = None
         try:
-            file = open(self.LVM_CONFFILE, "r")
-            conffile = ConfFile(file)
+            in_file = open(self.LVM_CONFFILE, "r")
+            conffile = ConfFile(in_file)
             conf = conffile.get_conf()
         except IOError as ioerr:
             if ioerr.errno == errno.EACCES:
@@ -275,18 +275,18 @@ class LVM(object):
                   "'%s', error returned by the OS is: %s"
                   % (self.LVM_CONFFILE, ioerr.strerror))
         finally:
-            if file is not None:
-                file.close()
+            if in_file is not None:
+                in_file.close()
         return conf
     
     
     def load_state(self):
-        file = None
+        in_file = None
         try:
             stored_hash = None
-            file = open(self.LVM_SAVEFILE, "r")
+            in_file = open(self.LVM_SAVEFILE, "r")
             offset = 0
-            line = file.readline()
+            line = in_file.readline()
             while len(line) > 0:
                 if line.startswith("sig:"):
                     stored_hash = line[4:]
@@ -294,52 +294,52 @@ class LVM(object):
                         stored_hash = stored_hash[:len(stored_hash) - 1]
                     break
                 else:
-                    offset = file.tell()
-                line = file.readline()
-            file.seek(0)
+                    offset = in_file.tell()
+                line = in_file.readline()
+            in_file.seek(0)
             if offset != 0:
-                load_data = file.read(offset)
+                load_data = in_file.read(offset)
             else:
-                load_data = file.read()
+                load_data = in_file.read()
             if stored_hash is not None:
-                hash = DataHash()
-                hash.update(load_data)
-                computed_hash = hash.get_hex_hash()
+                data_hash = DataHash()
+                data_hash.update(load_data)
+                computed_hash = data_hash.get_hex_hash()
                 if computed_hash != stored_hash:
                     logging.warning("LVM plugin: state data does not "
                       "match its signature")
             lvm_con = json.loads(load_data)
             for properties in lvm_con.itervalues():
-                bd = BlockDevicePersistence.load(properties)
-                if bd is not None:
-                    self._lvs[bd.get_name()] = bd
-        except Exception as exc:
+                blockdev = BlockDevicePersistence.load(properties)
+                if blockdev is not None:
+                    self._lvs[blockdev.get_name()] = blockdev
+        except Exception:
             raise PersistenceException
         finally:
-            if file is not None:
-                file.close()
+            if in_file is not None:
+                in_file.close()
     
     
     def save_state(self):
         lvm_con = dict()
-        for bd in self._lvs.itervalues():
-            bd_persist = BlockDevicePersistence(bd)
+        for blockdev in self._lvs.itervalues():
+            bd_persist = BlockDevicePersistence(blockdev)
             bd_persist.save(lvm_con)
-        file = None
+        out_file = None
         try:
-            file = open(self.LVM_SAVEFILE, "w")
-            hash = DataHash()
+            out_file = open(self.LVM_SAVEFILE, "w")
+            data_hash = DataHash()
             save_data = json.dumps(lvm_con, indent=4, sort_keys=True) + "\n"
-            hash.update(save_data)
-            file.write(save_data)
-            file.write("sig:" + hash.get_hex_hash() + "\n")
+            data_hash.update(save_data)
+            out_file.write(save_data)
+            out_file.write("sig:" + data_hash.get_hex_hash() + "\n")
         except Exception as exc:
             logging.error("LVM plugin: saving state data failed, "
              "unhandled exception: %s" % str(exc))
             raise PersistenceException
         finally:
-            if file is not None:
-                file.close()
+            if out_file is not None:
+                out_file.close()
     
     
     def reconfigure(self):
