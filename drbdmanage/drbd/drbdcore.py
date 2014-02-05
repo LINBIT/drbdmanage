@@ -4,6 +4,7 @@ __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 10:43:21 AM$"
 
 import subprocess
+import logging
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
 
@@ -55,18 +56,17 @@ class DrbdManager(object):
         are deployed/undeployed/attached/detached/connected/disconnected/etc...
         """
         persist = None
-        sys.stdout.write("%sDEBUG: DrbdManager invoked%s\n"
-          % (COLOR_YELLOW, COLOR_NONE))
+        logging.debug("DrbdManager: invoked")
         try:
             # check whether the configuration hash has changed
             persist = self._server.open_conf()
             if persist is not None:
-                sys.stderr.write("%sDEBUG: drbdcore check/hash: %s%s\n"
-                  % (COLOR_DARKPINK, persist.get_stored_hash(),
-                  COLOR_NONE))
+                logging.debug("DrbdManager: hash check: %s"
+                  % persist.get_stored_hash())
                 if self._server.hashes_match(persist.get_stored_hash()):
                     # configuration did not change, bail out
-                    sys.stdout.write("  hash unchanged, abort\n")
+                    logging.debug("DrbdManager: hash unchanged, "
+                      "finished")
                     return
             # configuration hash has changed
             # lock and reload the configuration
@@ -74,27 +74,20 @@ class DrbdManager(object):
             persist = self._server.begin_modify_conf()
             if persist is not None:
                 if self.perform_changes():
-                    # sys.stdout.write("%sDEBUG: DrbdManager: state changed%s\n"
-                    #   % (COLOR_GREEN, COLOR_NONE))
+                    logging.debug("DrbdManager: state changed, "
+                      "saving data tables")
                     self._server.save_conf_data(persist)
                 else:
-                    # sys.stdout.write("%sDEBUG: DrbdManager: state unchanged%s\n"
-                    #   %(COLOR_DARKGREEN, COLOR_NONE))
-                    pass
+                    logging.debug("DrbdManager: state unchanged")
             else:
-                # Could not instantiate PersistenceImpl
-                # TODO: Error logging
-                sys.stderr.write("%sDEBUG: DrbdManager: cannot open "
-                  "persistent storage%s\n" % (COLOR_RED, COLOR_NONE))
-            sys.stdout.write("%sDEBUG: DrbdManager: finished%s\n"
-              % (COLOR_DARKGREEN, COLOR_NONE))
+                logging.debug("DrbdManager: cannot load data tables")
+            logging.debug("DrbdManager: finished")
         except Exception as exc:
+            # FIXME PersistenceException should at least be ignored here
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            sys.stderr.write("%sDrbdManager: Oops: %s%s\n"
-              % (COLOR_RED, str(exc), COLOR_NONE))
-            print exc_type
-            print exc_obj
-            print exc_tb
+            logging.error("DrbdManager: abort, unhandled exception: %s"
+              % str(exc))
+            logging.debug("Stack trace:\n%s" % str(exc_tb))
         finally:
             # this also works for read access
             self._server.end_modify_conf(persist)
@@ -119,8 +112,6 @@ class DrbdManager(object):
         """
         state_changed = False
         pool_changed  = False
-        # sys.stdout.write("%s--> DrbdManager: perform changes%s\n"
-        #   % (COLOR_GREEN, COLOR_NONE))
         
         """
         Check whether the system the drbdmanaged server is running on is
@@ -128,27 +119,21 @@ class DrbdManager(object):
         """
         node = self._server.get_instance_node()
         if node is None:
-            sys.stdout.write("%sDEBUG DrbdManager: this node is "
-              "not registered%s\n"
-              % (COLOR_RED, COLOR_NONE))
+            logging.warning("DrbdManager: abort, this node ('%s') has "
+              "no entry in the data tables"
+              % self._server.get_instance_node_name())
             return False
-        
-        sys.stdout.write("%sDEBUG: DrbdManager: Perform changes on '%s'%s\n"
-          % (COLOR_DARKGREEN, node.get_name(), COLOR_NONE))
         
         """
         Check all assignments for changes
         """
         assignments = node.iterate_assignments()
         for assg in assignments:
-            # sys.stdout.write("%s--> DrbdManager: assignment '%s:%s'%s\n"
-            #   % (COLOR_GREEN, assg.get_node().get_name(),
-            #   assg.get_resource().get_name(), COLOR_NONE))
             
             if assg.requires_action():
-                # sys.stdout.write("%sDEBUG: %s cstate(%x)->tstate(%x)%s\n"
-                #   % (COLOR_GREEN, assg.get_resource().get_name(),
-                #   assg.get_cstate(), assg.get_tstate(), COLOR_NONE))
+                logging.debug("assigned resource %s cstate(%x)->tstate(%x)"
+                  % (assg.get_resource().get_name(),
+                  assg.get_cstate(), assg.get_tstate()))
                                
                 state_changed  = True
                 failed_actions = False
@@ -269,12 +254,6 @@ class DrbdManager(object):
                 
                 if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
                     assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
-                
-                if ((assg.get_tstate() & Assignment.ACT_IGN_MASK)
-                  != assg.get_cstate()):
-                    sys.stderr.write(COLOR_RED
-                      + "Warning: End of perform_changes(), but assignment "
-                      "seems to have pending actions" + COLOR_NONE + "\n")
         
         """
         Cleanup the server's data structures
@@ -303,16 +282,15 @@ class DrbdManager(object):
         node = self._server.get_instance_node()
         if node is not None:
             for assg in node.iterate_assignments():
-                # sys.stderr.write("DEBUG: initial_up %s\n"
-                #   % (assg.get_resource().get_name()))
                 cstate = assg.get_cstate()
                 tstate = assg.get_tstate()
                 if assg.is_deployed():
                     try:
                         self._up_resource(assg)
                     except Exception as exc:
-                        sys.stderr.write("DEBUG: initial_up: %s\n"
-                          % (str(exc)))
+                        logging.debug("failed to start resource '%s', "
+                        "unhandled exception: %s"
+                        % (assg.get_resource().get_name(), str(exc)))
     
     
     def _up_resource(self, assignment):
@@ -321,6 +299,9 @@ class DrbdManager(object):
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
+        
+        logging.info("starting resource '%s'"
+          % resource.get_name())
         
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.adjust(resource.get_name())
@@ -340,6 +321,9 @@ class DrbdManager(object):
         """
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
+        
+        logging.info("stopping resource '%s'"
+          % resource.get_name())
         
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.down(resource.get_name())
@@ -364,10 +348,6 @@ class DrbdManager(object):
             volume   = vol_state.get_volume()
             minor    = volume.get_minor()
 
-            # DEBUG
-            if resource is None:
-                sys.stderr.write("DEBUG: _deploy_volume(): resource == NULL\n")
-            
             bd = bd_mgr.create_blockdevice(resource.get_name(),
               volume.get_id(), volume.get_size_kiB())
             
@@ -791,19 +771,18 @@ class DrbdManager(object):
         if name_len < 1 or name_len > length:
             raise InvalidNameException
         alpha = False
-        for idx in xrange(0, name_len):
+        idx = 0
+        while idx < name_len:
             b = name_b[idx]
             if b >= ord('a') and b <= ord('z'):
                 alpha = True
-                continue
-            if b >= ord('A') and b <= ord('Z'):
+            elif b >= ord('A') and b <= ord('Z'):
                 alpha = True
-                continue
-            if b >= ord('0') and b <= ord('9') and idx >= 1:
-                continue
-            if b == ord("_"):
-                continue
-            raise InvalidNameException
+            else:
+                if not ((b >= ord('0') and b <= ord('9') and idx >= 1)
+                  or b == ord("_")):
+                    raise InvalidNameException
+            idx += 1
         if not alpha:
             raise InvalidNameException
         return str(name_b)

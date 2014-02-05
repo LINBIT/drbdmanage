@@ -7,6 +7,7 @@ import dbus
 import dbus.service
 import dbus.mainloop.glib
 import gobject
+import logging
 import drbdmanage.drbd.drbdcore
 from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.exceptions import *
@@ -51,11 +52,7 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}", out_signature="i")
     def create_node(self, name, props):
-        try:
-            return self._server.create_node(name, props)
-        except Exception as exc:
-            # FIXME
-            sys.stderr.write("Oops, " + str(exc))
+        return self._server.create_node(name, props)
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -195,38 +192,6 @@ class DBusServer(dbus.service.Object):
         return self._server.export_conf(resource)
     
     
-    # DEBUG
-    """
-    @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="a(sa(ssaas))")
-    def assignment_list(self):
-        try:
-            sys.stdout.write("DEBUG #1\n")
-            vol_aa = [ "0", "10240", "103" ]
-            vol_ab = [ "1", "8192", "107" ]
-            vol_bb = [ "0", "13500", "104" ]
-            vols_a = [ vol_aa, vol_ab ]
-            vols_b = [ vol_bb ]
-            sys.stdout.write("DEBUG #2\n")
-            res_a = [ "res01", "0", vols_a ]
-            res_b = [ "res02", "1", vols_b ]
-            sys.stdout.write("DEBUG #3\n")
-            res_node_a = [ res_a, res_b ]
-            res_node_b = [ res_b ]
-            sys.stdout.write("DEBUG #4\n")
-            node_a = [ "node01", res_node_a ]
-            node_b = [ "node02", res_node_b ]
-            sys.stdout.write("DEBUG #5\n")
-            nodes_arr = [ node_a, node_b ]
-            nodes = dbus.Array(nodes_arr)
-            sys.stdout.write("DEBUG #6\n")
-            # this works
-        except Exception as exc:
-            print exc
-        return dbus.Struct(nodes)
-    """
-    
-    
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="i")
     def reconfigure(self):
@@ -254,11 +219,12 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="", out_signature="")
     def shutdown(self):
+        logging.info("server shutdown requested through D-Bus")
         self._server.shutdown()
     
     
-    # DEBUG
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="s", out_signature="i")
-    def debug_cmd(self, cmd):
-        pass
+    def debug_console(self, command):
+        return self._server.debug_console(command)
+

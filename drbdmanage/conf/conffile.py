@@ -4,6 +4,7 @@ __author__="raltnoeder"
 __date__ ="$Oct 10, 2013 9:57:03 AM$"
 
 import sys
+import logging
 from drbdmanage.exceptions import *
 
 class ConfFile(object):
@@ -303,10 +304,11 @@ class DrbdAdmConf(object):
             stream.write("}\n")
             # end resource
         except InvalidMinorNrException as min_exc:
-            sys.stderr.write("DEBUG: DrbdAdmConf: No minor number\n")
+            logging.critical("DrbdAdmConf: Volume configuration has no "
+              "MinorNr object")
         except Exception as exc:
-            # TODO: handle errors (stream I/O?)
-            print exc
+            logging.error("Cannot generate configuration file, "
+              "unhandled exception: %s" % str(exc))
     
     
     def write_excerpt(self, stream, assignment, nodes, vol_states):
@@ -387,7 +389,8 @@ class DrbdAdmConf(object):
             stream.write("}\n")
             # end resource
         except InvalidMinorNrException as min_exc:
-            sys.stderr.write("DEBUG: DrbdAdmConf: No minor number\n")
+            logging.critical("DrbdAdmConf: Volume configuration has no "
+              "MinorNr object")
         except Exception as exc:
-            # TODO: handle errors (stream I/O?)
-            print exc
+            logging.error("Cannot generate configuration file, "
+              "unhandled exception: %s" % str(exc))

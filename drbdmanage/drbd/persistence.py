@@ -12,6 +12,7 @@ import errno
 import time
 import json
 import mmap
+import logging
 
 __author__="raltnoeder"
 __date__ ="$Sep 24, 2013 3:33:50 PM$"
@@ -143,24 +144,25 @@ class PersistenceImpl(object):
                 self._writeable = modify
                 rc = True
                 break
-            except IOError as io_err:
+            except IOError as ioerr:
                 fail  = True
-                error = io_err.errno
-            except OSError as os_err:
+                error = ioerr.errno
+            except OSError as oserr:
                 fail  = True
-                error = os_err.errno
+                error = oserr.errno
             if fail:
                 fail_ctr += 1
                 if error == errno.ENOENT:
-                    sys.stderr.write("Cannot open %s: not found\n"
-                      % (self.CONF_FILE))
+                    logging.error("cannot open control volume '%s': "
+                      "object not found" % self.CONF_FILE)
                     cs = self.ENOENT_REOPEN_TIMER
                 else:
                     b = os.urandom(1)
                     cs = ord(b) / 100 + self.MIN_REOPEN_TIMER
                 time.sleep(cs)
         if not fail_ctr < self.MAX_FAIL_COUNT:
-            sys.stderr.write("Cannot open %s (%d failed attempts)\n"
+            logging.error("cannot open control volume '%s' "
+              "(%d failed attempts)"
               % (self.CONF_FILE, self.MAX_FAIL_COUNT))
         return rc
         
@@ -248,11 +250,11 @@ class PersistenceImpl(object):
                 
                 computed_hash = hash.get_hex_hash()
                 self.update_stored_hash(computed_hash)
-                sys.stderr.write("%sDEBUG: persistence save/hash: %s%s\n"
-                  % (COLOR_BLUE, computed_hash, COLOR_NONE))
+                logging.debug("save/hash: %s" % computed_hash)
                 self._hash_obj = hash
             except Exception as exc:
-                sys.stderr.write("persistence save(): " + str(exc) + "\n")
+                logging.error("cannot save data tables, "
+                  "encountered exception: %s" % str(exc))
                 raise PersistenceException
         else:
             # file not open for writing
@@ -366,11 +368,10 @@ class PersistenceImpl(object):
                 
                 computed_hash = hash.get_hex_hash()
                 stored_hash   = self.get_stored_hash()
-                sys.stderr.write("%sDEBUG: persistence load/hash: %s%s\n"
-                  % (COLOR_BLUE, stored_hash, COLOR_NONE))
+                logging.debug("load/hash: %s" % stored_hash)
                 if computed_hash != stored_hash:
-                    sys.stderr.write("Warning: configuration data does not "
-                      "match its signature\n")
+                    logging.warning("information in the data tables "
+                      "does not match its signature")
                 # TODO: if the signature is wrong, load an earlier backup
                 #       of the configuration
                 
@@ -381,7 +382,8 @@ class PersistenceImpl(object):
                         if node is not None:
                             nodes[node.get_name()] = node
                         else:
-                            print "DEBUG Nodes", properties # DEBUG
+                            logging.debug("persistence: Failed to load a "
+                              "DrbdNode object")
                             errors = True
                 
                 resources.clear()
@@ -391,7 +393,8 @@ class PersistenceImpl(object):
                         if resource is not None:
                             resources[resource.get_name()] = resource
                         else:
-                            print "DEBUG Resources", properties # DEBUG
+                            logging.debug("persistence: Failed to load a "
+                              "DrbdResource object")
                             errors = True
                 
                 if assg_con is not None:
@@ -399,21 +402,22 @@ class PersistenceImpl(object):
                         assignment = AssignmentPersistence.load(properties,
                           nodes, resources)
                         if assignment is None:
-                            print "DEBUG Assignments", properties # DEBUG
+                            logging.debug("persistence: Failed to load an "
+                              "Assignment object")
                             errors = True
                     self._hash_obj = hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                sys.stderr.write("DEBUG: drbd/persistence load(): "
-                  "Exception %s (%s), %s\n%s\n"
+                logging.debug("persistence: load failed: "
+                  "Exception %s (%s), %s\n%s"
                   % (str(exc), exc_type, exc_obj, exc_tb))
                 raise PersistenceException
         else:
             # file not open
-            sys.stderr.write("DEBUG: drbd/persistence load(): "
-              "File not open\n" % str(exc))
-            raise IOError("Persistence load() without an "
-              "open file descriptor")
+            logging.debug("persistence: data tables load attempted before "
+              "opening the control volume")
+            raise IOError("data tables load attempted before opening the "
+              "control volume")
         if errors:
             raise PersistenceException
     

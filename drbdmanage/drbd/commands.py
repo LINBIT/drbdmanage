@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import errno
+import logging
 
 from drbdmanage.utils import *
 
@@ -41,8 +42,7 @@ class DrbdAdm(object):
         
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: adjust %s%s\n"
-          % (COLOR_GREEN, res_name, COLOR_NONE))
+        logging.debug("DrbdAdm: adjust %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
         return self._run_drbdadm(args)
     
@@ -53,8 +53,7 @@ class DrbdAdm(object):
         
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: === !! OBSOLETE !! === DrbdAdm: up %s%s\n"
-          % (COLOR_RED, res_name, COLOR_NONE))
+        logging.warning("DEPRECATED: DrbdAdm: up %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-", "up", res_name]
         return self._run_drbdadm(args)
     
@@ -65,8 +64,7 @@ class DrbdAdm(object):
         
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: down %s%s\n"
-          % (COLOR_GREEN, res_name, COLOR_NONE))
+        logging.debug("DrbdAdm: down %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-", "down", res_name]
         return self._run_drbdadm(args)
     
@@ -80,11 +78,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         if force:
-            sys.stdout.write("%sDEBUG: DrbdAdm: primary %s --force%s\n"
-              % (COLOR_GREEN, res_name, COLOR_NONE))
+            logging.debug("DrbdAdm: primary %s --force" % res_name)
         else:
-            sys.stdout.write("%sDEBUG: DrbdAdm: primary %s%s\n"
-              % (COLOR_GREEN, res_name, COLOR_NONE))
+            logging.debug("DrbdAdm: primary %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-"]
         if force:
             args.append("--")
@@ -99,8 +95,7 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: secondary %s%s\n"
-          % (COLOR_GREEN, res_name, COLOR_NONE))
+        logging.debug("DrbdAdm: secondary %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
         return self._run_drbdadm(args)
     
@@ -111,12 +106,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         if discard:
-            sys.stdout.write("%sDEBUG: DrbdAdm: connect %s "
-              "--discard-my-data%s\n"
-              % (COLOR_GREEN, res_name, COLOR_NONE))
+            logging.debug("DrbdAdm: connect %s --discard-my-data" % res_name)
         else:
-            sys.stdout.write("%sDEBUG: DrbdAdm: connect %s%s\n"
-              % (COLOR_GREEN, res_name, COLOR_NONE))
+            logging.debug("DrbdAdm: connect %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-"]
         if discard:
             args.append("--")
@@ -131,8 +123,7 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: disconnect %s%s\n"
-          % (COLOR_GREEN, res_name, COLOR_NONE))
+        logging.debug("DrbdAdm: disconnect %s" % res_name)
         args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
         return self._run_drbdadm(args)
     
@@ -142,8 +133,7 @@ class DrbdAdm(object):
         Attaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: attach %s %d%s\n"
-          % (COLOR_GREEN, res_name, vol_id, COLOR_NONE))
+        logging.debug("DrbdAdm: attach %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "attach",
           res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
@@ -154,8 +144,7 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: detach %s %d%s\n"
-          % (COLOR_GREEN, res_name, vol_id, COLOR_NONE))
+        logging.debug("DrbdAdm: detach %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "detach",
           res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
@@ -166,8 +155,7 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        sys.stdout.write("%sDEBUG: DrbdAdm: create-md %s %d%s\n"
-          % (COLOR_GREEN, res_name, vol_id, COLOR_NONE))
+        logging.debug("DrbdAdm: create-md %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
           "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
@@ -184,13 +172,13 @@ class DrbdAdm(object):
               stdin=subprocess.PIPE, close_fds=True)
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
-                sys.stderr.write("Error: Cannot find the drbdadm utility\n")
-            elif oserr.errno == errno.EPERM:
-                sys.stderr.write("Error: Cannot execute the drbdadm utility, "
-                  "permission denied\n")
+                logging.error("Cannot find the drbdadm utility")
+            elif oserr.errno == errno.EACCES:
+                logging.error("Cannot execute the drbdadm utility, "
+                  "permission denied")
             else:
-                sys.stderr.write("Error: Cannot execute the drbdadm utility ,"
-                  "the OS returned the following error:\n"
-                  "%s\n" % (oserr.strerror))
+                logging.error("Cannot execute the drbdadm utility, "
+                  "error returned by the OS is: "
+                  "%s\n" % oserr.strerror)
         return drbd_proc
     

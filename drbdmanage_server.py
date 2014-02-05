@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import logging
 from drbdmanage.server import *
 
 __author__="raltnoeder"
@@ -15,7 +16,7 @@ def main():
     try:
         server.run()
     except KeyboardInterrupt:
-        sys.stdout.write("Server shutdown (received SIGINT)\n")
+        logging.info("server shutdown (received SIGINT)")
     return 0
 
 

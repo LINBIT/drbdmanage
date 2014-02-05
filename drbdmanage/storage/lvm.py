@@ -3,6 +3,8 @@
 import subprocess
 import sys
 import json
+import errno
+import logging
 from drbdmanage.exceptions import *
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import build_path
@@ -55,20 +57,21 @@ class LVM(object):
             try:
                 self.load_state()
             except PersistenceException as p_exc:
-                sys.stderr.write("lvm.LVM: Warning: Cannot load the LVM "
-                  " state file: %s\n" % self.LVM_SAVEFILE)
+                logging.warning("LVM plugin: Cannot load state file '%s'"
+                  % self.LVM_SAVEFILE)
             try:
                 conf_loaded = self.load_conf()
             except IOError as io_err:
-                sys.stderr.write("lvm.LVM: Warning: Cannot load the "
-                  "LVM configuration file: %s\n" % self.LVM_CONFFILE)
+                logging.warning("LVM plugin: Cannot load "
+                  "configuration file '%s'" % self.LVM_CONFFILE)
             if conf_loaded is None:
                 self._conf = self.CONF_DEFAULTS
             else:
                 self._conf = ConfFile.conf_defaults_merge(self.CONF_DEFAULTS,
                   conf_loaded)
         except Exception as exc:
-            print "DEBUG lvm.LVM: ", exc
+            logging.error("LVM plugin: initialization failed, "
+              "unhandled exception: %s" % str(exc))
     
     
     def create_blockdevice(self, name, id, size):
@@ -104,8 +107,8 @@ class LVM(object):
                     break
                 tries += 1
         except Exception as exc:
-            sys.stderr.write("DEBUG: LVM: create_blockdevice failed\n")
-            print exc
+            logging.error("LVM plugin: Block device creation failed,"
+              "unhandled exception: %s" % str(exc))
         return bd
     
     
@@ -263,8 +266,14 @@ class LVM(object):
             file = open(self.LVM_CONFFILE, "r")
             conffile = ConfFile(file)
             conf = conffile.get_conf()
-        except IOError as io_err:
-            print io_err
+        except IOError as ioerr:
+            if ioerr.errno == errno.EACCES:
+                logging.error("LVM plugin: cannot open configuration file "
+                  "'%s': Permission denied" % self.LVM_CONFFILE)
+            elif ioerr.errno != errno.ENOENT:
+                logging.error("LVM plugin: cannot open configuration file "
+                  "'%s', error returned by the OS is: %s"
+                  % (self.LVM_CONFFILE, ioerr.strerror))
         finally:
             if file is not None:
                 file.close()
@@ -297,8 +306,8 @@ class LVM(object):
                 hash.update(load_data)
                 computed_hash = hash.get_hex_hash()
                 if computed_hash != stored_hash:
-                    sys.stderr.write("Warning: configuration data does not "
-                      "match its signature\n")
+                    logging.warning("LVM plugin: state data does not "
+                      "match its signature")
             lvm_con = json.loads(load_data)
             for properties in lvm_con.itervalues():
                 bd = BlockDevicePersistence.load(properties)
@@ -312,7 +321,6 @@ class LVM(object):
     
     
     def save_state(self):
-        print "DEBUG: LVM: save_state"
         lvm_con = dict()
         for bd in self._lvs.itervalues():
             bd_persist = BlockDevicePersistence(bd)
@@ -326,7 +334,8 @@ class LVM(object):
             file.write(save_data)
             file.write("sig:" + hash.get_hex_hash() + "\n")
         except Exception as exc:
-            print exc
+            logging.error("LVM plugin: saving state data failed, "
+             "unhandled exception: %s" % str(exc))
             raise PersistenceException
         finally:
             if file is not None:

@@ -18,8 +18,8 @@ from drbdmanage.exceptions import *
 from drbdmanage.consts import *
 
 
-__author__="raltnoeder"
-__date__ ="$Sep 16, 2013 1:11:20 PM$"
+__author__ = "raltnoeder"
+__date__   = "$Sep 16, 2013 1:11:20 PM$"
 
 
 class DrbdManage(object):
@@ -83,6 +83,9 @@ class DrbdManage(object):
                         self._noerr = True
                     elif arg == "--no-colors":
                         self._colors = False
+                    elif arg == "-D":
+                        args.next()
+                        exit(self.cmd_debug(args))
                     else:
                         sys.stderr.write("Error: Invalid option '%s'\n"
                           % (arg))
@@ -556,12 +559,12 @@ class DrbdManage(object):
         return rc
     
     
-    def syntax_connect(self, reconnect):
-        if reconnect:
-            cmd = "reconnect"
-        else:
-            cmd = "connect"
-        sys.stderr.write("Syntax: %s <node> <resource>\n" % (cmd))
+    def syntax_connect(self):
+        sys.stderr.write("Syntax: connect <node> <resource>\n")
+    
+    
+    def syntax_reconnect(self):
+        sys.stderr.write("Syntax: reconnect <node> <resource>\n")
     
     
     def cmd_disconnect(self, args):
@@ -590,7 +593,7 @@ class DrbdManage(object):
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
-            self.syntax_connect()
+            self.syntax_disconnect()
         return rc
     
     
@@ -701,7 +704,7 @@ class DrbdManage(object):
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
-            self.syntax_connect()
+            self.syntax_attach()
         return rc
     
     
@@ -740,7 +743,7 @@ class DrbdManage(object):
             else:
                 self.error_msg_text(server_rc)
         except SyntaxException:
-            self.syntax_connect()
+            self.syntax_detach()
         return rc
     
     
@@ -1426,8 +1429,8 @@ class DrbdManage(object):
     
     def cmd_ping(self, args):
         rc = 1
-        self.dbus_init()
         try:
+            self.dbus_init()
             server_rc = self._server.ping()
             if server_rc == 0:
                 sys.stdout.write("pong\n")
@@ -1474,9 +1477,34 @@ class DrbdManage(object):
     def syntax_init(self):
         sys.stderr.write("Syntax: init [ -q | --quiet ] device\n")
     
+    
     def cmd_exit(self, args):
         exit(0)
         
+    
+    def cmd_debug(self, args):
+        rc = 1
+        command = ""
+        first   = True
+        while True:
+            arg = args.next_arg()
+            if arg is not None:
+                if first:
+                    first = False
+                else:
+                    command += " "
+                command += arg
+            else:
+                break
+        try:
+            self.dbus_init()
+            rc = self._server.debug_console(dbus.String(command))
+            sys.stderr.write("%s rc=%d\n" % (command, rc))
+        except dbus.exceptions.DBusException:
+            sys.stderr.write("drbdmanage: cannot connect to the drbdmanage "
+              "server through D-Bus.\n")
+        return rc
+    
     
     def syntax_export_conf(self):
         sys.stderr.write("Syntax: export { resource | * }\n")

@@ -5,6 +5,8 @@ import os
 import gobject
 import subprocess
 import fcntl
+import logging
+import logging.handlers
 
 from drbdmanage.dbusserver import *
 from drbdmanage.exceptions import *
@@ -19,15 +21,14 @@ __author__="raltnoeder"
 __date__ ="$Sep 12, 2013 5:09:49 PM$"
 
 
-def traceit(frame, event, arg):
-    if event == "line":
-        lineno = frame.f_lineno
-        print frame.f_code.co_filename, ":", "line", lineno
-    return traceit
-
-#sys.settrace(traceit)
-
 class DrbdManageServer(object):
+    
+    """
+    drbdmanage server - main class
+    """
+    
+    DM_VERSION = "0.10"
+    
     CONFFILE = "/etc/drbdmanaged.conf"
     EVT_UTIL = "drbdsetup"
     
@@ -41,6 +42,8 @@ class DrbdManageServer(object):
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
     DRBDCTRL_RES_NAME  = ".drbdctrl"
+    
+    LOGGING_FORMAT = "drbdmanaged[%(process)d]: %(levelname)-10s %(message)s"
     
     KEY_STOR_NAME      = "storage-plugin"
     KEY_DEPLOYER_NAME  = "deployer-plugin"
@@ -102,7 +105,20 @@ class DrbdManageServer(object):
     # Server configuration
     _conf      = None
     
-    _DEBUG_max_ctr = 0
+    # Logging
+    _root_logger = None
+    DM_LOGLEVELS = {
+      "CRITICAL" : logging.CRITICAL,
+      "ERROR"    : logging.ERROR,
+      "WARNING"  : logging.WARNING,
+      "INFO"     : logging.INFO,
+      "DEBUG"    : logging.DEBUG
+    }
+    
+    """
+    DEBUGGING FLAGS
+    """
+    DBG_EVENTS = False
     
     
     def __init__(self):
@@ -121,11 +137,10 @@ class DrbdManageServer(object):
                     self._instance_node_name = uname[1]
             except Exception:
                 pass
-        try:
-            sys.stdout.write("drbdmanaged -- initializing server on '%s'\n"
-              % self._instance_node_name)
-        except Exception:
-            pass
+        self.init_logging()
+        logging.info("DRBDmanage server, version %s"
+              " -- initializing on node '%s'"
+              % (self.DM_VERSION, self._instance_node_name))
         self._nodes     = dict()
         self._resources = dict()
         # load the server configuration file
@@ -220,8 +235,8 @@ class DrbdManageServer(object):
             else:
                 if line.endswith("\n"):
                     line = line[:len(line) - 1]
-                # sys.stderr.write("%sDEBUG: drbd_event() (%s%s%s)%s\n"
-                #   % (COLOR_RED, COLOR_NONE, line, COLOR_RED, COLOR_NONE))
+                if self.DBG_EVENTS:
+                    logging.debug("received event line: %s" % line)
                 sys.stderr.flush();
                 if not changed:
                     event_type   = get_event_type(line)
@@ -249,6 +264,18 @@ class DrbdManageServer(object):
         return True
     
     
+    def init_logging(self):
+        """
+        Initialize global logging
+        """
+        self._root_logger = logging.getLogger("")
+        syslog_h    = logging.handlers.SysLogHandler(address="/dev/log")
+        syslog_f    = logging.Formatter(fmt=self.LOGGING_FORMAT)
+        syslog_h.setFormatter(syslog_f)
+        self._root_logger.addHandler(syslog_h)
+        self._root_logger.setLevel(logging.INFO)
+    
+    
     def load_server_conf(self):
         """
         Loads the server configuration file
@@ -273,8 +300,13 @@ class DrbdManageServer(object):
             else:
                 self._conf = self.CONF_DEFAULTS
         except IOError as ioerr:
-            sys.stderr.write("Warning: Cannot open drbdmanage configuration "
-              "file %s\n" % (self.CONFFILE))
+            if ioerr.errno == errno.EACCES:
+                logging.warning("cannot open configuration file '%s', "
+                  "permission denied" % self.CONFFILE)
+            elif ioerr.errno != errno.ENOENT:
+                logging.warning("cannot open configuration file '%s', "
+                  "error returned by the OS is: %s"
+                  % (self.CONFFILE, ioerr.strerror))
         finally:
             if self._conf is None:
                 self._conf = self.CONF_DEFAULTS
@@ -571,8 +603,6 @@ class DrbdManageServer(object):
                     for keyval in props.iteritems():
                         key = keyval[0]
                         val = keyval[1]
-                        sys.stderr.write("DEBUG: props(%s)=%s\n"
-                          % (key, val))
                         if key == RES_PORT:
                             try:
                                 port_nr = int(val)
@@ -616,9 +646,6 @@ class DrbdManageServer(object):
                 resource = self._resources[name]
                 if (not force) and resource.has_assignments():
                     for assg in resource.iterate_assignments():
-                        # sys.stderr.write("DEBUG: remove-resource: undeploying "
-                        #  "assignment %s:%s\n" % (assg.get_node().get_name(),
-                        #  assg.get_resource().get_name()))
                         assg.undeploy()
                     resource.remove()
                     self._drbd_mgr.perform_changes()
@@ -1390,14 +1417,12 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                # sys.stdout.write(
-                #   "DEBUG: updating storage pool information\n")
+                logging.info("updating storage pool information")
                 rc = self.update_pool_data()
                 self.cleanup()
                 self.save_conf_data(persist)
         except PersistenceException:
-            sys.stderr.write("DEBUG: could not write to persistent "
-              "storage while updating storage pool information\n")
+            logging.error("cannot save updated storage pool information")
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             rc = DM_DEBUG
@@ -1764,8 +1789,9 @@ class DrbdManageServer(object):
             writer    = DrbdAdmConf()
             writer.write(assg_conf, assignment, False)
         except IOError as ioerr:
-            sys.stderr.write("Cannot write configuration file '%s'\n"
-              % (file_path))
+            logging.error("cannot write to configuration file '%s', error "
+              "returned by the OS is: %s"
+              % (file_path, ioerr.strerror))
             rc = 1
         finally:
             if assg_conf is not None:
@@ -1790,8 +1816,8 @@ class DrbdManageServer(object):
         try:
             os.unlink(file_path)
         except OSError as oserr:
-            sys.stderr.write("Cannot remove configuration file '%s'\n"
-              % (file_path))
+            logging.error("cannot remove configuration file '%s', "
+              "error returned by the OS is: %s" % (file_path, oserr.strerror))
             rc = 1
         return rc
     
@@ -1845,10 +1871,53 @@ class DrbdManageServer(object):
         return rc
     
     
+    def debug_console(self, command):
+        """
+        Set debugging options
+        """
+        rc = 1
+        try:
+            if command.startswith("set "):
+                # remove "set "
+                command = command[4:]
+                pos = command.find("=")
+                if pos != -1:
+                    key = command[:pos]
+                    val = command[pos + 1:]
+                    if key == "DBG_EVENTS":
+                        self.DBG_EVENTS = self._debug_parse_flag(val)
+                        rc = 0
+                    elif key.lower() == "loglevel":
+                        loglevel = self._debug_parse_loglevel(val)
+                        self._root_logger.setLevel(loglevel)
+                        rc = 0
+        except SyntaxException:
+            pass
+        return rc
+    
+    
+    def _debug_parse_flag(self, val):
+        if val == "1":
+            flag = True
+        elif val == "0":
+            flag = False
+        else:
+            raise SyntaxException
+        return flag
+    
+    
+    def _debug_parse_loglevel(self, val):
+        for name in self.DM_LOGLEVELS.iterkeys():
+            if val.upper() == name:
+                return self.DM_LOGLEVELS[name]
+        raise SyntaxException
+    
+    
     def shutdown(self):
         """
         Stops this drbdmanage server instance
         """
+        logging.info("server shutdown (requested by function call)")
         # FIXME: Maybe the drbdsetup child process should be terminated first?
         exit(0)
     
@@ -1958,7 +2027,22 @@ class DrbdManageServer(object):
     def catch_internal_error(exc):
         try:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            sys.stderr.write("Internal error: Unexpected exception: %s\n" 
+            logging.critical("Internal error: unhandled exception: %s"
               % (str(exc)))
+            logging.debug("Stack trace:\n%s", str(exc_tb))
         except Exception:
             pass
+
+"""
+Tracing - may be used for debugging
+"""
+def traceit(frame, event, arg):
+    if event == "line":
+        lineno = frame.f_lineno
+        print frame.f_code.co_filename, ":", "line", lineno
+    return traceit
+
+"""
+Uncomment the statement below to enable tracing
+"""
+#sys.settrace(traceit)
