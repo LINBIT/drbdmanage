@@ -1,4 +1,22 @@
 #!/usr/bin/python
+"""
+    drbdmanage - management of distributed DRBD9 resources
+    Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
+                               Author: R. Altnoeder
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 
 import sys
 import os
@@ -16,9 +34,6 @@ from drbdmanage.storage.storagecore import *
 from drbdmanage.conf.conffile import *
 from drbdmanage.utils import *
 from drbdmanage.consts import *
-
-__author__ = "raltnoeder"
-__date__   = "$Sep 12, 2013 5:09:49 PM$"
 
 
 class DrbdManageServer(object):
@@ -1731,11 +1746,10 @@ class DrbdManageServer(object):
                     self.load_conf_data(persist)
                 ret_persist = persist
         except Exception as exc:
-            # DEBUG
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            print exc_type
-            print exc_obj
-            print exc_tb
+            logging.error("cannot open the control volume for modification, "
+                "unhandled exception: %s" % str(exc))
+            logging.debug("Stack trace:\n%s" % str(exc_tb))
             persist.close()
         return ret_persist
     

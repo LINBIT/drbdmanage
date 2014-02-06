@@ -1,7 +1,22 @@
 #!/usr/bin/python
+"""
+    drbdmanage - management of distributed DRBD9 resources
+    Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
+                               Author: R. Altnoeder
 
-__author__ = "raltnoeder"
-__date__   = "$Sep 12, 2013 10:43:21 AM$"
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 
 import subprocess
 import logging
@@ -271,7 +286,10 @@ class DrbdManager(object):
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
           self._server.DRBDCTRL_RES_NAME)
-        fn_rc = drbd_proc.wait()
+        if drbd_proc is not None:
+            fn_rc = drbd_proc.wait()
+        else:
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         return fn_rc
     
     
@@ -409,17 +427,22 @@ class DrbdManager(object):
                 else:
                     fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 
+                # FIXME: this does not need to run if metadata
+                #        creation failed
                 # Adjust the DRBD resource to configure the volume
                 drbd_proc = self._drbdadm.adjust(resource.get_name())
-                self._resconf.write_excerpt(drbd_proc.stdin,
-                  assignment, nodes, vol_states)
-                drbd_proc.stdin.close()
-                fn_rc = drbd_proc.wait()
-                if fn_rc == 0:
-                    vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH |
-                      DrbdVolumeState.FLAG_DEPLOY)
-                    # drbdadm adjust implicitly connects the resource
-                    assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+                if drbd_proc is not None:
+                    self._resconf.write_excerpt(drbd_proc.stdin,
+                        assignment, nodes, vol_states)
+                    drbd_proc.stdin.close()
+                    fn_rc = drbd_proc.wait()
+                    if fn_rc == 0:
+                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH |
+                            DrbdVolumeState.FLAG_DEPLOY)
+                        # drbdadm adjust implicitly connects the resource
+                        assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+                else:
+                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
             else:
                 # block device allocation failed
                 fn_rc = -1
