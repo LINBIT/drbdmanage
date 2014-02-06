@@ -1141,36 +1141,33 @@
     <para>
      To define five nodes with the node names iron, silicon, carbon, copper and
      oxygen that have the IPv4 addresses 192.168.33.201 to 192.168.33.205:<sbr/>
-     <blockquote>
+     <sbr/>
         drbdmanage new-node iron 192.168.33.201<sbr/>
         drbdmanage new-node silicon 192.168.33.202<sbr/>
         drbdmanage new-node carbon 192.168.33.203<sbr/>
         drbdmanage new-node copper 192.168.33.204<sbr/>
         drbdmanage new-node oxygen 192.168.33.205<sbr/>
-     </blockquote>
      <sbr/>
-     
+     <sbr/>
      To define a DRBD resource named &quot;archive&quot; with one 15 GiB volume
      and deploy this volume on three of the five nodes:<sbr/>
-     <blockquote>
+     <sbr/>
         drbdmanage new-volume archive 15 --deploy 3<sbr/>
-     </blockquote>
-
-     
+     <sbr/>
+     <sbr/>
      To define a DRBD resource named &quot;files&quot; that is replicated
      using network port number 10970 and one 840 MiB volume that uses minor
      number 70:<sbr/>
-     <blockquote>
+     <sbr/>
         drbdmanage new-resource -p 10970 files<sbr/>
         drbdmanage new-volume -u MiB files 840<sbr/>
-     </blockquote>
-     
+     <sbr/>
+     <sbr/>
      To manually deploy the resource &quot;files&quot; on nodes carbon
      and copper:<sbr/>
-     <blockquote>
+     <sbr/>
         drbdmanage assign carbon files<sbr/>
         drbdmanage assign copper files<sbr/>
-     </blockquote>
     </para>
   </refsect1>
 

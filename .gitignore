@@ -4,3 +4,4 @@ MANIFEST
 build/
 dist/
 /man-pages/drbdmanage.8
+/man-pages/drbdmanage.8.gz

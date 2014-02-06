@@ -48,7 +48,7 @@ class BuildManCommand(Command):
         os.system("cd man-pages; "
             "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
             "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
-            "drbdmanage.xml")
+            "drbdmanage.xml; gzip -9 drbdmanage.8")
 
 setup(
     name="drbdmanage",
@@ -78,7 +78,7 @@ setup(
                 ("/etc", ["conf/drbdmanaged.conf",
                     "conf/drbdmanaged-lvm.conf"]),
                 ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
-                ("/usr/share/man", ["man-pages/drbdmanage.8"]),
+                ("/usr/share/man/man8", ["man-pages/drbdmanage.8.gz"]),
                 ("/usr/share/dbus-1/system-services",
                     ["conf/org.drbd.drbdmanaged.service"]),
                 ("/var/drbd.d", []),

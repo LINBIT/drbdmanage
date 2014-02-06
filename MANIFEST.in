@@ -1,4 +1,4 @@
 recursive-include conf *
-include man-pages/drbdmanage.8
+include man-pages/drbdmanage.8.gz
 include MANIFEST.in
 include COPYING
