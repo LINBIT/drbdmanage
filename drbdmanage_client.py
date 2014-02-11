@@ -177,6 +177,8 @@ class DrbdManage(object):
             else:
                 # writing nonsense on the command line is considered an error
                 sys.stderr.write("Error: unknown command '" + arg + "'\n")
+                sys.stdout.write("Note: Valid commands are:\n")
+                self.print_sub_commands()
         return fn_rc
     
     
@@ -1490,8 +1492,40 @@ class DrbdManage(object):
         except SyntaxException:
             self.syntax_init()
         return fn_rc
-    
-    
+
+
+    def print_sub_commands(self):
+        (term_width, term_height) = get_terminal_size()
+        columns = term_width / 20;
+        i = 0
+
+        for cmd_name in self.COMMANDS:
+            if len(cmd_name) == 1:
+                continue # ignore those one character aliases for now
+            i = i + 1
+            if i % columns:
+                sys.stdout.write("  ")
+            sys.stdout.write("{:<18}".format(cmd_name))
+            if not (i % columns):
+                sys.stdout.write("\n")
+
+        if i % columns:
+            sys.stdout.write("\n")
+        return 0
+
+
+    def cmd_usage(self, args):
+        (term_width, term_height) = get_terminal_size()
+        columns = term_width / 23;
+        i = 0
+        sys.stdout.write("Usage: drbdmanage [options...] command [args...]\n"
+                         "\n"
+                         "where command is one out of:\n")
+
+        self.print_sub_commands()
+        return 0
+
+
     def syntax_init(self):
         sys.stderr.write("Syntax: init [ -q | --quiet ] device\n")
     
@@ -1680,7 +1714,8 @@ class DrbdManage(object):
         "export"            : cmd_export_conf,
         "ping"              : cmd_ping,
         "init"              : cmd_init,
-        "exit"              : cmd_exit
+        "exit"              : cmd_exit,
+        "usage"             : cmd_usage
       }
     
     
