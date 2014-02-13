@@ -25,6 +25,7 @@ Generalized utility functions and classes for drbdmanage
 import sys
 import os
 import hashlib
+import base64
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -43,6 +44,12 @@ COLOR_PINK      = chr(0x1b) + "[1;35m"
 COLOR_TURQUOIS  = chr(0x1b) + "[1;36m"
 COLOR_WHITE     = chr(0x1b) + "[1;37m"
 COLOR_NONE      = chr(0x1b) + "[0m"
+
+# Source for random data
+RANDOM_SOURCE = "/dev/urandom"
+
+# Length of random data for generating shared secrets
+SECRET_LEN    = 15
 
 
 def long_to_bin(number):
@@ -336,6 +343,26 @@ def get_terminal_size():
         except:
             pass
     return int(cr[1]), int(cr[0])
+
+
+def generate_secret():
+    """
+    Generates a random value for a DRBD resource's shared secret
+    
+    @return: Base64-encoded random binary data
+    @rtype:  str
+    """
+    secret = None
+    try:
+        f_rnd = open(RANDOM_SOURCE, "r")
+        rnd   = bytearray(SECRET_LEN)
+        count = f_rnd.readinto(rnd)
+        if count == SECRET_LEN:
+            secret = str(base64.b64encode(rnd))
+    except IOError:
+        pass
+    return secret
+
 
 class DataHash(object):
     

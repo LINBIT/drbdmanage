@@ -82,6 +82,9 @@ DM_ENODECNT = 113
 # Plugin load failed
 DM_EPLUGIN  = 114
 
+# Generation of the shared secret failed
+DM_ESECRETG = 115
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -108,6 +111,7 @@ _DM_EXC_TEXTS[DM_ENOSPC]   = "Not enough free memory"
 _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
   "nodes in the cluster"
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
+_DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 
 
 def dm_exc_text(exc_id):

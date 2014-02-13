@@ -226,8 +226,8 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
-        opt        = { "-p" : "auto", "-s" : "default" }
-        optalias   = { "--port" : "-p", "--secret" : "-s" }
+        opt        = { "-p" : "auto" }
+        optalias   = { "--port" : "-p" }
         flags      = {}
         flagsalias = {}
         try:
@@ -236,7 +236,6 @@ class DrbdManage(object):
                 raise SyntaxException
             name      = params["name"]
             port_str  = opt["-p"]
-            secret    = opt["-s"]
             if port_str != "auto":
                 try:
                     port = int(port_str)
@@ -245,8 +244,6 @@ class DrbdManage(object):
             
             props = dbus.Dictionary(signature="ss")
             props[RES_PORT] = str(port)
-            if secret is not None:
-                props[RES_SECRET] = secret
             
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
@@ -372,8 +369,8 @@ class DrbdManage(object):
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
-        opt        = { "-p" : None, "-s" : None }
-        optalias   = { "--port" : "-p", "--secret" : "-s" }
+        opt        = { "-p" : None }
+        optalias   = { "--port" : "-p" }
         flags      = {}
         flagsalias = {}
         try:
@@ -382,7 +379,6 @@ class DrbdManage(object):
                 raise SyntaxException
             name     = params["name"]
             port_str = opt["-p"]
-            secret   = opt["-s"]
             
             if port_str is not None:
                 if not port_str == "auto":
@@ -394,8 +390,6 @@ class DrbdManage(object):
             props = dbus.Dictionary(signature="ss")
             if port_str is not None:
                 props[RES_PORT]   = str(port)
-            if secret is not None:
-                props[RES_SECRET] = secret
             
             self.dbus_init()
             server_rc = self._server.modify_resource(dbus.String(name), props)

@@ -72,8 +72,6 @@ class DrbdManageServer(object):
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     
-    KEY_DEFAULT_SECRET = "default-secret"
-    
     DEFAULT_MAX_NODE_ID  =   31
     DEFAULT_MAX_PEERS    =    7
     DEFAULT_MIN_MINOR_NR =  100
@@ -91,8 +89,7 @@ class DrbdManageServer(object):
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
       KEY_DRBDADM_PATH   : "/usr/sbin",
       KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
-      KEY_DRBD_CONFPATH  : "/var/drbd.d",
-      KEY_DEFAULT_SECRET : "default"
+      KEY_DRBD_CONFPATH  : "/var/drbd.d"
     }
     
     # BlockDevice manager
@@ -587,25 +584,24 @@ class DrbdManageServer(object):
                     fn_rc = DM_EEXIST
                 else:
                     port = DrbdResource.PORT_NR_AUTO
-                    secret = self.get_conf_value(self.KEY_DEFAULT_SECRET)
-                    try:
-                        port = int(props[RES_PORT])
-                    except KeyError:
-                        pass
-                    try:
-                        secret = props[RES_SECRET]
-                    except KeyError:
-                        pass
-                    if port == DrbdResource.PORT_NR_AUTO:
-                        port = self.get_free_port_nr()
-                    if port < 1 or port > 65535:
-                        fn_rc = DM_EPORT
+                    secret = generate_secret()
+                    if secret is not None:
+                        try:
+                            port = int(props[RES_PORT])
+                        except KeyError:
+                            pass
+                        if port == DrbdResource.PORT_NR_AUTO:
+                            port = self.get_free_port_nr()
+                        if port < 1 or port > 65535:
+                            fn_rc = DM_EPORT
+                        else:
+                            resource = DrbdResource(name, port)
+                            resource.set_secret(secret)
+                            self._resources[resource.get_name()] = resource
+                            self.save_conf_data(persist)
+                            fn_rc = DM_SUCCESS
                     else:
-                        resource = DrbdResource(name, port)
-                        resource.set_secret(secret)
-                        self._resources[resource.get_name()] = resource
-                        self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
+                        fn_rc = DM_ESECRETG
         except ValueError:
             fn_rc = DM_EINVAL
         except PersistenceException:
@@ -637,7 +633,6 @@ class DrbdManageServer(object):
                     fn_rc = DM_ENOENT
                 else:
                     port_nr = None
-                    secret  = None
                     for keyval in props.iteritems():
                         key = keyval[0]
                         val = keyval[1]
@@ -646,13 +641,9 @@ class DrbdManageServer(object):
                                 port_nr = int(val)
                             except ValueError:
                                 fn_rc = DM_EINVAL
-                        elif key == RES_SECRET:
-                            secret = val
                         else:
                             fn_rc = DM_EINVAL
                         # TODO: port change - not implemented
-                        if secret is not None:
-                            resource.set_secret(secret)
                         self._resources[resource.get_name()] = resource
                         self.save_conf_data(persist)
                         fn_rc = DM_SUCCESS
