@@ -586,7 +586,7 @@ class DrbdNodePersistence(GenericPersistence):
     Serializes/deserializes DrbdNode objects
     """
     
-    SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_state",
+    SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_node_id", "_state",
       "_poolsize", "_poolfree" ]
     
     
@@ -607,11 +607,15 @@ class DrbdNodePersistence(GenericPersistence):
             node = DrbdNode(
               properties["_name"],
               properties["_addr"],
-              int(properties["_addrfam"])
+              int(properties["_addrfam"]),
+              int(properties["_node_id"])
               )
-            node.set_state(long(properties["_state"]))
-            node.set_poolsize(long(properties["_poolsize"]))
-            node.set_poolfree(long(properties["_poolfree"]))
+            state    = long(map_val_or_dflt(properties, "_state", 0))
+            poolsize = long(map_val_or_dflt(properties, "_poolsize", -1))
+            poolfree = long(map_val_or_dflt(properties, "_poolfree", -1))
+            node.set_state(state)
+            node.set_poolsize(poolsize)
+            node.set_poolfree(poolfree)
         except Exception as exc:
             # FIXME
             raise exc

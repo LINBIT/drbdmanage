@@ -364,6 +364,16 @@ def generate_secret():
     return secret
 
 
+def map_val_or_dflt(map, key, dflt):
+    """
+    Returns a map value if its key exists, otherwise return a default value
+    """
+    try:
+        return map[key]
+    except KeyError:
+        return dflt
+
+
 class DataHash(object):
     
     """

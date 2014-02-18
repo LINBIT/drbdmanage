@@ -220,3 +220,13 @@ class PluginException(Exception):
     
     def __init__(self):
         super(PluginException, self).__init__()
+
+
+class AbortException(Exception):
+    
+    """
+    Raised to abort execution of a chain of operations
+    """
+    
+    def __init__(self):
+        super(AbortException, self).__init__()

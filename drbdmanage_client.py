@@ -28,6 +28,7 @@ local drbdmanage server through D-Bus.
 import sys
 import dbus
 import string
+import subprocess
 import drbdmanage.drbd.drbdcore
 from drbdmanage.utils import *
 from drbdmanage.dbusserver import DBusServer
@@ -1455,6 +1456,184 @@ class DrbdManage(object):
         return fn_rc
     
     
+    def cmd_new_init(self, args):
+        fn_rc = 1
+        order    = [ "address" ]
+        params   = {}
+        opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
+        optalias = { "--port" : "-p", "--address-family" : "-a" }
+        flags    = { }
+        flagsalias = { }
+        
+        # TODO: remove those literals that might change in the future
+        
+        # TODO: the drbdmanage server must be made aware of the port number of
+        #       the drbdctrl resource replication link
+        
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+                flags, flagsalias) != 0:
+                    raise SyntaxException
+            
+            # BEGIN Setup drbdctrl resource properties
+            node_name = None
+            try:
+                uname = os.uname()
+                if len(uname) >= 2:
+                    node_name = uname[1]
+            except OSError:
+                pass
+            if node_name is None:
+                raise AbortException
+            af   = opt["-a"]
+            if af is None:
+                af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+            address = params["address"]
+            if address is None:
+                raise SyntaxException
+            port  = opt["-p"]
+            try:
+                port_nr = int(port)
+                if port_nr < 1 or port_nr > 65535:
+                    raise ValueError
+            except ValueError:
+                sys.stderr.write("Invalid port number\n")
+                raise AbortException
+            # END Setup drbdctrl resource properties
+
+            # TODO: Check whether the .drbdctrl LV exists already
+
+            # Create the .drbdctrl LV
+            proc_rc = self._ext_command(["lvcreate", "-n", ".drbdctrl",
+                "-L", "4m", "drbdpool"])
+
+            # Create meta-data
+            proc_rc = self._ext_command(["drbdmeta", "--force", "0",
+                "v09", "/dev/mapper/drbdpool-.drbdctrl", "internal",
+                "create-md", "31"])
+
+            # Configure the .drbdctrl resource
+            proc_rc = self._ext_command(["drbdsetup", "new-resource",
+                ".drbdctrl", "0"])
+            proc_rc = self._ext_command(["drbdsetup", "new-minor", ".drbdctrl",
+                "0", "0"])
+            proc_rc = self._ext_command(["drbdmeta", "0", "v09",
+                "/dev/mapper/drbdpool-.drbdctrl", "internal", "apply-al"])
+            proc_rc = self._ext_command(["drbdsetup", "attach", "0",
+                "/dev/mapper/drbdpool-.drbdctrl",
+                "/dev/mapper/drbdpool-.drbdctrl", "internal"])
+            proc_rc = self._ext_command(["drbdsetup",
+                "primary", ".drbdctrl", "--force"])
+            init_rc = self._drbdctrl_init("/dev/drbd0")
+            proc_rc = self._ext_command(["drbdsetup", "secondary",
+                ".drbdctrl"])
+
+            # Startup the drbdmanage server and add the current node
+            self.dbus_init()
+            props = {}
+            props[NODE_ADDR] = address
+            props[NODE_AF]   = af
+            server_rc = self._server.create_node(node_name, props)
+            
+            fn_rc = server_rc
+            
+            # TODO: order the server to update the drbdctrl.res file
+        except AbortException:
+            sys.stderr.write("Initialization failed\n")
+        except SyntaxException:
+            sys.stderr.write("Syntax: ipaddress [ { -p | --port } port\n")
+        return fn_rc
+
+
+    def cmd_new_join(self, args):
+        fn_rc = 1
+        order    = [ "local_ip", "peer_ip", "peer_name", "peer_node_id",
+            "secret" ]
+        params   = {}
+        opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
+        optalias = { "--port" : "-p", "--address-family" : "-a" }
+        flags    = { }
+        flagsalias = { }
+        
+        # TODO: remove those literals that might change in the future
+        
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+                flags, flagsalias) != 0:
+                    raise SyntaxException
+                
+            # BEGIN Setup drbdctrl resource properties
+            node_name = None
+            try:
+                uname = os.uname()
+                if len(uname) >= 2:
+                    node_name = uname[1]
+            except OSError:
+                pass
+            if node_name is None:
+                raise AbortException
+            af   = opt["-a"]
+            if af is None:
+                af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+            port  = opt["-p"]
+            try:
+                port_nr = int(port)
+                if port_nr < 1 or port_nr > 65535:
+                    raise ValueError
+            except ValueError:
+                sys.stderr.write("Invalid port number\n")
+                raise AbortException
+            # END Setup drbdctrl resource properties
+
+            # TODO: Check whether the .drbdctrl LV exists already
+
+            # Create the .drbdctrl LV
+            proc_rc = self._ext_command(["lvcreate", "-n", ".drbdctrl",
+                "-L", "4m", "drbdpool"])
+
+            # Create meta-data
+            proc_rc = self._ext_command(["drbdmeta", "--force", "0",
+                "v09", "/dev/mapper/drbdpool-.drbdctrl", "internal",
+                "create-md", "31"])
+
+            # Configure the .drbdctrl resource
+            proc_rc = self._ext_command(["drbdsetup", "new-resource",
+                ".drbdctrl", "0"])
+            proc_rc = self._ext_command(["drbdsetup", "new-minor", ".drbdctrl",
+                "0", "0"])
+            proc_rc = self._ext_command(["drbdmeta", "0", "v09",
+                "/dev/mapper/drbdpool-.drbdctrl", "internal", "apply-al"])
+            proc_rc = self._ext_command(["drbdsetup", "attach", "0",
+                "/dev/mapper/drbdpool-.drbdctrl",
+                "/dev/mapper/drbdpool-.drbdctrl", "internal"])
+
+            l_ip_addr = params["local_ip"]
+            p_ip_addr = params["peer_ip"]
+            p_name    = params["peer_name"]
+            p_node_id = params["peer_node_id"]
+            secret    = params["secret"]
+            proc_rc = self._ext_command(["drbdsetup", "connect",
+                l_ip_addr + ":" + port, p_ip_addr + ":" + port,
+                "--peer-node-id=" + p_node_id + "--_name=" + p_name,
+                "--cram-hmac-alg=sha256", "--shared-secret=" + secret,
+                "--protocol=C"])
+
+            # Startup the drbdmanage server and update the local .drbdctrl
+            # resource configuration file
+            self.dbus_init()
+            # server_rc = self._server.update_res()
+
+            # Update connections to establish communication with all nodes
+            # of the drbdmanage cluster
+            proc_rc = self._ext_command(["drbdadm", "adjust", ".drbdctrl"])
+        except AbortException:
+            sys.stderr.write("Initialization failed\n")
+        except SyntaxException:
+            sys.stderr.write("Syntax: local_ip peer_ip peer_name "
+                "peer_node_id secret\n")
+        return fn_rc
+    
+    
     def cmd_init(self, args):
         fn_rc = 1
         # Command parser configuration
@@ -1486,6 +1665,28 @@ class DrbdManage(object):
         except SyntaxException:
             self.syntax_init()
         return fn_rc
+    
+    
+    def _ext_command(self, args):
+        """
+        Run external commands in a subprocess
+        """
+        proc_rc = 127
+        try:
+            ext_proc = subprocess.Popen(args, 0, None, close_fds=True)
+            proc_rc = ext_proc.wait()
+        except OSError as oserr:
+            if oserr.errno == errno.ENOENT:
+                sys.stderr.write("Cannot find command: %s\n" % args[0])
+            elif oserr.errno == errno.EACCES:
+                sys.stderr.write("Cannot execute %s, "
+                  "permission denied" % args[0])
+            else:
+                logging.error("Cannot execute %s, "
+                  "error returned by the OS is: "
+                  "%s\n" % (args[0], oserr.strerror))
+            raise AbortException
+        return proc_rc
 
 
     def print_sub_commands(self):
@@ -1709,7 +1910,9 @@ class DrbdManage(object):
         "ping"              : cmd_ping,
         "init"              : cmd_init,
         "exit"              : cmd_exit,
-        "usage"             : cmd_usage
+        "usage"             : cmd_usage,
+        "__init"            : cmd_new_init,
+        "__join"            : cmd_new_join
       }
     
     

@@ -427,3 +427,37 @@ class DrbdAdmConf(object):
         except Exception as exc:
             logging.error("Cannot generate configuration file, "
               "unhandled exception: %s" % str(exc))
+
+
+    def write_drbdctrl(self, stream, nodes, bdev, port, secret):
+        stream.write(
+            "resource .drbdctrl {\n"
+            "    net {\n"
+            "        cram-hmac-alg   sha256;\n"
+            "        shared-secret   " + secret + ";\n"
+            "    }\n"
+            "    volume 0 {\n"
+            "        device      /dev/drbd0;\n"
+            "        disk        " + bdev + ";\n"
+            "        meta-disk   internal;\n"
+            "    }\n")
+        for node in nodes.itervalues():
+            stream.write(
+                "    on " + node.get_name() + " {\n"
+                "        node-id     " + str(node.get_node_id())
+                + ";\n"
+                "        address     " + node.get_addr()
+                + ":" + str(port) + ";\n"
+                "    }\n"
+            )
+        stream.write(
+            "    connection-mesh {\n"
+            "        hosts")
+        for node in nodes.itervalues():
+            stream.write(" " + node.get_name())
+        stream.write(";\n"
+            "        net {\n"
+            "            protocol C;\n"
+            "        }\n"
+            "    }\n"
+        )

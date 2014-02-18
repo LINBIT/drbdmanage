@@ -1190,6 +1190,7 @@ class DrbdNode(object):
     _name     = None
     _addr     = None
     _addrfam  = None
+    _node_id  = None
     _state    = None
     _poolsize = None
     _poolfree = None
@@ -1205,7 +1206,7 @@ class DrbdNode(object):
     STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL
     
     
-    def __init__(self, name, addr, addrfam):
+    def __init__(self, name, addr, addrfam, node_id):
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on ip
         af_n = int(addrfam)
@@ -1213,7 +1214,8 @@ class DrbdNode(object):
             self._addrfam = af_n
         else:
             raise InvalidAddrFamException
-        self._addr          = addr
+        self._addr        = addr
+        self._node_id     = node_id
         self._assignments = dict()
         self._state       = 0
         self._poolfree    = -1
@@ -1230,6 +1232,14 @@ class DrbdNode(object):
     
     def get_addrfam(self):
         return self._addrfam
+    
+    
+    def get_node_id(self):
+        return self._node_id
+    
+    
+    def set_node_id(self, node_id):
+        self._node_id = node_id
     
     
     def get_addrfam_label(self):
@@ -1675,8 +1685,6 @@ class Assignment(object):
     # Mask applied to ignore action flags on the target state
     # of an assignment.
     ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
-    
-    NODE_ID_ERROR  = -1
 
 
     def __init__(self, node, resource, node_id, cstate, tstate):

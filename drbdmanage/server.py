@@ -48,6 +48,7 @@ class DrbdManageServer(object):
     EVT_UTIL = "drbdsetup"
     
     EVT_TYPE_CHANGE = "change"
+    EVT_TYPE_EXISTS = "exists"
     EVT_SRC_CON     = "connection"
     EVT_SRC_RES     = "resource"
     EVT_ARG_NAME    = "name"
@@ -502,10 +503,14 @@ class DrbdManageServer(object):
                         pass
                     try:
                         if addr is not None and addrfam is not None:
-                            node = DrbdNode(name, addr, addrfam)
-                            self._nodes[node.get_name()] = node
-                            self.save_conf_data(persist)
-                            fn_rc = DM_SUCCESS
+                            node_id = self.get_free_drbdctrl_node_id()
+                            if node_id != -1:
+                                node = DrbdNode(name, addr, addrfam, node_id)
+                                self._nodes[node.get_name()] = node
+                                self.save_conf_data(persist)
+                                fn_rc = DM_SUCCESS
+                            else:
+                                fn_rc = DM_ENODEID
                         else:
                             fn_rc = DM_EINVAL
                     except InvalidNameException:
@@ -1919,8 +1924,33 @@ class DrbdManageServer(object):
                         loglevel = self._debug_parse_loglevel(val)
                         self._root_logger.setLevel(loglevel)
                         fn_rc = 0
+            if command.startswith("update "):
+                # remove "update "
+                command = command[7:]
+                if command == "drbdctrl":
+                    fn_rc = 2
+                    drbdctrl_res = None
+                    try:
+                        drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "w")
+                        writer = DrbdAdmConf()
+                        writer.write_drbdctrl(drbdctrl_res, self._nodes,
+                            "/dev/mapper/drbdpool-.drbdctrl", "7001",
+                            generate_secret())
+                        drbdctrl_res.close()
+                        fn_rc = 0
+                    except IOError:
+                        pass
+                    finally:
+                        if drbdctrl_res is not None:
+                            try:
+                                drbdctrl_res.close()
+                            except Exception:
+                                pass
         except SyntaxException:
             pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            fn_rc = DM_DEBUG
         return fn_rc
     
     
@@ -2024,18 +2054,39 @@ class DrbdManageServer(object):
         """
         try:
             max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
-            
             id_list = []
             for assg in resource.iterate_assignments():
                 id_item = assg.get_node_id()
                 if id_item >= 0 and id_item <= int(max_node_id):
                     id_list.append(id_item)
             node_id = get_free_number(0, int(max_node_id),
-              id_list)
-            if node_id == -1:
-                raise ValueError
+                id_list)
         except ValueError:
-            node_id = Assignment.NODE_ID_ERROR
+            node_id = -1
+        return node_id
+    
+    
+    def get_free_drbdctrl_node_id(self):
+        """
+        Retrieves a free (unused) node id number
+        
+        Node IDs range from 0 to the configuration value of KEY_MAX_NODE_ID
+        and are allocated per resource (the node IDs of the same nodes can
+        differ from one assigned resource to another)
+        
+        @return: next free node id number; or -1 on error
+        """
+        try:
+            max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
+            
+            id_list = []
+            for node in self._nodes.itervalues():
+                id_item = node.get_node_id()
+                if id_item >= 0 and id_item <= max_node_id:
+                    id_list.append(id_item)
+            node_id = get_free_number(0, max_node_id, id_list)
+        except ValueError:
+            node_id = -1
         return node_id
     
     

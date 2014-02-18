@@ -24,6 +24,9 @@ Global constants for drbdmanage
 
 NODE_ADDR           = "addr"
 NODE_AF             = "addrfam"
+NODE_ID             = "node_id"
 RES_PORT            = "port"
 RES_SECRET          = "secret"
 VOL_MINOR           = "minor"
+
+DRBDCTRL_DEFAULT_PORT = 7700
