@@ -283,6 +283,24 @@ class DBusServer(dbus.service.Object):
         D-Bus interface for DrbdManageServer.reconfigure()
         """
         return self._server.reconfigure()
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sa{ss}ss", out_signature="i")
+    def init_node(self, name, props, bdev, port):
+        """
+        D-Bus interface for DrbdManageServer.init_node(...)
+        """
+        return self._server.init_node(name, props, bdev, port)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sss", out_signature="i")
+    def join_node(self, bdev, port, secret):
+        """
+        D-Bus interface for DrbdManageServer.join_node(...)
+        """
+        return self._server.join_node(bdev, port, secret)
 
     
     @dbus.service.method(DBUS_DRBDMANAGED,

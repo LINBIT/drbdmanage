@@ -139,6 +139,16 @@ class DrbdManager(object):
               % self._server.get_instance_node_name())
             return False
         
+        
+        """
+        Check for changes of the cluster configuration (node members)
+        """
+        node_state = node.get_state()
+        if node_state & DrbdNode.FLAG_UPDATE != 0:
+            state_changed = True
+            self._server.reconfigure_drbdctrl()
+            node.set_state(node_state ^ DrbdNode.FLAG_UPDATE)
+        
         """
         Check all assignments for changes
         """
@@ -282,7 +292,7 @@ class DrbdManager(object):
         return state_changed
     
     
-    def drbdctrl_res_up(self):
+    def adjust_drbdctrl(self):
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
           self._server.DRBDCTRL_RES_NAME)
@@ -1198,17 +1208,18 @@ class DrbdNode(object):
     _assignments = None
     
     FLAG_REMOVE   =     0x1
+    FLAG_UPDATE   =     0x2
     FLAG_UPD_POOL = 0x10000
     
     # STATE_MASK must include all valid flags;
     # used to mask the value supplied to set_state() to prevent setting
     # non-existent flags
-    STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL
+    STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL | FLAG_UPDATE
     
     
     def __init__(self, name, addr, addrfam, node_id):
         self._name    = self.name_check(name)
-        # TODO: there should be sanity checks on ip
+        # TODO: there should be sanity checks on addr
         af_n = int(addrfam)
         if af_n == self.AF_IPV4 or af_n == self.AF_IPV6:
             self._addrfam = af_n
@@ -1401,12 +1412,14 @@ class DrbdNodeView(object):
     
     
     def get_state(self):
-        text = "-"
+        mach_read = self._machine_readable
+        text = ""
         if self._state & DrbdNode.FLAG_REMOVE != 0:
-            if self._machine_readable:
-                text = "REMOVE"
-            else:
-                text = "remove"
+            state_text_append(mach_read, text, "REMOVE", "remove")
+        if self._state & DrbdNode.FLAG_UPDATE != 0:
+            state_text_append(mach_read, text, "UPDATE", "update")
+        if self._state & DrbdNode.FLAG_UPD_POOL != 0:
+            state_text_append(mach_read, text, "UPD_POOL", "update-pool")
         return text
     
     

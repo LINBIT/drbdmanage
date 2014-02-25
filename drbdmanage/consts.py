@@ -29,4 +29,4 @@ RES_PORT            = "port"
 RES_SECRET          = "secret"
 VOL_MINOR           = "minor"
 
-DRBDCTRL_DEFAULT_PORT = 7700
+DRBDCTRL_DEFAULT_PORT = 6999

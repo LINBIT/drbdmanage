@@ -260,6 +260,11 @@ class ConfFile(object):
 
 
 class DrbdAdmConf(object):
+    
+    KEY_SECRET = "secret"
+    KEY_ADDRESS = "port"
+    KEY_BDEV   = "blockdevice"
+    
     def __init__(self):
         pass
     
@@ -429,12 +434,46 @@ class DrbdAdmConf(object):
               "unhandled exception: %s" % str(exc))
 
 
+    def read_drbdctrl_params(self, stream):
+        # parameters that contain specific information
+        params = [
+            [ "shared-secret" , DrbdAdmConf.KEY_SECRET ],
+            [ "disk"          , DrbdAdmConf.KEY_BDEV   ],
+            [ "address"       , DrbdAdmConf.KEY_ADDRESS]
+        ]
+        fields   = {}
+        while True:
+            confline = stream.readline()
+            if len(confline) == 0:
+                break
+            for keypair in params:
+                p_name = keypair[0]
+                confline = confline.lstrip()
+                if confline.startswith(p_name):
+                    confline = confline[len(p_name):]
+                    fields[keypair[1]] = self._extract_field(confline)
+        return fields
+    
+    
+    def _extract_field(self, value):
+        value = value.strip()
+        idx = value.find("\"")
+        if idx != -1:
+            value = value[idx + 1:]
+            idx = value.find("\"")
+            if idx != -1:
+                value = value[:idx]
+        elif value.endswith(";"):
+            value = value[:len(value) - 1]
+        return value
+
+
     def write_drbdctrl(self, stream, nodes, bdev, port, secret):
         stream.write(
             "resource .drbdctrl {\n"
             "    net {\n"
             "        cram-hmac-alg   sha256;\n"
-            "        shared-secret   " + secret + ";\n"
+            "        shared-secret   \"" + secret + "\";\n"
             "    }\n"
             "    volume 0 {\n"
             "        device      /dev/drbd0;\n"

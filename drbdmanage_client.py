@@ -1465,11 +1465,6 @@ class DrbdManage(object):
         flags    = { }
         flagsalias = { }
         
-        # TODO: remove those literals that might change in the future
-        
-        # TODO: the drbdmanage server must be made aware of the port number of
-        #       the drbdctrl resource replication link
-        
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
                 flags, flagsalias) != 0:
@@ -1485,12 +1480,14 @@ class DrbdManage(object):
                 pass
             if node_name is None:
                 raise AbortException
+            
             af   = opt["-a"]
             if af is None:
                 af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
             address = params["address"]
             if address is None:
                 raise SyntaxException
+            
             port  = opt["-p"]
             try:
                 port_nr = int(port)
@@ -1528,16 +1525,21 @@ class DrbdManage(object):
             proc_rc = self._ext_command(["drbdsetup", "secondary",
                 ".drbdctrl"])
 
-            # Startup the drbdmanage server and add the current node
-            self.dbus_init()
+
             props = {}
             props[NODE_ADDR] = address
             props[NODE_AF]   = af
-            server_rc = self._server.create_node(node_name, props)
+            # Startup the drbdmanage server and add the current node
+            self.dbus_init()
+            server_rc = self._server.init_node(
+                dbus.String(node_name), props,
+                dbus.String("/dev/mapper/drbdpool-.drbdctrl"), str(port)
+            )
             
-            fn_rc = server_rc
-            
-            # TODO: order the server to update the drbdctrl.res file
+            if server_rc == 0:
+                fn_rc = 0
+            else:
+                fn_rc = 1
         except AbortException:
             sys.stderr.write("Initialization failed\n")
         except SyntaxException:
@@ -1547,8 +1549,8 @@ class DrbdManage(object):
 
     def cmd_new_join(self, args):
         fn_rc = 1
-        order    = [ "local_ip", "peer_ip", "peer_name", "peer_node_id",
-            "secret" ]
+        order    = [ "local_ip", "local_node_id", "peer_ip", "peer_name",
+            "peer_node_id", "secret" ]
         params   = {}
         opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
         optalias = { "--port" : "-p", "--address-family" : "-a" }
@@ -1557,6 +1559,7 @@ class DrbdManage(object):
         
         # TODO: remove those literals that might change in the future
         
+        bdev = "/dev/mapper/drbdpool-.drbdctrl"
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
                 flags, flagsalias) != 0:
@@ -1596,9 +1599,16 @@ class DrbdManage(object):
                 "v09", "/dev/mapper/drbdpool-.drbdctrl", "internal",
                 "create-md", "31"])
 
+            l_addr    = params["local_ip"]
+            p_addr    = params["peer_ip"]
+            p_name    = params["peer_name"]
+            l_node_id = params["local_node_id"]
+            p_node_id = params["peer_node_id"]
+            secret    = params["secret"]
+
             # Configure the .drbdctrl resource
             proc_rc = self._ext_command(["drbdsetup", "new-resource",
-                ".drbdctrl", "0"])
+                ".drbdctrl", l_node_id])
             proc_rc = self._ext_command(["drbdsetup", "new-minor", ".drbdctrl",
                 "0", "0"])
             proc_rc = self._ext_command(["drbdmeta", "0", "v09",
@@ -1606,30 +1616,74 @@ class DrbdManage(object):
             proc_rc = self._ext_command(["drbdsetup", "attach", "0",
                 "/dev/mapper/drbdpool-.drbdctrl",
                 "/dev/mapper/drbdpool-.drbdctrl", "internal"])
+                
+            umh_f = None
+            umh   = None
+            try:
+                umh_f = open(
+                    "/sys/module/drbd/parameters/usermode_helper", "r")
+                umh = umh_f.read(8192)
+                umh_f.close()
+                umh_f = None
+                umh_f = open(
+                    "/sys/module/drbd/parameters/usermode_helper", "w")
+                umh_f.write("/bin/true")
+            except (IOError, OSError) as err:
+                print(err)
+                raise AbortException
+            finally:
+                if umh_f is not None:
+                    try:
+                        umh_f.close()
+                    except (IOError, OSError):
+                        pass
 
-            l_ip_addr = params["local_ip"]
-            p_ip_addr = params["peer_ip"]
-            p_name    = params["peer_name"]
-            p_node_id = params["peer_node_id"]
-            secret    = params["secret"]
-            proc_rc = self._ext_command(["drbdsetup", "connect",
-                l_ip_addr + ":" + port, p_ip_addr + ":" + port,
-                "--peer-node-id=" + p_node_id + "--_name=" + p_name,
-                "--cram-hmac-alg=sha256", "--shared-secret=" + secret,
+            proc_rc = self._ext_command(["drbdsetup", "connect", ".drbdctrl",
+                "ipv4:" + l_addr + ":" + str(port),
+                "ipv4:" + p_addr + ":" + str(port),
+                "--peer-node-id=" + p_node_id,
+                "--_name=" + p_name,
+                "--shared-secret=" + secret,
+                "--cram-hmac-alg=sha256",
+                "--ping-timeout=30",
                 "--protocol=C"])
+
+            umh_f = None
+            if umh is not None:
+                try:
+                    umh_f = open(
+                    "/sys/module/drbd/parameters/usermode_helper", "w")
+                    umh_f.write(umh)
+                except (IOError, OSError) as err:
+                    print(err)
+                    raise AbortException
+                finally:
+                    if umh_f is not None:
+                        try:
+                            umh_f.close()
+                        except (IOError, OSError):
+                            pass
 
             # Startup the drbdmanage server and update the local .drbdctrl
             # resource configuration file
             self.dbus_init()
             # server_rc = self._server.update_res()
+            server_rc = self._server.join_node(bdev, port, secret)
+            #server_rc = self._server.debug_console(dbus.String(
+            #    "gen drbdctrl " + secret + " " + port + " " + bdev
+            #))
+            if server_rc == 0:
+                fn_rc = 0
+            else:
+                fn_rc = 1
 
             # Update connections to establish communication with all nodes
             # of the drbdmanage cluster
-            proc_rc = self._ext_command(["drbdadm", "adjust", ".drbdctrl"])
+            # proc_rc = self._ext_command(["drbdadm", "adjust", ".drbdctrl"])
         except AbortException:
             sys.stderr.write("Initialization failed\n")
         except SyntaxException:
-            sys.stderr.write("Syntax: local_ip peer_ip peer_name "
+            sys.stderr.write("Syntax: local_ip local_node_id peer_ip peer_name "
                 "peer_node_id secret\n")
         return fn_rc
     
@@ -1672,6 +1726,7 @@ class DrbdManage(object):
         Run external commands in a subprocess
         """
         proc_rc = 127
+        sys.stdout.write("  ==(DEBUG)==> " + " ".join(args) + "\n")
         try:
             ext_proc = subprocess.Popen(args, 0, None, close_fds=True)
             proc_rc = ext_proc.wait()

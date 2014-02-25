@@ -160,7 +160,7 @@ class DrbdManageServer(object):
         extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
         self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
         self._drbd_mgr  = DrbdManager(self)
-        self._drbd_mgr.drbdctrl_res_up()
+        self._drbd_mgr.adjust_drbdctrl()
         # load the drbdmanage database from the control volume
         self.load_conf()
         # start up the resources deployed by drbdmanage on the current node
@@ -472,6 +472,17 @@ class DrbdManageServer(object):
         return self._instance_node_name
     
     
+    def _cluster_nodes_update(self):
+        """
+        Flags other nodes for reconfiguration of the control volume
+        """
+        inst_node = self.get_instance_node()
+        for peer_node in self._nodes.itervalues():
+            if peer_node == inst_node:
+                continue
+            peer_node.set_state(peer_node.get_state() | DrbdNode.FLAG_UPDATE)
+    
+    
     def create_node(self, name, props):
         """
         Registers a DRBD cluster node
@@ -480,41 +491,12 @@ class DrbdManageServer(object):
         """
         fn_rc   = DM_EPERSIST
         persist = None
-        node    = None
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                if self._nodes.get(name) is not None:
-                    fn_rc = DM_EEXIST
-                else:
-                    addr    = None
-                    addrfam = DrbdNode.AF_IPV4
-                    try:
-                        addr     = props[NODE_ADDR]
-                    except KeyError:
-                        pass
-                    try:
-                        af_label = props[NODE_AF]
-                        if af_label == DrbdNode.AF_IPV4_LABEL:
-                            addrfam = DrbdNode.AF_IPV4
-                        elif af_label == DrbdNode.AF_IPV6_LABEL:
-                            addrfam = DrbdNode.AF_IPV6
-                    except KeyError:
-                        pass
-                    try:
-                        if addr is not None and addrfam is not None:
-                            node_id = self.get_free_drbdctrl_node_id()
-                            if node_id != -1:
-                                node = DrbdNode(name, addr, addrfam, node_id)
-                                self._nodes[node.get_name()] = node
-                                self.save_conf_data(persist)
-                                fn_rc = DM_SUCCESS
-                            else:
-                                fn_rc = DM_ENODEID
-                        else:
-                            fn_rc = DM_EINVAL
-                    except InvalidNameException:
-                        fn_rc = DM_ENAME
+                fn_rc = self._create_node(False, name, props, None, None)
+                if fn_rc == DM_SUCCESS or fn_rc == DM_ECTRLVOL:
+                    self.save_conf_data(persist)
         except PersistenceException:
             pass
         except Exception as exc:
@@ -522,6 +504,61 @@ class DrbdManageServer(object):
             fn_rc = DM_DEBUG
         finally:
             self.end_modify_conf(persist)
+        return fn_rc
+    
+    
+    def _create_node(self, initial, name, props, bdev, port):
+        """
+        Register DRBD cluster nodes and update control volume configuration
+        
+        Used by create_node() and init_node()
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc   = DM_EPERSIST
+        node    = None
+        try:
+            if self._nodes.get(name) is not None:
+                fn_rc = DM_EEXIST
+            else:
+                addr    = None
+                addrfam = DrbdNode.AF_IPV4
+                try:
+                    addr     = props[NODE_ADDR]
+                except KeyError:
+                    pass
+                try:
+                    af_label = props[NODE_AF]
+                    if af_label == DrbdNode.AF_IPV4_LABEL:
+                        addrfam = DrbdNode.AF_IPV4
+                    elif af_label == DrbdNode.AF_IPV6_LABEL:
+                        addrfam = DrbdNode.AF_IPV6
+                except KeyError:
+                    pass
+                try:
+                    if addr is not None and addrfam is not None:
+                        node_id = self.get_free_drbdctrl_node_id()
+                        if node_id != -1:
+                            node = DrbdNode(name, addr, addrfam, node_id)
+                            self._nodes[node.get_name()] = node
+                            self._cluster_nodes_update()
+                            # create or update the drbdctrl.res file
+                            if (self._configure_drbdctrl(initial,
+                                None, bdev, port) == 0):
+                                self._drbd_mgr.adjust_drbdctrl()
+                                fn_rc = DM_SUCCESS
+                            else:
+                                fn_rc = DM_ECTRLVOL
+                        else:
+                            fn_rc = DM_ENODEID
+                    else:
+                        fn_rc = DM_EINVAL
+                except InvalidNameException:
+                    fn_rc = DM_ENAME
+        except PersistenceException as pexc:
+            raise pexc
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            fn_rc = DM_DEBUG
         return fn_rc
     
     
@@ -541,6 +578,7 @@ class DrbdManageServer(object):
             if persist is not None:
                 node = self._nodes[name]
                 if (not force) and node.has_assignments():
+                    drbdctrl_flag = False
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
                         resource = assignment.get_resource()
@@ -549,6 +587,7 @@ class DrbdManageServer(object):
                     node.remove()
                     self._drbd_mgr.perform_changes()
                 else:
+                    drbdctrl_flag = True
                     # drop all associated assignments
                     for assignment in node.iterate_assignments():
                         resource = assignment.get_resource()
@@ -558,7 +597,10 @@ class DrbdManageServer(object):
                         for peer_assg in resource.iterate_assignments():
                             peer_assg.update_connections()
                     del self._nodes[name]
+                    self._cluster_nodes_update()
                 self.save_conf_data(persist)
+                if drbdctrl_flag:
+                    self.reconfigure_drbdctrl()
                 fn_rc = DM_SUCCESS
         except KeyError:
             fn_rc = DM_ENOENT
@@ -1496,6 +1538,7 @@ class DrbdManageServer(object):
         """
         try:
             removable = []
+            
             # delete assignments that have been undeployed
             for node in self._nodes.itervalues():
                 for assignment in node.iterate_assignments():
@@ -1506,6 +1549,7 @@ class DrbdManageServer(object):
                         removable.append(assignment)
             for assignment in removable:
                 assignment.remove()
+            
             # delete nodes that are marked for removal and that do not
             # have assignments anymore
             removable = []
@@ -1516,6 +1560,16 @@ class DrbdManageServer(object):
                         removable.append(node)
             for node in removable:
                 del self._nodes[node.get_name()]
+            # if nodes have been removed, reconfigure the control volume
+            if len(removable) > 0:
+                try:
+                    self._configure_drbdctrl(False, None, None, None)
+                    self._drbd_mgr.adjust_drbdctrl()
+                except (IOError, OSError) as reconf_err:
+                    logging.error("Cannot reconfigure the control volume, "
+                      "error description is: %s" % str(reconf_err))
+                self._cluster_nodes_update()
+            
             # delete volume assignments that are marked for removal
             # and that have been undeployed
             for resource in self._resources.itervalues():
@@ -1529,6 +1583,7 @@ class DrbdManageServer(object):
                             removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
+            
             # delete volumes that are marked for removal and that are not
             # deployed on any node
             for resource in self._resources.itervalues():
@@ -1552,6 +1607,7 @@ class DrbdManageServer(object):
                             assg.remove_volume_state(vol_state.get_id())
                 for vol_id in volumes.iterkeys():
                     resource.remove_volume(vol_id)
+            
             # delete resources that are marked for removal and that do not
             # have assignments any more
             removable = []
@@ -1904,6 +1960,148 @@ class DrbdManageServer(object):
         return fn_rc
     
     
+    def init_node(self, name, props, bdev, port):
+        """
+        Server part of initializing a new drbdmanage cluster
+        """
+        fn_rc   = DM_EPERSIST
+        persist = None
+        node    = None
+        try:
+            persist = self.begin_modify_conf()
+            
+            # clear the configuration
+            self._nodes     = dict()
+            self._resources = dict()
+            
+            if persist is not None:
+                fn_rc = self._create_node(True, name, props, bdev, port)
+                if fn_rc == DM_SUCCESS or fn_rc == DM_ECTRLVOL:
+                    self.save_conf_data(persist)
+        except PersistenceException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            fn_rc = DM_DEBUG
+        finally:
+            self.end_modify_conf(persist)
+        return fn_rc
+    
+    
+    def join_node(self, bdev, port, secret):
+        """
+        Server part of integrating a node into an existing drbdmanage cluster
+        """
+        fn_rc = DM_EPERSIST
+        try:
+            if self.load_conf() == 0:
+                if (self._configure_drbdctrl(True, secret, bdev, port) == 0):
+                    self._drbd_mgr.adjust_drbdctrl()
+                    fn_rc = DM_SUCCESS
+                else:
+                    fn_rc = DM_ECTRLVOL
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            fn_rc = DM_DEBUG
+        return fn_rc
+    
+    
+    def reconfigure_drbdctrl(self):
+        """
+        Updates the current node's control volume configuration
+        """
+        self._configure_drbdctrl(False, None, None, None)
+        self._drbd_mgr.adjust_drbdctrl()
+    
+    
+    def _configure_drbdctrl(self, initial, secret, bdev, port):
+        """
+        Creates or updates the drbdctrl resource configuration file
+        """
+        # if values are missing, try to get those values from an existing
+        # configuration file; if no configuration file can be read,
+        # use default values
+        fn_rc        = 1
+        drbdctrl_res = None
+        conffile     = DrbdAdmConf()
+        update       = False
+        
+        if (secret is not None and bdev is not None and port is not None):
+            update = True
+        else:
+            # Load values from an existing configuation unless all values are
+            # specified or an initial configuration is requested
+            if not initial:
+                fields = None
+
+                # Try to open an existing configuration file
+                try:
+                    drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                except (IOError, OSError):
+                    # if the drbdctrl.res file cannot be opened, assume
+                    # that it does not exist and create a new one
+                    update = True
+
+                # If an existing configuration file can be read, try to extract
+                # values from the configuration file
+                if not update:
+                    try:
+                        fields = conffile.read_drbdctrl_params(drbdctrl_res)
+                    except (IOError, OSError):
+                        pass
+                    finally:
+                        if drbdctrl_res is not None:
+                            try:
+                                drbdctrl_res.close()
+                            except (IOError, OSError):
+                                pass
+                    if fields is not None:
+                        try:
+                            if port is None:
+                                address = fields[DrbdAdmConf.KEY_ADDRESS]
+                                idx = address.rfind(":")
+                                if idx != -1:
+                                    port = address[idx + 1:]
+                                else:
+                                    raise ValueError
+                            if bdev is None:
+                                bdev = fields[DrbdAdmConf.KEY_BDEV]
+                            if secret is None:
+                                secret = fields[DrbdAdmConf.KEY_SECRET]                                
+                            update = True
+                        except (KeyError, ValueError):
+                            pass
+        
+        # if an existing configuration has been read successfully,
+        # or an initial configuration file should be created,
+        # write the drbdctrl.res file
+        if initial or update:
+            try:
+                # use defaults for anything that is still unset
+                if port is None:
+                    port         = str(DRBDCTRL_DEFAULT_PORT)
+                if bdev is None:
+                    bdev         = "/dev/mapper/drbdpool-.drbdctrl"
+                if secret is None:
+                    secret = generate_secret()
+                
+                drbdctrl_res = open("/etc/drbd.d/drbdctrl.res",
+                    "w")
+                conffile.write_drbdctrl(drbdctrl_res, self._nodes,
+                    bdev, port, secret)
+                drbdctrl_res.close()
+                fn_rc = 0
+            except (IOError, OSError):
+                pass
+            finally:
+                if drbdctrl_res is not None:
+                    try:
+                        drbdctrl_res.close()
+                    except (IOError, OSError):
+                        pass
+        return fn_rc
+    
+    
     def debug_console(self, command):
         """
         Set debugging options
@@ -1924,28 +2122,110 @@ class DrbdManageServer(object):
                         loglevel = self._debug_parse_loglevel(val)
                         self._root_logger.setLevel(loglevel)
                         fn_rc = 0
-            if command.startswith("update "):
-                # remove "update "
-                command = command[7:]
-                if command == "drbdctrl":
-                    fn_rc = 2
-                    drbdctrl_res = None
+            elif command.startswith("gen drbdctrl "):
+                # remove "gen drbdctrl":
+                command = command[13:]
+                secret = None
+                port   = None
+                bdev   = None
+                conffile = DrbdAdmConf()
+                try:
+                    secret, port, bdev = command.split(" ")
+                except ValueError:
+                    pass
+                if (secret is not None and port is not None
+                    and bdev is not None):
                     try:
                         drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "w")
-                        writer = DrbdAdmConf()
-                        writer.write_drbdctrl(drbdctrl_res, self._nodes,
-                            "/dev/mapper/drbdpool-.drbdctrl", "7001",
-                            generate_secret())
+                        conffile.write_drbdctrl(drbdctrl_res, self._nodes,
+                            bdev, port, secret)
                         drbdctrl_res.close()
                         fn_rc = 0
-                    except IOError:
+                    except (IOError, OSError):
                         pass
                     finally:
                         if drbdctrl_res is not None:
                             try:
                                 drbdctrl_res.close()
-                            except Exception:
+                            except (IOError, OSError):
                                 pass
+            elif command.startswith("_configure_drbdctrl "):
+                # remove "_configure_drbdctrl"
+                command = command[20:]
+                secret = None
+                port   = None
+                bdev   = None
+                conffile = DrbdAdmConf()
+                try:
+                    secret, port, bdev = command.split(" ")
+                    fn_rc = self._configure_drbdctrl(False, secret, bdev, port)
+                except ValueError:
+                    fn_rc = self._configure_drbdctrl(False, None, None, None)
+            elif command.startswith("update "):
+                # remove "update "
+                command = command[7:]
+                if command == "drbdctrl":
+                    fn_rc        = 2
+                    drbdctrl_res = None
+                    conffile     = DrbdAdmConf()
+                    fields       = None
+                    update       = False
+                    secret       = None
+                    port         = str(DRBDCTRL_DEFAULT_PORT)
+                    bdev         = "/dev/mapper/drbdpool-.drbdctrl"
+                    try:
+                        drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                    except (IOError, OSError):
+                        # if the drbdctrl.res file cannot be opened, assume
+                        # that it does not exist and create a new one
+                        update = True
+                        if drbdctrl_res is not None:
+                            try:
+                                drbdctrl_res.close()
+                            except (IOError, OSError):
+                                pass
+                    if not update:
+                        try:
+                            fields = conffile.read_drbdctrl_params(drbdctrl_res)
+                        except (IOError, OSError):
+                            pass
+                        finally:
+                            if drbdctrl_res is not None:
+                                try:
+                                    drbdctrl_res.close()
+                                except (IOError, OSError):
+                                    pass
+                        if fields is not None:
+                            try:
+                                address = fields[DrbdAdmConf.KEY_ADDRESS]
+                                idx = address.rfind(":")
+                                if idx != -1:
+                                    port = address[idx + 1:]
+                                else:
+                                    raise ValueError
+                                bdev = fields[DrbdAdmConf.KEY_BDEV]
+                                secret = fields[DrbdAdmConf.KEY_SECRET]                                
+                                update = True
+                            except (KeyError, ValueError):
+                                pass
+                    if secret is None:
+                        secret = generate_secret()
+                    if update:
+                        try:
+                            drbdctrl_res = open("/etc/drbd.d/drbdctrl.res",
+                                "w")
+                            conffile.write_drbdctrl(drbdctrl_res, self._nodes,
+                                bdev, port, secret)
+                            drbdctrl_res.close()
+                            fn_rc = 0
+                        except (IOError, OSError):
+                            pass
+                        finally:
+                            if drbdctrl_res is not None:
+                                try:
+                                    drbdctrl_res.close()
+                                except (IOError, OSError):
+                                    pass
         except SyntaxException:
             pass
         except Exception as exc:

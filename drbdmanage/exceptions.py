@@ -85,6 +85,9 @@ DM_EPLUGIN  = 114
 # Generation of the shared secret failed
 DM_ESECRETG = 115
 
+# Control volume error
+DM_ECTRLVOL = 116
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -112,6 +115,7 @@ _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
   "nodes in the cluster"
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
+_DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"
 
 
 def dm_exc_text(exc_id):
