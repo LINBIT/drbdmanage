@@ -30,3 +30,7 @@ RES_SECRET          = "secret"
 VOL_MINOR           = "minor"
 
 DRBDCTRL_DEFAULT_PORT = 6999
+
+DRBDCTRL_RES_NAME   = ".drbdctrl"
+DRBDCTRL_DEV        = "/dev/drbd0"
+DEFAULT_VG          = "drbdpool"

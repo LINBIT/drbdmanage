@@ -22,6 +22,7 @@ import subprocess
 import logging
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
+import drbdmanage.consts
 
 """
 WARNING!
@@ -295,7 +296,7 @@ class DrbdManager(object):
     def adjust_drbdctrl(self):
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
-          self._server.DRBDCTRL_RES_NAME)
+          drbdmanage.consts.DRBDCTRL_RES_NAME)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
         else:

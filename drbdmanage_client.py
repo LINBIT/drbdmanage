@@ -57,6 +57,10 @@ class DrbdManage(object):
     
     VIEW_SEPARATOR_LEN = 78
     
+    DRBDCTRL_BLOCKDEV = "/dev/mapper/" + DEFAULT_VG + "-" + DRBDCTRL_RES_NAME
+    UMHELPER_FILE     = "/sys/module/drbd/parameters/usermode_helper"
+    UMHELPER_OVERRIDE = "/bin/true"
+    
     def __init__(self):
         pass
     
@@ -208,6 +212,9 @@ class DrbdManage(object):
             server_rc = self._server.create_node(name, props)
             if server_rc == 0:
                 fn_rc = 0
+                joinc = self._server.text_query("joinc %s" % name)
+                sys.stdout.write("\nJoin command for node %s:\n"
+                    "%s\n" % (name, joinc))
             else:
                 self.error_msg_text(server_rc)
         else:
@@ -1456,7 +1463,7 @@ class DrbdManage(object):
         return fn_rc
     
     
-    def cmd_new_init(self, args):
+    def cmd_init(self, args):
         fn_rc = 1
         order    = [ "address" ]
         params   = {}
@@ -1501,29 +1508,32 @@ class DrbdManage(object):
             # TODO: Check whether the .drbdctrl LV exists already
 
             # Create the .drbdctrl LV
-            proc_rc = self._ext_command(["lvcreate", "-n", ".drbdctrl",
-                "-L", "4m", "drbdpool"])
+            self._ext_command(["lvcreate", "-n", DRBDCTRL_RES_NAME,
+                "-L", "4m", DEFAULT_VG])
 
             # Create meta-data
-            proc_rc = self._ext_command(["drbdmeta", "--force", "0",
-                "v09", "/dev/mapper/drbdpool-.drbdctrl", "internal",
+            self._ext_command(["drbdmeta", "--force", "0",
+                "v09", self.DRBDCTRL_BLOCKDEV, "internal",
                 "create-md", "31"])
 
             # Configure the .drbdctrl resource
-            proc_rc = self._ext_command(["drbdsetup", "new-resource",
-                ".drbdctrl", "0"])
-            proc_rc = self._ext_command(["drbdsetup", "new-minor", ".drbdctrl",
+            self._ext_command(["drbdsetup", "new-resource",
+                DRBDCTRL_RES_NAME, "0"])
+            self._ext_command(["drbdsetup", "new-minor", DRBDCTRL_RES_NAME,
                 "0", "0"])
-            proc_rc = self._ext_command(["drbdmeta", "0", "v09",
-                "/dev/mapper/drbdpool-.drbdctrl", "internal", "apply-al"])
-            proc_rc = self._ext_command(["drbdsetup", "attach", "0",
-                "/dev/mapper/drbdpool-.drbdctrl",
-                "/dev/mapper/drbdpool-.drbdctrl", "internal"])
-            proc_rc = self._ext_command(["drbdsetup",
-                "primary", ".drbdctrl", "--force"])
-            init_rc = self._drbdctrl_init("/dev/drbd0")
-            proc_rc = self._ext_command(["drbdsetup", "secondary",
-                ".drbdctrl"])
+            self._ext_command(["drbdmeta", "0", "v09",
+                self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+            self._ext_command(["drbdsetup", "attach", "0",
+                self.DRBDCTRL_BLOCKDEV,
+                self.DRBDCTRL_BLOCKDEV, "internal"])
+            self._ext_command(["drbdsetup",
+                "primary", DRBDCTRL_RES_NAME, "--force"])
+            init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
+            if init_rc != 0:
+                # an error message is printed by _drbdctrl_init()
+                raise AbortException
+            self._ext_command(["drbdsetup", "secondary",
+                DRBDCTRL_RES_NAME])
 
 
             props = {}
@@ -1533,7 +1543,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.init_node(
                 dbus.String(node_name), props,
-                dbus.String("/dev/mapper/drbdpool-.drbdctrl"), str(port)
+                dbus.String(self.DRBDCTRL_BLOCKDEV), str(port)
             )
             
             if server_rc == 0:
@@ -1542,12 +1552,13 @@ class DrbdManage(object):
                 fn_rc = 1
         except AbortException:
             sys.stderr.write("Initialization failed\n")
+            self._init_join_rollback()
         except SyntaxException:
             sys.stderr.write("Syntax: ipaddress [ { -p | --port } port\n")
         return fn_rc
 
 
-    def cmd_new_join(self, args):
+    def cmd_join(self, args):
         fn_rc = 1
         order    = [ "local_ip", "local_node_id", "peer_ip", "peer_name",
             "peer_node_id", "secret" ]
@@ -1557,9 +1568,7 @@ class DrbdManage(object):
         flags    = { }
         flagsalias = { }
         
-        # TODO: remove those literals that might change in the future
-        
-        bdev = "/dev/mapper/drbdpool-.drbdctrl"
+        bdev = self.DRBDCTRL_BLOCKDEV
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
                 flags, flagsalias) != 0:
@@ -1591,12 +1600,12 @@ class DrbdManage(object):
             # TODO: Check whether the .drbdctrl LV exists already
 
             # Create the .drbdctrl LV
-            proc_rc = self._ext_command(["lvcreate", "-n", ".drbdctrl",
-                "-L", "4m", "drbdpool"])
+            self._ext_command(["lvcreate", "-n",
+                DRBDCTRL_RES_NAME, "-L", "4m", DEFAULT_VG])
 
             # Create meta-data
-            proc_rc = self._ext_command(["drbdmeta", "--force", "0",
-                "v09", "/dev/mapper/drbdpool-.drbdctrl", "internal",
+            self._ext_command(["drbdmeta", "--force", "0",
+                "v09", self.DRBDCTRL_BLOCKDEV, "internal",
                 "create-md", "31"])
 
             l_addr    = params["local_ip"]
@@ -1607,27 +1616,26 @@ class DrbdManage(object):
             secret    = params["secret"]
 
             # Configure the .drbdctrl resource
-            proc_rc = self._ext_command(["drbdsetup", "new-resource",
-                ".drbdctrl", l_node_id])
-            proc_rc = self._ext_command(["drbdsetup", "new-minor", ".drbdctrl",
-                "0", "0"])
-            proc_rc = self._ext_command(["drbdmeta", "0", "v09",
-                "/dev/mapper/drbdpool-.drbdctrl", "internal", "apply-al"])
-            proc_rc = self._ext_command(["drbdsetup", "attach", "0",
-                "/dev/mapper/drbdpool-.drbdctrl",
-                "/dev/mapper/drbdpool-.drbdctrl", "internal"])
-                
+            self._ext_command(["drbdsetup", "new-resource",
+                DRBDCTRL_RES_NAME, l_node_id])
+            self._ext_command(["drbdsetup", "new-minor",
+                DRBDCTRL_RES_NAME, "0", "0"])
+            self._ext_command(["drbdmeta", "0", "v09",
+                self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+            self._ext_command(["drbdsetup", "attach", "0",
+                self.DRBDCTRL_BLOCKDEV, self.DRBDCTRL_BLOCKDEV, "internal"])
+            
             umh_f = None
             umh   = None
             try:
                 umh_f = open(
-                    "/sys/module/drbd/parameters/usermode_helper", "r")
+                    self.UMHELPER_FILE, "r")
                 umh = umh_f.read(8192)
                 umh_f.close()
                 umh_f = None
                 umh_f = open(
-                    "/sys/module/drbd/parameters/usermode_helper", "w")
-                umh_f.write("/bin/true")
+                    self.UMHELPER_FILE, "w")
+                umh_f.write(self.UMHELPER_OVERRIDE)
             except (IOError, OSError) as err:
                 print(err)
                 raise AbortException
@@ -1638,7 +1646,8 @@ class DrbdManage(object):
                     except (IOError, OSError):
                         pass
 
-            proc_rc = self._ext_command(["drbdsetup", "connect", ".drbdctrl",
+            proc_rc = self._ext_command(["drbdsetup", "connect",
+                DRBDCTRL_RES_NAME,
                 "ipv4:" + l_addr + ":" + str(port),
                 "ipv4:" + p_addr + ":" + str(port),
                 "--peer-node-id=" + p_node_id,
@@ -1652,7 +1661,7 @@ class DrbdManage(object):
             if umh is not None:
                 try:
                     umh_f = open(
-                    "/sys/module/drbd/parameters/usermode_helper", "w")
+                    self.UMHELPER_FILE, "w")
                     umh_f.write(umh)
                 except (IOError, OSError) as err:
                     print(err)
@@ -1676,19 +1685,32 @@ class DrbdManage(object):
                 fn_rc = 0
             else:
                 fn_rc = 1
-
-            # Update connections to establish communication with all nodes
-            # of the drbdmanage cluster
-            # proc_rc = self._ext_command(["drbdadm", "adjust", ".drbdctrl"])
         except AbortException:
             sys.stderr.write("Initialization failed\n")
+            self._init_join_rollback()
         except SyntaxException:
             sys.stderr.write("Syntax: local_ip local_node_id peer_ip peer_name "
                 "peer_node_id secret\n")
         return fn_rc
     
     
-    def cmd_init(self, args):
+    def _init_join_rollback(self):
+        """
+        Attempts cleanup after a failed init or join operation
+        """
+        try:
+            self._ext_command(["drbdsetup", "down",
+                DRBDCTRL_RES_NAME])
+        except AbortException:
+            pass
+        try:
+            self._ext_command(["lvremove", "--force", DEFAULT_VG + "/" + 
+                DRBDCTRL_RES_NAME])
+        except AbortException:
+            pass
+    
+    
+    def cmd_initcv(self, args):
         fn_rc = 1
         # Command parser configuration
         order    = [ "dev" ]
@@ -1726,7 +1748,6 @@ class DrbdManage(object):
         Run external commands in a subprocess
         """
         proc_rc = 127
-        sys.stdout.write("  ==(DEBUG)==> " + " ".join(args) + "\n")
         try:
             ext_proc = subprocess.Popen(args, 0, None, close_fds=True)
             proc_rc = ext_proc.wait()
@@ -1737,7 +1758,7 @@ class DrbdManage(object):
                 sys.stderr.write("Cannot execute %s, "
                   "permission denied" % args[0])
             else:
-                logging.error("Cannot execute %s, "
+                sys.stderr.write("Cannot execute %s, "
                   "error returned by the OS is: "
                   "%s\n" % (args[0], oserr.strerror))
             raise AbortException
@@ -1916,7 +1937,8 @@ class DrbdManage(object):
             )
             fn_rc = 0
         except IOError as ioexc:
-            sys.stderr.write("Initialization failed: " + str(ioexc) + "\n")
+            sys.stderr.write("Initialization of the control volume failed: "
+                "%s\n" % str(ioexc))
         finally:
             if drbdctrl is not None:
                 try:
@@ -1963,11 +1985,11 @@ class DrbdManage(object):
         "shutdown"          : cmd_shutdown,
         "export"            : cmd_export_conf,
         "ping"              : cmd_ping,
-        "init"              : cmd_init,
+        "initcv"            : cmd_initcv,
         "exit"              : cmd_exit,
         "usage"             : cmd_usage,
-        "__init"            : cmd_new_init,
-        "__join"            : cmd_new_join
+        "init"              : cmd_init,
+        "join"              : cmd_join
       }
     
     

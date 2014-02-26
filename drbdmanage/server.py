@@ -57,7 +57,6 @@ class DrbdManageServer(object):
     
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
-    DRBDCTRL_RES_NAME  = ".drbdctrl"
     
     LOGGING_FORMAT = "drbdmanaged[%(process)d]: %(levelname)-10s %(message)s"
     
@@ -205,7 +204,7 @@ class DrbdManageServer(object):
         # FIXME: maybe any existing subprocess should be killed first?
         evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
           self.EVT_UTIL)
-        self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events", "all"], 0,
+        self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events2", "all"], 0,
           evt_util, stdout=subprocess.PIPE, close_fds=True)
         self._evt_file = self._proc_evt.stdout
         fcntl.fcntl(self._evt_file.fileno(),
@@ -286,7 +285,7 @@ class DrbdManageServer(object):
                           event_source == self.EVT_SRC_CON:
                             event_res  = get_event_arg(line, self.EVT_ARG_NAME)
                             event_role = get_event_arg(line, self.EVT_ARG_ROLE)
-                            if event_res == self.DRBDCTRL_RES_NAME and \
+                            if event_res == DRBDCTRL_RES_NAME and \
                               event_role == self.EVT_ROLE_SECONDARY:
                                 event_con = get_event_arg(line,
                                   self.EVT_ARG_CON)
@@ -2006,6 +2005,82 @@ class DrbdManageServer(object):
         return fn_rc
     
     
+    def text_query(self, command):
+        """
+        Query text strings from the server
+        """
+        try:
+            result_text = "Error: Unknown command"
+            
+            if command.startswith("joinc "):
+                # remove "joinc "
+                node_name = command[6:]
+                fields    = None
+                secret    = None
+                bdev      = None
+                port      = None
+                l_addr    = None
+                l_node_id = None
+                r_addr    = None
+                r_node_id = None
+                r_name    = None
+
+                drbdctrl_res = None
+                
+                conffile = DrbdAdmConf()
+                try:
+                    drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                    fields = conffile.read_drbdctrl_params(drbdctrl_res)
+                except (IOError, OSError):
+                    pass
+                finally:
+                    if drbdctrl_res is not None:
+                        try:
+                            drbdctrl_res.close()
+                        except (IOError, OSError):
+                            pass
+
+                try:
+                    address = fields[DrbdAdmConf.KEY_ADDRESS]
+                    idx = address.rfind(":")
+                    if idx != -1:
+                        port = address[idx + 1:]
+                    else:
+                        raise ValueError
+                    secret = fields[DrbdAdmConf.KEY_SECRET]                                
+                    update = True
+                except (KeyError, ValueError):
+                    pass
+
+                inst_node = self.get_instance_node()
+                rem_node  = self._nodes.get(node_name)
+
+                if inst_node is not None and rem_node is not None:
+                    r_addr    = inst_node.get_addr()
+                    r_node_id = str(inst_node.get_node_id())
+                    r_name    = inst_node.get_name()
+                    l_addr    = rem_node.get_addr()
+                    l_node_id = str(rem_node.get_node_id())
+
+                if (secret is not None and port is not None
+                    and r_addr is not None and r_node_id is not None
+                    and r_name is not None and l_addr is not None
+                    and l_node_id is not None):
+                        result_text = (
+                            "drbdmanage __join -p %s %s %s %s %s %s \"%s\""
+                            % (port, l_addr, l_node_id, r_addr, r_name,
+                            r_node_id, secret)
+                        )
+                else:
+                    result_text = ("Error: "
+                        "Generation of the join command failed")
+        except Exception as exc:
+            # FIXME: useful error messages required here
+            logging.error("text_query() command failed: %s" % str(exc))
+            return "Error: Text query command failed on the drbdmanage server"
+        return result_text
+    
+    
     def reconfigure_drbdctrl(self):
         """
         Updates the current node's control volume configuration
@@ -2081,7 +2156,8 @@ class DrbdManageServer(object):
                 if port is None:
                     port         = str(DRBDCTRL_DEFAULT_PORT)
                 if bdev is None:
-                    bdev         = "/dev/mapper/drbdpool-.drbdctrl"
+                    bdev         = ("/dev/mapper/" + DEFAULT_VG
+                        + "-" + DRBDCTRL_RES_NAME)
                 if secret is None:
                     secret = generate_secret()
                 
@@ -2149,9 +2225,9 @@ class DrbdManageServer(object):
                                 drbdctrl_res.close()
                             except (IOError, OSError):
                                 pass
-            elif command.startswith("_configure_drbdctrl "):
+            elif command.startswith("_configure_drbdctrl"):
                 # remove "_configure_drbdctrl"
-                command = command[20:]
+                command = command[19:]
                 secret = None
                 port   = None
                 bdev   = None
@@ -2172,7 +2248,8 @@ class DrbdManageServer(object):
                     update       = False
                     secret       = None
                     port         = str(DRBDCTRL_DEFAULT_PORT)
-                    bdev         = "/dev/mapper/drbdpool-.drbdctrl"
+                    bdev         = ("/dev/mapper/" + DEFAULT_VG
+                        + "-" + DRBDCTRL_RES_NAME)
                     try:
                         drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
                     except (IOError, OSError):

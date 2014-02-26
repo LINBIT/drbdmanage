@@ -29,6 +29,7 @@ from drbdmanage.utils import build_path
 from drbdmanage.conf.conffile import *
 from drbdmanage.storage.persistence import BlockDevicePersistence
 import drbdmanage.storage.storagecore
+from drbdmanage.consts import DEFAULT_VG
 
 
 class LVM(object):
@@ -57,7 +58,7 @@ class LVM(object):
     
     CONF_DEFAULTS = {
       KEY_DEV_PATH : "/dev/mapper/",
-      KEY_VG_NAME  : "drbdpool",
+      KEY_VG_NAME  : DEFAULT_VG,
       KEY_LVM_PATH : "/sbin"
     }
     

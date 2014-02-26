@@ -286,6 +286,15 @@ class DBusServer(dbus.service.Object):
     
     
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="s", out_signature="s")
+    def text_query(self, command):
+        """
+        D-Bus interface for DrbdManageServer.text_query(...):
+        """
+        return self._server.text_query(command)
+    
+    
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}ss", out_signature="i")
     def init_node(self, name, props, bdev, port):
         """

@@ -23,6 +23,7 @@ from drbdmanage.drbd.drbdcore import *
 from drbdmanage.persistence import *
 from drbdmanage.exceptions import *
 from drbdmanage.utils import *
+import drbdmanage.consts
 import sys
 import os
 import fcntl
@@ -102,9 +103,9 @@ class PersistenceImpl(object):
     HASH_MAXLEN = 0x0100 #  256
     DATA_OFFSET = 0x2000 # 8192
     ZEROFILLSZ  = 0x0400 # 1024
-    # FIXME: This should probably use the DRBDCTRL_RES_NAME from server.py
+    # FIXME: This should probably use the DRBDCTRL_RES_NAME from consts.py
     #CONF_FILE   = "/dev/drbd/by-res/.drbdctrl/0"
-    CONF_FILE   = "/dev/drbd0"
+    CONF_FILE   = drbdmanage.consts.DRBDCTRL_DEV
     
     MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
     
