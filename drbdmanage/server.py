@@ -2067,7 +2067,7 @@ class DrbdManageServer(object):
                     and r_name is not None and l_addr is not None
                     and l_node_id is not None):
                         result_text = (
-                            "drbdmanage __join -p %s %s %s %s %s %s \"%s\""
+                            "drbdmanage join -p %s %s %s %s %s %s \"%s\""
                             % (port, l_addr, l_node_id, r_addr, r_name,
                             r_node_id, secret)
                         )
