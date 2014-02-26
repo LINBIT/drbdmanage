@@ -18,7 +18,7 @@
     </indexterm>
     </refpurpose>
   </refnamediv>
-  
+
   <refsect1>
     <title>Description</title>
     <para><option>drbdmanage</option> is a utility for the simplified
@@ -29,7 +29,7 @@
     control resources on all nodes of a drbdmanage domain.<sbr/>
     </para>
   </refsect1>
-  
+
   <refsect1>
     <title>Quick overview of drbdmanage basics</title>
     <para>
@@ -45,9 +45,9 @@
      a number of associated <option>assignment</option> records.<sbr/>
     </para>
   </refsect1>
-  
+
   <refsynopsisdiv>
-      
+
     <cmdsynopsis sepchar=" ">
       <command>drbdmanage</command>
       <arg choice="opt" rep="norepeat">
@@ -60,7 +60,7 @@
         command ...
       </arg>
     </cmdsynopsis>
-    
+
     <cmdsynopsis sepchar=" ">
       <command>drbdmanage</command>
       <arg choice="opt" rep="norepeat">
@@ -83,39 +83,39 @@
         command ...
       </arg>
     </cmdsynopsis>
-    
+
     <cmdsynopsis sepchar=" ">
       <command moreinfo="none">drbdmanage</command>
       <group choice="req" rep="norepeat">
-        
+
         <arg choice="plain" rep="norepeat">nodes
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-m</arg>
             <arg choice="plain" req="norepeat">--machine-readable</arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">resources
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-m</arg>
             <arg choice="plain" req="norepeat">--machine-readable</arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">volumes
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-m</arg>
             <arg choice="plain" req="norepeat">--machine-readable</arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">assignments
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-m</arg>
             <arg choice="plain" req="norepeat">--machine-readable</arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">new-node
 	  <arg choice="opt" rep="norepeat">
             <group choice="req" rep="norepeat">
@@ -134,7 +134,7 @@
             <replaceable>ip</replaceable>
           </arg>
 	</arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">new-resource
           <arg choice="opt" rep="norepeat">
             <group choice="req" rep="norepeat">
@@ -154,7 +154,7 @@
             <replaceable>resname</replaceable>
           </arg>
 	</arg><sbr/>
-        
+
 	<arg choice="plain" rep="norepeat">new-volume
           <arg choice="opt" rep="norepeat">
             <group choice="req" rep="norepeat">
@@ -181,7 +181,7 @@
             <replaceable>size</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">remove-node
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-q</arg>
@@ -195,7 +195,7 @@
             <replaceable>nodename</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">remove-resource
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-q</arg>
@@ -209,7 +209,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">remove-volume
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-q</arg>
@@ -226,7 +226,7 @@
             <replaceable>volid</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">deploy
 	  <arg choice="plain" rep="norepeat">
             <replaceable>resname</replaceable>
@@ -235,7 +235,7 @@
             <replaceable>n</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">extend
 	  <arg choice="plain" rep="norepeat">
             <replaceable>resname</replaceable>
@@ -249,7 +249,7 @@
             </arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">reduce
 	  <arg choice="plain" rep="norepeat">
             <replaceable>resname</replaceable>
@@ -263,13 +263,13 @@
             </arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">undeploy
 	  <arg choice="plain" rep="norepeat">
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">assign
           <arg choice="opt" rep="norepeat">--client</arg>
           <arg choice="opt" rep="norepeat">--discard</arg>
@@ -281,7 +281,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">unassign
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-f</arg>
@@ -294,7 +294,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">connect
 	  <arg choice="plain" rep="norepeat">
             <replaceable>nodename</replaceable>
@@ -303,7 +303,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">disconnect
 	  <arg choice="plain" rep="norepeat">
             <replaceable>nodename</replaceable>
@@ -312,7 +312,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">reconnect
 	  <arg choice="plain" rep="norepeat">
             <replaceable>nodename</replaceable>
@@ -321,7 +321,7 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">attach
 	  <arg choice="plain" rep="norepeat">
             <replaceable>nodename</replaceable>
@@ -333,7 +333,7 @@
             <replaceable>volid</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">detach
 	  <arg choice="plain" rep="norepeat">
             <replaceable>nodename</replaceable>
@@ -345,7 +345,7 @@
             <replaceable>volid</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">flags
             <arg choice="opt" rep="norepeat">
               <arg choice="plain" rep="norepeat">--reconnect=
@@ -386,23 +386,23 @@
             <replaceable>resname</replaceable>
           </arg>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">
           update-pool
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">
           reconfigure
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">
           save
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">
           load
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">
           export
           <group choice="req" rep="norepeat">
@@ -412,24 +412,24 @@
             </arg>
           </group>
         </arg><sbr/>
-        
+
         <arg choice="plain" rep="norepeat">shutdown
           <group choice="opt" rep="norepeat">
             <arg choice="plain" rep="norepeat">-q</arg>
             <arg choice="plain" req="norepeat">--quiet</arg>
           </group>
         </arg><sbr/>
-        
+
         <sbr/>
       </group>
       </cmdsynopsis>
   </refsynopsisdiv>
-  
-  
-  
+
+
+
   <refsect1>
-      <title>Commands</title>     
-      
+      <title>Commands</title>
+
       <variablelist>
         <varlistentry>
           <term>
@@ -521,13 +521,13 @@
               <sbr/>
               If the <option>-m</option> or <option>--machine-readble</option>
               option is present, the list is printed in a machine readable
-              format, as a comma separated list of each assignment of a 
+              format, as a comma separated list of each assignment of a
               volume to a node.
             </para>
           </listitem>
         </varlistentry>
-      
-          
+
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -567,7 +567,7 @@
             </para>
           </listitem>
         </varlistentry>
-      
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -607,7 +607,7 @@
             </para>
           </listitem>
         </varlistentry>
-      
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -703,7 +703,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -743,7 +743,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -782,7 +782,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -823,7 +823,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -848,7 +848,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -878,7 +878,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -908,7 +908,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -925,7 +925,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -968,7 +968,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1000,7 +1000,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1012,7 +1012,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1026,7 +1026,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1040,7 +1040,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1054,7 +1054,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1068,8 +1068,8 @@
             </para>
           </listitem>
         </varlistentry>
-        
-        
+
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1097,7 +1097,7 @@
             </para>
           </listitem>
         </varlistentry>
-        
+
         <varlistentry>
           <term>
             <command moreinfo="none">drbdmanage</command>
@@ -1117,8 +1117,8 @@
             </para>
           </listitem>
         </varlistentry>
-        
-        
+
+
         <!--
         <varlistentry>
           <term>
@@ -1132,10 +1132,10 @@
           </listitem>
         </varlistentry>
         -->
-        
+
       </variablelist>
   </refsect1>
-  
+
   <refsect1>
     <title>Examples</title>
     <para>

@@ -23,10 +23,10 @@ import logging
 from drbdmanage.exceptions import *
 
 class ConfFile(object):
-    
+
     """
     Configuration file parser for drbdmanage configuration files
-    
+
     Basic rules of the configuration file format:
       key = value free format
       leading spaces and tabs removed from key and value
@@ -40,30 +40,30 @@ class ConfFile(object):
       lines starting with a hash sign as the first non-space, non-tab character
         are comment lines
     """
-    
+
     _input = None
-    
-    
+
+
     def __init__(self, stream):
         self._input = stream
-    
-    
+
+
     def get_conf(self):
         in_file      = self._input
         split_idx    = self._split_idx
         unescape     = self._unescape
         extend_line  = self._extend_line
         comment_line = self._comment_line
-        
+
         key  = None
         val  = None
         conf = dict()
-        
+
         while True:
             line = in_file.readline()
             if not len(line) > 0:
                 break
-            
+
             if line.endswith("\n"):
                 line = line[:len(line) - 1]
             if key is None:
@@ -90,8 +90,8 @@ class ConfFile(object):
         if key is not None:
             conf[key] = val
         return conf
-    
-    
+
+
     @classmethod
     def conf_defaults_merge(cls, conf_defaults, conf_loaded):
         """
@@ -108,8 +108,8 @@ class ConfFile(object):
             else:
                 conf[key] = conf_defaults.get(key)
         return conf
-    
-    
+
+
     @classmethod
     def conf_defaults_union(cls, conf_defaults, conf_loaded):
         """
@@ -127,8 +127,8 @@ class ConfFile(object):
             if val is None:
                 conf[key] = conf_loaded.get(key)
         return conf
-    
-    
+
+
     def _split_idx(self, line, s_char):
         """
         Returns the index of an unescaped occurrence of s_char in a string
@@ -151,8 +151,8 @@ class ConfFile(object):
                 if lidx > midx:
                     break
         return split_idx
-    
-    
+
+
     def _comment_line(self, line):
         """
         Indicates whether a line is a comment line (True) or not (False)
@@ -168,8 +168,8 @@ class ConfFile(object):
                 break
             idx += 1
         return fn_rc
-    
-    
+
+
     def _min_idx(self, x_idx, y_idx):
         """
         Returns the lesser value unless it is -1, or -1 if both are -1
@@ -179,8 +179,8 @@ class ConfFile(object):
         else:
             idx = y_idx if y_idx != -1 else x_idx
         return idx
-    
-    
+
+
     def _unescape(self, line):
         """
         Resolves escape sequences, removes leading/trailing whitespaces
@@ -233,12 +233,12 @@ class ConfFile(object):
         if not spaces:
             u_line += line[lidx:]
         return u_line
-    
-    
+
+
     def _extend_line(self, line):
         """
         Indicates whether a line needs to be extended with the next line
-        
+
         If a line ends with an unescaped backslash, it shall be extended
         with the next line
         """
@@ -260,22 +260,22 @@ class ConfFile(object):
 
 
 class DrbdAdmConf(object):
-    
+
     KEY_SECRET = "secret"
     KEY_ADDRESS = "port"
     KEY_BDEV   = "blockdevice"
-    
+
     def __init__(self):
         pass
-    
-    
+
+
     def write(self, stream, assignment, undeployed_flag):
         try:
             resource = assignment.get_resource()
             secret   = resource.get_secret()
             if secret is None:
                 secret = ""
-            
+
             # begin resource
             stream.write("resource %s {\n"
               "    net {\n"
@@ -284,7 +284,7 @@ class DrbdAdmConf(object):
               "    }\n"
               % (resource.get_name(), secret)
               )
-            
+
             # begin resource/volumes
             for volume in resource.iterate_volumes():
                 vol_state = assignment.get_volume_state(volume.get_id())
@@ -307,7 +307,7 @@ class DrbdAdmConf(object):
                         bd_path)
                       )
             # end resource/volumes
-            
+
             # begin resource/nodes
             for assignment in resource.iterate_assignments():
                 if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0)
@@ -321,7 +321,7 @@ class DrbdAdmConf(object):
                         node.get_addr(), resource.get_port())
                       )
             # end resource/nodes
-            
+
             # begin resource/connection
             stream.write("    connection-mesh {\n"
               "        hosts"
@@ -338,7 +338,7 @@ class DrbdAdmConf(object):
               )
             stream.write("    }\n")
             # end resource/connection
-            
+
             stream.write("}\n")
             # end resource
         except InvalidMinorNrException:
@@ -347,8 +347,8 @@ class DrbdAdmConf(object):
         except Exception as exc:
             logging.error("Cannot generate configuration file, "
               "unhandled exception: %s" % str(exc))
-    
-    
+
+
     def write_excerpt(self, stream, assignment, nodes, vol_states):
         """
         Writes an excerpt of the configuration file to a stream.
@@ -368,7 +368,7 @@ class DrbdAdmConf(object):
             secret   = resource.get_secret()
             if secret is None:
                 secret = ""
-            
+
             # begin resource
             stream.write("resource %s {\n"
               "    net {\n"
@@ -377,7 +377,7 @@ class DrbdAdmConf(object):
               "    }\n"
               % (resource.get_name(), secret)
               )
-            
+
             # begin resource/volumes
             for vol_state in vol_states:
                 volume = vol_state.get_volume()
@@ -396,7 +396,7 @@ class DrbdAdmConf(object):
                     bd_path)
                   )
             # end resource/volumes
-            
+
             # begin resource/nodes
             for node in nodes:
                 assg = node.get_assignment(resource.get_name())
@@ -409,7 +409,7 @@ class DrbdAdmConf(object):
                         node.get_addr(), resource.get_port())
                       )
             # end resource/nodes
-            
+
             # begin resource/connection
             stream.write("    connection-mesh {\n"
               "        hosts"
@@ -423,7 +423,7 @@ class DrbdAdmConf(object):
               )
             stream.write("    }\n")
             # end resource/connection
-            
+
             stream.write("}\n")
             # end resource
         except InvalidMinorNrException:
@@ -453,8 +453,8 @@ class DrbdAdmConf(object):
                     confline = confline[len(p_name):]
                     fields[keypair[1]] = self._extract_field(confline)
         return fields
-    
-    
+
+
     def _extract_field(self, value):
         value = value.strip()
         idx = value.find("\"")

@@ -26,23 +26,23 @@ from distutils.core import setup, Command
 import os
 
 class BuildManCommand(Command):
-    
+
     """
     Builds manual pages using docbook
     """
-    
+
     description  = "Build manual pages"
     user_options = []
-    
-    
+
+
     def initialize_options(self):
         self.cwd = None
-    
-    
+
+
     def finalize_options(self):
         self.cwd = os.getcwd()
-    
-    
+
+
     def run(self):
         assert os.getcwd() == self.cwd, "Must be in package root: %s" % self.cwd
         os.system("cd man-pages; "

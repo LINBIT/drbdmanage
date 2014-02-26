@@ -23,20 +23,20 @@ import json
 
 class GenericPersistence(object):
     _obj = None
-    
-    
+
+
     def __init__(self, obj):
         self._obj = obj
-    
-    
+
+
     def get_object(self):
         return self._obj
-    
-    
+
+
     def load_dict(self, serializable):
         """
         Load a dictionary with serializable variables of an object
-        
+
         @param   serializable: list of object variable names to add to
                  the dictionary
         @return: object variables for serialization
@@ -50,12 +50,12 @@ class GenericPersistence(object):
             except KeyError:
                 pass
         return properties
-    
-    
+
+
     def serialize(self, properties):
         """
         Serialize a dictionary (dict) into a JSON string
-        
+
         @param   properties: dictionary of serializable variables
         @return: JSON string of serialized data
         @rtype:  str

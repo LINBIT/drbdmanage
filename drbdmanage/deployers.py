@@ -23,24 +23,24 @@ import drbdmanage.drbd.drbdcore
 from drbdmanage.exceptions import *
 
 class BalancedDeployer(object):
-    
+
     """
     Balanced deployment strategy - deploy resources on nodes that have
     the greatest amount of free memory
     """
-    
-    
+
+
     def __init__(self):
         pass
-    
-    
+
+
     def deploy_select(self, nodes, result, count, size_kiB, deploy_unknown):
         """
         Find nodes that have enough memory to deploy the resource
         if deploy_unknown is set and there are not enough nodes that have
         enough memory, also use nodes that do not know the state of their
         storage pool
-        
+
         @param   nodes: nodes that may be eligible for deploying the resource
         @type    nodes: dict of DrbdNode objects
         @param   size_kiB: amount of free storage required on a node for
@@ -81,17 +81,17 @@ class BalancedDeployer(object):
         if len(result) < count:
             fn_rc = DM_ENOSPC
         return fn_rc
-    
-    
+
+
     def undeploy_select(self, nodes, result, count, unknown_first):
         """
         Balanced deployment strategy - undeploy resource from nodes that have
         the least amount of free memory
-        
+
         If unkown_first is set, then if there are nodes that have the resource
         deployed and have unknown storage status, undeploy from those nodes
         first.
-        
+
         @param   nodes: nodes that may be eligible for deploying the resource
         @type    nodes: dict of DrbdNode objects
         @param   count: number of required nodes

@@ -33,39 +33,39 @@ from drbdmanage.consts import DEFAULT_VG
 
 
 class LVM(object):
-    
+
     """
     LVM logical volume backing store plugin for the drbdmanage server
-    
+
     Provides backing store block devices for DRBD volumes by managing the
     allocation of logical volumes inside a volume group of the
     logical volume manager (LVM).
     """
-    
+
     KEY_DEV_PATH  = "dev-path"
     KEY_VG_NAME   = "volume-group"
     KEY_LVM_PATH  = "lvm-path"
-    
+
     LVM_CONFFILE = "/etc/drbdmanaged-lvm.conf"
     LVM_SAVEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
-    
+
     LVM_CREATE   = "lvcreate"
     LVM_REMOVE   = "lvremove"
     LVM_LVS      = "lvs"
-    
+
     # LV exists error code
     LVM_EEXIST   = 5
-    
+
     CONF_DEFAULTS = {
       KEY_DEV_PATH : "/dev/mapper/",
       KEY_VG_NAME  : DEFAULT_VG,
       KEY_LVM_PATH : "/sbin"
     }
-    
+
     _lvs  = None
     _conf = None
-    
-    
+
+
     def __init__(self):
         try:
             self._lvs   = dict()
@@ -88,12 +88,12 @@ class LVM(object):
         except Exception as exc:
             logging.error("LVM plugin: initialization failed, "
               "unhandled exception: %s" % str(exc))
-    
-    
+
+
     def create_blockdevice(self, name, vol_id, size):
         """
         Allocates a block device as backing storage for a DRBD volume
-        
+
         @param   name: resource name; subject to name constraints
         @type    name: str
         @param   id: volume id
@@ -126,12 +126,12 @@ class LVM(object):
             logging.error("LVM plugin: Block device creation failed,"
               "unhandled exception: %s" % str(exc))
         return blockdev
-    
-    
+
+
     def remove_blockdevice(self, blockdevice):
         """
         Deallocates a block device
-        
+
         @param   blockdevice: the block device to deallocate
         @type    blockdevice: BlockDevice object
         @return: standard return code (see drbdmanage.exceptions)
@@ -144,15 +144,15 @@ class LVM(object):
             return DM_ENOENT
         self.save_state()
         return DM_SUCCESS
-    
-    
+
+
     def get_blockdevice(self, name, vol_id):
         """
         Retrieves a registered BlockDevice object
-        
+
         The BlockDevice object allocated and registered under the supplied
         resource name and volume id is returned.
-        
+
         @return: the specified block device; None on error
         @rtype:  BlockDevice object
         """
@@ -162,36 +162,36 @@ class LVM(object):
         except KeyError:
             pass
         return blockdev
-    
-    
+
+
     def up_blockdevice(self, blockdev):
         """
         Activates a block device (e.g., connects an iSCSI resource)
-        
+
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
         return DM_SUCCESS
-    
-    
+
+
     def down_blockdevice(self, blockdev):
         """
         Deactivates a block device (e.g., disconnects an iSCSI resource)
-        
+
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
         return DM_SUCCESS
-    
-    
+
+
     def update_pool(self, node):
         """
         Updates the DrbdNode object with the current storage status
-        
+
         Determines the current total and free space that is available for
         allocation on the host this instance of the drbdmanage server is
         running on and updates the DrbdNode object with that information.
-        
+
         @param   node: The node to update
         @type    node: DrbdNode object
         @return: standard return code (see drbdmanage.exceptions)
@@ -199,10 +199,10 @@ class LVM(object):
         fn_rc    = 1
         poolsize = -1
         poolfree = -1
-        
+
         lvs = self._lv_command_path(self.LVM_LVS)
         lvm_proc = None
-        
+
         try:
             lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
               "--units", "k", "--separator", ",", "--options",
@@ -237,44 +237,44 @@ class LVM(object):
                     pass
                 lvm_proc.wait()
         return fn_rc
-    
-    
+
+
     def _create_lv(self, name, size):
         lvcreate = self._lv_command_path(self.LVM_CREATE)
-        
+
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
           str(size) + "k", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         fn_rc = lvm_proc.wait()
         return fn_rc
-    
-    
+
+
     def _remove_lv(self, name):
         lvremove = self._lv_command_path(self.LVM_REMOVE)
-        
+
         lvm_proc = subprocess.Popen([lvremove, "--force",
           self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove,
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         fn_rc = lvm_proc.wait()
         return fn_rc
-    
-    
+
+
     def _lv_command_path(self, cmd):
         return build_path(self._conf[self.KEY_LVM_PATH], cmd)
-    
-    
+
+
     def _lv_name(self, name, vol_id):
         return ("%s_%.2d" % (name, vol_id))
-    
-    
+
+
     def _lv_path_prefix(self):
         vg_name  = self._conf[self.KEY_VG_NAME]
         dev_path = self._conf[self.KEY_DEV_PATH]
         return build_path(dev_path, vg_name) + "-"
-        
-    
+
+
     def load_conf(self):
         in_file = None
         conf = None
@@ -294,8 +294,8 @@ class LVM(object):
             if in_file is not None:
                 in_file.close()
         return conf
-    
-    
+
+
     def load_state(self):
         in_file = None
         try:
@@ -334,8 +334,8 @@ class LVM(object):
         finally:
             if in_file is not None:
                 in_file.close()
-    
-    
+
+
     def save_state(self):
         lvm_con = dict()
         for blockdev in self._lvs.itervalues():
@@ -356,8 +356,8 @@ class LVM(object):
         finally:
             if out_file is not None:
                 out_file.close()
-    
-    
+
+
     def reconfigure(self):
         """
         Reconfigures the storage plugin
