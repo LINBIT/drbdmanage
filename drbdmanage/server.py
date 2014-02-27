@@ -20,20 +20,32 @@
 
 import sys
 import os
+import time
 import gobject
 import subprocess
 import fcntl
 import logging
 import logging.handlers
 
-from drbdmanage.dbusserver import *
-from drbdmanage.exceptions import *
-from drbdmanage.drbd.drbdcore import *
-from drbdmanage.drbd.persistence import *
-from drbdmanage.storage.storagecore import *
-from drbdmanage.conf.conffile import *
-from drbdmanage.utils import *
-from drbdmanage.consts import *
+from drbdmanage.consts import (NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR,
+    DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME)
+from drbdmanage.utils import NioLineReader
+from drbdmanage.utils import (build_path, extend_path, generate_secret,
+    get_event_arg, get_event_source, get_event_type, get_free_number,
+    plugin_import)
+from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
+    DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
+    DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
+    DM_SUCCESS)
+from drbdmanage.exceptions import (InvalidMinorNrException,
+    InvalidNameException, PersistenceException, PluginException,
+    SyntaxException, VolSizeRangeException)
+from drbdmanage.drbd.drbdcore import (Assignment, AssignmentView, DrbdManager,
+    DrbdNode, DrbdNodeView, DrbdResource, DrbdResourceView, DrbdVolume,
+    DrbdVolumeState)
+from drbdmanage.drbd.persistence import persistence_impl
+from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
+from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
 
 
 class DrbdManageServer(object):
@@ -854,6 +866,7 @@ class DrbdManageServer(object):
         fn_rc      = DM_EPERSIST
         persist = None
         try:
+            tstate = tstate | Assignment.FLAG_DEPLOY
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)

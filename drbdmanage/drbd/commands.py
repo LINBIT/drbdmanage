@@ -18,12 +18,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import sys
 import subprocess
 import errno
 import logging
 
-from drbdmanage.utils import *
+from drbdmanage.utils import build_path
 
 class DrbdAdm(object):
 

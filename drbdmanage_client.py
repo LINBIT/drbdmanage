@@ -26,22 +26,32 @@ local drbdmanage server through D-Bus.
 """
 
 import sys
+import os
 import dbus
-import string
 import subprocess
 import drbdmanage.drbd.drbdcore
-from drbdmanage.utils import *
+import drbdmanage.drbd.persistence
+
+from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
+    DRBDCTRL_RES_NAME, NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR)
+from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
+from drbdmanage.utils import SizeCalc
+from drbdmanage.utils import get_terminal_size
+from drbdmanage.utils import (COLOR_NONE, COLOR_RED, COLOR_DARKRED,
+    COLOR_DARKGREEN, COLOR_BROWN, COLOR_DARKPINK, COLOR_TEAL)
+from drbdmanage.exceptions import AbortException
+from drbdmanage.exceptions import IncompatibleDataException
+from drbdmanage.exceptions import SyntaxException
+from drbdmanage.exceptions import dm_exc_text
+from drbdmanage.exceptions import DM_EEXIST
 from drbdmanage.dbusserver import DBusServer
-from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
-from drbdmanage.drbd.drbdcore import DrbdNodeView
-from drbdmanage.drbd.drbdcore import DrbdResourceView
-from drbdmanage.drbd.drbdcore import DrbdVolumeView
-from drbdmanage.drbd.drbdcore import DrbdVolumeStateView
 from drbdmanage.drbd.drbdcore import AssignmentView
-from drbdmanage.exceptions import *
-from drbdmanage.consts import *
+from drbdmanage.drbd.drbdcore import DrbdNodeView
+from drbdmanage.drbd.drbdcore import DrbdResource
+from drbdmanage.drbd.drbdcore import DrbdResourceView
+from drbdmanage.storage.storagecore import MinorNr
 
 
 class DrbdManage(object):

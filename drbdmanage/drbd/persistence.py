@@ -18,12 +18,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from drbdmanage.storage.storagecore import MinorNr
-from drbdmanage.drbd.drbdcore import *
-from drbdmanage.persistence import *
-from drbdmanage.exceptions import *
-from drbdmanage.utils import *
-import drbdmanage.consts
 import sys
 import os
 import fcntl
@@ -32,6 +26,15 @@ import time
 import json
 import mmap
 import logging
+import drbdmanage.consts
+
+from drbdmanage.exceptions import PersistenceException
+from drbdmanage.utils import DataHash
+from drbdmanage.utils import map_val_or_dflt
+from drbdmanage.persistence import GenericPersistence
+from drbdmanage.storage.storagecore import MinorNr
+from drbdmanage.drbd.drbdcore import (DrbdNode, DrbdResource, DrbdVolume,
+    DrbdVolumeState,Assignment)
 
 
 def persistence_impl():

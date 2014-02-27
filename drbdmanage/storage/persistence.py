@@ -18,8 +18,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from drbdmanage.persistence import GenericPersistence
 import drbdmanage.storage.storagecore
+
+from drbdmanage.persistence import GenericPersistence
 
 
 class BlockDevicePersistence(GenericPersistence):

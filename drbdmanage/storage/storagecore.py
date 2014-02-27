@@ -20,9 +20,12 @@
 
 
 import logging
-import drbdmanage.storage.lvm
 import drbdmanage.utils
-from drbdmanage.exceptions import *
+import drbdmanage.storage.lvm
+
+from drbdmanage.exceptions import (InvalidMajorNrException,
+    InvalidMinorNrException)
+from drbdmanage.exceptions import DM_ENOENT
 
 
 class GenericStorage(object):

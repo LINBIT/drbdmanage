@@ -22,8 +22,10 @@
 Installer & Package creator for drbdmanage
 """
 
-from distutils.core import setup, Command
 import os
+
+from distutils.core import setup, Command
+
 
 class BuildManCommand(Command):
 

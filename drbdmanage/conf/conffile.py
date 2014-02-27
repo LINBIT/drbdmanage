@@ -20,7 +20,9 @@
 
 import sys
 import logging
-from drbdmanage.exceptions import *
+
+from drbdmanage.exceptions import InvalidMinorNrException
+
 
 class ConfFile(object):
 

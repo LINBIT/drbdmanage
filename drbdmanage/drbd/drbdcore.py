@@ -18,20 +18,20 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import subprocess
+import sys
 import logging
+import drbdmanage.consts
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
-import drbdmanage.consts
 
 """
 WARNING!
   do not import anything from drbdmanage.drbd.persistence
 """
 from drbdmanage.storage.storagecore import GenericStorage
-from drbdmanage.storage.storagecore import BlockDevice
-from drbdmanage.exceptions import *
-from drbdmanage.utils import *
+from drbdmanage.exceptions import (IncompatibleDataException,
+    InvalidAddrFamException, InvalidNameException, VolSizeRangeException)
+from drbdmanage.exceptions import DM_SUCCESS
 
 
 class DrbdManager(object):

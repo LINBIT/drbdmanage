@@ -18,18 +18,21 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import subprocess
 import sys
 import json
 import errno
 import logging
-from drbdmanage.exceptions import *
+import subprocess
+import drbdmanage.storage.storagecore
+
+from drbdmanage.consts import DEFAULT_VG
+from drbdmanage.exceptions import PersistenceException
+from drbdmanage.exceptions import DM_ENOENT, DM_SUCCESS
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import build_path
-from drbdmanage.conf.conffile import *
-from drbdmanage.storage.persistence import BlockDevicePersistence
-import drbdmanage.storage.storagecore
-from drbdmanage.consts import DEFAULT_VG
+from drbdmanage.conf.conffile import ConfFile
+from drbdmanage.storage.persistence import (BlockDevicePersistence,
+    BlockDevicePersistence)
 
 
 class LVM(object):

@@ -19,8 +19,9 @@
 """
 
 import drbdmanage.utils
-import drbdmanage.drbd.drbdcore
-from drbdmanage.exceptions import *
+
+from drbdmanage.exceptions import DM_SUCCESS, DM_ENOSPC
+
 
 class BalancedDeployer(object):
 

@@ -18,21 +18,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import sys
-import string
-import traceback
+import logging
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-import gobject
-import logging
-import drbdmanage.drbd.drbdcore
-from drbdmanage.drbd.drbdcore import Assignment
-from drbdmanage.exceptions import *
-
-# TODO: DEBUG: used for debug code only
-from drbdmanage.drbd.persistence import *
-import drbdmanage.conf.conffile
 
 
 class DBusServer(dbus.service.Object):
@@ -182,7 +171,6 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.assign(...)
         """
-        tstate = tstate | Assignment.FLAG_DEPLOY
         return self._server.assign(node_name, resource_name, cstate, tstate)
 
 
@@ -206,20 +194,20 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sib", out_signature="i")
-    def auto_extend(self, res_name, count, extend):
+    def auto_extend(self, res_name, count, extend_flag):
         """
         D-Bus interface for DrbdManageServer.auto_extend(...)
         """
-        return self._server.auto_extend(res_name, count, extend)
+        return self._server.auto_extend(res_name, count, extend_flag)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sib", out_signature="i")
-    def auto_reduce(self, res_name, count, reduce):
+    def auto_reduce(self, res_name, count, reduce_flag):
         """
         D-Bus interface for DrbdManageServer.auto_reduce(...)
         """
-        return self._server.auto_reduce(res_name, count, reduce)
+        return self._server.auto_reduce(res_name, count, reduce_flag)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
