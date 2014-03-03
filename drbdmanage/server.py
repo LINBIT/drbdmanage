@@ -28,7 +28,8 @@ import logging
 import logging.handlers
 
 from drbdmanage.consts import (NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR,
-    DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME)
+    DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE,
+    DRBDCTRL_RES_PATH)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_event_arg, get_event_source, get_event_type, get_free_number,
@@ -2042,7 +2043,8 @@ class DrbdManageServer(object):
 
                 conffile = DrbdAdmConf()
                 try:
-                    drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                    drbdctrl_res = open(
+                        build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "r")
                     fields = conffile.read_drbdctrl_params(drbdctrl_res)
                 except (IOError, OSError):
                     pass
@@ -2124,7 +2126,8 @@ class DrbdManageServer(object):
 
                 # Try to open an existing configuration file
                 try:
-                    drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                    drbdctrl_res = open(
+                        build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "r")
                 except (IOError, OSError):
                     # if the drbdctrl.res file cannot be opened, assume
                     # that it does not exist and create a new one
@@ -2174,8 +2177,8 @@ class DrbdManageServer(object):
                 if secret is None:
                     secret = generate_secret()
 
-                drbdctrl_res = open("/etc/drbd.d/drbdctrl.res",
-                    "w")
+                drbdctrl_res = open(
+                    build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w")
                 conffile.write_drbdctrl(drbdctrl_res, self._nodes,
                     bdev, port, secret)
                 drbdctrl_res.close()
@@ -2225,7 +2228,9 @@ class DrbdManageServer(object):
                 if (secret is not None and port is not None
                     and bdev is not None):
                     try:
-                        drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "w")
+                        drbdctrl_res = open(
+                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
+                            "w")
                         conffile.write_drbdctrl(drbdctrl_res, self._nodes,
                             bdev, port, secret)
                         drbdctrl_res.close()
@@ -2264,7 +2269,9 @@ class DrbdManageServer(object):
                     bdev         = ("/dev/mapper/" + DEFAULT_VG
                         + "-" + DRBDCTRL_RES_NAME)
                     try:
-                        drbdctrl_res = open("/etc/drbd.d/drbdctrl.res", "r")
+                        drbdctrl_res = open(
+                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
+                            "r")
                     except (IOError, OSError):
                         # if the drbdctrl.res file cannot be opened, assume
                         # that it does not exist and create a new one
@@ -2276,7 +2283,8 @@ class DrbdManageServer(object):
                                 pass
                     if not update:
                         try:
-                            fields = conffile.read_drbdctrl_params(drbdctrl_res)
+                            fields = conffile.read_drbdctrl_params(
+                                drbdctrl_res)
                         except (IOError, OSError):
                             pass
                         finally:
@@ -2302,7 +2310,9 @@ class DrbdManageServer(object):
                         secret = generate_secret()
                     if update:
                         try:
-                            drbdctrl_res = open("/etc/drbd.d/drbdctrl.res",
+                            drbdctrl_res = open(
+                                build_path(DRBDCTRL_RES_PATH,
+                                DRBDCTRL_RES_NAME),
                                 "w")
                             conffile.write_drbdctrl(drbdctrl_res, self._nodes,
                                 bdev, port, secret)

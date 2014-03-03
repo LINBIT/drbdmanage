@@ -438,6 +438,8 @@ class DrbdAdmConf(object):
 
     def read_drbdctrl_params(self, stream):
         # parameters that contain specific information
+        # FIXME: these parameters should be read from the section of the
+        #        current node
         params = [
             [ "shared-secret" , DrbdAdmConf.KEY_SECRET ],
             [ "disk"          , DrbdAdmConf.KEY_BDEV   ],

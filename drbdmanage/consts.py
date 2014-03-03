@@ -32,5 +32,7 @@ VOL_MINOR           = "minor"
 DRBDCTRL_DEFAULT_PORT = 6999
 
 DRBDCTRL_RES_NAME   = ".drbdctrl"
+DRBDCTRL_RES_FILE   = "drbdctrl.res"
 DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
+DRBDCTRL_RES_PATH   = "/etc/drbd.d/"

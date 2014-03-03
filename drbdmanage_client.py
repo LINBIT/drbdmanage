@@ -33,10 +33,11 @@ import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 
 from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
-    DRBDCTRL_RES_NAME, NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR)
+    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, NODE_ADDR,
+    NODE_AF, RES_PORT, VOL_MINOR)
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
-from drbdmanage.utils import get_terminal_size
+from drbdmanage.utils import get_terminal_size, build_path
 from drbdmanage.utils import (COLOR_NONE, COLOR_RED, COLOR_DARKRED,
     COLOR_DARKGREEN, COLOR_BROWN, COLOR_DARKPINK, COLOR_TEAL)
 from drbdmanage.exceptions import AbortException
@@ -1474,13 +1475,16 @@ class DrbdManage(object):
 
 
     def cmd_init(self, args):
+        """
+        Initializes a new drbdmanage cluster
+        """
         fn_rc = 1
         order    = [ "address" ]
         params   = {}
         opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
         optalias = { "--port" : "-p", "--address-family" : "-a" }
-        flags    = { }
-        flagsalias = { }
+        flags    = { "-q" : False }
+        flagsalias = { "--quiet" : "-q" }
 
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
@@ -1513,53 +1517,77 @@ class DrbdManage(object):
             except ValueError:
                 sys.stderr.write("Invalid port number\n")
                 raise AbortException
+            quiet = flags["-q"]
             # END Setup drbdctrl resource properties
 
-            # TODO: Check whether the .drbdctrl LV exists already
+            if not quiet:
+                quiet = self.user_confirm(
+                    "You are going to initalize a new drbdmanage cluster.\n"
+                    "CAUTION! Note that:\n"
+                    "  * Any previous drbdmanage cluster information may be "
+                    "removed\n"
+                    "  * Any remaining resources managed by a previous "
+                    "drbdmanage installation\n"
+                    "    that still exist on this system will no longer be "
+                    "managed by drbdmanage\n"
+                    "\n"
+                    "Confirm:\n"
+                )
+            if quiet:
+                # ========================================
+                # Cleanup
+                # ========================================
+                self._init_join_cleanup()
 
-            # Create the .drbdctrl LV
-            self._ext_command(["lvcreate", "-n", DRBDCTRL_RES_NAME,
-                "-L", "4m", DEFAULT_VG])
+                # ========================================
+                # Initialize a new drbdmanage cluster
+                # ========================================
 
-            # Create meta-data
-            self._ext_command(["drbdmeta", "--force", "0",
-                "v09", self.DRBDCTRL_BLOCKDEV, "internal",
-                "create-md", "31"])
+                # Create the .drbdctrl LV
+                self._ext_command(["lvcreate", "-n", DRBDCTRL_RES_NAME,
+                    "-L", "4m", DEFAULT_VG])
 
-            # Configure the .drbdctrl resource
-            self._ext_command(["drbdsetup", "new-resource",
-                DRBDCTRL_RES_NAME, "0"])
-            self._ext_command(["drbdsetup", "new-minor", DRBDCTRL_RES_NAME,
-                "0", "0"])
-            self._ext_command(["drbdmeta", "0", "v09",
-                self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
-            self._ext_command(["drbdsetup", "attach", "0",
-                self.DRBDCTRL_BLOCKDEV,
-                self.DRBDCTRL_BLOCKDEV, "internal"])
-            self._ext_command(["drbdsetup",
-                "primary", DRBDCTRL_RES_NAME, "--force"])
-            init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
-            if init_rc != 0:
-                # an error message is printed by _drbdctrl_init()
-                raise AbortException
-            self._ext_command(["drbdsetup", "secondary",
-                DRBDCTRL_RES_NAME])
+                # Create meta-data
+                self._ext_command(["drbdmeta", "--force", "0",
+                    "v09", self.DRBDCTRL_BLOCKDEV, "internal",
+                    "create-md", "31"])
+
+                # Configure the .drbdctrl resource
+                self._ext_command(["drbdsetup", "new-resource",
+                    DRBDCTRL_RES_NAME, "0"])
+                self._ext_command(["drbdsetup", "new-minor", DRBDCTRL_RES_NAME,
+                    "0", "0"])
+                self._ext_command(["drbdmeta", "0", "v09",
+                    self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+                self._ext_command(["drbdsetup", "attach", "0",
+                    self.DRBDCTRL_BLOCKDEV,
+                    self.DRBDCTRL_BLOCKDEV, "internal"])
+                self._ext_command(["drbdsetup",
+                    "primary", DRBDCTRL_RES_NAME, "--force"])
+                init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
+                if init_rc != 0:
+                    # an error message is printed by _drbdctrl_init()
+                    raise AbortException
+                self._ext_command(["drbdsetup", "secondary",
+                    DRBDCTRL_RES_NAME])
 
 
-            props = {}
-            props[NODE_ADDR] = address
-            props[NODE_AF]   = af
-            # Startup the drbdmanage server and add the current node
-            self.dbus_init()
-            server_rc = self._server.init_node(
-                dbus.String(node_name), props,
-                dbus.String(self.DRBDCTRL_BLOCKDEV), str(port)
-            )
+                props = {}
+                props[NODE_ADDR] = address
+                props[NODE_AF]   = af
+                # Startup the drbdmanage server and add the current node
+                self.dbus_init()
+                server_rc = self._server.init_node(
+                    dbus.String(node_name), props,
+                    dbus.String(self.DRBDCTRL_BLOCKDEV), str(port)
+                )
 
-            if server_rc == 0:
-                fn_rc = 0
+                if server_rc == 0:
+                    fn_rc = 0
+                else:
+                    fn_rc = 1
             else:
-                fn_rc = 1
+                fn_rc = 0
         except AbortException:
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback()
@@ -1569,14 +1597,17 @@ class DrbdManage(object):
 
 
     def cmd_join(self, args):
+        """
+        Joins an existing drbdmanage cluster
+        """
         fn_rc = 1
         order    = [ "local_ip", "local_node_id", "peer_ip", "peer_name",
             "peer_node_id", "secret" ]
         params   = {}
         opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
         optalias = { "--port" : "-p", "--address-family" : "-a" }
-        flags    = { }
-        flagsalias = { }
+        flags    = { "-q" : False }
+        flagsalias = { "--quiet" : "-q" }
 
         bdev = self.DRBDCTRL_BLOCKDEV
         try:
@@ -1605,74 +1636,69 @@ class DrbdManage(object):
             except ValueError:
                 sys.stderr.write("Invalid port number\n")
                 raise AbortException
+            quiet = flags["-q"]
             # END Setup drbdctrl resource properties
 
-            # TODO: Check whether the .drbdctrl LV exists already
+            if not quiet:
+                quiet = self.user_confirm(
+                    "You are going to join an existing drbdmanage cluster.\n"
+                    "CAUTION! Note that:\n"
+                    "  * Any previous drbdmanage cluster information may be "
+                    "removed\n"
+                    "  * Any remaining resources managed by a previous "
+                    "drbdmanage installation\n"
+                    "    that still exist on this system will no longer be "
+                    "managed by drbdmanage\n"
+                    "\n"
+                    "Confirm:\n"
+                )
+            if quiet:
+                # ========================================
+                # Cleanup
+                # ========================================
+                self._init_join_cleanup()
 
-            # Create the .drbdctrl LV
-            self._ext_command(["lvcreate", "-n",
-                DRBDCTRL_RES_NAME, "-L", "4m", DEFAULT_VG])
+                # ========================================
+                # Join an existing drbdmanage cluster
+                # ========================================
 
-            # Create meta-data
-            self._ext_command(["drbdmeta", "--force", "0",
-                "v09", self.DRBDCTRL_BLOCKDEV, "internal",
-                "create-md", "31"])
+                # Create the .drbdctrl LV
+                self._ext_command(["lvcreate", "-n",
+                    DRBDCTRL_RES_NAME, "-L", "4m", DEFAULT_VG])
 
-            l_addr    = params["local_ip"]
-            p_addr    = params["peer_ip"]
-            p_name    = params["peer_name"]
-            l_node_id = params["local_node_id"]
-            p_node_id = params["peer_node_id"]
-            secret    = params["secret"]
+                # Create meta-data
+                self._ext_command(["drbdmeta", "--force", "0",
+                    "v09", self.DRBDCTRL_BLOCKDEV, "internal",
+                    "create-md", "31"])
 
-            # Configure the .drbdctrl resource
-            self._ext_command(["drbdsetup", "new-resource",
-                DRBDCTRL_RES_NAME, l_node_id])
-            self._ext_command(["drbdsetup", "new-minor",
-                DRBDCTRL_RES_NAME, "0", "0"])
-            self._ext_command(["drbdmeta", "0", "v09",
-                self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
-            self._ext_command(["drbdsetup", "attach", "0",
-                self.DRBDCTRL_BLOCKDEV, self.DRBDCTRL_BLOCKDEV, "internal"])
+                l_addr    = params["local_ip"]
+                p_addr    = params["peer_ip"]
+                p_name    = params["peer_name"]
+                l_node_id = params["local_node_id"]
+                p_node_id = params["peer_node_id"]
+                secret    = params["secret"]
 
-            umh_f = None
-            umh   = None
-            try:
-                umh_f = open(
-                    self.UMHELPER_FILE, "r")
-                umh = umh_f.read(8192)
-                umh_f.close()
+                # Configure the .drbdctrl resource
+                self._ext_command(["drbdsetup", "new-resource",
+                    DRBDCTRL_RES_NAME, l_node_id])
+                self._ext_command(["drbdsetup", "new-minor",
+                    DRBDCTRL_RES_NAME, "0", "0"])
+                self._ext_command(["drbdmeta", "0", "v09",
+                    self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+                self._ext_command(["drbdsetup", "attach", "0",
+                    self.DRBDCTRL_BLOCKDEV, self.DRBDCTRL_BLOCKDEV, "internal"])
+
                 umh_f = None
-                umh_f = open(
-                    self.UMHELPER_FILE, "w")
-                umh_f.write(self.UMHELPER_OVERRIDE)
-            except (IOError, OSError) as err:
-                print(err)
-                raise AbortException
-            finally:
-                if umh_f is not None:
-                    try:
-                        umh_f.close()
-                    except (IOError, OSError):
-                        pass
-
-            proc_rc = self._ext_command(["drbdsetup", "connect",
-                DRBDCTRL_RES_NAME,
-                "ipv4:" + l_addr + ":" + str(port),
-                "ipv4:" + p_addr + ":" + str(port),
-                "--peer-node-id=" + p_node_id,
-                "--_name=" + p_name,
-                "--shared-secret=" + secret,
-                "--cram-hmac-alg=sha256",
-                "--ping-timeout=30",
-                "--protocol=C"])
-
-            umh_f = None
-            if umh is not None:
+                umh   = None
                 try:
                     umh_f = open(
-                    self.UMHELPER_FILE, "w")
-                    umh_f.write(umh)
+                        self.UMHELPER_FILE, "r")
+                    umh = umh_f.read(8192)
+                    umh_f.close()
+                    umh_f = None
+                    umh_f = open(
+                        self.UMHELPER_FILE, "w")
+                    umh_f.write(self.UMHELPER_OVERRIDE)
                 except (IOError, OSError) as err:
                     print(err)
                     raise AbortException
@@ -1683,18 +1709,47 @@ class DrbdManage(object):
                         except (IOError, OSError):
                             pass
 
-            # Startup the drbdmanage server and update the local .drbdctrl
-            # resource configuration file
-            self.dbus_init()
-            # server_rc = self._server.update_res()
-            server_rc = self._server.join_node(bdev, port, secret)
-            #server_rc = self._server.debug_console(dbus.String(
-            #    "gen drbdctrl " + secret + " " + port + " " + bdev
-            #))
-            if server_rc == 0:
-                fn_rc = 0
+                proc_rc = self._ext_command(["drbdsetup", "connect",
+                    DRBDCTRL_RES_NAME,
+                    "ipv4:" + l_addr + ":" + str(port),
+                    "ipv4:" + p_addr + ":" + str(port),
+                    "--peer-node-id=" + p_node_id,
+                    "--_name=" + p_name,
+                    "--shared-secret=" + secret,
+                    "--cram-hmac-alg=sha256",
+                    "--ping-timeout=30",
+                    "--protocol=C"])
+
+                umh_f = None
+                if umh is not None:
+                    try:
+                        umh_f = open(
+                        self.UMHELPER_FILE, "w")
+                        umh_f.write(umh)
+                    except (IOError, OSError) as err:
+                        print(err)
+                        raise AbortException
+                    finally:
+                        if umh_f is not None:
+                            try:
+                                umh_f.close()
+                            except (IOError, OSError):
+                                pass
+
+                # Startup the drbdmanage server and update the local .drbdctrl
+                # resource configuration file
+                self.dbus_init()
+                # server_rc = self._server.update_res()
+                server_rc = self._server.join_node(bdev, port, secret)
+                #server_rc = self._server.debug_console(dbus.String(
+                #    "gen drbdctrl " + secret + " " + port + " " + bdev
+                #))
+                if server_rc == 0:
+                    fn_rc = 0
+                else:
+                    fn_rc = 1
             else:
-                fn_rc = 1
+                fn_rc = 0
         except AbortException:
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback()
@@ -1702,6 +1757,26 @@ class DrbdManage(object):
             sys.stderr.write("Syntax: local_ip local_node_id peer_ip peer_name "
                 "peer_node_id secret\n")
         return fn_rc
+
+
+    def _init_join_cleanup(self):
+        """
+        Cleanup before init / join operations
+
+        Notice: Caller should handle AbortException
+        """
+        # Shut down any existing drbdmanage control volume
+        self._ext_command(["drbdsetup", "down", DRBDCTRL_RES_NAME])
+
+        # Delete any existing .drbdctrl LV
+        self._ext_command(["lvremove", "--force", DEFAULT_VG + "/"
+            + DRBDCTRL_RES_NAME])
+
+        # Delete any existing configuration file
+        try:
+            os.unlink(build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE))
+        except OSError:
+            pass
 
 
     def _init_join_rollback(self):
@@ -1739,11 +1814,19 @@ class DrbdManage(object):
 
             if not quiet:
                 quiet = self.user_confirm((
-                  "You are going to initalize a new "
-                  "drbdmanage control volume on:\n"
-                  "  %s\n"
-                  "Existing data will be lost, confirm:\n"
-                  % drbdctrl_file))
+                    "You are going to initalize a new "
+                    "drbdmanage control volume on:\n"
+                    "  %s\n"
+                    "CAUTION! Note that:\n"
+                    "  * Any previous drbdmanage cluster information may be "
+                    "removed\n"
+                    "  * Any remaining resources managed by a previous "
+                    "drbdmanage installation\n"
+                    "    that still exist on this system will no longer be "
+                    "managed by drbdmanage\n"
+                    "\n"
+                    "Confirm:\n"
+                    % drbdctrl_file))
             if quiet:
                 fn_rc = self._drbdctrl_init(drbdctrl_file)
             else:
