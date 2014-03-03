@@ -357,8 +357,11 @@ def generate_secret():
         f_rnd = open(RANDOM_SOURCE, "r")
         rnd   = bytearray(SECRET_LEN)
         count = f_rnd.readinto(rnd)
+        # seems useless, but this is required for base64.b64encode() to
+        # work on python 2.6; otherwise, it crashes with a type error
+        s_rnd = str(rnd)
         if count == SECRET_LEN:
-            secret = str(base64.b64encode(rnd))
+            secret = str(base64.b64encode(s_rnd))
     except IOError:
         pass
     return secret
