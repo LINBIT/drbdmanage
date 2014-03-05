@@ -55,132 +55,132 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}", out_signature="i")
-    def create_node(self, name, props):
+    def create_node(self, node_name, props):
         """
         D-Bus interface for DrbdManageServer.create_node(...)
         """
-        return self._server.create_node(name, props)
+        return self._server.create_node(node_name, props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sb", out_signature="i")
-    def remove_node(self, name, force):
+    def remove_node(self, node_name, force):
         """
         D-Bus interface for DrbdManageServer.remove_node(...)
         """
-        return self._server.remove_node(name, force)
+        return self._server.remove_node(node_name, force)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}", out_signature="i")
-    def create_resource(self, name, props):
+    def create_resource(self, res_name, props):
         """
         D-Bus interface for DrbdManageServer.create_resource(...)
         """
-        return self._server.create_resource(name, props)
+        return self._server.create_resource(res_name, props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}", out_signature="i")
-    def modify_resource(self, name, props):
+    def modify_resource(self, res_name, props):
         """
         D-Bus interface for DrbdManageServer.modify_resource(...)
         """
-        return self._server.modify_resource(name, props)
+        return self._server.modify_resource(res_name, props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sb", out_signature="i")
-    def remove_resource(self, name, force):
+    def remove_resource(self, res_name, force):
         """
         D-Bus interface for DrbdManageServer.remove_resource(...)
         """
-        return self._server.remove_resource(name, force)
+        return self._server.remove_resource(res_name, force)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sxa{ss}", out_signature="i")
-    def create_volume(self, name, size_kiB, props):
+    def create_volume(self, res_name, size_kiB, props):
         """
         D-Bus interface for DrbdManageServer.create_volume(...)
         """
-        return self._server.create_volume(name, size_kiB, props)
+        return self._server.create_volume(res_name, size_kiB, props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sib", out_signature="i")
-    def remove_volume(self, name, vol_id, force):
+    def remove_volume(self, res_name, vol_id, force):
         """
         D-Bus interface for DrbdManageServer.remove_volume(...)
         """
-        return self._server.remove_volume(name, vol_id, force)
+        return self._server.remove_volume(res_name, vol_id, force)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssb", out_signature="i")
-    def connect(self, node_name, resource_name, reconnect):
+    def connect(self, node_name, res_name, reconnect):
         """
         D-Bus interface for DrbdManageServer.connect(...)
         """
-        return self._server.connect(node_name, resource_name, reconnect)
+        return self._server.connect(node_name, res_name, reconnect)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ss", out_signature="i")
-    def disconnect(self, node_name, resource_name):
+    def disconnect(self, node_name, res_name):
         """
         D-Bus interface for DrbdManageServer.disconnect(...)
         """
-        return self._server.disconnect(node_name, resource_name)
+        return self._server.disconnect(node_name, res_name)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="ssxxxx", out_signature="i")
-    def modify_state(self, node_name, resource_name,
+      in_signature="sstttt", out_signature="i")
+    def modify_state(self, node_name, res_name,
       cstate_clear_mask, cstate_set_mask,
       tstate_clear_mask, tstate_set_mask):
         """
         D-Bus interface for DrbdManageServer.modify_state(...)
         """
-        return self._server.modify_state(node_name, resource_name,
+        return self._server.modify_state(node_name, res_name,
           cstate_clear_mask, cstate_set_mask,
           tstate_clear_mask, tstate_set_mask)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssi", out_signature="i")
-    def attach(self, node_name, resource_name, volume_id):
+    def attach(self, node_name, res_name, vol_id):
         """
         D-Bus interface for DrbdManageServer.attach(...)
         """
-        return self._server.attach(node_name, resource_name, volume_id)
+        return self._server.attach(node_name, res_name, vol_id)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssi", out_signature="i")
-    def detach(self, node_name, resource_name, volume_id):
+    def detach(self, node_name, res_name, vol_id):
         """
         D-Bus interface for DrbdManageServer.detach(...)
         """
-        return self._server.detach(node_name, resource_name, volume_id)
+        return self._server.detach(node_name, res_name, vol_id)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="ssii", out_signature="i")
-    def assign(self, node_name, resource_name, cstate, tstate):
+      in_signature="sstt", out_signature="i")
+    def assign(self, node_name, res_name, cstate, tstate):
         """
         D-Bus interface for DrbdManageServer.assign(...)
         """
-        return self._server.assign(node_name, resource_name, cstate, tstate)
+        return self._server.assign(node_name, res_name, cstate, tstate)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="ssb", out_signature="i")
-    def unassign(self, node_name, volume_name, force):
+    def unassign(self, node_name, res_name, force):
         """
         D-Bus interface for DrbdManageServer.unassign(...)
         """
-        return self._server.unassign(node_name, volume_name, force)
+        return self._server.unassign(node_name, res_name, force)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -212,11 +212,11 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sb", out_signature="i")
-    def auto_undeploy(self, res_name, count):
+    def auto_undeploy(self, res_name, force):
         """
         D-Bus interface for DrbdManageServer.auto_undeploy(...)
         """
-        return self._server.auto_undeploy(res_name, count)
+        return self._server.auto_undeploy(res_name, force)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -229,7 +229,7 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="a(sssxxx)")
+      in_signature="", out_signature="a(sssxxt)")
     def node_list(self):
         """
         D-Bus interface for DrbdManageServer.node_list(...)
@@ -238,7 +238,7 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="a(sssxa(ixix))")
+      in_signature="", out_signature="a(sssta(ixit))")
     def resource_list(self):
         """
         D-Bus interface for DrbdManageServer.resource_list(...)
@@ -247,7 +247,7 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="", out_signature="a(ssixxa(isxx))")
+      in_signature="", out_signature="a(ssitta(istt))")
     def assignment_list(self):
         """
         D-Bus interface for DrbdManageServer.assignment_list(...)
@@ -257,11 +257,11 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="s", out_signature="i")
-    def export_conf(self, resource):
+    def export_conf(self, res_name):
         """
         D-Bus interface for DrbdManageServer.export_conf(...)
         """
-        return self._server.export_conf(resource)
+        return self._server.export_conf(res_name)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -284,11 +284,11 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}ss", out_signature="i")
-    def init_node(self, name, props, bdev, port):
+    def init_node(self, node_name, props, bdev, port):
         """
         D-Bus interface for DrbdManageServer.init_node(...)
         """
-        return self._server.init_node(name, props, bdev, port)
+        return self._server.init_node(node_name, props, bdev, port)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,

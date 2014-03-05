@@ -679,8 +679,8 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.modify_state(dbus.String(node_name),
-              dbus.String(res_name), dbus.Int64(0), dbus.Int64(0),
-              dbus.Int64(clear_mask), dbus.Int64(set_mask))
+              dbus.String(res_name), dbus.UInt64(0), dbus.UInt64(0),
+              dbus.UInt64(clear_mask), dbus.UInt64(set_mask))
             if server_rc == 0:
                 fn_rc = 0
             else:
@@ -831,7 +831,7 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.assign(dbus.String(node_name),
-              dbus.String(vol_name), dbus.Int64(cstate), dbus.Int64(tstate))
+              dbus.String(vol_name), dbus.UInt64(cstate), dbus.UInt64(tstate))
             if server_rc == 0:
                 fn_rc = 0
             else:
