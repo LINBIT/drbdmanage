@@ -54,7 +54,7 @@ class BuildManCommand(Command):
 
 setup(
     name="drbdmanage",
-    version="0.10",
+    version="0.11",
     description="DRBD distributed resource management utility",
     long_description=
 "Drbdmanage is a daemon and a command line utility that manages DRBD\n" +

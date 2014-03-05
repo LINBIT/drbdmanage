@@ -9,22 +9,33 @@ Prerequisites:
     DRBD 9 installed
     LVM installed
     python-dbus, python-gobject installed
-Control volume configuration steps:
+
+IMPORTANT NOTICE:
+The node names you enter must match the output of the "uname -n" command.
+
+Installation procedure (all nodes):
     *  Install the drbdmanage package:
-         rpm -i drbdmanage-0.10.1-noarch.rpm
+         rpm -i drbdmanage-0.11.1-noarch.rpm
     *  Create a VG named drbdpool
-    *  Create a logical volume named .drbdctrl (in whatever VG you want) with
-       a size of at least 4 MiB
-    *  Configure the .drbdctrl resource for DRBD
-       (the template /etc/drbd.d/drbdctrl.res_template may be helpful)
-    *  Initialize the DRBD metadata for the .drbdctrl resource:
-         drbdadm create-md .drbdctrl --max-peers 7
-    *  Configure the control volume on all nodes:
-         drbdadm adjust .drbdctrl
-       On one of the nodes, initialize the control volume:
-         drbdadm -- --force primary .drbdctrl
-         drbdmanage init /dev/drbd0
-         drbdadm secondary .drbdctrl
+
+Cluster initialization (first drbdmanage cluster node only):
+    *  On the first node, issue the following command to initialize a new
+       drbdmanage cluster:
+         drbdmanage init <ipaddress>
+       ... where <ipaddress> is the IP address of the network interface that
+           DRBD should use to communicate with other nodes in the cluster
+
+Adding nodes to a drbdmanage cluster:
+    *  On a node of the existing drbdmanage cluster, issue the following
+       command to prepare the cluster for integrating a new node:
+         drbdmanage new-node <nodename> <ipaddress>
+       ... where <nodename> is the node name of the node, and <ipaddress>
+           is the IP address of the node that will join the cluster
+       This command will also generate the command line that needs to be
+       entered on the new node to make it join the cluster
+    * On the new node (the one that should join the cluster), enter the join
+      command that you have received from the drbdmanage new-node command
+      in the previous step (e.g., copy & paste)
 
 
 CONFIGURATION
@@ -53,19 +64,6 @@ error message is displayed.
 
 The server can also be started manually by issuing the following command:
   dbus-drbdmanaged-service &
-
-
-Configure your nodes for use with drbdmanage:
-------------------------------------------------------------------------------
-
-Steps:
-    *  Create entries for all nodes managed by drbdmanage using the
-       drbdmanage client:
-         drbdmanage new-node node_1 ip-address-1
-         [...]
-         drbdmanage new-node node_n ip-address-n
-
-The node names you enter must match the output of the "uname -n" command.
 
 
 drbdmanage commands overview

@@ -223,9 +223,9 @@ class DrbdManage(object):
             server_rc = self._server.create_node(name, props)
             if server_rc == 0:
                 fn_rc = 0
-                joinc = self._server.text_query("joinc %s" % name)
+                joinc = self._server.text_query(["joinc", name])
                 sys.stdout.write("\nJoin command for node %s:\n"
-                    "%s\n" % (name, joinc))
+                    "%s\n" % (name, " ".join(joinc)))
             else:
                 self.error_msg_text(server_rc)
         else:
@@ -1460,6 +1460,38 @@ class DrbdManage(object):
         return fn_rc
 
 
+    def cmd_howto_join(self, args):
+        """
+        Queries the command line to join a node from the server
+        """
+        fn_rc = 1
+        # Command parser configuration
+        order    = [ "node" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            self.dbus_init()
+            joinc = self._server.text_query(["joinc", node_name])
+            sys.stdout.write("%s\n" % " ".join(joinc))
+            fn_rc = 0
+        except SyntaxException:
+            self.syntax_howto_join()
+        return fn_rc
+
+
+    def syntax_howto_join(self):
+        sys.stderr.write("Syntax: howto-join <node>\n")
+
+
+
     def cmd_ping(self, args):
         fn_rc = 1
         try:
@@ -2082,7 +2114,8 @@ class DrbdManage(object):
         "exit"              : cmd_exit,
         "usage"             : cmd_usage,
         "init"              : cmd_init,
-        "join"              : cmd_join
+        "join"              : cmd_join,
+        "howto-join"        : cmd_howto_join
       }
 
 

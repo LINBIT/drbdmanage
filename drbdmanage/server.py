@@ -55,7 +55,7 @@ class DrbdManageServer(object):
     drbdmanage server - main class
     """
 
-    DM_VERSION = "0.10"
+    DM_VERSION = "0.11"
 
     CONFFILE = "/etc/drbdmanaged.conf"
     EVT_UTIL = "drbdsetup"
@@ -2022,77 +2022,90 @@ class DrbdManageServer(object):
     def text_query(self, command):
         """
         Query text strings from the server
+
+        @param   command: query command and argument list
+        @type    command: list of str
+        @return: list of answer texts to the query
+        @rtype:  list of str
         """
         try:
-            result_text = "Error: Unknown command"
+            if len(command) < 1:
+                return ["Error: empty argument list sent "
+                    "to the drbdmanage server"]
 
-            if command.startswith("joinc "):
+            # default result message
+            result_text = ["Error: unknown command"]
+            if command[0] == "joinc":
                 # remove "joinc "
-                node_name = command[6:]
-                fields    = None
-                secret    = None
-                bdev      = None
-                port      = None
-                l_addr    = None
-                l_node_id = None
-                r_addr    = None
-                r_node_id = None
-                r_name    = None
+                if len(command) == 2:
+                    node_name = command[1]
+                    fields    = None
+                    secret    = None
+                    bdev      = None
+                    port      = None
+                    l_addr    = None
+                    l_node_id = None
+                    r_addr    = None
+                    r_node_id = None
+                    r_name    = None
 
-                drbdctrl_res = None
+                    drbdctrl_res = None
 
-                conffile = DrbdAdmConf()
-                try:
-                    drbdctrl_res = open(
-                        build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "r")
-                    fields = conffile.read_drbdctrl_params(drbdctrl_res)
-                except (IOError, OSError):
-                    pass
-                finally:
-                    if drbdctrl_res is not None:
-                        try:
-                            drbdctrl_res.close()
-                        except (IOError, OSError):
-                            pass
+                    conffile = DrbdAdmConf()
+                    try:
+                        drbdctrl_res = open(
+                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
+                                "r")
+                        fields = conffile.read_drbdctrl_params(drbdctrl_res)
+                    except (IOError, OSError):
+                        pass
+                    finally:
+                        if drbdctrl_res is not None:
+                            try:
+                                drbdctrl_res.close()
+                            except (IOError, OSError):
+                                pass
 
-                try:
-                    address = fields[DrbdAdmConf.KEY_ADDRESS]
-                    idx = address.rfind(":")
-                    if idx != -1:
-                        port = address[idx + 1:]
+                    try:
+                        address = fields[DrbdAdmConf.KEY_ADDRESS]
+                        idx = address.rfind(":")
+                        if idx != -1:
+                            port = address[idx + 1:]
+                        else:
+                            raise ValueError
+                        secret = fields[DrbdAdmConf.KEY_SECRET]
+                        update = True
+                    except (KeyError, ValueError):
+                        pass
+
+                    inst_node = self.get_instance_node()
+                    rem_node  = self._nodes.get(node_name)
+
+                    if inst_node is not None and rem_node is not None:
+                        r_addr    = inst_node.get_addr()
+                        r_node_id = str(inst_node.get_node_id())
+                        r_name    = inst_node.get_name()
+                        l_addr    = rem_node.get_addr()
+                        l_node_id = str(rem_node.get_node_id())
+
+                    if (secret is not None and port is not None
+                        and r_addr is not None and r_node_id is not None
+                        and r_name is not None and l_addr is not None
+                        and l_node_id is not None):
+                            result_text = ["drbdmanage", "join", "-p",
+                                port, l_addr, l_node_id, r_addr, r_name,
+                                r_node_id, secret]
                     else:
-                        raise ValueError
-                    secret = fields[DrbdAdmConf.KEY_SECRET]
-                    update = True
-                except (KeyError, ValueError):
-                    pass
-
-                inst_node = self.get_instance_node()
-                rem_node  = self._nodes.get(node_name)
-
-                if inst_node is not None and rem_node is not None:
-                    r_addr    = inst_node.get_addr()
-                    r_node_id = str(inst_node.get_node_id())
-                    r_name    = inst_node.get_name()
-                    l_addr    = rem_node.get_addr()
-                    l_node_id = str(rem_node.get_node_id())
-
-                if (secret is not None and port is not None
-                    and r_addr is not None and r_node_id is not None
-                    and r_name is not None and l_addr is not None
-                    and l_node_id is not None):
-                        result_text = (
-                            "drbdmanage join -p %s %s %s %s %s %s \"%s\""
-                            % (port, l_addr, l_node_id, r_addr, r_name,
-                            r_node_id, secret)
-                        )
+                        result_text = [("Error: "
+                            "Generation of the join command failed")]
                 else:
-                    result_text = ("Error: "
-                        "Generation of the join command failed")
+                    result_text = [("Error: joinc query without "
+                        "a node name argument")]
         except Exception as exc:
             # FIXME: useful error messages required here
             logging.error("text_query() command failed: %s" % str(exc))
-            return "Error: Text query command failed on the drbdmanage server"
+            return ["Error: Text query command failed "
+                "on the drbdmanage server"]
         return result_text
 
 

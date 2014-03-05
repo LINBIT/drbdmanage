@@ -274,7 +274,7 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="s", out_signature="s")
+      in_signature="as", out_signature="as")
     def text_query(self, command):
         """
         D-Bus interface for DrbdManageServer.text_query(...):
