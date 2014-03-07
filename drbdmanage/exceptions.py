@@ -106,7 +106,7 @@ _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
   "configuration storage"
 _DM_EXC_TEXTS[DM_ENODEID]  = "Invalid node id or no free node id number"
-_DM_EXC_TEXTS[DM_ENODEID]  = "Invalid volume id or no free volume id number"
+_DM_EXC_TEXTS[DM_EVOLID]   = "Invalid volume id or no free volume id number"
 _DM_EXC_TEXTS[DM_EPORT]    = "Invalid port number or no free port numbers"
 _DM_EXC_TEXTS[DM_ESTORAGE] = "The storage subsystem failed to perform the " \
   "requested operation"
