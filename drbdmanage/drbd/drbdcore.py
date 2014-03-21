@@ -829,6 +829,7 @@ class DrbdResource(object):
     _state       = None
     _volumes     = None
     _assignments = None
+    props        = None
 
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
@@ -846,8 +847,9 @@ class DrbdResource(object):
         self._secret      = "default"
         self._port        = port
         self._state       = 0
-        self._volumes     = dict()
-        self._assignments = dict()
+        self._volumes     = {}
+        self._assignments = {}
+        self.props        = {}
 
 
     def get_name(self):
@@ -1061,6 +1063,7 @@ class DrbdVolume(GenericStorage):
     _size_kiB    = None
     _minor       = None
     _state       = None
+    props        = None
 
     FLAG_REMOVE  = 0x1
 
@@ -1078,6 +1081,7 @@ class DrbdVolume(GenericStorage):
             raise ValueError
         self._size_kiB = size_kiB
         self._minor    = minor
+        self.props     = {}
         self._state    = 0
 
 
@@ -1113,42 +1117,30 @@ class DrbdVolumeView(object):
     drbdmanage server.
     """
 
-    # array indexes
-    VV_ID       = 0
-    VV_SIZE_kiB = 1
-    VV_MINOR    = 2
-    VV_STATE    = 3
-    VV_PROP_LEN = 4
-
     _id       = None
     _size_kiB = None
-    _minor    = None
-    _state    = None
+    props     = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
-        if len(properties) < self.VV_PROP_LEN:
-            raise IncompatibleDataException
-        self._id = properties[self.VV_ID]
         try:
-            self._size_kiB = long(properties[self.VV_SIZE_kiB])
-            self._minor    = int(properties[self.VV_MINOR])
-            self._state    = long(properties[self.VV_STATE])
-        except ValueError:
+            self._id = properties[VOL_ID]
+            self._size_kiB = long(properties[VOL_SIZE])
+        except (KeyError, ValueError):
             raise IncompatibleDataException
         self._machine_readable = machine_readable
 
 
     @classmethod
     def get_properties(cls, volume):
-        properties = []
-        minor   = volume.get_minor()
-        properties.append(volume.get_id())
-        properties.append(volume.get_size_kiB())
-        properties.append(minor.get_value())
-        properties.append(volume.get_state())
+        properties = {}
+        minor = volume.get_minor()
+        properties[VOL_ID]    = volume.get_id()
+        properties[VOL_SIZE]  = volume.get_size_kiB()
+        properties[VOL_MINOR] = minor.get_value()
+        properties[STATE]     = volume.get_state()
         return properties
 
 
@@ -1158,18 +1150,6 @@ class DrbdVolumeView(object):
 
     def get_size_kiB(self):
         return self._size_kiB
-
-
-    def get_minor(self):
-        if self._minor == -1:
-            return "auto"
-        elif self._minor == -2:
-            # FIXME: Reserved for automatic selection of a minor number by
-            #        the DRBD kernel module. This is probably nonsense,
-            #        and if it is, it should be removed.
-            return "auto-drbd"
-        else:
-            return str(self._minor)
 
 
     def get_state(self):
@@ -1205,6 +1185,7 @@ class DrbdNode(object):
     _state    = None
     _poolsize = None
     _poolfree = None
+    props     = None
 
     _assignments = None
 
@@ -1228,10 +1209,11 @@ class DrbdNode(object):
             raise InvalidAddrFamException
         self._addr        = addr
         self._node_id     = node_id
-        self._assignments = dict()
+        self._assignments = {}
         self._state       = 0
         self._poolfree    = -1
         self._poolsize    = -1
+        self.props        = {}
 
 
     def get_name(self):
@@ -1341,37 +1323,18 @@ class DrbdNodeView(object):
     information received from the drbdmanage server.
     """
 
-    # array indexes
-    NV_NAME     = 0
-    NV_AF_LABEL = 1
-    NV_IP       = 2
-    NV_POOLSIZE = 3
-    NV_POOLFREE = 4
-    NV_STATE    = 5
-    NV_PROP_LEN = 6
-
     _name     = None
-    _addrfam  = None
-    _addr     = None
-    _poolsize = None
-    _poolfree = None
-    _state    = None
+    props     = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
-        if len(properties) < self.NV_PROP_LEN:
-            raise IncompatibleDataException
-        self._name     = properties[self.NV_NAME]
-        self._addrfam  = properties[self.NV_AF_LABEL]
-        self._addr       = properties[self.NV_IP]
         try:
-            self._poolsize = long(properties[self.NV_POOLSIZE])
-            self._poolfree = long(properties[self.NV_POOLFREE])
-            self._state    = long(properties[self.NV_STATE])
-        except TypeError:
+            self._name = properties[NODE_NAME]
+        except KeyError:
             raise IncompatibleDataException
+        self.props     = properties
         self._machine_readable = machine_readable
 
 
@@ -1382,34 +1345,18 @@ class DrbdNodeView(object):
 
     @classmethod
     def get_properties(cls, node):
-        properties = []
-        properties.append(node.get_name())
-        properties.append(node.get_addrfam_label())
-        properties.append(node.get_addr())
-        properties.append(node.get_poolsize())
-        properties.append(node.get_poolfree())
-        properties.append(node.get_state())
+        properties = {}
+        properties[NODE_NAME]     = node.get_name()
+        properties[NODE_AF]       = node.get_addrfam_label()
+        properties[NODE_ADDR]     = node.get_addr()
+        properties[NODE_POOLSIZE] = node.get_poolsize()
+        properties[NODE_POOLFREE] = node.get_poolfree()
+        properties[STATE]         = node.get_state()
         return properties
 
 
     def get_name(self):
         return self._name
-
-
-    def get_addrfam(self):
-        return self._addrfam
-
-
-    def get_addr(self):
-        return self._addr
-
-
-    def get_poolsize(self):
-        return self._poolsize
-
-
-    def get_poolfree(self):
-        return self._poolfree
 
 
     def get_state(self):
@@ -1438,6 +1385,7 @@ class DrbdVolumeState(object):
     _volume      = None
     _bd_path     = None
     _blockdevice = None
+    props        = None
     _cstate      = 0
     _tstate      = 0
 
@@ -1456,6 +1404,7 @@ class DrbdVolumeState(object):
 
     def __init__(self, volume):
         self._volume = volume
+        self.props   = {}
         self._cstate = 0
         self._tstate = 0
 
@@ -1564,50 +1513,35 @@ class DrbdVolumeStateView(object):
     server.
     """
 
-    # array indexes
-    SV_ID       = 0
-    SV_BD_PATH  = 1
-    SV_CSTATE   = 2
-    SV_TSTATE   = 3
-    SV_PROP_LEN = 4
-
     _id      = None
-    _bd_path = None
-    _cstate  = None
-    _tstate  = None
+    props    = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
-        if len(properties) < self.SV_PROP_LEN:
+        try:
+            self._id = properties[VOL_ID]
+        except KeyError:
             raise IncompatibleDataException
-        self._id = properties[self.SV_ID]
-        self._bd_path = properties[self.SV_BD_PATH]
-        self._cstate  = properties[self.SV_CSTATE]
-        self._tstate  = properties[self.SV_TSTATE]
+        self.props   = properties
         self._machine_readable = machine_readable
 
 
     @classmethod
     def get_properties(cls, vol_state):
-        properties = []
-        bd_path = vol_state.get_bd_path()
+        properties = {}
         if bd_path is None:
-            bd_path = "-"
-        properties.append(vol_state.get_id())
-        properties.append(bd_path)
-        properties.append(vol_state.get_cstate())
-        properties.append(vol_state.get_tstate())
+            properties[VOL_BDEV] = "-"
+        else:
+            properties[VOL_BDEV] = vol_state.get_bd_path()
+        properties[CSTATE] = str(vol_state.get_cstate())
+        properties[TSTATE] = str(vol_state.get_tstate())
         return properties
 
 
     def get_id(self):
         return self._id
-
-
-    def get_bd_path(self):
-        return self._bd_path
 
 
     def get_cstate(self):
@@ -1668,6 +1602,7 @@ class Assignment(object):
     _resource    = None
     _vol_states  = None
     _node_id     = None
+    props        = None
     _cstate      = 0
     _tstate      = 0
     # return code of operations
@@ -1704,10 +1639,11 @@ class Assignment(object):
     def __init__(self, node, resource, node_id, cstate, tstate):
         self._node        = node
         self._resource    = resource
-        self._vol_states  = dict()
+        self._vol_states  = {}
         for volume in resource.iterate_volumes():
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id     = int(node_id)
+        self.props        = {}
         # current state
         self._cstate      = cstate
         # target state
@@ -1993,57 +1929,33 @@ class AssignmentView(object):
     the information received from the drbdmanage server.
     """
 
-    # array indexes
-    AV_NODE_NAME  = 0
-    AV_RES_NAME   = 1
-    AV_NODE_ID    = 2
-    AV_CSTATE     = 3
-    AV_TSTATE     = 4
-    AV_VOL_STATES = 5
-    AV_PROP_LEN   = 6
-
     _node         = None
     _resource     = None
-    _node_id      = None
-    _cstate       = None
-    _tstate       = None
+    props         = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
-        if len(properties) < self.AV_PROP_LEN:
-            raise IncompatibleDataException
-        self._machine_readable = machine_readable
-        self._node        = properties[self.AV_NODE_NAME]
-        self._resource    = properties[self.AV_RES_NAME]
-        self._node_id     = properties[self.AV_NODE_ID]
         try:
-            self._cstate      = long(properties[self.AV_CSTATE])
-            self._tstate      = long(properties[self.AV_TSTATE])
-        except ValueError:
+            self._node     = properties[NODE_NAME]
+            self._resource = properties[RES_NAME]
+        except KeyError:
             raise IncompatibleDataException
-        self._vol_states = []
-        for vol_state in properties[self.AV_VOL_STATES]:
-            self._vol_states.append(
-              DrbdVolumeStateView(vol_state, machine_readable))
+        self.props = properties
+        self._machine_readable = machine_readable
 
 
     @classmethod
     def get_properties(cls, assg):
-        properties = []
+        properties = {}
         node     = assg.get_node()
         resource = assg.get_resource()
-        properties.append(node.get_name())
-        properties.append(resource.get_name())
-        properties.append(assg.get_node_id())
-        properties.append(assg.get_cstate())
-        properties.append(assg.get_tstate())
-        vol_state_list = []
-        properties.append(vol_state_list)
-        for vol_state in assg.iterate_volume_states():
-            vol_state_list.append(
-              DrbdVolumeStateView.get_properties(vol_state))
+        properties[NODE_NAME] = node.get_name()
+        properties[RES_NAME]  = resource.get_name()
+        properties[NODE_ID]   = assg.get_node_id()
+        properties[CSTATE]    = assg.get_cstate()
+        properties[TSTATE]    = assg.get_tstate()
         return properties
 
 
@@ -2053,14 +1965,6 @@ class AssignmentView(object):
 
     def get_resource(self):
         return self._resource
-
-
-    def get_volume_states(self):
-        return self._vol_states
-
-
-    def get_node_id(self):
-        return self._node_id
 
 
     def get_cstate(self):

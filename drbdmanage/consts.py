@@ -22,12 +22,23 @@
 Global constants for drbdmanage
 """
 
+NODE_NAME           = "node_name"
 NODE_ADDR           = "addr"
 NODE_AF             = "addrfam"
 NODE_ID             = "node_id"
+NODE_POOLSIZE       = "node_poolsize"
+NODE_POOLFREE       = "node_poolfree"
+NODE_STATE          = "node_state"
+RES_NAME            = "res_name"
 RES_PORT            = "port"
 RES_SECRET          = "secret"
+VOL_ID              = "vol_id"
 VOL_MINOR           = "minor"
+VOL_SIZE            = "vol_size"
+VOL_BDEV            = "vol_bdev"
+STATE               = "state"
+CSTATE              = "cstate"
+TSTATE              = "tstate"
 
 DRBDCTRL_DEFAULT_PORT = 6999
 
