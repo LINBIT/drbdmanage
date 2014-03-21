@@ -495,7 +495,7 @@ class DrbdManageServer(object):
             peer_node.set_state(peer_node.get_state() | DrbdNode.FLAG_UPDATE)
 
 
-    def create_node(self, name, props):
+    def create_node(self, node_name, props):
         """
         Registers a DRBD cluster node
 
@@ -506,7 +506,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                fn_rc = self._create_node(False, name, props, None, None)
+                fn_rc = self._create_node(False, node_name, props, None, None)
                 if fn_rc == DM_SUCCESS or fn_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
         except PersistenceException:
@@ -519,7 +519,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def _create_node(self, initial, name, props, bdev, port):
+    def _create_node(self, initial, node_name, props, bdev, port):
         """
         Register DRBD cluster nodes and update control volume configuration
 
@@ -529,7 +529,7 @@ class DrbdManageServer(object):
         fn_rc   = DM_EPERSIST
         node    = None
         try:
-            if self._nodes.get(name) is not None:
+            if self._nodes.get(node_name) is not None:
                 fn_rc = DM_EEXIST
             else:
                 addr    = None
@@ -550,7 +550,7 @@ class DrbdManageServer(object):
                     if addr is not None and addrfam is not None:
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
-                            node = DrbdNode(name, addr, addrfam, node_id)
+                            node = DrbdNode(node_name, addr, addrfam, node_id)
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
                             # create or update the drbdctrl.res file
@@ -574,7 +574,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def remove_node(self, name, force):
+    def remove_node(self, node_name, force):
         """
         Marks a node for removal from the DRBD cluster
         * Orders the node to undeploy all volumes
@@ -588,7 +588,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                node = self._nodes[name]
+                node = self._nodes[node_name]
                 if (not force) and node.has_assignments():
                     drbdctrl_flag = False
                     for assignment in node.iterate_assignments():
@@ -608,7 +608,7 @@ class DrbdManageServer(object):
                         # drop the connection to the deleted node
                         for peer_assg in resource.iterate_assignments():
                             peer_assg.update_connections()
-                    del self._nodes[name]
+                    del self._nodes[node_name]
                     self._cluster_nodes_update()
                 self.save_conf_data(persist)
                 if drbdctrl_flag:
@@ -626,7 +626,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def create_resource(self, name, props):
+    def create_resource(self, res_name, props):
         """
         Registers a new resource that can be deployed to DRBD cluster nodes
 
@@ -638,7 +638,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources.get(name)
+                resource = self._resources.get(res_name)
                 if resource is not None:
                     fn_rc = DM_EEXIST
                 else:
@@ -654,7 +654,7 @@ class DrbdManageServer(object):
                         if port < 1 or port > 65535:
                             fn_rc = DM_EPORT
                         else:
-                            resource = DrbdResource(name, port)
+                            resource = DrbdResource(res_name, port)
                             resource.set_secret(secret)
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
@@ -675,7 +675,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def modify_resource(self, name, props):
+    def modify_resource(self, res_name, serial, props):
         """
         Modifies resource properties
 
@@ -687,7 +687,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources.get(name)
+                resource = self._resources.get(res_name)
                 if resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -718,7 +718,27 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def remove_resource(self, name, force):
+    def modify_volume(self, res_name, vol_id, serial, props):
+        """
+        Modifies volume properties
+
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc = DM_ENOTIMPL
+        return fn_rc
+
+
+    def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB):
+        """
+        Resizes a volume
+
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc = DM_ENOTIMPL
+        return fn_rc
+
+
+    def remove_resource(self, res_name, force):
         """
         Marks a resource for removal from the DRBD cluster
         * Orders all nodes to undeploy all volume of this resource
@@ -731,7 +751,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources[name]
+                resource = self._resources[res_name]
                 if (not force) and resource.has_assignments():
                     for assg in resource.iterate_assignments():
                         assg.undeploy()
@@ -756,7 +776,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def create_volume(self, name, size_kiB, props):
+    def create_volume(self, res_name, size_kiB, props):
         """
         Adds a volume to a resource
 
@@ -768,7 +788,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources.get(name)
+                resource = self._resources.get(res_name)
                 if resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -814,7 +834,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def remove_volume(self, name, vol_id, force):
+    def remove_volume(self, res_name, vol_id, force):
         """
         Marks a volume for removal from the DRBD cluster
         * Orders all nodes to undeploy the volume
@@ -826,7 +846,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources[name]
+                resource = self._resources[res_name]
                 volume   = resource.get_volume(vol_id)
                 if volume is None:
                     raise KeyError
@@ -856,7 +876,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def assign(self, node_name, resource_name, cstate, tstate):
+    def assign(self, node_name, res_name, props):
         """
         Assigns a resource to a node
         * Orders all participating nodes to deploy all volumes of
@@ -871,7 +891,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -909,7 +929,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def unassign(self, node_name, resource_name, force):
+    def unassign(self, node_name, res_name, force):
         """
         Removes the assignment of a resource to a node
         * Orders the node to undeploy all volumes of the resource
@@ -922,7 +942,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node   = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -1001,7 +1021,7 @@ class DrbdManageServer(object):
         return DM_SUCCESS
 
 
-    def auto_deploy(self, resource_name, count):
+    def auto_deploy(self, res_name, count, delta, site_clients):
         """
         Deploys a resource to a number of nodes
 
@@ -1026,7 +1046,7 @@ class DrbdManageServer(object):
                 pass
             crtnodes = len(self._nodes)
             maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-            resource = self._resources[resource_name]
+            resource = self._resources[res_name]
             if ((not resource.has_assignments()) and count >= 1
               and count <= maxcount):
                 """
@@ -1071,7 +1091,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def auto_extend(self, resource_name, count, rel_flag):
+    def auto_extend(self, res_name, count, rel_flag):
         """
         Extend a deployment by a number of nodes
 
@@ -1096,7 +1116,7 @@ class DrbdManageServer(object):
                 pass
             crtnodes = len(self._nodes)
             maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-            resource = self._resources[resource_name]
+            resource = self._resources[res_name]
             assigned_count = resource.assigned_count()
             if rel_flag:
                 final_count = count + assigned_count
@@ -1162,7 +1182,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def auto_reduce(self, resource_name, count, rel_flag):
+    def auto_reduce(self, res_name, count, rel_flag):
         """
         Reduce a deployment by a number of nodes
 
@@ -1182,7 +1202,7 @@ class DrbdManageServer(object):
             if persist is None:
                 raise PersistenceException
 
-            resource = self._resources[resource_name]
+            resource = self._resources[res_name]
             assigned_count = resource.assigned_count()
             if rel_flag:
                 final_count = assigned_count - count
@@ -1247,7 +1267,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def auto_undeploy(self, resource_name, force):
+    def auto_undeploy(self, res_name, force):
         """
         Undeploys a resource from all nodes
 
@@ -1259,7 +1279,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is None:
                 raise PersistenceException
-            resource = self._resources[resource_name]
+            resource = self._resources[res_name]
             removable = []
             for assg in resource.iterate_assignments():
                 if (not force) and assg.is_deployed():
@@ -1284,7 +1304,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def modify_state(self, node_name, resource_name,
+    def modify_state(self, node_name, res_name,
       cstate_clear_mask, cstate_set_mask, tstate_clear_mask, tstate_set_mask):
         """
         Modifies the tstate (target state) of an assignment
@@ -1300,7 +1320,7 @@ class DrbdManageServer(object):
                 if node is None:
                     fn_rc = DM_ENOENT
                 else:
-                    assg = node.get_assignment(resource_name)
+                    assg = node.get_assignment(res_name)
                     if assg is None:
                         fn_rc = DM_ENOENT
                     else:
@@ -1337,7 +1357,8 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def connect(self, node_name, resource_name, reconnect):
+    # TODO: should possibly specify connections between specific nodes
+    def connect(self, node_name, res_name, reconnect):
         """
         Sets the CONNECT or RECONNECT flag on a resource's target state
 
@@ -1351,7 +1372,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -1376,7 +1397,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def disconnect(self, node_name, resource_name):
+    def disconnect(self, node_name, res_name):
         """
         Clears the CONNECT flag on a resource's target state
 
@@ -1390,7 +1411,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -1412,7 +1433,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def attach(self, node_name, resource_name, volume_id):
+    def attach(self, node_name, res_name, vol_id):
         """
         Sets the ATTACH flag on a volume's target state
 
@@ -1427,7 +1448,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -1435,7 +1456,7 @@ class DrbdManageServer(object):
                     if assignment is None:
                         fn_rc = DM_ENOENT
                     else:
-                        vol_state = assignment.get_volume_state(volume_id)
+                        vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
                             fn_rc = DM_ENOENT
                         else:
@@ -1453,7 +1474,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def detach(self, node_name, resource_name, volume_id):
+    def detach(self, node_name, res_name, vol_id):
         """
         Clears the ATTACH flag on a volume's target state
 
@@ -1468,7 +1489,7 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
-                resource = self._resources.get(resource_name)
+                resource = self._resources.get(res_name)
                 if node is None or resource is None:
                     fn_rc = DM_ENOENT
                 else:
@@ -1476,7 +1497,7 @@ class DrbdManageServer(object):
                     if assignment is None:
                         fn_rc = DM_ENOENT
                     else:
-                        vol_state = assignment.get_volume_state(volume_id)
+                        vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
                             fn_rc = DM_ENOENT
                         else:
@@ -1494,7 +1515,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def update_pool(self):
+    def update_pool(self, node_names):
         """
         Updates information about the current node's storage pool
 
@@ -1637,7 +1658,7 @@ class DrbdManageServer(object):
         return DM_SUCCESS
 
 
-    def node_list(self):
+    def list_nodes(self, node_names, serial, filter_props, req_props):
         """
         Generates a list of node views suitable for serialized transfer
 
@@ -1654,7 +1675,7 @@ class DrbdManageServer(object):
         return None
 
 
-    def resource_list(self):
+    def list_resources(self, res_names, serial, filter_props, req_props):
         """
         Generates a list of resources views suitable for serialized transfer
 
@@ -1671,7 +1692,7 @@ class DrbdManageServer(object):
         return None
 
 
-    def assignment_list(self):
+    def list_assignment(self, node_names, res_names, serial, props):
         """
         Generates a list of assignment views suitable for serialized transfer
 
