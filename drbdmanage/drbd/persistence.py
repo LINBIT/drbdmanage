@@ -97,6 +97,8 @@ class PersistenceImpl(object):
     RES_LEN_NAME   = "res_len"
     ASSG_OFF_NAME  = "assg_off"
     ASSG_LEN_NAME  = "assg_len"
+    CCONF_OFF_NAME = "cconf_off"
+    CCONF_LEN_NAME = "cconf_len"
     HASH_NAME      = "hash"
 
     BLKSZ       = 0x1000 # 4096
@@ -184,7 +186,7 @@ class PersistenceImpl(object):
         return fn_rc
 
 
-    def save(self, nodes, resources):
+    def save(self, cluster_conf, nodes, resources):
         """
         Saves the configuration to the drbdmanage control volume
 
@@ -248,7 +250,16 @@ class PersistenceImpl(object):
                 assg_len = self._file.tell() - assg_off
                 self._file.write(chr(0))
 
-                # clean up behind the assignment
+                self._align_zero_fille()
+
+                cconf_off = self.file.tell()
+                save_data = self._container_to_json(cluster_conf)
+                self._file.write(save_data)
+                data_hash.update(save_data)
+                cconf_len = self._file.tell() - cconf_off
+                self._file.write(chr(0))
+
+                # clean up to the end of the block
                 self._align_zero_fill()
 
                 self._file.seek(self.IDX_OFFSET)
@@ -258,7 +269,9 @@ class PersistenceImpl(object):
                   self.RES_OFF_NAME   : res_off,
                   self.RES_LEN_NAME   : res_len,
                   self.ASSG_OFF_NAME  : assg_off,
-                  self.ASSG_LEN_NAME  : assg_len
+                  self.ASSG_LEN_NAME  : assg_len,
+                  self.CCONF_OFF_NAME : cconf_off,
+                  self.CCONF_LEN_NAME : cconf_len
                 }
                 p_index_con[self.IDX_NAME] = p_index
                 save_data = self._container_to_json(p_index_con)
@@ -330,7 +343,7 @@ class PersistenceImpl(object):
               "writeable file descriptor")
 
 
-    def load(self, nodes, resources):
+    def load(self, cluster_conf, nodes, resources):
         """
         Loads the configuration from the drbdmanage control volume
 
@@ -354,10 +367,13 @@ class PersistenceImpl(object):
                 res_len    = p_index[self.RES_LEN_NAME]
                 assg_off   = p_index[self.ASSG_OFF_NAME]
                 assg_len   = p_index[self.ASSG_LEN_NAME]
+                cconf_off  = p_index[self.CCONF_OFF_NAME]
+                cconf_len  = p_index[self.CCONF_LEN_NAME]
 
                 nodes_con = None
                 res_con   = None
                 assg_con  = None
+                cconf_con = None
 
                 self._file.seek(nodes_off)
                 load_data = self._null_trunc(self._file.read(nodes_len))
@@ -373,7 +389,7 @@ class PersistenceImpl(object):
                 try:
                     res_con   = self._json_to_container(load_data)
                 except Exception:
-                    pass
+                    errors = True
 
                 self._file.seek(assg_off)
                 load_data = self._null_trunc(self._file.read(assg_len))
@@ -381,7 +397,19 @@ class PersistenceImpl(object):
                 try:
                     assg_con  = self._json_to_container(load_data)
                 except Exception:
-                    pass
+                    errors = True
+
+                self._file.seek(cconf_off)
+                load_data = self._null_trunc(self._file.read(cconf_len))
+                data_hash.update(load_data)
+                try:
+                    cluster_conf.clear()
+                    cconf_con = self._json_to_container(load_data)
+                    cluster_conf.update(cconf_con)
+                except Exception:
+                    errors = True
+
+                load_data = None
 
                 computed_hash = data_hash.get_hex_hash()
                 stored_hash   = self.get_stored_hash()
@@ -589,7 +617,7 @@ class DrbdNodePersistence(GenericPersistence):
     """
 
     SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_node_id", "_state",
-      "_poolsize", "_poolfree" ]
+      "_poolsize", "_poolfree", "props" ]
 
 
     def __init__(self, node):
@@ -618,6 +646,7 @@ class DrbdNodePersistence(GenericPersistence):
             node.set_state(state)
             node.set_poolsize(poolsize)
             node.set_poolfree(poolfree)
+            node.props = properties["props"]
         except Exception as exc:
             # FIXME
             raise exc
@@ -630,7 +659,7 @@ class DrbdResourcePersistence(GenericPersistence):
     Serializes/deserializes DrbdResource objects
     """
 
-    SERIALIZABLE = [ "_name", "_secret", "_port", "_state" ]
+    SERIALIZABLE = [ "_name", "_secret", "_port", "_state", "props" ]
 
     def __init__(self, resource):
         super(DrbdResourcePersistence, self).__init__(resource)
@@ -660,6 +689,7 @@ class DrbdResourcePersistence(GenericPersistence):
             for vol_properties in volume_list.itervalues():
                 volume = DrbdVolumePersistence.load(vol_properties)
                 resource.add_volume(volume)
+            resource.props = properties["props"]
         except Exception as exc:
             # FIXME
             raise exc
@@ -672,7 +702,7 @@ class DrbdVolumePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolume objects
     """
 
-    SERIALIZABLE = [ "_id", "_state", "_size_kiB" ]
+    SERIALIZABLE = [ "_id", "_state", "_size_kiB", "props" ]
 
 
     def __init__(self, volume):
@@ -699,6 +729,7 @@ class DrbdVolumePersistence(GenericPersistence):
               minor
               )
             volume.set_state(long(properties["_state"]))
+            volume.props = properties["props"]
         except Exception as exc:
             # FIXME
             raise exc
@@ -774,7 +805,8 @@ class DrbdVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolumeState objects
     """
 
-    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate" ]
+    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate",
+        "props" ]
 
 
     def __init__(self, vol_state):
@@ -802,6 +834,7 @@ class DrbdVolumeStatePersistence(GenericPersistence):
                 vol_state.set_blockdevice(blockdevice, bd_path)
             vol_state.set_cstate(properties["_cstate"])
             vol_state.set_tstate(properties["_tstate"])
+            vol_state.props = properties["props"]
         except Exception as exc:
             # FIXME
             raise exc

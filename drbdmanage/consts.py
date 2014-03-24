@@ -22,6 +22,7 @@
 Global constants for drbdmanage
 """
 
+SERIAL              = "serial"
 NODE_NAME           = "node_name"
 NODE_ADDR           = "addr"
 NODE_AF             = "addrfam"

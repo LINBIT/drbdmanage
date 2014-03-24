@@ -20,7 +20,7 @@
 
 import sys
 import logging
-import drbdmanage.consts
+import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
 
@@ -296,7 +296,7 @@ class DrbdManager(object):
     def adjust_drbdctrl(self):
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.ext_conf_adjust(
-          drbdmanage.consts.DRBDCTRL_RES_NAME)
+          consts.DRBDCTRL_RES_NAME)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
         else:
@@ -843,13 +843,14 @@ class DrbdResource(object):
     MAX_RES_VOLS = 64
 
     def __init__(self, name, port):
-        self._name        = self.name_check(name)
-        self._secret      = "default"
-        self._port        = port
-        self._state       = 0
-        self._volumes     = {}
-        self._assignments = {}
-        self.props        = {}
+        self._name         = self.name_check(name)
+        self._secret       = "default"
+        self._port         = port
+        self._state        = 0
+        self._volumes      = {}
+        self._assignments  = {}
+        self.props         = {}
+        self.props[SERIAL] = 1
 
 
     def get_name(self):
@@ -968,37 +969,18 @@ class DrbdResourceView(object):
     drbdmanage server.
     """
 
-    # array indexes
-    RV_NAME     = 0
-    RV_SECRET   = 1
-    RV_PORT     = 2
-    RV_STATE    = 3
-    RV_VOLUMES  = 4
-    RV_PROP_LEN = 5
-
     _name    = None
-    _state   = None
-    _secret  = None
-    _port    = None
-    _volumes = None
+    props    = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
-        if len(properties) < self.RV_PROP_LEN:
-            raise IncompatibleDataException
-        self._name  = properties[self.RV_NAME]
-        self._secret = properties[self.RV_SECRET]
         try:
-            self._state = long(properties[self.RV_STATE])
-            self._port   = int(properties[self.RV_PORT])
-        except ValueError:
+            self._name = properties[consts.RES_NAME]
+        except KeyError:
             raise IncompatibleDataException
-        self._volumes = []
-        for vol_list in properties[self.RV_VOLUMES]:
-            self._volumes.append(DrbdVolumeView(vol_list, machine_readable))
-        self._machine_readable = machine_readable
+        self.props = properties
 
 
     @classmethod
@@ -1008,31 +990,16 @@ class DrbdResourceView(object):
 
     @classmethod
     def get_properties(cls, resource):
-        properties = []
-        properties.append(resource.get_name())
-        properties.append(resource.get_secret())
-        if resource.get_port() == DrbdResource.PORT_NR_AUTO:
-            properties.append("auto")
-        else:
-            properties.append(str(resource.get_port()))
-        properties.append(resource.get_state())
-        vol_list = []
-        for volume in resource.iterate_volumes():
-            vol_list.append(DrbdVolumeView.get_properties(volume))
-        properties.append(vol_list)
+        properties = {}
+        properties[consts.RES_NAME]   = resource.get_name()
+        properties[consts.RES_SECRET] = resource.get_secret()
+        properties[consts.RES_PORT]   = resource.get_port()
+        properties[consts.STATE]      = resource.get_state()
         return properties
 
 
     def get_name(self):
         return self._name
-
-
-    def get_secret(self):
-        return self._secret
-
-
-    def get_port(self):
-        return self._port
 
 
     def get_state(self):
@@ -1043,10 +1010,6 @@ class DrbdResourceView(object):
             else:
                 text = "remove"
         return text
-
-
-    def get_volumes(self):
-        return self._volumes
 
 
 class DrbdVolume(GenericStorage):
@@ -1076,13 +1039,14 @@ class DrbdVolume(GenericStorage):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
-        self._id       = int(vol_id)
+        self._id = int(vol_id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
-        self._size_kiB = size_kiB
-        self._minor    = minor
-        self.props     = {}
-        self._state    = 0
+        self._size_kiB     = size_kiB
+        self._minor        = minor
+        self.props         = {}
+        self.props[SERIAL] = 1
+        self._state        = 0
 
 
     def get_id(self):
@@ -1126,8 +1090,8 @@ class DrbdVolumeView(object):
 
     def __init__(self, properties, machine_readable):
         try:
-            self._id = properties[VOL_ID]
-            self._size_kiB = long(properties[VOL_SIZE])
+            self._id = properties[consts.VOL_ID]
+            self._size_kiB = long(properties[consts.VOL_SIZE])
         except (KeyError, ValueError):
             raise IncompatibleDataException
         self._machine_readable = machine_readable
@@ -1137,10 +1101,10 @@ class DrbdVolumeView(object):
     def get_properties(cls, volume):
         properties = {}
         minor = volume.get_minor()
-        properties[VOL_ID]    = volume.get_id()
-        properties[VOL_SIZE]  = volume.get_size_kiB()
-        properties[VOL_MINOR] = minor.get_value()
-        properties[STATE]     = volume.get_state()
+        properties[consts.VOL_ID]    = volume.get_id()
+        properties[consts.VOL_SIZE]  = volume.get_size_kiB()
+        properties[consts.VOL_MINOR] = minor.get_value()
+        properties[consts.STATE]     = volume.get_state()
         return properties
 
 
@@ -1207,13 +1171,14 @@ class DrbdNode(object):
             self._addrfam = af_n
         else:
             raise InvalidAddrFamException
-        self._addr        = addr
-        self._node_id     = node_id
-        self._assignments = {}
-        self._state       = 0
-        self._poolfree    = -1
-        self._poolsize    = -1
-        self.props        = {}
+        self._addr         = addr
+        self._node_id      = node_id
+        self._assignments  = {}
+        self._state        = 0
+        self._poolfree     = -1
+        self._poolsize     = -1
+        self.props         = {}
+        self.props[SERIAL] = 1
 
 
     def get_name(self):
@@ -1331,7 +1296,7 @@ class DrbdNodeView(object):
 
     def __init__(self, properties, machine_readable):
         try:
-            self._name = properties[NODE_NAME]
+            self._name = properties[consts.NODE_NAME]
         except KeyError:
             raise IncompatibleDataException
         self.props     = properties
@@ -1346,12 +1311,12 @@ class DrbdNodeView(object):
     @classmethod
     def get_properties(cls, node):
         properties = {}
-        properties[NODE_NAME]     = node.get_name()
-        properties[NODE_AF]       = node.get_addrfam_label()
-        properties[NODE_ADDR]     = node.get_addr()
-        properties[NODE_POOLSIZE] = node.get_poolsize()
-        properties[NODE_POOLFREE] = node.get_poolfree()
-        properties[STATE]         = node.get_state()
+        properties[consts.NODE_NAME]     = node.get_name()
+        properties[consts.NODE_AF]       = node.get_addrfam_label()
+        properties[consts.NODE_ADDR]     = node.get_addr()
+        properties[consts.NODE_POOLSIZE] = node.get_poolsize()
+        properties[consts.NODE_POOLFREE] = node.get_poolfree()
+        properties[consts.STATE]         = node.get_state()
         return properties
 
 
@@ -1403,10 +1368,11 @@ class DrbdVolumeState(object):
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
 
     def __init__(self, volume):
-        self._volume = volume
-        self.props   = {}
-        self._cstate = 0
-        self._tstate = 0
+        self._volume       = volume
+        self.props         = {}
+        self.props[SERIAL] = 1
+        self._cstate       = 0
+        self._tstate       = 0
 
 
     def get_volume(self):
@@ -1521,7 +1487,7 @@ class DrbdVolumeStateView(object):
 
     def __init__(self, properties, machine_readable):
         try:
-            self._id = properties[VOL_ID]
+            self._id = properties[consts.VOL_ID]
         except KeyError:
             raise IncompatibleDataException
         self.props   = properties
@@ -1532,11 +1498,11 @@ class DrbdVolumeStateView(object):
     def get_properties(cls, vol_state):
         properties = {}
         if bd_path is None:
-            properties[VOL_BDEV] = "-"
+            properties[consts.VOL_BDEV] = "-"
         else:
-            properties[VOL_BDEV] = vol_state.get_bd_path()
-        properties[CSTATE] = str(vol_state.get_cstate())
-        properties[TSTATE] = str(vol_state.get_tstate())
+            properties[consts.VOL_BDEV] = vol_state.get_bd_path()
+        properties[consts.CSTATE] = str(vol_state.get_cstate())
+        properties[consts.TSTATE] = str(vol_state.get_tstate())
         return properties
 
 
@@ -1637,18 +1603,19 @@ class Assignment(object):
 
 
     def __init__(self, node, resource, node_id, cstate, tstate):
-        self._node        = node
-        self._resource    = resource
-        self._vol_states  = {}
+        self._node         = node
+        self._resource     = resource
+        self._vol_states   = {}
         for volume in resource.iterate_volumes():
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
-        self._node_id     = int(node_id)
-        self.props        = {}
+        self._node_id      = int(node_id)
+        self.props         = {}
+        self.props[SERIAL] = 1
         # current state
-        self._cstate      = cstate
+        self._cstate       = cstate
         # target state
-        self._tstate      = tstate
-        self._rc          = 0
+        self._tstate       = tstate
+        self._rc           = 0
 
 
     def get_node(self):
@@ -1938,8 +1905,8 @@ class AssignmentView(object):
 
     def __init__(self, properties, machine_readable):
         try:
-            self._node     = properties[NODE_NAME]
-            self._resource = properties[RES_NAME]
+            self._node     = properties[consts.NODE_NAME]
+            self._resource = properties[consts.RES_NAME]
         except KeyError:
             raise IncompatibleDataException
         self.props = properties
@@ -1951,11 +1918,11 @@ class AssignmentView(object):
         properties = {}
         node     = assg.get_node()
         resource = assg.get_resource()
-        properties[NODE_NAME] = node.get_name()
-        properties[RES_NAME]  = resource.get_name()
-        properties[NODE_ID]   = assg.get_node_id()
-        properties[CSTATE]    = assg.get_cstate()
-        properties[TSTATE]    = assg.get_tstate()
+        properties[consts.NODE_NAME] = node.get_name()
+        properties[consts.RES_NAME]  = resource.get_name()
+        properties[consts.NODE_ID]   = assg.get_node_id()
+        properties[consts.CSTATE]    = assg.get_cstate()
+        properties[consts.TSTATE]    = assg.get_tstate()
         return properties
 
 

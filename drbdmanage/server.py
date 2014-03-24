@@ -27,7 +27,7 @@ import fcntl
 import logging
 import logging.handlers
 
-from drbdmanage.consts import (NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR,
+from drbdmanage.consts import (SERIAL, NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR,
     DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE,
     DRBDCTRL_RES_PATH)
 from drbdmanage.utils import NioLineReader
@@ -139,6 +139,10 @@ class DrbdManageServer(object):
       "INFO"     : logging.INFO,
       "DEBUG"    : logging.DEBUG
     }
+
+    # Global drbdmanage cluster configuration
+    _cluster_conf = {}
+    _cluster_conf[SERIAL] = 1
 
     # DEBUGGING FLAGS
     dbg_events = False
@@ -1766,7 +1770,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        persist.load(self._nodes, self._resources)
+        persist.load(self._cluster_conf, self._nodes, self._resources)
         self._conf_hash = persist.get_stored_hash()
 
 
@@ -1780,7 +1784,7 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         hash_obj = None
-        persist.save(self._nodes, self._resources)
+        persist.save(self._cluster_conf, self._nodes, self._resources)
         hash_obj = persist.get_hash_obj()
         if hash_obj is not None:
             self._conf_hash = hash_obj.get_hex_hash()
