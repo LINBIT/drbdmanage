@@ -231,7 +231,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.node_list(...)
         """
-        return self._server.node_list(node_names, serial, filter_props,
+        return self._server.list_nodes(node_names, serial, filter_props,
             req_props)
 
 
@@ -242,7 +242,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.resource_list(...)
         """
-        return self._server.resource_list(res_names, serial, filter_props,
+        return self._server.list_resources(res_names, serial, filter_props,
             req_props)
 
 
@@ -254,7 +254,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.assignment_list(...)
         """
-        return self._server.assignment_list(
+        return self._server.list_assignments(
             node_names, res_names, serial, filter_props, req_props)
 
 

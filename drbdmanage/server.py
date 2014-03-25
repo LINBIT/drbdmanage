@@ -27,20 +27,20 @@ import fcntl
 import logging
 import logging.handlers
 
-from drbdmanage.consts import (SERIAL, NODE_ADDR, NODE_AF, RES_PORT, VOL_MINOR,
-    DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE,
-    DRBDCTRL_RES_PATH)
+from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_PORT,
+    VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
+    DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_event_arg, get_event_source, get_event_type, get_free_number,
-    plugin_import)
+    plugin_import, add_rc_entry)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
     DM_SUCCESS)
 from drbdmanage.exceptions import (InvalidMinorNrException,
     InvalidNameException, PersistenceException, PluginException,
-    SyntaxException, VolSizeRangeException)
+    SyntaxException, VolSizeRangeException, dm_exc_text)
 from drbdmanage.drbd.drbdcore import (Assignment, AssignmentView, DrbdManager,
     DrbdNode, DrbdNodeView, DrbdResource, DrbdResourceView, DrbdVolume,
     DrbdVolumeState)
@@ -193,7 +193,7 @@ class DrbdManageServer(object):
             poolsize = inst_node.get_poolsize()
             poolfree = inst_node.get_poolfree()
             if poolsize == -1 or poolfree == -1:
-                self.update_pool()
+                self.update_pool([])
 
 
     def run(self):
@@ -369,7 +369,7 @@ class DrbdManageServer(object):
 
     def get_conf_value(self, key):
         """
-        Return a configuration value.
+        Returns a configuration value.
 
         All configuration values are stored as strings. If another type is
         required, any function that retrieves the configuration value
@@ -382,6 +382,28 @@ class DrbdManageServer(object):
         @rtype:  str
         """
         return self._conf.get(key)
+
+
+    def get_cluster_conf_value(self, key):
+        """
+        Retrieves a value from the replicated cluster configuration
+        """
+        return self._cluster_conf.get(key)
+
+
+    def new_serial(self):
+        """
+        Changes (increases) and returns the current serial number
+
+        The serial number should be increased upon configuration change
+        """
+        serial = self._cluster_conf.get(SERIAL)
+        if serial is None:
+            serial = 1
+        else:
+            serial += 1
+        self._cluster_conf[SERIAL] = serial
+        return serial
 
 
     def get_drbd_mgr(self):
@@ -505,21 +527,32 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc   = DM_EPERSIST
+        fn_rc   = []
         persist = None
+        errors  = True
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                fn_rc = self._create_node(False, node_name, props, None, None)
-                if fn_rc == DM_SUCCESS or fn_rc == DM_ECTRLVOL:
+                sub_rc = self._create_node(False, node_name, props, None, None)
+                sys.stderr.write("DEBUG: _create_node, rc=%d\n" % sub_rc)
+                if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
+                    sys.stderr.write("DEBUG: node created, rc=%d\n" % sub_rc)
                     self.save_conf_data(persist)
+                    errors = False
+            else:
+                sys.stderr.write("DEBUG: cannot open drbdctrl\n")
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+            errors = True
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            errors = True
         finally:
             self.end_modify_conf(persist)
+        if not errors:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1668,15 +1701,42 @@ class DrbdManageServer(object):
 
         Used by the drbdmanage client to display the node list
         """
+        fn_rc = []
+
+        def node_filter(node_names):
+            for node_name in node_names:
+                node = self._nodes.get(node_name)
+                if node is None:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        [ NODE_NAME, node_name ])
+                else:
+                    yield node
+
+        def serial_filter(serial, nodes):
+            for node in nodes:
+                node_serial = node.props.get(SERIAL)
+                if node_serial is None or node_serial > serial:
+                    yield node
+
         try:
             node_list = []
+            if node_names is not None and len(node_names) > 0:
+                selected_nodes = node_filter(node_names)
+            else:
+                selected_nodes = self._nodes.itervalues()
+            if serial > 0:
+                selected_nodes = serial_filter(serial, selected_nodes)
+
             for node in self._nodes.itervalues():
-                properties = DrbdNodeView.get_properties(node)
-                node_list.append(properties)
-            return node_list
+                node_entry = [ node.get_name(),
+                    DrbdNodeView.get_properties(node, req_props) ]
+                node_list.append(node_entry)
+                add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc, node_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-        return None
+
+        return fn_rc, None
 
 
     def list_resources(self, res_names, serial, filter_props, req_props):
@@ -2252,6 +2312,46 @@ class DrbdManageServer(object):
                         loglevel = self._debug_parse_loglevel(val)
                         self._root_logger.setLevel(loglevel)
                         fn_rc = 0
+            elif command.startswith("test "):
+                # remove "test "
+                command = command[5:]
+                if command == "stdout":
+                    sys.stdout.write("(stdout)\n")
+                    fn_rc = 0
+                elif command == "stderr":
+                    sys.stdout.write("(stderr)\n")
+                    fn_rc = 0
+            elif command.startswith("list "):
+                # remove "list "
+                command = command[5:]
+                if command == "n":
+                    for node in self._nodes.itervalues():
+                        sys.stderr.write("%-18s %-2d %-16s 0x%x\n"
+                            % (node.get_name(), node.get_addrfam(),
+                                node.get_addr(), node.get_state())
+                        )
+                    fn_rc = 0
+                elif command == "r":
+                    for res in self._resources.itervalues():
+                        sys.stderr.write("%-18s 0x%x\n"
+                            % (res.get_name(), res.get_state()))
+                    fn_rc = 0
+                elif command == "v":
+                    for res in self._resources.itervalues():
+                        for vol in res.iterate_volumes():
+                            sys.stderr.write("%-18s %5d %18d 0x%x\n"
+                                % (res.get_name(), vol.get_id(),
+                                    vol.get_size_kiB(), res.get_state())
+                            )
+                    fn_rc = 0
+                elif command == "a":
+                    for node in self._nodes.itervalues():
+                        for assg in node.iterate_assignments():
+                            res = assg.get_resource()
+                            sys.stderr.write("N:%-18s R:%-18s\n"
+                                % (node.get_name(), res.get_name())
+                            )
+                    fn_rc = 0
             elif command.startswith("gen drbdctrl "):
                 # remove "gen drbdctrl":
                 command = command[13:]

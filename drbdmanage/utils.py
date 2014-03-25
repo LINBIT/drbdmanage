@@ -872,3 +872,35 @@ class SizeCalc(object):
         else:
             result = byte_sz / div_out
         return result
+
+
+class Selector(object):
+
+    """
+    Helper class for selection lists
+    """
+
+    _keys = None
+
+
+    def __init__(self, keys):
+        if keys is not None:
+            self._keys = keys
+        else:
+            self._keys = []
+
+
+    def all_selector(self, key):
+        """
+        Returns true for any key
+        """
+        return True
+
+
+    def list_selector(self, key):
+        """
+        Returns true for keys that appear in the Selector's list of keys
+        """
+        if key is not None and key in self._keys:
+            return True
+        return False

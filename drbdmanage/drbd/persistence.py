@@ -250,9 +250,9 @@ class PersistenceImpl(object):
                 assg_len = self._file.tell() - assg_off
                 self._file.write(chr(0))
 
-                self._align_zero_fille()
+                self._align_zero_fill()
 
-                cconf_off = self.file.tell()
+                cconf_off = self._file.tell()
                 save_data = self._container_to_json(cluster_conf)
                 self._file.write(save_data)
                 data_hash.update(save_data)

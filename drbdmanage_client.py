@@ -34,7 +34,7 @@ import drbdmanage.drbd.persistence
 
 from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, NODE_ADDR,
-    NODE_AF, RES_PORT, VOL_MINOR)
+    NODE_AF, NODE_POOLSIZE, NODE_POOLFREE, STATE, RES_PORT, VOL_MINOR)
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import get_terminal_size, build_path
@@ -221,13 +221,18 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
-            if server_rc == 0:
-                fn_rc = 0
-                joinc = self._server.text_query(["joinc", name])
-                sys.stdout.write("\nJoin command for node %s:\n"
-                    "%s\n" % (name, " ".join(joinc)))
-            else:
-                self.error_msg_text(server_rc)
+            for rc_entry in server_rc:
+                rc_num, rc_format, rc_params = rc_entry
+                sys.stderr.write("drbdmanage client: DEBUG: "
+                    "received rc entry, rc=%d\n" % rc_num)
+                if rc_num == 0:
+                    fn_rc = 0
+            #if fn_rc == 0:
+            #    joinc = self._server.text_query(["joinc", name])
+            #    sys.stdout.write("\nJoin command for node %s:\n"
+            #        "%s\n" % (name, " ".join(joinc)))
+            #else:
+            #    self.error_msg_text(server_rc)
         else:
             self.syntax_new_node()
         return fn_rc
@@ -1180,7 +1185,13 @@ class DrbdManage(object):
 
         machine_readable = flags["-m"]
 
-        node_list = self._server.node_list()
+        server_rc, node_list = self._server.list_nodes(
+            dbus.Array([], signature="s"),
+            0,
+            dbus.Dictionary({}, signature="ss"),
+            dbus.Array([], signature="s"),
+        )
+
         if (not machine_readable) and len(node_list) == 0:
             sys.stdout.write("No nodes defined\n")
             return 0
@@ -1196,32 +1207,47 @@ class DrbdManage(object):
               )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
-        for properties in node_list:
+        for node_entry in node_list:
             try:
+                node_name, properties = node_entry
                 view = DrbdNodeView(properties, machine_readable)
                 if not machine_readable:
-                    poolsize = SizeCalc.convert(view.get_poolsize(),
-                      SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
-                    poolfree = SizeCalc.convert(view.get_poolfree(),
-                      SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
-                    if poolsize >= 0:
-                        if poolsize < 1:
-                            poolsize_text = "< 1"
+                    prop_str = view.get_property(NODE_POOLSIZE)
+                    try:
+                        poolsize = SizeCalc.convert(int(prop_str),
+                            SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
+                        if poolsize >= 0:
+                            if poolsize < 1:
+                                poolsize_text = "< 1"
+                            else:
+                                poolsize_text = str(poolsize)
                         else:
-                            poolsize_text = str(poolsize)
-                    else:
-                        poolsize_text = "unknown"
-                    if poolfree >= 0:
-                        if poolfree < 1:
-                            poolfree_text = "< 1"
+                            poolsize_text = "unknown"
+                    except ValueError:
+                        poolsize = "n/a"
+
+                    prop_str = view.get_property(NODE_POOLFREE)
+                    try:
+                        poolfree = SizeCalc.convert(int(prop_str),
+                            SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
+                        if poolfree >= 0:
+                            if poolfree < 1:
+                                poolfree_text = "< 1"
+                            else:
+                                poolfree_text = str(poolfree)
                         else:
-                            poolfree_text = str(poolfree)
-                    else:
-                        poolfree_text = "unknown"
+                            poolfree_text = "unknown"
+                    except:
+                        poolfree = "n/a"
+
+                    v_af    = self._property_text(view.get_property(NODE_AF))
+                    v_addr  = self._property_text(view.get_property(NODE_ADDR))
+                    v_state = self._property_text(view.get_property(STATE))
+
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
                       % (color(COLOR_TEAL), view.get_name_maxlen(),
-                        view.get_name(), color(COLOR_NONE), view.get_addrfam(),
-                        view.get_addr(), color(COLOR_RED), view.get_state(),
+                        view.get_name(), color(COLOR_NONE), v_af,
+                        v_addr, color(COLOR_RED), v_state,
                         color(COLOR_NONE))
                       )
                     sys.stdout.write("  %s* pool size: %14s / free: %14s%s\n"
@@ -1230,10 +1256,18 @@ class DrbdManage(object):
                       color(COLOR_NONE))
                       )
                 else:
+                    v_af    = self._property_text(view.get_property(NODE_AF))
+                    v_addr  = self._property_text(view.get_property(NODE_ADDR))
+                    v_state = self._property_text(view.get_property(STATE))
+                    v_psize = self._property_text(
+                        view.get_property(NODE_POOLSIZE))
+                    v_pfree = self._property_text(
+                        view.get_property(NODE_POOLFREE))
+
                     sys.stdout.write("%s,%s,%s,%d,%d,%s\n"
-                      % (view.get_name(), view.get_addrfam(),
-                        view.get_addr(), view.get_poolsize(),
-                        view.get_poolfree(), view.get_state())
+                      % (view.get_name(), v_af,
+                        v_addr, v_psize,
+                        v_pfree, v_state)
                       )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
@@ -1597,9 +1631,13 @@ class DrbdManage(object):
                 self._ext_command(["drbdsetup",
                     "primary", DRBDCTRL_RES_NAME, "--force"])
                 init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
-                if init_rc != 0:
+
+                # FIXME: return codes broken atm because of new API, turn
+                #        this back on after it has been changed to the
+                #        new api
+                #if init_rc != 0:
                     # an error message is printed by _drbdctrl_init()
-                    raise AbortException
+                #    raise AbortException
                 self._ext_command(["drbdsetup", "secondary",
                     DRBDCTRL_RES_NAME])
 
@@ -1997,6 +2035,13 @@ class DrbdManage(object):
             return col
         else:
             return ""
+
+
+    def _property_text(self, text):
+        if text is None:
+            return "N/A"
+        else:
+            return text
 
 
     def _drbdctrl_init(self, drbdctrl_file):

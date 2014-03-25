@@ -32,6 +32,7 @@ from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.exceptions import (IncompatibleDataException,
     InvalidAddrFamException, InvalidNameException, VolSizeRangeException)
 from drbdmanage.exceptions import DM_SUCCESS
+from drbdmanage.utils import Selector
 
 
 class DrbdManager(object):
@@ -818,6 +819,36 @@ class DrbdManager(object):
         return str(name_b)
 
 
+class GenericView(object):
+
+    """
+    Base class for more specialized View objects
+    """
+
+    props = None
+
+
+    def __init__(self, props):
+        self.props = props
+
+
+    def set_property(self, key, val):
+        self.props[str(key)] = str(val)
+
+
+    def get_property(self, key):
+        if self.props is not None:
+            try:
+                val = self.props.get(str(key))
+                if val is not None:
+                    val = str(val)
+            except (ValueError, TypeError):
+                val = None
+            return val
+        else:
+            return None
+
+
 class DrbdResource(object):
     NAME_MAXLEN   = 16
     PORT_NR_AUTO  = -1
@@ -850,7 +881,7 @@ class DrbdResource(object):
         self._volumes      = {}
         self._assignments  = {}
         self.props         = {}
-        self.props[SERIAL] = 1
+        self.props[consts.SERIAL] = 1
 
 
     def get_name(self):
@@ -958,7 +989,7 @@ class DrbdResource(object):
         self._state = state & self.STATE_MASK
 
 
-class DrbdResourceView(object):
+class DrbdResourceView(GenericView):
 
     """
     Serializes and deserializes resource list entries
@@ -977,6 +1008,7 @@ class DrbdResourceView(object):
 
     def __init__(self, properties, machine_readable):
         try:
+            super(DrbdResourceView, self).__init__(properties)
             self._name = properties[consts.RES_NAME]
         except KeyError:
             raise IncompatibleDataException
@@ -1045,7 +1077,7 @@ class DrbdVolume(GenericStorage):
         self._size_kiB     = size_kiB
         self._minor        = minor
         self.props         = {}
-        self.props[SERIAL] = 1
+        self.props[consts.SERIAL] = 1
         self._state        = 0
 
 
@@ -1070,7 +1102,7 @@ class DrbdVolume(GenericStorage):
         self._state |= self.FLAG_REMOVE
 
 
-class DrbdVolumeView(object):
+class DrbdVolumeView(GenericView):
 
     """
     Serializes and deserializes volume list entries
@@ -1083,13 +1115,13 @@ class DrbdVolumeView(object):
 
     _id       = None
     _size_kiB = None
-    props     = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
         try:
+            super(DrbdVolumeView, self).__init__(properties)
             self._id = properties[consts.VOL_ID]
             self._size_kiB = long(properties[consts.VOL_SIZE])
         except (KeyError, ValueError):
@@ -1178,7 +1210,7 @@ class DrbdNode(object):
         self._poolfree     = -1
         self._poolsize     = -1
         self.props         = {}
-        self.props[SERIAL] = 1
+        self.props[consts.SERIAL] = 1
 
 
     def get_name(self):
@@ -1278,7 +1310,7 @@ class DrbdNode(object):
         return self._assignments.itervalues()
 
 
-class DrbdNodeView(object):
+class DrbdNodeView(GenericView):
 
     """
     Serializes and deserializes node list entries
@@ -1289,17 +1321,16 @@ class DrbdNodeView(object):
     """
 
     _name     = None
-    props     = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
         try:
+            super(DrbdNodeView, self).__init__(properties)
             self._name = properties[consts.NODE_NAME]
         except KeyError:
             raise IncompatibleDataException
-        self.props     = properties
         self._machine_readable = machine_readable
 
 
@@ -1309,14 +1340,32 @@ class DrbdNodeView(object):
 
 
     @classmethod
-    def get_properties(cls, node):
+    def get_properties(cls, node, req_props):
         properties = {}
-        properties[consts.NODE_NAME]     = node.get_name()
-        properties[consts.NODE_AF]       = node.get_addrfam_label()
-        properties[consts.NODE_ADDR]     = node.get_addr()
-        properties[consts.NODE_POOLSIZE] = node.get_poolsize()
-        properties[consts.NODE_POOLFREE] = node.get_poolfree()
-        properties[consts.STATE]         = node.get_state()
+
+        selector = Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.NODE_NAME):
+            properties[consts.NODE_NAME]     = node.get_name()
+        if selected(consts.NODE_AF):
+            properties[consts.NODE_AF]       = node.get_addrfam_label()
+        if selected(consts.NODE_ADDR):
+            properties[consts.NODE_ADDR]     = node.get_addr()
+        if selected(consts.NODE_POOLSIZE):
+            properties[consts.NODE_POOLSIZE] = str(node.get_poolsize())
+        if selected(consts.NODE_POOLFREE):
+            properties[consts.NODE_POOLFREE] = str(node.get_poolfree())
+        if selected(consts.NODE_STATE):
+            properties[consts.STATE]         = str(node.get_state())
+        for key in node.props.iterkeys():
+            if selected(key):
+                val = node.props.get(key)
+                if val is not None:
+                    properties[key] = str(val)
         return properties
 
 
@@ -1370,7 +1419,7 @@ class DrbdVolumeState(object):
     def __init__(self, volume):
         self._volume       = volume
         self.props         = {}
-        self.props[SERIAL] = 1
+        self.props[consts.SERIAL] = 1
         self._cstate       = 0
         self._tstate       = 0
 
@@ -1468,7 +1517,7 @@ class DrbdVolumeState(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
-class DrbdVolumeStateView(object):
+class DrbdVolumeStateView(GenericView):
 
     """
     Serializes and deserializes volume state list entries
@@ -1480,17 +1529,16 @@ class DrbdVolumeStateView(object):
     """
 
     _id      = None
-    props    = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
         try:
+            super(DrbdVolumeStateView, self).__init__(properties)
             self._id = properties[consts.VOL_ID]
         except KeyError:
             raise IncompatibleDataException
-        self.props   = properties
         self._machine_readable = machine_readable
 
 
@@ -1610,7 +1658,7 @@ class Assignment(object):
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id      = int(node_id)
         self.props         = {}
-        self.props[SERIAL] = 1
+        self.props[consts.SERIAL] = 1
         # current state
         self._cstate       = cstate
         # target state
@@ -1886,7 +1934,7 @@ class Assignment(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
-class AssignmentView(object):
+class AssignmentView(GenericView):
 
     """
     Serializes and deserializes assignments list entries
@@ -1898,18 +1946,17 @@ class AssignmentView(object):
 
     _node         = None
     _resource     = None
-    props         = None
 
     _machine_readable = False
 
 
     def __init__(self, properties, machine_readable):
         try:
+            super(AssignmentView, self).__init__(properties)
             self._node     = properties[consts.NODE_NAME]
             self._resource = properties[consts.RES_NAME]
         except KeyError:
             raise IncompatibleDataException
-        self.props = properties
         self._machine_readable = machine_readable
 
 
