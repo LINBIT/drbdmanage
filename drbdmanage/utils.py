@@ -26,6 +26,7 @@ import sys
 import os
 import hashlib
 import base64
+import drbdmanage.consts as consts
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -336,6 +337,16 @@ def add_rc_entry(fn_rc, err_code, err_msg, *args):
     fn_rc.append(rc_entry)
 
 
+def serial_filter(serial, objects):
+    """
+    Generator for iterating over objects with obj_serial > serial
+    """
+    for obj in objects:
+        obj_serial = obj.props.get(SERIAL)
+        if obj_serial is None or obj_serial > serial:
+            yield obj
+
+
 def get_terminal_size():
     def ioctl_GWINSZ(fd):
         try:
@@ -385,6 +396,25 @@ def map_val_or_dflt(map, key, dflt):
         return map[key]
     except KeyError:
         return dflt
+
+
+def bool_to_string(flag):
+    """
+    Return identifiers from module drbdmanage.consts for boolean values
+    """
+    return consts.BOOL_TRUE if flag else consts.BOOL_FALSE
+
+
+def string_to_bool(text):
+    """
+    Return boolean values for identifiers from module drbdmanage.consts
+    """
+    if text is not None:
+        if text == consts.BOOL_TRUE:
+            return True
+        elif text == consts.BOOL_FALSE:
+            return False
+    raise ValueError
 
 
 class DataHash(object):

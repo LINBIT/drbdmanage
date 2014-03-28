@@ -34,7 +34,8 @@ import drbdmanage.drbd.persistence
 
 from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, NODE_ADDR,
-    NODE_AF, NODE_POOLSIZE, NODE_POOLFREE, STATE, RES_PORT, VOL_MINOR)
+    NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
+    VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO)
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import get_terminal_size, build_path
@@ -48,10 +49,12 @@ from drbdmanage.exceptions import DM_EEXIST
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
-from drbdmanage.drbd.drbdcore import AssignmentView
-from drbdmanage.drbd.drbdcore import DrbdNodeView
 from drbdmanage.drbd.drbdcore import DrbdResource
-from drbdmanage.drbd.drbdcore import DrbdResourceView
+from drbdmanage.drbd.views import AssignmentView
+from drbdmanage.drbd.views import DrbdNodeView
+from drbdmanage.drbd.views import DrbdResourceView
+from drbdmanage.drbd.views import DrbdVolumeView
+from drbdmanage.drbd.views import DrbdVolumeStateView
 from drbdmanage.storage.storagecore import MinorNr
 
 
@@ -221,18 +224,15 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
-            for rc_entry in server_rc:
-                rc_num, rc_format, rc_params = rc_entry
-                sys.stderr.write("drbdmanage client: DEBUG: "
-                    "received rc entry, rc=%d\n" % rc_num)
-                if rc_num == 0:
-                    fn_rc = 0
-            #if fn_rc == 0:
-            #    joinc = self._server.text_query(["joinc", name])
-            #    sys.stdout.write("\nJoin command for node %s:\n"
-            #        "%s\n" % (name, " ".join(joinc)))
-            #else:
-            #    self.error_msg_text(server_rc)
+            fn_rc = self.list_rc_entries(server_rc)
+            sys.stdout.println()
+
+            if fn_rc == 0:
+                server_rc, joinc = self._server.text_query(["joinc", name])
+                sys.stdout.write("\nJoin command for node %s:\n"
+                    "%s\n" % (name, " ".join(joinc)))
+            fn_rc = self.list_rc_entries(server_rc)
+
         else:
             self.syntax_new_node()
         return fn_rc
@@ -246,7 +246,7 @@ class DrbdManage(object):
 
     def cmd_new_resource(self, args):
         fn_rc    = 1
-        port  = DrbdResource.PORT_NR_AUTO
+        port  = RES_PORT_NR_AUTO
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
@@ -272,10 +272,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
               props)
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self.list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_new_resource()
         return fn_rc
@@ -361,18 +358,27 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
               props)
-            if server_rc == 0 or server_rc == DM_EEXIST:
+            for rc_entry in server_rc:
+                try:
+                    rc_num, rc_fmt, rc_args = rc_entry
+                    if rc_num == 0 or rc_num == DM_EEXIST:
+                        fn_rc = 0
+                    else:
+                        sys.stderr.write("%s\n" % dm_exc_text(rc_num))
+                except (TypeError, ValueError):
+                    pass
+
+            if fn_rc == 0:
                 props = dbus.Dictionary(signature="ss")
                 props[VOL_MINOR] = str(minor)
                 server_rc = self._server.create_volume(dbus.String(name),
                   dbus.Int64(size), props)
-            if server_rc == 0 and deploy is not None:
-                server_rc = self._server.auto_deploy(dbus.String(name),
-                  dbus.Int32(deploy))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+                fn_rc = self.list_rc_entries(server_rc)
+
+                if fn_rc == 0 and deploy is not None:
+                    server_rc = self._server.auto_deploy(dbus.String(name),
+                        dbus.Int32(deploy))
+                    fn_rc = self.list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_new_volume()
         return fn_rc
@@ -389,7 +395,7 @@ class DrbdManage(object):
 
     def cmd_modify_resource(self, args):
         fn_rc    = 1
-        port  = DrbdResource.PORT_NR_AUTO
+        port  = RES_PORT_NR_AUTO
         # Command parser configuration
         order      = [ "name" ]
         params     = {}
@@ -459,10 +465,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.remove_node(dbus.String(node_name),
                   dbus.Boolean(force))
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    self.error_msg_text(server_rc)
+                fn_rc = self.list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -500,10 +503,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.remove_resource(dbus.String(res_name),
                   dbus.Boolean(force))
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    self.error_msg_text(server_rc)
+                fn_rc = self.list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -1078,10 +1078,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
-        if server_rc == 0:
-            fn_rc = 0
-        else:
-            self.error_msg_text(server_rc)
+        fn_rc = self.list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1089,10 +1086,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
-        if server_rc == 0:
-            fn_rc = 0
-        else:
-            self.error_msg_text(server_rc)
+        fn_rc = self.list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1189,12 +1183,13 @@ class DrbdManage(object):
             dbus.Array([], signature="s"),
             0,
             dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s"),
+            dbus.Array([], signature="s")
         )
 
-        if (not machine_readable) and len(node_list) == 0:
-            sys.stdout.write("No nodes defined\n")
-            return 0
+        if (not machine_readable) and (node_list is None
+            or len(node_list) == 0):
+                sys.stdout.write("No nodes defined\n")
+                return 0
 
         if not machine_readable:
             sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
@@ -1210,7 +1205,9 @@ class DrbdManage(object):
         for node_entry in node_list:
             try:
                 node_name, properties = node_entry
-                view = DrbdNodeView(properties, machine_readable)
+                view   = DrbdNodeView(properties, machine_readable)
+                v_af   = self._property_text(view.get_property(NODE_AF))
+                v_addr = self._property_text(view.get_property(NODE_ADDR))
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
                     try:
@@ -1240,35 +1237,28 @@ class DrbdManage(object):
                     except:
                         poolfree = "n/a"
 
-                    v_af    = self._property_text(view.get_property(NODE_AF))
-                    v_addr  = self._property_text(view.get_property(NODE_ADDR))
-                    v_state = self._property_text(view.get_property(STATE))
-
                     sys.stdout.write("%s%-*s%s %-12s %-34s %s%s%s\n"
                       % (color(COLOR_TEAL), view.get_name_maxlen(),
-                        view.get_name(), color(COLOR_NONE), v_af,
-                        v_addr, color(COLOR_RED), v_state,
+                        node_name, color(COLOR_NONE), v_af,
+                        v_addr, color(COLOR_RED), view.get_state(),
                         color(COLOR_NONE))
-                      )
+                    )
                     sys.stdout.write("  %s* pool size: %14s / free: %14s%s\n"
                       % (color(COLOR_BROWN),
                       poolsize_text, poolfree_text,
                       color(COLOR_NONE))
-                      )
+                    )
                 else:
-                    v_af    = self._property_text(view.get_property(NODE_AF))
-                    v_addr  = self._property_text(view.get_property(NODE_ADDR))
-                    v_state = self._property_text(view.get_property(STATE))
                     v_psize = self._property_text(
                         view.get_property(NODE_POOLSIZE))
                     v_pfree = self._property_text(
                         view.get_property(NODE_POOLFREE))
 
                     sys.stdout.write("%s,%s,%s,%d,%d,%s\n"
-                      % (view.get_name(), v_af,
+                      % (node_name, v_af,
                         v_addr, v_psize,
-                        v_pfree, v_state)
-                      )
+                        v_pfree, view.get_state())
+                    )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
@@ -1305,10 +1295,16 @@ class DrbdManage(object):
 
         machine_readable = flags["-m"]
 
-        resource_list = self._server.resource_list()
-        if (not machine_readable) and len(resource_list) == 0:
-            sys.stdout.write("No resources defined\n")
-            return 0
+        server_rc, res_list = self._server.list_resources(
+            dbus.Array([], signature="s"),
+            0,
+            dbus.Dictionary({}, signature="ss"),
+            dbus.Array([], signature="s")
+        )
+        if (not machine_readable) and (res_list is None
+            or len(res_list) == 0):
+                sys.stdout.write("No resources defined\n")
+                return 0
 
         # Header/key for the table
         if not machine_readable:
@@ -1327,43 +1323,50 @@ class DrbdManage(object):
                   )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
-        for properties in resource_list:
+        for res_entry in res_list:
             try:
+                res_name, properties = res_entry
                 view = DrbdResourceView(properties, machine_readable)
+                v_port  = self._property_text(view.get_property(RES_PORT))
                 if not machine_readable:
                     sys.stdout.write(
-                      "%s%-*s%s %7s         %s%s%s\n"
+                        "%s%-*s%s %7s         %s%s%s\n"
                         % (color(COLOR_DARKGREEN),
-                        view.get_name_maxlen(), view.get_name(),
-                        color(COLOR_NONE), view.get_port(),
+                        view.get_name_maxlen(), res_name,
+                        color(COLOR_NONE), v_port,
                         color(COLOR_RED), view.get_state(), color(COLOR_NONE))
-                      )
-                if list_volumes:
-                    volume_list = view.get_volumes()
-                    for vol_view in volume_list:
-                        if not machine_readable:
-                            size_MiB = SizeCalc.convert(
-                              vol_view.get_size_kiB(),
-                              SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
-                            if size_MiB < 1:
-                                size_MiB_str = "< 1"
-                            else:
-                                size_MiB_str = str(size_MiB)
-                            sys.stdout.write(
-                              "  %s*%s%6d%s %14s %7s %s%s\n"
-                                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                                vol_view.get_id(), color(COLOR_BROWN),
-                                size_MiB_str,
-                                vol_view.get_minor(), vol_view.get_state(),
-                                color(COLOR_NONE))
-                              )
-                        else:
-                            sys.stdout.write(
-                              "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
-                                view.get_state(), vol_view.get_id(),
-                                vol_view.get_size_kiB(), view.get_port(),
-                                vol_view.get_minor(), vol_view.get_state())
-                              )
+                    )
+                else:
+                    sys.stdout.write(
+                        "%s,%s,%s\n"
+                        % (res_name, v_port, view.get_state())
+                    )
+                # if list_volumes:
+                #     volume_list = view.get_volumes()
+                #     for vol_view in volume_list:
+                #         if not machine_readable:
+                #             size_MiB = SizeCalc.convert(
+                #               vol_view.get_size_kiB(),
+                #               SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
+                #             if size_MiB < 1:
+                #                 size_MiB_str = "< 1"
+                #             else:
+                #                 size_MiB_str = str(size_MiB)
+                #             sys.stdout.write(
+                #               "  %s*%s%6d%s %14s %7s %s%s\n"
+                #                 % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                #                 vol_view.get_id(), color(COLOR_BROWN),
+                #                 size_MiB_str,
+                #                 vol_view.get_minor(), vol_view.get_state(),
+                #                 color(COLOR_NONE))
+                #               )
+                #         else:
+                #             sys.stdout.write(
+                #               "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
+                #                 view.get_state(), vol_view.get_id(),
+                #                 vol_view.get_size_kiB(), view.get_port(),
+                #                 vol_view.get_minor(), vol_view.get_state())
+                #               )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
@@ -1392,10 +1395,17 @@ class DrbdManage(object):
 
         machine_readable = flags["-m"]
 
-        assignment_list = self._server.assignment_list()
-        if (not machine_readable) and len(assignment_list) == 0:
-            sys.stdout.write("No assignments defined\n")
-            return 0
+        server_rc, assg_list = self._server.list_assignments(
+            dbus.Array([], signature="s"),
+            dbus.Array([], signature="s"),
+            0,
+            dbus.Dictionary({}, signature="ss"),
+            dbus.Array([], signature="s")
+        )
+        if (not machine_readable) and (assg_list is None
+            or len(assg_list) == 0):
+                sys.stdout.write("No assignments defined\n")
+                return 0
 
         if not machine_readable:
             sys.stdout.write("%s%-*s%s\n"
@@ -1420,34 +1430,44 @@ class DrbdManage(object):
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
         prev_node = ""
-        for properties in assignment_list:
+        for assg_entry in assg_list:
             try:
+                node_name, res_name, properties, vol_state_list = assg_entry
+                vol_id, vol_properties = vol_state_list
                 view = AssignmentView(properties, machine_readable)
-                vol_state_list = view.get_volume_states()
+                v_node_id = self._property_text(view.get_property(NODE_ID))
+                v_cstate  = view.get_cstate()
+                v_tstate  = view.get_tstate()
                 if not machine_readable:
-                    crt_node = view.get_node()
-                    if crt_node != prev_node:
-                        prev_node = crt_node
+                    if node_name != prev_node:
+                        prev_node = node_name
                         sys.stdout.write("%s%-*s%s\n"
                             % (color(COLOR_TEAL),
-                            DrbdNodeView.get_name_maxlen(), crt_node,
+                            DrbdNodeView.get_name_maxlen(), node_name,
                             color(COLOR_NONE))
                           )
                     sys.stdout.write("  %s%-*s%s %5d %35s%s%s -> %s%s\n"
                         % (color(COLOR_DARKGREEN),
                         DrbdResourceView.get_name_maxlen(),
-                        view.get_resource(), color(COLOR_NONE),
-                        view.get_node_id(), "", color(COLOR_RED),
-                        view.get_cstate(), view.get_tstate(),
+                        res_name, color(COLOR_NONE),
+                        v_node_id(), "", color(COLOR_RED),
+                        v_cstate(), v_tstate(),
                         color(COLOR_NONE))
                       )
+
                     for vol_state in vol_state_list:
+                        vol_id, properties = vol_state
+                        vol_view = DrbdVolumeStateView(properties,
+                            machine_readable)
+                        v_bdev = self._property_text(
+                            vol_view.get_property(VOL_BDEV))
+
                         sys.stdout.write("  %s* %s%6d%s %-48s %s%s  -> %s%s\n"
                             % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                            vol_state.get_id(),  color(COLOR_BROWN),
-                            vol_state.get_bd_path(),
-                            color(COLOR_DARKRED), vol_state.get_cstate(),
-                            vol_state.get_tstate(), color(COLOR_NONE))
+                            vol_id(),  color(COLOR_BROWN),
+                            v_bdev,
+                            color(COLOR_DARKRED), vol_view.get_cstate(),
+                            vol_view.get_tstate(), color(COLOR_NONE))
                           )
                 else:
                     sys.stdout.write("%s,%s,%d,%s,%s\n"
@@ -1968,6 +1988,23 @@ class DrbdManage(object):
         exit(0)
 
 
+    def list_rc_entries(self, server_rc):
+        fn_rc = 1
+        try:
+            for rc_entry in server_rc:
+                try:
+                    rc_num, rc_fmt, rc_args = rc_entry
+                    if rc_num == 0:
+                        fn_rc = 0
+                    self.error_msg_text(rc_num)
+                except (TypeError, ValueError):
+                    sys.stderr.write("WARNING: unparseable return code "
+                        "omitted\n")
+        except (TypeError, ValueError):
+            sys.stderr.write("WARNING: cannot parse server return codes\n")
+        return fn_rc
+
+
     def cmd_debug(self, args):
         fn_rc = 1
         command = ""
@@ -1985,7 +2022,7 @@ class DrbdManage(object):
         try:
             self.dbus_init()
             fn_rc = self._server.debug_console(dbus.String(command))
-            sys.stderr.write("%s fn_rc=%d\n" % (command, fn_rc))
+            sys.stderr.write("fn_rc=%d, %s\n" % (fn_rc, command))
         except dbus.exceptions.DBusException:
             sys.stderr.write("drbdmanage: cannot connect to the drbdmanage "
               "server through D-Bus.\n")
@@ -2027,7 +2064,11 @@ class DrbdManage(object):
 
 
     def error_msg_text(self, error):
-        sys.stderr.write("Error: " + dm_exc_text(error) + "\n")
+        if error == 0:
+            prefix = ""
+        else:
+            prefix = "Error: "
+        sys.stderr.write("%s%s\n" % (prefix, dm_exc_text(error)))
 
 
     def color(self, col):

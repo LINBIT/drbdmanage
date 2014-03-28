@@ -37,9 +37,9 @@ VOL_ID              = "vol_id"
 VOL_MINOR           = "minor"
 VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
-STATE               = "state"
-CSTATE              = "cstate"
-TSTATE              = "tstate"
+
+NODE_NAME_MAXLEN    = 16
+RES_NAME_MAXLEN     = 16
 
 DRBDCTRL_DEFAULT_PORT = 6999
 
@@ -48,3 +48,36 @@ DRBDCTRL_RES_FILE   = "drbdctrl.res"
 DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
 DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
+
+
+# flags prefixes
+CSTATE_PREFIX       = "cstate:"
+TSTATE_PREFIX       = "tstate:"
+
+# resources, nodes, volumes:
+FLAG_REMOVE         = "remove"
+
+# nodes:
+FLAG_UPD_POOL       = "upd_pool"
+FLAG_UPDATE         = "update"
+
+# assignments, volume states:
+FLAG_DEPLOY         = "deploy"
+
+# assignments:
+FLAG_DISKLESS       = "diskless"
+FLAG_CONNECT        = "connect"
+FLAG_UPD_CON        = "upd_con"
+FLAG_RECONNECT      = "reconnect"
+FLAG_OVERWRITE      = "overwrite"
+FLAG_DISCARD        = "discard"
+
+# volume states:
+FLAG_ATTACH         = "attach"
+
+# boolean expressions
+BOOL_TRUE           = "true"
+BOOL_FALSE          = "false"
+
+RES_PORT_NR_AUTO    = -1
+RES_PORT_NR_ERROR   = -2

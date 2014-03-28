@@ -237,12 +237,23 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="asta{ss}as",
-      out_signature="a(isa(ss))" "a(sa{ss}a(ia{ss}))")
+      out_signature="a(isa(ss))" "a(sa{ss})")
     def list_resources(self, res_names, serial, filter_props, req_props):
         """
         D-Bus interface for DrbdManageServer.resource_list(...)
         """
         return self._server.list_resources(res_names, serial, filter_props,
+            req_props)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="asta{ss}as",
+      out_signature="a(isa(ss))" "a(sa{ss}a(ia{ss}))")
+    def list_volumes(self, res_names, serial, filter_props, req_props):
+        """
+        D-Bus interface for DrbdManageServer.resource_list(...)
+        """
+        return self._server.list_volumes(res_names, serial, filter_props,
             req_props)
 
 

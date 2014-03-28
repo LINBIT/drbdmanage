@@ -27,23 +27,23 @@ import fcntl
 import logging
 import logging.handlers
 
-from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_PORT,
-    VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
-    DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH)
+from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
+    RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
+    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
+    RES_PORT_NR_ERROR)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_event_arg, get_event_source, get_event_type, get_free_number,
-    plugin_import, add_rc_entry)
+    plugin_import, add_rc_entry, serial_filter)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
-    DM_SUCCESS)
+    DM_ENOTIMPL, DM_SUCCESS)
 from drbdmanage.exceptions import (InvalidMinorNrException,
     InvalidNameException, PersistenceException, PluginException,
     SyntaxException, VolSizeRangeException, dm_exc_text)
-from drbdmanage.drbd.drbdcore import (Assignment, AssignmentView, DrbdManager,
-    DrbdNode, DrbdNodeView, DrbdResource, DrbdResourceView, DrbdVolume,
-    DrbdVolumeState)
+from drbdmanage.drbd.drbdcore import (Assignment, DrbdManager,
+    DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState)
 from drbdmanage.drbd.persistence import persistence_impl
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
 from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
@@ -529,29 +529,24 @@ class DrbdManageServer(object):
         """
         fn_rc   = []
         persist = None
-        errors  = True
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
                 sub_rc = self._create_node(False, node_name, props, None, None)
-                sys.stderr.write("DEBUG: _create_node, rc=%d\n" % sub_rc)
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
-                    sys.stderr.write("DEBUG: node created, rc=%d\n" % sub_rc)
                     self.save_conf_data(persist)
-                    errors = False
+                else:
+                    add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
             else:
-                sys.stderr.write("DEBUG: cannot open drbdctrl\n")
                 raise PersistenceException
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-            errors = True
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
-            errors = True
         finally:
             self.end_modify_conf(persist)
-        if not errors:
+        if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
@@ -619,7 +614,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
+        errors  = False
         persist = None
         node    = None
         try:
@@ -650,16 +646,20 @@ class DrbdManageServer(object):
                 self.save_conf_data(persist)
                 if drbdctrl_flag:
                     self.reconfigure_drbdctrl()
-                fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except KeyError:
-            fn_rc = DM_ENOENT
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                [ NODE_NAME, node_name ])
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -669,7 +669,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
+        errors   = False
         resource = None
         persist  = None
         try:
@@ -677,38 +678,48 @@ class DrbdManageServer(object):
             if persist is not None:
                 resource = self._resources.get(res_name)
                 if resource is not None:
-                    fn_rc = DM_EEXIST
+                    add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST),
+                        [ RES_NAME, resource.get_name() ])
                 else:
-                    port = DrbdResource.PORT_NR_AUTO
+                    port = RES_PORT_NR_AUTO
                     secret = generate_secret()
                     if secret is not None:
                         try:
                             port = int(props[RES_PORT])
                         except KeyError:
                             pass
-                        if port == DrbdResource.PORT_NR_AUTO:
+                        if port == RES_PORT_NR_AUTO:
                             port = self.get_free_port_nr()
                         if port < 1 or port > 65535:
-                            fn_rc = DM_EPORT
+                            add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
+                                [ RES_PORT, str(port) ])
                         else:
                             resource = DrbdResource(res_name, port)
                             resource.set_secret(secret)
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
-                            fn_rc = DM_SUCCESS
+                            add_rc_entry(fn_rc, DM_SUCCESS,
+                                dm_exc_text(DM_SUCCESS))
                     else:
-                        fn_rc = DM_ESECRETG
+                        add_rc_entry(fn_rc, DM_ESECRETG,
+                            dm_exc_text(DM_ESECRETG))
+            else:
+                raise PersistenceException
         except ValueError:
-            fn_rc = DM_EINVAL
+            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL),
+                [ RES_PORT, port ])
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except InvalidNameException:
-            fn_rc = DM_ENAME
+            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME),
+                [ RES_NAME, res_name ])
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -761,7 +772,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_ENOTIMPL
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
 
@@ -771,7 +783,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_ENOTIMPL
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
 
@@ -782,7 +795,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
         persist  = None
         resource = None
         try:
@@ -800,16 +813,19 @@ class DrbdManageServer(object):
                         node.remove_assignment(assg)
                     del self._resources[resource.get_name()]
                 self.save_conf_data(persist)
-                fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except KeyError:
-            fn_rc = DM_ENOENT
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -819,7 +835,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
         volume  = None
         persist = None
         try:
@@ -827,7 +843,7 @@ class DrbdManageServer(object):
             if persist is not None:
                 resource = self._resources.get(res_name)
                 if resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     minor = MinorNr.MINOR_NR_AUTO
                     try:
@@ -842,7 +858,7 @@ class DrbdManageServer(object):
                         raise InvalidMinorNrException
                     vol_id = self.get_free_volume_id(resource)
                     if vol_id == -1:
-                        fn_rc = DM_EVOLID
+                        add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
                         resource.add_volume(volume)
@@ -854,20 +870,23 @@ class DrbdManageServer(object):
                                 vol_st.attach()
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except InvalidNameException:
-            fn_rc = DM_ENAME
+            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME))
         except InvalidMinorNrException:
-            fn_rc = DM_EMINOR
+            add_rc_entry(fn_rc, DM_EMINOR, dm_exc_text(DM_EMINOR))
         except VolSizeRangeException:
-            fn_rc = DM_EVOLSZ
+            add_rc_entry(fn_rc, DM_EVOLSZ, dm_exc_text(DM_EVOLSZ))
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -878,7 +897,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
         persist = None
         try:
             persist = self.begin_modify_conf()
@@ -900,16 +919,19 @@ class DrbdManageServer(object):
                         for assg in resource.iterate_assignments():
                             assg.remove_volume_state(vol_id)
                     self.save_conf_data(persist)
-                    fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except KeyError:
-            fn_rc = DM_ENOENT
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -973,31 +995,45 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
         persist = None
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                node   = self._nodes.get(node_name)
-                resource = self._resources.get(res_name)
+                try:
+                    node = self._nodes[node_name]
+                except KeyError:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        [ NODE_NAME, node_name ])
+                try:
+                    resource = self._resources[res_name]
+                except KeyError:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        [ RES_NAME, res_name ])
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
-                        fn_rc = self._unassign(assignment, force)
-                        if fn_rc == DM_SUCCESS:
+                        sub_rc = self._unassign(assignment, force)
+                        if sub_rc == DM_SUCCESS:
                             self._drbd_mgr.perform_changes()
                             self.save_conf_data(persist)
+                        else:
+                            add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1712,12 +1748,6 @@ class DrbdManageServer(object):
                 else:
                     yield node
 
-        def serial_filter(serial, nodes):
-            for node in nodes:
-                node_serial = node.props.get(SERIAL)
-                if node_serial is None or node_serial > serial:
-                    yield node
-
         try:
             node_list = []
             if node_names is not None and len(node_names) > 0:
@@ -1727,14 +1757,15 @@ class DrbdManageServer(object):
             if serial > 0:
                 selected_nodes = serial_filter(serial, selected_nodes)
 
-            for node in self._nodes.itervalues():
+            for node in selected_nodes:
                 node_entry = [ node.get_name(),
-                    DrbdNodeView.get_properties(node, req_props) ]
+                    node.get_properties(req_props) ]
                 node_list.append(node_entry)
                 add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, node_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
 
         return fn_rc, None
 
@@ -1745,33 +1776,122 @@ class DrbdManageServer(object):
 
         Used by the drbdmanage client to display the resources/volumes list
         """
+        fn_rc = []
+
+        def resource_filter(res_names):
+            for res_name in res_names:
+                res = self._resources.get(res_name)
+                if res is None:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        [ RES_NAME, res_name ])
+                else:
+                    yield res
+
         try:
-            resource_list = []
-            for resource in self._resources.itervalues():
-                properties = DrbdResourceView.get_properties(resource)
-                resource_list.append(properties)
-            return resource_list
+            res_list = []
+            if res_names is not None and len(res_names) > 0:
+                selected_res = resource_filter(res_names)
+            else:
+                selected_res = self._resources.itervalues()
+            if serial > 0:
+                selected_res = serial_filter(serial, selected_res)
+
+            for res in selected_res:
+                res_entry = [ res.get_name(),
+                    res.get_properties(req_props) ]
+                res_list.append(res_entry)
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc, res_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-        return None
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+
+        return fn_rc, None
 
 
-    def list_assignment(self, node_names, res_names, serial, props):
+    def list_volumes(self, res_names, serial, filter_props, req_props):
+        """
+        Generates a list of resources views suitable for serialized transfer
+
+        Used by the drbdmanage client to display the resources/volumes list
+        """
+        fn_rc = []
+
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+
+        return fn_rc, None
+
+
+    def list_assignments(self, node_names, res_names, serial,
+        filter_props, req_props):
         """
         Generates a list of assignment views suitable for serialized transfer
 
         Used by the drbdmanage client to display the assignments list
         """
+        fn_rc = []
+
+        def assg_filter(selected_nodes, selected_res):
+            for node in selected_nodes.itervalues():
+                for res in selected_res.itervalues():
+                    assg = node.get_assignment(res.get_name())
+                    if assg is not None:
+                        yield assg
+
         try:
-            assignment_list = []
-            for node in self._nodes.itervalues():
-                for assignment in node.iterate_assignments():
-                    properties = AssignmentView.get_properties(assignment)
-                    assignment_list.append(properties)
-            return assignment_list
+            if node_names is not None and len(node_names) > 0:
+                selected_nodes = {}
+                for node_name in node_names:
+                    node = self._nodes.get(node_name)
+                    if node is None:
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                            [ NODE_NAME, node_name ])
+                    else:
+                        selected_nodes[node.get_name()] = node
+            else:
+                selected_nodes = self._nodes
+
+            if res_names is not None and len(res_names) > 0:
+                selected_res = {}
+                for res_name in res_names:
+                    res = self._resources.get(res_name)
+                    if res is None:
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                            [ RES_NAME, res_name ])
+                    else:
+                        selected_res[res.get_name()] = res
+            else:
+                selected_res = self._resources
+
+            selected_assg = assg_filter(selected_nodes, selected_res)
+            if serial > 0:
+                selected_assg = serial_filter(serial, selected_assg)
+
+            assg_list = []
+            for assg in selected_assg:
+                vol_state_list = []
+                for vol_state in assg.iterate_volume_states():
+                    vol_state_entry = [
+                        vol_state.get_id(),
+                        # FIXME: req_props, filter_props, nothing?
+                        vol_state.get_properties(None)
+                    ]
+                    vol_state_list.append(vol_state_entry)
+                assg_entry = [
+                    assg.get_node().get_name(),
+                    assg.get_resource().get_name(),
+                    # FIXME: req_props, filter_props, nothing?
+                    assg.get_properties(None),
+                    vol_state_list
+                ]
+                assg_list.append(assg_entry)
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc, assg_list
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-        return None
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+
+        return fn_rc, None
 
 
     def save_conf(self):
@@ -1780,20 +1900,23 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
         persist  = None
         try:
             persist = persistence_impl()
             if persist.open(True):
                 self.save_conf_data(persist)
-                fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1803,21 +1926,23 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
         persist  = None
         try:
             persist = persistence_impl()
             if persist.open(False):
                 self.load_conf_data(persist)
-                persist.close()
-                fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            return DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -2325,32 +2450,57 @@ class DrbdManageServer(object):
                 # remove "list "
                 command = command[5:]
                 if command == "n":
+                    sys.stderr.write(
+                        "== DEBUG == list nodes =================\n")
                     for node in self._nodes.itervalues():
                         sys.stderr.write("%-18s %-2d %-16s 0x%x\n"
                             % (node.get_name(), node.get_addrfam(),
                                 node.get_addr(), node.get_state())
                         )
+                    sys.stderr.write(
+                        "== end of list =========================\n")
                     fn_rc = 0
                 elif command == "r":
+                    sys.stderr.write(
+                        "== DEBUG == list resources =============\n")
                     for res in self._resources.itervalues():
                         sys.stderr.write("%-18s 0x%x\n"
                             % (res.get_name(), res.get_state()))
+                    sys.stderr.write(
+                        "== end of list =========================\n")
                     fn_rc = 0
                 elif command == "v":
+                    sys.stderr.write(
+                        "== DEBUG == list volumes ===============\n")
                     for res in self._resources.itervalues():
                         for vol in res.iterate_volumes():
                             sys.stderr.write("%-18s %5d %18d 0x%x\n"
                                 % (res.get_name(), vol.get_id(),
                                     vol.get_size_kiB(), res.get_state())
                             )
+                    sys.stderr.write(
+                        "== end of list =========================\n")
                     fn_rc = 0
                 elif command == "a":
+                    sys.stderr.write(
+                        "== DEBUG == list assignments============\n")
                     for node in self._nodes.itervalues():
                         for assg in node.iterate_assignments():
                             res = assg.get_resource()
                             sys.stderr.write("N:%-18s R:%-18s\n"
                                 % (node.get_name(), res.get_name())
                             )
+                            for vol_state in assg.iterate_volume_states():
+                                vol_bdev_path = vol_state.get_bdev_path()
+                                if vol_bdev_path is None:
+                                    vol_bdev_path = "(nodev)"
+                                sys.stderr.write("  V:%d %s 0x%x -> 0x%x\n"
+                                    % (vol_state.get_id(), vol_bdev_path,
+                                    vol_state.get_cstate(),
+                                    vol_state.get_tstate())
+                                )
+                    sys.stderr.write(
+                        "== end of list =========================\n")
                     fn_rc = 0
             elif command.startswith("gen drbdctrl "):
                 # remove "gen drbdctrl":
@@ -2381,9 +2531,9 @@ class DrbdManageServer(object):
                                 drbdctrl_res.close()
                             except (IOError, OSError):
                                 pass
-            elif command.startswith("_configure_drbdctrl"):
+            elif command.startswith("mod drbdctrl "):
                 # remove "_configure_drbdctrl"
-                command = command[19:]
+                command = command[13:]
                 secret = None
                 port   = None
                 bdev   = None
@@ -2556,7 +2706,7 @@ class DrbdManageServer(object):
             if port == -1:
                 raise ValueError
         except ValueError:
-            port = DrbdResource.PORT_NR_ERROR
+            port = RES_PORT_NR_ERROR
         return port
 
 

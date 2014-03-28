@@ -32,7 +32,7 @@ from drbdmanage.storage.storagecore import GenericStorage
 from drbdmanage.exceptions import (IncompatibleDataException,
     InvalidAddrFamException, InvalidNameException, VolSizeRangeException)
 from drbdmanage.exceptions import DM_SUCCESS
-from drbdmanage.utils import Selector
+from drbdmanage.utils import (Selector, bool_to_string)
 
 
 class DrbdManager(object):
@@ -819,40 +819,8 @@ class DrbdManager(object):
         return str(name_b)
 
 
-class GenericView(object):
-
-    """
-    Base class for more specialized View objects
-    """
-
-    props = None
-
-
-    def __init__(self, props):
-        self.props = props
-
-
-    def set_property(self, key, val):
-        self.props[str(key)] = str(val)
-
-
-    def get_property(self, key):
-        if self.props is not None:
-            try:
-                val = self.props.get(str(key))
-                if val is not None:
-                    val = str(val)
-            except (ValueError, TypeError):
-                val = None
-            return val
-        else:
-            return None
-
-
 class DrbdResource(object):
-    NAME_MAXLEN   = 16
-    PORT_NR_AUTO  = -1
-    PORT_NR_ERROR = -2
+    NAME_MAXLEN   = consts.RES_NAME_MAXLEN
 
     _name        = None
     _secret      = None
@@ -989,59 +957,31 @@ class DrbdResource(object):
         self._state = state & self.STATE_MASK
 
 
-class DrbdResourceView(GenericView):
-
-    """
-    Serializes and deserializes resource list entries
-
-    This class is used by the drbdmanage server to serialize resource list
-    entries for the resources and volumes list. The drbdmanage client uses this
-    class to deserialize and display the information received from the
-    drbdmanage server.
-    """
-
-    _name    = None
-    props    = None
-
-    _machine_readable = False
-
-
-    def __init__(self, properties, machine_readable):
-        try:
-            super(DrbdResourceView, self).__init__(properties)
-            self._name = properties[consts.RES_NAME]
-        except KeyError:
-            raise IncompatibleDataException
-        self.props = properties
-
-
-    @classmethod
-    def get_name_maxlen(cls):
-        return DrbdResource.NAME_MAXLEN
-
-
-    @classmethod
-    def get_properties(cls, resource):
+    def get_properties(self, req_props):
         properties = {}
-        properties[consts.RES_NAME]   = resource.get_name()
-        properties[consts.RES_SECRET] = resource.get_secret()
-        properties[consts.RES_PORT]   = resource.get_port()
-        properties[consts.STATE]      = resource.get_state()
+
+        selector = Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.RES_NAME):
+            properties[consts.RES_NAME]   = self._name
+        if selected(consts.RES_SECRET):
+            properties[consts.RES_SECRET] = str(self._secret)
+        if selected(consts.RES_PORT):
+            properties[consts.RES_PORT]   = str(self._port)
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
+                bool_to_string(self._state & self.FLAG_REMOVE))
+        for key in self.props.iterkeys():
+            if selected(key):
+                val = self.props.get(key)
+                if val is not None:
+                    properties[key] = str(val)
         return properties
 
-
-    def get_name(self):
-        return self._name
-
-
-    def get_state(self):
-        text = "-"
-        if self._state & DrbdResource.FLAG_REMOVE != 0:
-            if self._machine_readable:
-                text = "REMOVE"
-            else:
-                text = "remove"
-        return text
 
 
 class DrbdVolume(GenericStorage):
@@ -1102,62 +1042,32 @@ class DrbdVolume(GenericStorage):
         self._state |= self.FLAG_REMOVE
 
 
-class DrbdVolumeView(GenericView):
-
-    """
-    Serializes and deserializes volume list entries
-
-    This class is used by the drbdmanage server to serialize volume list
-    entries for the resources and volumes list. The drbdmanage client uses this
-    class to deserialize and display the information received from the
-    drbdmanage server.
-    """
-
-    _id       = None
-    _size_kiB = None
-
-    _machine_readable = False
-
-
-    def __init__(self, properties, machine_readable):
-        try:
-            super(DrbdVolumeView, self).__init__(properties)
-            self._id = properties[consts.VOL_ID]
-            self._size_kiB = long(properties[consts.VOL_SIZE])
-        except (KeyError, ValueError):
-            raise IncompatibleDataException
-        self._machine_readable = machine_readable
-
-
-    @classmethod
-    def get_properties(cls, volume):
+    def get_properties(self, req_props):
         properties = {}
-        minor = volume.get_minor()
-        properties[consts.VOL_ID]    = volume.get_id()
-        properties[consts.VOL_SIZE]  = volume.get_size_kiB()
-        properties[consts.VOL_MINOR] = minor.get_value()
-        properties[consts.STATE]     = volume.get_state()
+
+        selector = Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.VOL_ID):
+            properties[consts.VOL_ID]    = str(self._id)
+        if selected(consts.VOL_SIZE):
+            properties[consts.VOL_SIZE]  = str(self._size_kiB)
+        if selected(consts.VOL_MINOR):
+            properties[consts.VOL_MINOR] = str(self._minor.get_value())
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
+                bool_to_string(self._state & self.FLAG_REMOVE))
+        for key in self.props.iterkeys():
+            if selected(key):
+                val = self.props.get(key)
+                if val is not None:
+                    properties[key] = str(val)
         return properties
 
 
-    def get_id(self):
-        return self._id
-
-
-    def get_size_kiB(self):
-        return self._size_kiB
-
-
-    def get_state(self):
-        text = ""
-        if self._state & DrbdVolume.FLAG_REMOVE != 0:
-            if self._machine_readable:
-                text = "REMOVE"
-            else:
-                text = "remove"
-        if len(text) == 0:
-            text = "-"
-        return text
 
 
 class DrbdNode(object):
@@ -1166,7 +1076,7 @@ class DrbdNode(object):
     Represents a drbdmanage host node in drbdmanage's object model.
     """
 
-    NAME_MAXLEN = 16
+    NAME_MAXLEN = consts.NODE_NAME_MAXLEN
 
     AF_IPV4 = 4
     AF_IPV6 = 6
@@ -1310,37 +1220,7 @@ class DrbdNode(object):
         return self._assignments.itervalues()
 
 
-class DrbdNodeView(GenericView):
-
-    """
-    Serializes and deserializes node list entries
-
-    This class is used by the drbdmanage server to serialize node list entries.
-    The drbdmanage client uses this class to deserialize and display the
-    information received from the drbdmanage server.
-    """
-
-    _name     = None
-
-    _machine_readable = False
-
-
-    def __init__(self, properties, machine_readable):
-        try:
-            super(DrbdNodeView, self).__init__(properties)
-            self._name = properties[consts.NODE_NAME]
-        except KeyError:
-            raise IncompatibleDataException
-        self._machine_readable = machine_readable
-
-
-    @classmethod
-    def get_name_maxlen(cls):
-        return DrbdNode.NAME_MAXLEN
-
-
-    @classmethod
-    def get_properties(cls, node, req_props):
+    def get_properties(self, req_props):
         properties = {}
 
         selector = Selector(req_props)
@@ -1350,39 +1230,32 @@ class DrbdNodeView(GenericView):
             selected = selector.all_selector
 
         if selected(consts.NODE_NAME):
-            properties[consts.NODE_NAME]     = node.get_name()
+            properties[consts.NODE_NAME]     = self._name
         if selected(consts.NODE_AF):
-            properties[consts.NODE_AF]       = node.get_addrfam_label()
+            properties[consts.NODE_AF]       = str(self._addrfam)
         if selected(consts.NODE_ADDR):
-            properties[consts.NODE_ADDR]     = node.get_addr()
+            properties[consts.NODE_ADDR]     = str(self._addr)
+        if selected(consts.NODE_ID):
+            properties[consts.NODE_ID]       = str(self._node_id)
         if selected(consts.NODE_POOLSIZE):
-            properties[consts.NODE_POOLSIZE] = str(node.get_poolsize())
+            properties[consts.NODE_POOLSIZE] = str(self._poolsize)
         if selected(consts.NODE_POOLFREE):
-            properties[consts.NODE_POOLFREE] = str(node.get_poolfree())
-        if selected(consts.NODE_STATE):
-            properties[consts.STATE]         = str(node.get_state())
-        for key in node.props.iterkeys():
+            properties[consts.NODE_POOLFREE] = str(self._poolfree)
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
+                bool_to_string(self._state & self.FLAG_REMOVE))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_UPDATE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_UPDATE] = (
+                bool_to_string(self._state & self.FLAG_UPDATE))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL] = (
+                bool_to_string(self._state & self.FLAG_UPD_POOL))
+        for key in self.props.iterkeys():
             if selected(key):
-                val = node.props.get(key)
+                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
-
-
-    def get_name(self):
-        return self._name
-
-
-    def get_state(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._state & DrbdNode.FLAG_REMOVE != 0:
-            state_text_append(mach_read, text, "REMOVE", "remove")
-        if self._state & DrbdNode.FLAG_UPDATE != 0:
-            state_text_append(mach_read, text, "UPDATE", "update")
-        if self._state & DrbdNode.FLAG_UPD_POOL != 0:
-            state_text_append(mach_read, text, "UPD_POOL", "update-pool")
-        return text
 
 
 class DrbdVolumeState(object):
@@ -1517,90 +1390,43 @@ class DrbdVolumeState(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
-class DrbdVolumeStateView(GenericView):
-
-    """
-    Serializes and deserializes volume state list entries
-
-    This class is used by the drbdmanage server to serialize volume state list
-    entries for the assignments view. The drbdmanage client uses this class
-    to deserialize and display the information received from the drbdmanage
-    server.
-    """
-
-    _id      = None
-
-    _machine_readable = False
-
-
-    def __init__(self, properties, machine_readable):
-        try:
-            super(DrbdVolumeStateView, self).__init__(properties)
-            self._id = properties[consts.VOL_ID]
-        except KeyError:
-            raise IncompatibleDataException
-        self._machine_readable = machine_readable
-
-
-    @classmethod
-    def get_properties(cls, vol_state):
+    def get_properties(self, req_props):
         properties = {}
-        if bd_path is None:
-            properties[consts.VOL_BDEV] = "-"
+
+        selector = Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
         else:
-            properties[consts.VOL_BDEV] = vol_state.get_bd_path()
-        properties[consts.CSTATE] = str(vol_state.get_cstate())
-        properties[consts.TSTATE] = str(vol_state.get_tstate())
+            selected = selector.all_selector
+
+        if selected(consts.VOL_ID):
+            properties[consts.VOL_ID]    = str(self._volume.get_id())
+        if selected(consts.VOL_SIZE):
+            properties[consts.VOL_SIZE]  = str(self._volume.get_size_kiB())
+        if selected(consts.VOL_BDEV):
+            properties[consts.VOL_BDEV]  = (
+                "" if self._bd_path is None else str(self._bd_path))
+        if selected(consts.VOL_MINOR):
+            properties[consts.VOL_MINOR] = (
+                str(self._volume.get_minor().get_value()))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                bool_to_string(self._state & self.FLAG_DEPLOY))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_ATTACH):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_ATTACH] = (
+                bool_to_string(self._state & self.FLAG_ATTACH))
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                bool_to_string(self._state & self.FLAG_DEPLOY))
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_ATTACH):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_ATTACH] = (
+                bool_to_string(self._state & self.FLAG_ATTACH))
+        for key in self.props.iterkeys():
+            if selected(key):
+                val = self.props.get(key)
+                if val is not None:
+                    properties[key] = str(val)
         return properties
-
-
-    def get_id(self):
-        return self._id
-
-
-    def get_cstate(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._cstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
-        if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
-            text = state_text_append(mach_read, text, "ATTACH", "attached")
-        # FIXME: experimental human-readable mask output
-        if not self._machine_readable:
-            if self._cstate & DrbdVolumeState.FLAG_ATTACH != 0:
-                text = "a"
-            else:
-                text = "-"
-            if self._cstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-                text += "d"
-            else:
-                text += "-"
-        return text
-
-
-    def get_tstate(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-            text = state_text_append(mach_read, text, "DEPLOY", "deploy")
-        if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
-            text = state_text_append(mach_read, text, "ATTACH", "attach")
-        # FIXME: experimental human-readable mask output
-        if not self._machine_readable:
-            if self._tstate & DrbdVolumeState.FLAG_ATTACH != 0:
-                text = "a"
-            else:
-                text = "-"
-            if self._tstate & DrbdVolumeState.FLAG_DEPLOY != 0:
-                text += "d"
-            else:
-                text += "-"
-        return text
-
-
-    # TODO: implement state views
-    def get_state(self):
-        return "<not implemented>"
 
 
 class Assignment(object):
@@ -1934,154 +1760,59 @@ class Assignment(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
-class AssignmentView(GenericView):
-
-    """
-    Serializes and deserializes assignments list entries
-
-    This class is used by the drbdmanage server to serialize assignment list
-    entries. The drbdmanage client uses this class to deserialize and display
-    the information received from the drbdmanage server.
-    """
-
-    _node         = None
-    _resource     = None
-
-    _machine_readable = False
-
-
-    def __init__(self, properties, machine_readable):
-        try:
-            super(AssignmentView, self).__init__(properties)
-            self._node     = properties[consts.NODE_NAME]
-            self._resource = properties[consts.RES_NAME]
-        except KeyError:
-            raise IncompatibleDataException
-        self._machine_readable = machine_readable
-
-
-    @classmethod
-    def get_properties(cls, assg):
+    def get_properties(self, req_props):
         properties = {}
-        node     = assg.get_node()
-        resource = assg.get_resource()
-        properties[consts.NODE_NAME] = node.get_name()
-        properties[consts.RES_NAME]  = resource.get_name()
-        properties[consts.NODE_ID]   = assg.get_node_id()
-        properties[consts.CSTATE]    = assg.get_cstate()
-        properties[consts.TSTATE]    = assg.get_tstate()
+
+        selector = Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.NODE_NAME):
+            properties[consts.NODE_NAME] = self._node.get_name()
+        if selected(consts.RES_NAME):
+            properties[consts.RES_NAME]  = self._resource.get_name()
+        if selected(consts.NODE_ADDR):
+            properties[consts.NODE_ID]   = str(self._node_id)
+
+        # target state flags
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                bool_to_string(self._state & self.FLAG_DEPLOY))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_CONNECT):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_CONNECT] = (
+                bool_to_string(self._state & self.FLAG_CONNECT))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DISKLESS):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DISKLESS] = (
+                bool_to_string(self._state & self.FLAG_DISKLESS))
+        # target state - action flags
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_CON):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_CON] = (
+                bool_to_string(self._state & self.FLAG_UPD_CON))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE] = (
+                bool_to_string(self._state & self.FLAG_OVERWRITE))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DISCARD):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DISCARD] = (
+                bool_to_string(self._state & self.FLAG_DISCARD))
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_RECONNECT):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_RECONNECT] = (
+                bool_to_string(self._state & self.FLAG_RECONNECT))
+        # current state flags
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                bool_to_string(self._state & self.FLAG_DEPLOY))
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_CONNECT):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_CONNECT] = (
+                bool_to_string(self._state & self.FLAG_CONNECT))
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_DISKLESS):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
+                bool_to_string(self._state & self.FLAG_DISKLESS))
+
+        for key in self.props.iterkeys():
+            if selected(key):
+                val = self.props.get(key)
+                if val is not None:
+                    properties[key] = str(val)
         return properties
-
-
-    def get_node(self):
-        return self._node
-
-
-    def get_resource(self):
-        return self._resource
-
-
-    def get_cstate(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._cstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
-        if self._cstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mach_read, text, "CONNECT", "connected")
-        if self._cstate & Assignment.FLAG_DISKLESS != 0:
-            text = state_text_append(mach_read, text, "DISKLESS", "client")
-        if len(text) == 0:
-            text = "-"
-        # FIXME: experimental human-readable mask output
-        if not self._machine_readable:
-            if self._cstate & Assignment.FLAG_CONNECT != 0:
-                text = "c"
-            else:
-                text = "-"
-            if self._cstate & Assignment.FLAG_DEPLOY != 0:
-                text += "d"
-            else:
-                text += "-"
-            if self._cstate & Assignment.FLAG_DISKLESS != 0:
-                text += "D"
-            else:
-                text += "-"
-        return text
-
-
-    def get_tstate(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._tstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mach_read, text, "DEPLOY", "deploy")
-        if self._tstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mach_read, text, "CONNECT", "connect")
-        if self._tstate & Assignment.FLAG_UPD_CON != 0:
-            text = state_text_append(mach_read, text, "UPD_CON", "update")
-        if self._tstate & Assignment.FLAG_RECONNECT != 0:
-            text = state_text_append(mach_read, text, "RECONNECT", "reconnect")
-        if self._tstate & Assignment.FLAG_OVERWRITE != 0:
-            text = state_text_append(mach_read, text, "OVERWRITE", "init-master")
-        if self._tstate & Assignment.FLAG_DISCARD != 0:
-            text = state_text_append(mach_read, text, "DISCARD", "discard")
-        if len(text) == 0:
-            text = "-"
-        # FIXME: experimental human-readable mask output
-        if not self._machine_readable:
-            if self._tstate & Assignment.FLAG_CONNECT != 0:
-                text = "c"
-            else:
-                text = "-"
-            if self._tstate & Assignment.FLAG_DEPLOY != 0:
-                text += "d"
-            else:
-                text += "-"
-            if self._tstate & Assignment.FLAG_DISKLESS != 0:
-                text += "D"
-            else:
-                text += "-"
-            text += " ("
-            if self._tstate & Assignment.FLAG_DISCARD != 0:
-                text += "d"
-            else:
-                text += "-"
-            if self._tstate & Assignment.FLAG_OVERWRITE != 0:
-                text += "o"
-            else:
-                text += "-"
-            if self._tstate & Assignment.FLAG_RECONNECT != 0:
-                text += "r"
-            else:
-                text += "-"
-            if self._tstate & Assignment.FLAG_UPD_CON != 0:
-                text += "u"
-            else:
-                text += "-"
-            text += ")"
-        return text
-
-
-    def get_state(self):
-        mach_read = self._machine_readable
-        text = ""
-        if self._tstate & Assignment.FLAG_DEPLOY != 0:
-            text = state_text_append(mach_read, text, "DEPLOY", "deployed")
-        if self._tstate & Assignment.FLAG_CONNECT != 0:
-            text = state_text_append(mach_read, text, "CONNECT", "connected")
-        if self._tstate & Assignment.FLAG_DISKLESS != 0:
-            text = state_text_append(mach_read, text, "DISKLESS", "client")
-        if len(text) == 0:
-            text = "-"
-        return text
-
-
-def state_text_append(mach_read, text, mr_text, hr_text):
-    if mach_read:
-        if len(text) > 0:
-            text += "|"
-        text += mr_text
-    else:
-        if len(text) > 0:
-            text += ","
-        text += hr_text
-    return text
