@@ -347,6 +347,15 @@ def serial_filter(serial, objects):
             yield obj
 
 
+def props_filter(source, filter_props):
+    """
+    Generator for iterating over objects that match filter properties
+    """
+    for drbdobj in source:
+        if drbdobj.filter_match(filter_props):
+            yield drbdobj
+
+
 def get_terminal_size():
     def ioctl_GWINSZ(fd):
         try:

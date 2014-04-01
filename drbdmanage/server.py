@@ -34,7 +34,7 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_event_arg, get_event_source, get_event_type, get_free_number,
-    plugin_import, add_rc_entry, serial_filter)
+    plugin_import, add_rc_entry, serial_filter, props_filter)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
@@ -391,6 +391,17 @@ class DrbdManageServer(object):
         return self._cluster_conf.get(key)
 
 
+    def crt_serial(self):
+        """
+        Returns the current serial number
+        """
+        serial = self._cluster_conf.get(SERIAL)
+        if serial is None:
+            serial = 1
+            self._cluster_conf[SERIAL] = serial
+        return serial
+
+
     def new_serial(self):
         """
         Changes (increases) and returns the current serial number
@@ -583,6 +594,7 @@ class DrbdManageServer(object):
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
                             node = DrbdNode(node_name, addr, addrfam, node_id)
+                            node.props[SERIAL] = self.new_serial()
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
                             # create or update the drbdctrl.res file
@@ -696,6 +708,7 @@ class DrbdManageServer(object):
                         else:
                             resource = DrbdResource(res_name, port)
                             resource.set_secret(secret)
+                            resource.props[SERIAL] = self.new_serial()
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
                             add_rc_entry(fn_rc, DM_SUCCESS,
@@ -860,7 +873,10 @@ class DrbdManageServer(object):
                     if vol_id == -1:
                         add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
+                        chg_serial = self.new_serial()
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
+                        volume.props[SERIAL]   = chg_serial
+                        resource.props[SERIAL] = chg_serial
                         resource.add_volume(volume)
                         for assg in resource.iterate_assignments():
                             assg.update_volume_states()
@@ -915,8 +931,11 @@ class DrbdManageServer(object):
                         volume.remove()
                         self._drbd_mgr.perform_changes()
                     else:
+                        chg_serial             = self.new_serial()
+                        resource.props[SERIAL] = chg_serial
                         resource.remove_volume(vol_id)
                         for assg in resource.iterate_assignments():
+                            assg.props[SERIAL] = chg_serial
                             assg.remove_volume_state(vol_id)
                     self.save_conf_data(persist)
             else:
@@ -943,29 +962,32 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
         persist = None
         try:
-            tstate = tstate | Assignment.FLAG_DEPLOY
+            tstate = Assignment.FLAG_DEPLOY
+            cstate = 0
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
                 resource = self._resources.get(res_name)
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is not None:
-                        fn_rc = DM_EEXIST
+                        add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
                     else:
                         overwrite = (True if (tstate
                           & Assignment.FLAG_OVERWRITE) != 0 else False)
                         if (overwrite and
-                          (tstate & Assignment.FLAG_DISKLESS) != 0):
-                            fn_rc = DM_EINVAL
+                            (tstate & Assignment.FLAG_DISKLESS) != 0):
+                                add_rc_entry(fn_rc, DM_EINVAL,
+                                    dm_exc_text(DM_EINVAL))
                         elif (overwrite and
-                          (tstate & Assignment.FLAG_DISCARD) != 0):
-                            fn_rc = DM_EINVAL
+                            (tstate & Assignment.FLAG_DISCARD) != 0):
+                                add_rc_entry(fn_rc, DM_EINVAL,
+                                    dm_exc_text(DM_EINVAL))
                         else:
                             # If the overwrite flag is set on this
                             # assignment, turn it off on all the assignments
@@ -974,17 +996,26 @@ class DrbdManageServer(object):
                                 for assg in resource.iterate_assignments():
                                     assg.clear_tstate_flags(
                                       Assignment.FLAG_OVERWRITE)
-                            fn_rc = self._assign(node, resource, cstate, tstate)
-                            if fn_rc == DM_SUCCESS:
+                            assign_rc = (
+                                self._assign(node, resource, cstate, tstate)
+                            )
+                            if assign_rc == DM_SUCCESS:
                                 self._drbd_mgr.perform_changes()
                                 self.save_conf_data(persist)
+                            else:
+                                add_rc_entry(fn_rc, assign_rc,
+                                    dm_exc_text(assign_rc))
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1045,6 +1076,7 @@ class DrbdManageServer(object):
         """
         fn_rc = DM_DEBUG
         try:
+            serial = self.crt_serial()
             node_id = self.get_free_node_id(resource)
             if node_id == -1:
                 # no free node ids
@@ -1053,8 +1085,10 @@ class DrbdManageServer(object):
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
                 assignment = Assignment(node, resource, node_id,
-                  cstate, tstate)
+                    cstate, tstate)
+                assignment.props[SERIAL] = serial
                 for vol_state in assignment.iterate_volume_states():
+                    vol_state.props[SERIAL] = serial
                     vol_state.deploy()
                     if tstate & Assignment.FLAG_DISKLESS == 0:
                         vol_state.attach()
@@ -1062,6 +1096,7 @@ class DrbdManageServer(object):
                 resource.add_assignment(assignment)
                 for assignment in resource.iterate_assignments():
                     if assignment.is_deployed():
+                        assignment.props[SERIAL] = serial
                         assignment.update_connections()
                 fn_rc = DM_SUCCESS
         except Exception as exc:
@@ -1076,8 +1111,10 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         try:
+            serial   = self.crt_serial()
             node     = assignment.get_node()
             resource = assignment.get_resource()
+            assignment.props[SERIAL] = serial
             if (not force) and assignment.is_deployed():
                 assignment.disconnect()
                 assignment.undeploy()
@@ -1085,8 +1122,9 @@ class DrbdManageServer(object):
                 assignment.remove()
             for assignment in resource.iterate_assignments():
                 if assignment.get_node() != node \
-                  and assignment.is_deployed():
-                    assignment.update_connections()
+                    and assignment.is_deployed():
+                        assignment.props[SERIAL] = serial
+                        assignment.update_connections()
             self.cleanup()
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -1098,245 +1136,170 @@ class DrbdManageServer(object):
         """
         Deploys a resource to a number of nodes
 
-        @return: standard return code defined in drbdmanage.exceptions
-        """
-        fn_rc      = DM_DEBUG
-        persist = None
-        try:
-            deployer = plugin_import(
-              self.get_conf_value(self.KEY_DEPLOYER_NAME))
-            if deployer is None:
-                raise PluginException
-
-            persist  = self.begin_modify_conf()
-            if persist is None:
-                raise PersistenceException
-
-            maxnodes = self.DEFAULT_MAX_NODE_ID
-            try:
-                maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
-            except ValueError:
-                pass
-            crtnodes = len(self._nodes)
-            maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-            resource = self._resources[res_name]
-            if ((not resource.has_assignments()) and count >= 1
-              and count <= maxcount):
-                """
-                calculate the amount of memory required to deploy all
-                volumes of the resource
-                """
-                size_sum = 0
-                for vol in resource.iterate_volumes():
-                    size_sum += vol.get_size_kiB()
-                """
-                Call the deployer plugin to select nodes for deploying the
-                resource
-                """
-                selected = []
-                fn_rc = deployer.deploy_select(self._nodes, selected, count,
-                  size_sum, True)
-                if fn_rc == DM_SUCCESS:
-                    tstate = (Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT)
-                    for node in selected:
-                        self._assign(node, resource, 0, tstate)
-                    self._drbd_mgr.perform_changes()
-                    self.save_conf_data(persist)
-                    fn_rc = DM_SUCCESS
-            else:
-                if resource.has_assignments():
-                    fn_rc = DM_EEXIST
-                elif not count >= 1:
-                    fn_rc = DM_EINVAL
-                else: # count > number of nodes
-                    fn_rc = DM_ENODECNT
-        except KeyError:
-            fn_rc = DM_ENOENT
-        except PersistenceException:
-            fn_rc = DM_EPERSIST
-        except PluginException:
-            fn_rc = DM_EPLUGIN
-        except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
-        finally:
-            self.end_modify_conf(persist)
-        return fn_rc
-
-
-    def auto_extend(self, res_name, count, rel_flag):
-        """
-        Extend a deployment by a number of nodes
+        The selected resource is deployed to a number of nodes, either by
+        initially deploying the resource, or by deploying the resource
+        on additional nodes or undeploying the resource from nodes where it
+        is currently deployed, until the number of nodes where the resource
+        is deployed either:
+            - matches count, if the supplied count value is non-zero
+        or
+            - has been changed by delta, if the supplied delta value
+              is non-zero
+        If both supplied values are non-zero, then the operation is aborted
+        due to potentially conflicting information, and DM_EINVAL is added to
+        the list of return codes.
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_DEBUG
+        fn_rc   = []
         persist = None
         try:
-            deployer = plugin_import(
-              self.get_conf_value(self.KEY_DEPLOYER_NAME))
-            if deployer is None:
-                raise PluginException
-
-            persist  = self.begin_modify_conf()
-            if persist is None:
-                raise PersistenceException
-
-            maxnodes = self.DEFAULT_MAX_NODE_ID
-            try:
-                maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
-            except ValueError:
-                pass
-            crtnodes = len(self._nodes)
-            maxcount = maxnodes if maxnodes < crtnodes else crtnodes
-            resource = self._resources[res_name]
-            assigned_count = resource.assigned_count()
-            if rel_flag:
-                final_count = count + assigned_count
+            if ((count != 0 and delta != 0) or count < 0):
+                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
             else:
-                final_count = count
-                if count > assigned_count:
-                    count -= assigned_count
+                deployer = plugin_import(
+                  self.get_conf_value(self.KEY_DEPLOYER_NAME))
+                if deployer is None:
+                    raise PluginException
+
+                persist  = self.begin_modify_conf()
+                if persist is None:
+                    raise PersistenceException
+
+                maxnodes = self.DEFAULT_MAX_NODE_ID
+                try:
+                    maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
+                except ValueError:
+                    pass
+                crtnodes = len(self._nodes)
+                maxcount = maxnodes if maxnodes < crtnodes else crtnodes
+                resource = self._resources[res_name]
+                assigned_count = resource.assigned_count()
+                if delta != 0:
+                    final_count = assigned_count + delta
                 else:
-                    count = 0
-            if ((resource.has_assignments()) and count >= 1
-              and final_count <= maxcount):
-                """
-                calculate the amount of memory required to deploy all
-                volumes of the resource
-                """
-                size_sum = 0
-                for vol in resource.iterate_volumes():
-                    size_sum += vol.get_size_kiB()
-                """
-                filter nodes that do not have the resource deployed yet
-                """
-                undeployed = dict()
-                for node in self._nodes.itervalues():
-                    if (resource.get_assignment(node.get_name())
-                      is not None):
-                        # skip nodes, where:
-                        #   - resource is deployed already
-                        #   - resource is being deployed
-                        #   - resource is being undeployed
-                        continue
-                    undeployed[node.get_name()] = node
-                """
-                Call the deployer plugin to select nodes for deploying the
-                resource
-                """
-                selected = []
-                fn_rc = deployer.deploy_select(undeployed, selected, count,
-                  size_sum, True)
-                if fn_rc == DM_SUCCESS:
-                    for node in selected:
-                        self._assign(node, resource, 0,
-                          Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT)
-                    self._drbd_mgr.perform_changes()
-                    self.save_conf_data(persist)
-            else:
-                if not resource.has_assignments():
-                    fn_rc = DM_ENOENT
-                elif not count >= 1:
-                    fn_rc = DM_EINVAL
-                else: # count > number of nodes
-                    fn_rc = DM_ENODECNT
-        except KeyError:
-            fn_rc = DM_ENOENT
-        except PersistenceException:
-            fn_rc = DM_EPERSIST
-        except PluginException:
-            fn_rc = DM_EPLUGIN
-        except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
-        finally:
-            self.end_modify_conf(persist)
-        return fn_rc
-
-
-    def auto_reduce(self, res_name, count, rel_flag):
-        """
-        Reduce a deployment by a number of nodes
-
-        @return: standard return code defined in drbdmanage.exceptions
-        """
-        fn_rc      = DM_EPERSIST
-        persist = None
-        fn_rc      = DM_DEBUG
-        persist = None
-        try:
-            deployer = plugin_import(
-              self.get_conf_value(self.KEY_DEPLOYER_NAME))
-            if deployer is None:
-                raise PluginException
-
-            persist  = self.begin_modify_conf()
-            if persist is None:
-                raise PersistenceException
-
-            resource = self._resources[res_name]
-            assigned_count = resource.assigned_count()
-            if rel_flag:
-                final_count = assigned_count - count
-            else:
-                final_count = count
-                if not final_count < assigned_count:
-                    final_count = 0
-            if (resource.has_assignments()) and final_count >= 1:
-                ctr = assigned_count
-                # If there are assignments that are waiting for deployment,
-                # but do not have the resource deployed yet, undeploy those
-                # first
-                if ctr > final_count:
-                    for assg in resource.iterate_assignments():
-                        if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
-                          != 0)
-                          and (assg.get_cstate() & Assignment.FLAG_DEPLOY
-                          == 0)):
-                            assg.undeploy()
-                            ctr -= 1
-                        if not ctr > final_count:
-                            break
-                # Undeploy from nodes that have the resource deployed
-                if ctr > final_count:
-                    deployed = dict()
-                    for assg in resource.iterate_assignments():
-                        if ((assg.get_tstate() & Assignment.FLAG_DEPLOY
-                          != 0)
-                          and (assg.get_cstate() & Assignment.FLAG_DEPLOY
-                          != 0)):
-                            node = assg.get_node()
-                            deployed[node.get_name()] = node
-                    """
-                    Call the deployer plugin to select nodes for undeployment
-                    of the resource
-                    """
-                    selected = []
-                    deployer.undeploy_select(deployed, selected,
-                      (ctr - final_count), True)
-                    for node in selected:
-                        assg = node.get_assignment(resource.get_name())
-                        self._unassign(assg, False)
-                self._drbd_mgr.perform_changes()
-                self.save_conf_data(persist)
-                fn_rc = DM_SUCCESS
-            else:
-                if not resource.has_assignments():
-                    fn_rc = DM_ENOENT
+                    final_count = count
+                if final_count > maxcount:
+                    add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
+                elif final_count <= 0:
+                    add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                elif final_count != assigned_count:
+                    if final_count > assigned_count:
+                        # ========================================
+                        # DEPLOY / EXTEND
+                        # ========================================
+                        """
+                        calculate the amount of memory required to deploy all
+                        volumes of the resource
+                        """
+                        size_sum = 0
+                        for vol in resource.iterate_volumes():
+                            size_sum += vol.get_size_kiB()
+                        """
+                        filter nodes that do not have the resource deployed yet
+                        """
+                        undeployed = dict()
+                        for node in self._nodes.itervalues():
+                            if (resource.get_assignment(node.get_name())
+                                is not None):
+                                    # skip nodes, where:
+                                    #   - resource is deployed already
+                                    #   - resource is being deployed
+                                    #   - resource is being undeployed
+                                    continue
+                            undeployed[node.get_name()] = node
+                        """
+                        Call the deployer plugin to select nodes for deploying
+                        the resource
+                        """
+                        diff = count - assigned_count
+                        selected = []
+                        fn_rc = deployer.deploy_select(
+                            undeployed, selected,
+                            count, size_sum, True
+                        )
+                        if fn_rc == DM_SUCCESS:
+                            for node in selected:
+                                self._assign(
+                                    node, resource,
+                                    0,
+                                    Assignment.FLAG_DEPLOY
+                                    | Assignment.FLAG_CONNECT
+                                )
+                            self._drbd_mgr.perform_changes()
+                            self.save_conf_data(persist)
+                    else:
+                        # ========================================
+                        # REDUCE
+                        # ========================================
+                        ctr = assigned_count
+                        # If there are assignments that are waiting for
+                        # deployment, but do not have the resource deployed
+                        # yet, undeploy those first
+                        if ctr > final_count:
+                            for assg in resource.iterate_assignments():
+                                if ((assg.get_tstate()
+                                    & Assignment.FLAG_DEPLOY != 0)
+                                    and (assg.get_cstate()
+                                    & Assignment.FLAG_DEPLOY == 0)):
+                                        assg.undeploy()
+                                        ctr -= 1
+                                if not ctr > final_count:
+                                    break
+                        if ctr > final_count:
+                            # Undeploy from nodes that have the
+                            # resource deployed
+                            # Collect nodes where the resource is deployed
+                            deployed = dict()
+                            for assg in resource.iterate_assignments():
+                                if ((assg.get_tstate()
+                                    & Assignment.FLAG_DEPLOY != 0)
+                                    and (assg.get_cstate()
+                                    & Assignment.FLAG_DEPLOY != 0)):
+                                        node = assg.get_node()
+                                        deployed[node.get_name()] = node
+                            """
+                            Call the deployer plugin to select nodes for
+                            undeployment of the resource
+                            """
+                            selected = []
+                            deployer.undeploy_select(
+                                deployed, selected,
+                                (ctr - final_count), True
+                            )
+                            for node in selected:
+                                assg = node.get_assignment(resource.get_name())
+                                if site_clients:
+                                    # turn the node into a client
+                                    assg.deploy_client()
+                                else:
+                                    self._unassign(assg, False)
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
                 else:
-                    fn_rc = DM_EINVAL
+                    if not count >= 1:
+                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                    else: # count > number of nodes
+                        add_rc_entry(fn_rc, DM_ENODECNT,
+                            dm_exc_text(DM_ENODECNT))
+            # condition (final_count == assigned_count) is successful, too
+
+            if site_clients:
+                # turn all remaining nodes into clients
+                self._site_clients(resource, None)
         except KeyError:
-            fn_rc = DM_ENOENT
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except PersistenceException:
-            fn_rc = DM_EPERSIST
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except PluginException:
-            fn_rc = DM_EPLUGIN
+            add_rc_entry(fn_rc, DM_EPLUGIN, dm_exc_text(DM_EPLUGIN))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1346,12 +1309,13 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_DEBUG
+        fn_rc   = []
         persist = None
         try:
             persist = self.begin_modify_conf()
             if persist is None:
                 raise PersistenceException
+
             resource = self._resources[res_name]
             removable = []
             for assg in resource.iterate_assignments():
@@ -1364,17 +1328,37 @@ class DrbdManageServer(object):
                 assg.remove()
             self._drbd_mgr.perform_changes()
             self.save_conf_data(persist)
-            fn_rc = DM_SUCCESS
         except KeyError:
-            fn_rc = DM_ENOENT
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except PersistenceException:
-            fn_rc = DM_EPERSIST
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
+
+
+    def _site_clients(self, resource, site):
+        """
+        Turn all nodes that do replicate a resource into clients
+        """
+        for node in self._nodes.itervalues():
+            assg = node.get_assignment(resource.get_name())
+            if assg is None:
+                self._assign(
+                    node, resource,
+                    0,
+                    Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT
+                    | Assignment.FLAG_DISKLESS
+                )
+            else:
+                tstate = assg.get_tstate()
+                if (tstate & Assignment.FLAG_DEPLOY) == 0:
+                    assg.deploy_client()
 
 
     def modify_state(self, node_name, res_name,
@@ -1384,18 +1368,18 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc   = []
         persist = None
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
                 node = self._nodes.get(node_name)
                 if node is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assg = node.get_assignment(res_name)
                     if assg is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         # OVERWRITE overrides DISCARD
                         if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
@@ -1419,14 +1403,17 @@ class DrbdManageServer(object):
                                       Assignment.FLAG_OVERWRITE)
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1437,7 +1424,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc    = []
         node     = None
         resource = None
         persist  = None
@@ -1447,11 +1434,11 @@ class DrbdManageServer(object):
                 node     = self._nodes.get(node_name)
                 resource = self._resources.get(res_name)
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         if reconnect:
                             assignment.reconnect()
@@ -1459,14 +1446,17 @@ class DrbdManageServer(object):
                             assignment.connect()
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
             pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1476,7 +1466,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc    = []
         node     = None
         resource = None
         persist  = None
@@ -1486,23 +1476,26 @@ class DrbdManageServer(object):
                 node     = self._nodes.get(node_name)
                 resource = self._resources.get(res_name)
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         assignment.disconnect()
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1512,7 +1505,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc     = []
         node      = None
         resource  = None
         vol_state = None
@@ -1523,27 +1516,31 @@ class DrbdManageServer(object):
                 node     = self._nodes.get(node_name)
                 resource = self._resources.get(res_name)
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
-                            fn_rc = DM_ENOENT
+                            add_rc_entry(fn_rc, DM_ENOENT,
+                                dm_exc_text(DM_ENOENT))
                         else:
                             vol_state.attach()
                             self._drbd_mgr.perform_changes()
                             self.save_conf_data(persist)
-                            fn_rc = DM_SUCCESS
+                            add_rc_entry(fn_rc, DM_SUCCESS,
+                                dm_exc_text(DM_SUCCESS))
         except PersistenceException:
             pass
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc ) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1553,7 +1550,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
+        fn_rc     = []
         node      = None
         resource  = None
         vol_state = None
@@ -1564,27 +1561,30 @@ class DrbdManageServer(object):
                 node     = self._nodes.get(node_name)
                 resource = self._resources.get(res_name)
                 if node is None or resource is None:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
                     assignment = node.get_assignment(resource.get_name())
                     if assignment is None:
-                        fn_rc = DM_ENOENT
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
-                            fn_rc = DM_ENOENT
+                            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                         else:
                             vol_state.detach()
                             self._drbd_mgr.perform_changes()
                             self.save_conf_data(persist)
-                            fn_rc = DM_SUCCESS
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1595,22 +1595,30 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         free space
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
         persist = None
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
                 logging.info("updating storage pool information")
-                fn_rc = self.update_pool_data()
-                self.cleanup()
-                self.save_conf_data(persist)
+                sub_rc = self.update_pool_data()
+                if sub_rc == DM_SUCCESS:
+                    self.cleanup()
+                    self.save_conf_data(persist)
+                else:
+                    add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+            else:
+                raise PersistenceException
         except PersistenceException:
             logging.error("cannot save updated storage pool information")
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -1739,7 +1747,7 @@ class DrbdManageServer(object):
         """
         fn_rc = []
 
-        def node_filter(node_names):
+        def node_filter():
             for node_name in node_names:
                 node = self._nodes.get(node_name)
                 if node is None:
@@ -1751,11 +1759,14 @@ class DrbdManageServer(object):
         try:
             node_list = []
             if node_names is not None and len(node_names) > 0:
-                selected_nodes = node_filter(node_names)
+                selected_nodes = node_filter()
             else:
                 selected_nodes = self._nodes.itervalues()
             if serial > 0:
                 selected_nodes = serial_filter(serial, selected_nodes)
+
+            if filter_props is not None and len(filter_props) > 0:
+                selected_nodes = props_filter(selected_nodes, filter_props)
 
             for node in selected_nodes:
                 node_entry = [ node.get_name(),
@@ -1795,6 +1806,9 @@ class DrbdManageServer(object):
                 selected_res = self._resources.itervalues()
             if serial > 0:
                 selected_res = serial_filter(serial, selected_res)
+
+            if filter_props is not None and len(filter_props) > 0:
+                selected_res = props_filter(selected_res, filter_props)
 
             for res in selected_res:
                 res_entry = [ res.get_name(),
@@ -1866,6 +1880,9 @@ class DrbdManageServer(object):
             selected_assg = assg_filter(selected_nodes, selected_res)
             if serial > 0:
                 selected_assg = serial_filter(serial, selected_assg)
+
+            if filter_props is not None and len(filter_props) > 0:
+                selected_assg = props_filter(selected_assg, filter_props)
 
             assg_list = []
             for assg in selected_assg:
@@ -2055,7 +2072,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_SUCCESS
+        fn_rc = []
         node = self.get_instance_node()
         if node is not None:
             if res_name is None:
@@ -2064,13 +2081,16 @@ class DrbdManageServer(object):
                 assg = node.get_assignment(res_name)
                 if assg is not None:
                     if self.export_assignment_conf(assg) != 0:
-                        fn_rc = DM_DEBUG
+                        add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
                 else:
-                    fn_rc = DM_ENOENT
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        RES_NAME, res_name)
             else:
                 for assg in node.iterate_assignments():
                     if self.export_assignment_conf(assg) != 0:
-                        fn_rc = DM_DEBUG
+                        add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -2169,17 +2189,19 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc      = DM_EPERSIST
+        fn_rc = []
         try:
             self.load_server_conf()
             fn_rc = self.load_conf()
             self._drbd_mgr.reconfigure()
             self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -2187,9 +2209,8 @@ class DrbdManageServer(object):
         """
         Server part of initializing a new drbdmanage cluster
         """
-        fn_rc   = DM_EPERSIST
+        fn_rc   = []
         persist = None
-        node    = None
         try:
             persist = self.begin_modify_conf()
 
@@ -2198,16 +2219,22 @@ class DrbdManageServer(object):
             self._resources = dict()
 
             if persist is not None:
-                fn_rc = self._create_node(True, name, props, bdev, port)
-                if fn_rc == DM_SUCCESS or fn_rc == DM_ECTRLVOL:
+                sub_rc = self._create_node(True, name, props, bdev, port)
+                if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
+                else:
+                    add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+            else:
+                raise PersistenceException
         except PersistenceException:
-            pass
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
         finally:
             self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -2215,17 +2242,18 @@ class DrbdManageServer(object):
         """
         Server part of integrating a node into an existing drbdmanage cluster
         """
-        fn_rc = DM_EPERSIST
+        fn_rc = []
         try:
             if self.load_conf() == 0:
                 if (self._configure_drbdctrl(True, secret, bdev, port) == 0):
                     self._drbd_mgr.adjust_drbdctrl()
-                    fn_rc = DM_SUCCESS
                 else:
-                    fn_rc = DM_ECTRLVOL
+                    add_rc_entry(fn_rc, DM_ECTRLVOL, dm_exc_text(DM_ECTRLVOL))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -2238,9 +2266,11 @@ class DrbdManageServer(object):
         @return: list of answer texts to the query
         @rtype:  list of str
         """
+        fn_rc = []
         try:
             if len(command) < 1:
-                return ["Error: empty argument list sent "
+                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                return fn_rc, ["Error: empty argument list sent "
                     "to the drbdmanage server"]
 
             # default result message
@@ -2314,9 +2344,12 @@ class DrbdManageServer(object):
         except Exception as exc:
             # FIXME: useful error messages required here
             logging.error("text_query() command failed: %s" % str(exc))
-            return ["Error: Text query command failed "
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            return fn_rc, ["Error: Text query command failed "
                 "on the drbdmanage server"]
-        return result_text
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc, result_text
 
 
     def reconfigure_drbdctrl(self):
@@ -2421,7 +2454,7 @@ class DrbdManageServer(object):
         """
         Set debugging options
         """
-        fn_rc = 1
+        fn_rc = 127
         try:
             if command.startswith("set "):
                 # remove "set "
@@ -2532,7 +2565,7 @@ class DrbdManageServer(object):
                             except (IOError, OSError):
                                 pass
             elif command.startswith("mod drbdctrl "):
-                # remove "_configure_drbdctrl"
+                # remove "mod drbdctrl "
                 command = command[13:]
                 secret = None
                 port   = None

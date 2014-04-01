@@ -45,7 +45,7 @@ from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.exceptions import dm_exc_text
-from drbdmanage.exceptions import DM_EEXIST
+from drbdmanage.exceptions import (DM_SUCCESS, DM_EEXIST)
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
@@ -224,14 +224,14 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
-            fn_rc = self.list_rc_entries(server_rc)
-            sys.stdout.println()
+            fn_rc = self._list_rc_entries(server_rc)
+            sys.stdout.write("")
 
             if fn_rc == 0:
                 server_rc, joinc = self._server.text_query(["joinc", name])
                 sys.stdout.write("\nJoin command for node %s:\n"
                     "%s\n" % (name, " ".join(joinc)))
-            fn_rc = self.list_rc_entries(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
 
         else:
             self.syntax_new_node()
@@ -272,7 +272,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.create_resource(dbus.String(name),
               props)
-            fn_rc = self.list_rc_entries(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_new_resource()
         return fn_rc
@@ -373,12 +373,12 @@ class DrbdManage(object):
                 props[VOL_MINOR] = str(minor)
                 server_rc = self._server.create_volume(dbus.String(name),
                   dbus.Int64(size), props)
-                fn_rc = self.list_rc_entries(server_rc)
+                fn_rc = self._list_rc_entries(server_rc)
 
                 if fn_rc == 0 and deploy is not None:
                     server_rc = self._server.auto_deploy(dbus.String(name),
                         dbus.Int32(deploy))
-                    fn_rc = self.list_rc_entries(server_rc)
+                    fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_new_volume()
         return fn_rc
@@ -423,10 +423,7 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.modify_resource(dbus.String(name), props)
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_modify_resource()
         return fn_rc
@@ -465,7 +462,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.remove_node(dbus.String(node_name),
                   dbus.Boolean(force))
-                fn_rc = self.list_rc_entries(server_rc)
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -503,7 +500,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.remove_resource(dbus.String(res_name),
                   dbus.Boolean(force))
-                fn_rc = self.list_rc_entries(server_rc)
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -546,10 +543,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.remove_volume(dbus.String(vol_name),
                   dbus.Int32(vol_id), dbus.Boolean(force))
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    self.error_msg_text(server_rc)
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -590,10 +584,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.connect(dbus.String(node_name),
               dbus.String(res_name), dbus.Boolean(reconnect))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_connect()
         return fn_rc
@@ -627,10 +618,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.disconnect(dbus.String(node_name),
               dbus.String(res_name))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_disconnect()
         return fn_rc
@@ -686,10 +674,7 @@ class DrbdManage(object):
             server_rc = self._server.modify_state(dbus.String(node_name),
               dbus.String(res_name), dbus.UInt64(0), dbus.UInt64(0),
               dbus.UInt64(clear_mask), dbus.UInt64(set_mask))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_flags()
         return fn_rc
@@ -737,10 +722,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.attach(dbus.String(node_name),
               dbus.String(res_name), dbus.Int32(vol_id))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_attach()
         return fn_rc
@@ -775,10 +757,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.detach(dbus.String(node_name),
               dbus.String(res_name), dbus.Int32(vol_id))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_detach()
         return fn_rc
@@ -837,10 +816,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.assign(dbus.String(node_name),
               dbus.String(vol_name), dbus.UInt64(cstate), dbus.UInt64(tstate))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_assign()
         return fn_rc
@@ -886,10 +862,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.auto_deploy(dbus.String(res_name),
               dbus.Int32(count))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_deploy()
         return fn_rc
@@ -934,10 +907,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.auto_extend(dbus.String(res_name),
               dbus.Int32(count), dbus.Boolean(rel_flag))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_extend()
         return fn_rc
@@ -991,10 +961,7 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.auto_reduce(dbus.String(res_name),
               dbus.Int32(count), dbus.Boolean(rel_flag))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_reduce()
         return fn_rc
@@ -1037,10 +1004,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.auto_undeploy(dbus.String(res_name),
                   dbus.Boolean(force))
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    self.error_msg_text(server_rc)
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except SyntaxException:
@@ -1056,10 +1020,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.update_pool()
-        if server_rc == 0:
-            fn_rc = 0
-        else:
-            self.error_msg_text(server_rc)
+        fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1067,10 +1028,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.reconfigure()
-        if server_rc == 0:
-            fn_rc = 0
-        else:
-            self.error_msg_text(server_rc)
+        fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1078,7 +1036,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
-        fn_rc = self.list_rc_entries(server_rc)
+        fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1086,7 +1044,7 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
-        fn_rc = self.list_rc_entries(server_rc)
+        fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
 
@@ -1106,10 +1064,7 @@ class DrbdManage(object):
             force     = flags["-f"]
             self.dbus_init()
             server_rc = self._server.unassign(node_name, vol_name, force)
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         else:
             self.syntax_unassign()
         return fn_rc
@@ -1505,10 +1460,7 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.export_conf(dbus.String(res_name))
-            if server_rc == 0:
-                fn_rc = 0
-            else:
-                self.error_msg_text(server_rc)
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_export_conf()
         return fn_rc
@@ -1533,9 +1485,9 @@ class DrbdManage(object):
 
             node_name = params["node"]
             self.dbus_init()
-            joinc = self._server.text_query(["joinc", node_name])
+            server_rc, joinc = self._server.text_query(["joinc", node_name])
             sys.stdout.write("%s\n" % " ".join(joinc))
-            fn_rc = 0
+            fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_howto_join()
         return fn_rc
@@ -1672,10 +1624,7 @@ class DrbdManage(object):
                     dbus.String(self.DRBDCTRL_BLOCKDEV), str(port)
                 )
 
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    fn_rc = 1
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except AbortException:
@@ -1834,10 +1783,7 @@ class DrbdManage(object):
                 #server_rc = self._server.debug_console(dbus.String(
                 #    "gen drbdctrl " + secret + " " + port + " " + bdev
                 #))
-                if server_rc == 0:
-                    fn_rc = 0
-                else:
-                    fn_rc = 1
+                fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0
         except AbortException:
@@ -1988,13 +1934,16 @@ class DrbdManage(object):
         exit(0)
 
 
-    def list_rc_entries(self, server_rc):
+    def _list_rc_entries(self, server_rc):
+        """
+        Lists default error messages for a list of server return codes
+        """
         fn_rc = 1
         try:
             for rc_entry in server_rc:
                 try:
                     rc_num, rc_fmt, rc_args = rc_entry
-                    if rc_num == 0:
+                    if rc_num == DM_SUCCESS:
                         fn_rc = 0
                     self.error_msg_text(rc_num)
                 except (TypeError, ValueError):

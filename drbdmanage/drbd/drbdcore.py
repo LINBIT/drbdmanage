@@ -819,7 +819,56 @@ class DrbdManager(object):
         return str(name_b)
 
 
-class DrbdResource(object):
+class GenericDrbdObject(object):
+
+    """
+    Super class of Drbd* objects with a property list
+    """
+
+    props = None
+
+
+    def __init__(self):
+        self.props = {}
+
+
+    def properties_match(self, filter_props):
+        """
+        Returns True if any of the criteria match the object's properties
+
+        If any of the key/value pair entries in filter_props match the
+        corresponding entry in an object's properties map (props), this
+        function returns True; otherwise it returns False.
+        """
+        match = False
+        for key, val in filter_props.iteritems():
+            prop_val = self.props.get(key)
+            if prop_val is not None:
+                if prop_val == val:
+                    match = True
+                    break
+        return match
+
+
+    def special_properties_match(self, special_props_list, filter_props):
+        """
+        Returns True if any of the criteria match the list properties
+
+        If any of the key/value pair entries in filter_props match the
+        corresponding entry in the supplied list of an object's special
+        properties, this function returns True; otherwise it returns False
+        """
+        match = False
+        for key, val in special_props_list.iteritems():
+            filter_props_val = filter_props.get(key)
+            if (filter_props_val is not None
+                and val == filter_props_val):
+                    match = True
+                    break
+        return match
+
+
+class DrbdResource(GenericDrbdObject):
     NAME_MAXLEN   = consts.RES_NAME_MAXLEN
 
     _name        = None
@@ -828,7 +877,6 @@ class DrbdResource(object):
     _state       = None
     _volumes     = None
     _assignments = None
-    props        = None
 
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
@@ -842,13 +890,13 @@ class DrbdResource(object):
     MAX_RES_VOLS = 64
 
     def __init__(self, name, port):
+        super(DrbdResource, self).__init__()
         self._name         = self.name_check(name)
         self._secret       = "default"
         self._port         = port
         self._state        = 0
         self._volumes      = {}
         self._assignments  = {}
-        self.props         = {}
         self.props[consts.SERIAL] = 1
 
 
@@ -957,6 +1005,26 @@ class DrbdResource(object):
         self._state = state & self.STATE_MASK
 
 
+    def filter_match(self, filter_props):
+        match = False
+        if filter_props is None or len(filter_props) == 0:
+            match = True
+        else:
+            match = self.properties_match(filter_props)
+            if not match:
+                special_props_list = {
+                    consts.RES_NAME    : self._name,
+                    consts.RES_SECRET  : str(self._secret),
+                    consts.RES_PORT    : str(self._port),
+                    consts.TSTATE_PREFIX + consts.FLAG_REMOVE :
+                        bool_to_string(self._state & self.FLAG_REMOVE)
+                }
+                match = self.special_properties_match(
+                    special_props_list, filter_props
+                )
+        return match
+
+
     def get_properties(self, req_props):
         properties = {}
 
@@ -984,7 +1052,7 @@ class DrbdResource(object):
 
 
 
-class DrbdVolume(GenericStorage):
+class DrbdVolume(GenericStorage, GenericDrbdObject):
 
     """
     Representation of a DRBD volume specification in drbdmanage's object model
@@ -998,7 +1066,6 @@ class DrbdVolume(GenericStorage):
     _size_kiB    = None
     _minor       = None
     _state       = None
-    props        = None
 
     FLAG_REMOVE  = 0x1
 
@@ -1011,14 +1078,14 @@ class DrbdVolume(GenericStorage):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
+        GenericDrbdObject.__init__(self)
         self._id = int(vol_id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
         self._size_kiB     = size_kiB
         self._minor        = minor
-        self.props         = {}
-        self.props[consts.SERIAL] = 1
         self._state        = 0
+        self.props[consts.SERIAL] = 1
 
 
     def get_id(self):
@@ -1040,6 +1107,26 @@ class DrbdVolume(GenericStorage):
 
     def remove(self):
         self._state |= self.FLAG_REMOVE
+
+
+    def filter_match(self, filter_props):
+        match = False
+        if filter_props is None or len(filter_props) == 0:
+            match = True
+        else:
+            match = self.properties_match(filter_props)
+            if not match:
+                special_props_list = {
+                    consts.VOL_ID        : str(self._id),
+                    consts.VOL_SIZE      : str(self._size_kiB),
+                    consts.VOL_MINOR     : str(self._minor.get_value()),
+                    consts.TSTATE_PREFIX + consts.FLAG_REMOVE :
+                        bool_to_string(self._state & self.FLAG_REMOVE)
+                }
+                match = self.special_properties_match(
+                    special_props_list, filter_props
+                )
+        return match
 
 
     def get_properties(self, req_props):
@@ -1070,7 +1157,7 @@ class DrbdVolume(GenericStorage):
 
 
 
-class DrbdNode(object):
+class DrbdNode(GenericDrbdObject):
 
     """
     Represents a drbdmanage host node in drbdmanage's object model.
@@ -1091,7 +1178,6 @@ class DrbdNode(object):
     _state    = None
     _poolsize = None
     _poolfree = None
-    props     = None
 
     _assignments = None
 
@@ -1106,6 +1192,7 @@ class DrbdNode(object):
 
 
     def __init__(self, name, addr, addrfam, node_id):
+        super(DrbdNode, self).__init__()
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on addr
         af_n = int(addrfam)
@@ -1119,7 +1206,6 @@ class DrbdNode(object):
         self._state        = 0
         self._poolfree     = -1
         self._poolsize     = -1
-        self.props         = {}
         self.props[consts.SERIAL] = 1
 
 
@@ -1220,6 +1306,33 @@ class DrbdNode(object):
         return self._assignments.itervalues()
 
 
+    def filter_match(self, filter_props):
+        match = False
+        if filter_props is None or len(filter_props) == 0:
+            match = True
+        else:
+            match = self.properties_match(filter_props)
+            if not match:
+                special_props_list = {
+                    consts.NODE_NAME     : self._name,
+                    consts.NODE_AF       : self._addrfam,
+                    consts.NODE_ADDR     : self._addr,
+                    consts.NODE_ID       : self._node_id,
+                    consts.NODE_POOLSIZE : self._poolsize,
+                    consts.NODE_POOLFREE : self._poolfree,
+                    consts.TSTATE_PREFIX + consts.FLAG_REMOVE :
+                        bool_to_string(self._state & self.FLAG_REMOVE),
+                    consts.TSTATE_PREFIX + consts.FLAG_UPDATE   :
+                        bool_to_string(self._state & self.FLAG_UPDATE),
+                    consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL :
+                        bool_to_string(self._state & self.FLAG_UPD_POOL)
+                }
+                match = self.special_properties_match(
+                    special_props_list, filter_props
+                )
+        return match
+
+
     def get_properties(self, req_props):
         properties = {}
 
@@ -1258,7 +1371,7 @@ class DrbdNode(object):
         return properties
 
 
-class DrbdVolumeState(object):
+class DrbdVolumeState(GenericDrbdObject):
 
     """
     Represents the state of a resource's volume assigned to a node
@@ -1272,7 +1385,6 @@ class DrbdVolumeState(object):
     _volume      = None
     _bd_path     = None
     _blockdevice = None
-    props        = None
     _cstate      = 0
     _tstate      = 0
 
@@ -1290,11 +1402,11 @@ class DrbdVolumeState(object):
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
 
     def __init__(self, volume):
+        super(DrbdVolumeState, self).__init__()
         self._volume       = volume
-        self.props         = {}
-        self.props[consts.SERIAL] = 1
         self._cstate       = 0
         self._tstate       = 0
+        self.props[consts.SERIAL] = 1
 
 
     def get_volume(self):
@@ -1390,6 +1502,34 @@ class DrbdVolumeState(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
+    def filter_match(self, filter_props):
+        match = False
+        if filter_props is None or len(filter_props) == 0:
+            match = True
+        else:
+            match = self.properties_match(filter_props)
+            if not match:
+                bdev = "" if self._bd_path is None else str(self._bd_path)
+                special_props_list = {
+                    consts.VOL_ID      : self._volume.get_id(),
+                    consts.VOL_SIZE    : self._volume.get_size_kiB(),
+                    consts.VOL_BDEV    : bdev,
+                    consts.VOL_MINOR   : self._volume.get_minor().get_value(),
+                    consts.TSTATE_PREFIX + consts.FLAG_DEPLOY :
+                        bool_to_string(self._tstate & self.FLAG_DEPLOY),
+                    consts.TSTATE_PREFIX + consts.FLAG_ATTACH :
+                        bool_to_string(self._tstate & self.FLAG_ATTACH),
+                    consts.CSTATE_PREFIX + consts.FLAG_DEPLOY :
+                        bool_to_string(self._cstate & self.FLAG_DEPLOY),
+                    consts.CSTATE_PREFIX + consts.FLAG_ATTACH :
+                        bool_to_string(self._cstate & self.FLAG_ATTACH)
+                }
+                match = self.special_properties_match(
+                    special_props_list, filter_props
+                )
+        return match
+
+
     def get_properties(self, req_props):
         properties = {}
 
@@ -1411,16 +1551,16 @@ class DrbdVolumeState(object):
                 str(self._volume.get_minor().get_value()))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._state & self.FLAG_DEPLOY))
+                bool_to_string(self._tstate & self.FLAG_DEPLOY))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.TSTATE_PREFIX + consts.FLAG_ATTACH] = (
-                bool_to_string(self._state & self.FLAG_ATTACH))
+                bool_to_string(self._tstate & self.FLAG_ATTACH))
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._state & self.FLAG_DEPLOY))
+                bool_to_string(self._cstate & self.FLAG_DEPLOY))
         if selected(consts.CSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.CSTATE_PREFIX + consts.FLAG_ATTACH] = (
-                bool_to_string(self._state & self.FLAG_ATTACH))
+                bool_to_string(self._cstate & self.FLAG_ATTACH))
         for key in self.props.iterkeys():
             if selected(key):
                 val = self.props.get(key)
@@ -1429,7 +1569,7 @@ class DrbdVolumeState(object):
         return properties
 
 
-class Assignment(object):
+class Assignment(GenericDrbdObject):
 
     """
     Representation of a resource assignment to a node
@@ -1442,7 +1582,6 @@ class Assignment(object):
     _resource    = None
     _vol_states  = None
     _node_id     = None
-    props        = None
     _cstate      = 0
     _tstate      = 0
     # return code of operations
@@ -1477,13 +1616,13 @@ class Assignment(object):
 
 
     def __init__(self, node, resource, node_id, cstate, tstate):
+        super(Assignment, self).__init__()
         self._node         = node
         self._resource     = resource
         self._vol_states   = {}
         for volume in resource.iterate_volumes():
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id      = int(node_id)
-        self.props         = {}
         self.props[consts.SERIAL] = 1
         # current state
         self._cstate       = cstate
@@ -1519,7 +1658,8 @@ class Assignment(object):
             del self._vol_states[vol_id]
 
 
-    def update_volume_states(self):
+    def update_volume_states(self, serial):
+        update_assg = False
         # create volume states for new volumes in the resource
         for volume in self._resource.iterate_volumes():
             # skip volumes that are pending removal
@@ -1527,13 +1667,18 @@ class Assignment(object):
                 continue
             vol_st = self._vol_states.get(volume.get_id())
             if vol_st is None:
+                update_assg = True
                 vol_st = DrbdVolumeState(volume)
+                vol_st.props[consts.SERIAL] = serial
                 self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource
         for vol_st in self._vol_states.itervalues():
             volume = self._resource.get_volume(vol_st.get_id())
             if volume is None:
+                update_assg = True
                 del self._vol_states[vol_st.get_id()]
+        if update_assg:
+            self.props[consts.SERIAL] = serial
 
 
     def remove(self):
@@ -1760,6 +1905,34 @@ class Assignment(object):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
 
 
+    def filter_match(self, filter_props):
+        match = False
+        if filter_props is None or len(filter_props) == 0:
+            match = True
+        else:
+            match = self.properties_match(filter_props)
+            if not match:
+                special_props_list = {
+                    consts.NODE_ID     : str(self._node_id),
+                    consts.TSTATE_PREFIX + consts.FLAG_DEPLOY :
+                        bool_to_string(self._tstate & self.FLAG_DEPLOY),
+                    consts.TSTATE_PREFIX + consts.FLAG_CONNECT :
+                        bool_to_string(self._tstate & self.FLAG_CONNECT),
+                    consts.TSTATE_PREFIX + consts.FLAG_DISKLESS :
+                        bool_to_string(self._tstate & self.FLAG_DISKLESS),
+                    consts.CSTATE_PREFIX + consts.FLAG_DEPLOY :
+                        bool_to_string(self._cstate & self.FLAG_DEPLOY),
+                    consts.CSTATE_PREFIX + consts.FLAG_CONNECT :
+                        bool_to_string(self._cstate & self.FLAG_CONNECT),
+                    consts.CSTATE_PREFIX + consts.FLAG_DISKLESS :
+                        bool_to_string(self._cstate & self.FLAG_DISKLESS),
+                }
+                match = self.special_properties_match(
+                    special_props_list, filter_props
+                )
+        return match
+
+
     def get_properties(self, req_props):
         properties = {}
 
@@ -1773,42 +1946,42 @@ class Assignment(object):
             properties[consts.NODE_NAME] = self._node.get_name()
         if selected(consts.RES_NAME):
             properties[consts.RES_NAME]  = self._resource.get_name()
-        if selected(consts.NODE_ADDR):
+        if selected(consts.NODE_ID):
             properties[consts.NODE_ID]   = str(self._node_id)
 
         # target state flags
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._state & self.FLAG_DEPLOY))
+                bool_to_string(self._tstate & self.FLAG_DEPLOY))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_CONNECT):
             properties[consts.TSTATE_PREFIX + consts.FLAG_CONNECT] = (
-                bool_to_string(self._state & self.FLAG_CONNECT))
+                bool_to_string(self._tstate & self.FLAG_CONNECT))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DISKLESS):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DISKLESS] = (
-                bool_to_string(self._state & self.FLAG_DISKLESS))
+                bool_to_string(self._tstate & self.FLAG_DISKLESS))
         # target state - action flags
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_CON):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_CON] = (
-                bool_to_string(self._state & self.FLAG_UPD_CON))
+                bool_to_string(self._tstate & self.FLAG_UPD_CON))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE] = (
-                bool_to_string(self._state & self.FLAG_OVERWRITE))
+                bool_to_string(self._tstate & self.FLAG_OVERWRITE))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DISCARD):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DISCARD] = (
-                bool_to_string(self._state & self.FLAG_DISCARD))
+                bool_to_string(self._tstate & self.FLAG_DISCARD))
         if selected(consts.TSTATE_PREFIX + consts.FLAG_RECONNECT):
             properties[consts.TSTATE_PREFIX + consts.FLAG_RECONNECT] = (
-                bool_to_string(self._state & self.FLAG_RECONNECT))
+                bool_to_string(self._tstate & self.FLAG_RECONNECT))
         # current state flags
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._state & self.FLAG_DEPLOY))
+                bool_to_string(self._cstate & self.FLAG_DEPLOY))
         if selected(consts.CSTATE_PREFIX + consts.FLAG_CONNECT):
             properties[consts.CSTATE_PREFIX + consts.FLAG_CONNECT] = (
-                bool_to_string(self._state & self.FLAG_CONNECT))
+                bool_to_string(self._cstate & self.FLAG_CONNECT))
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DISKLESS):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
-                bool_to_string(self._state & self.FLAG_DISKLESS))
+                bool_to_string(self._cstate & self.FLAG_DISKLESS))
 
         for key in self.props.iterkeys():
             if selected(key):
