@@ -879,7 +879,7 @@ class DrbdManageServer(object):
                         resource.props[SERIAL] = chg_serial
                         resource.add_volume(volume)
                         for assg in resource.iterate_assignments():
-                            assg.update_volume_states()
+                            assg.update_volume_states(chg_serial)
                             vol_st = assg.get_volume_state(volume.get_id())
                             if vol_st is not None:
                                 vol_st.deploy()
@@ -962,10 +962,11 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
+        # FIXME: process flags from props
         fn_rc   = []
         persist = None
         try:
-            tstate = Assignment.FLAG_DEPLOY
+            tstate = Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT
             cstate = 0
             persist = self.begin_modify_conf()
             if persist is not None:
@@ -1214,11 +1215,11 @@ class DrbdManageServer(object):
                         """
                         diff = count - assigned_count
                         selected = []
-                        fn_rc = deployer.deploy_select(
+                        sub_rc = deployer.deploy_select(
                             undeployed, selected,
                             count, size_sum, True
                         )
-                        if fn_rc == DM_SUCCESS:
+                        if sub_rc == DM_SUCCESS:
                             for node in selected:
                                 self._assign(
                                     node, resource,
@@ -1368,6 +1369,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
+        # FIXME: function is now modify_assignment, new signature
         fn_rc   = []
         persist = None
         try:
@@ -1460,12 +1462,13 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def disconnect(self, node_name, res_name):
+    def disconnect(self, node_name, res_name, force):
         """
         Clears the CONNECT flag on a resource's target state
 
         @return: standard return code defined in drbdmanage.exceptions
         """
+        # FIXME: what does 'force' do?
         fn_rc    = []
         node     = None
         resource = None
@@ -2470,6 +2473,15 @@ class DrbdManageServer(object):
                         loglevel = self._debug_parse_loglevel(val)
                         self._root_logger.setLevel(loglevel)
                         fn_rc = 0
+            elif command.startswith("run "):
+                # remove "run "
+                command = command[4:]
+                if command == "cleanup":
+                    self.cleanup()
+                    fn_rc = 0
+                elif command == "DrbdManager":
+                    self._drbd_mgr.run()
+                    fn_rc = 0
             elif command.startswith("test "):
                 # remove "test "
                 command = command[5:]
@@ -2524,7 +2536,7 @@ class DrbdManageServer(object):
                                 % (node.get_name(), res.get_name())
                             )
                             for vol_state in assg.iterate_volume_states():
-                                vol_bdev_path = vol_state.get_bdev_path()
+                                vol_bdev_path = vol_state.get_bd_path()
                                 if vol_bdev_path is None:
                                     vol_bdev_path = "(nodev)"
                                 sys.stderr.write("  V:%d %s 0x%x -> 0x%x\n"
@@ -2576,77 +2588,9 @@ class DrbdManageServer(object):
                     fn_rc = self._configure_drbdctrl(False, secret, bdev, port)
                 except ValueError:
                     fn_rc = self._configure_drbdctrl(False, None, None, None)
-            elif command.startswith("update "):
-                # remove "update "
-                command = command[7:]
-                if command == "drbdctrl":
-                    fn_rc        = 2
-                    drbdctrl_res = None
-                    conffile     = DrbdAdmConf()
-                    fields       = None
-                    update       = False
-                    secret       = None
-                    port         = str(DRBDCTRL_DEFAULT_PORT)
-                    bdev         = ("/dev/mapper/" + DEFAULT_VG
-                        + "-" + DRBDCTRL_RES_NAME)
-                    try:
-                        drbdctrl_res = open(
-                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
-                            "r")
-                    except (IOError, OSError):
-                        # if the drbdctrl.res file cannot be opened, assume
-                        # that it does not exist and create a new one
-                        update = True
-                        if drbdctrl_res is not None:
-                            try:
-                                drbdctrl_res.close()
-                            except (IOError, OSError):
-                                pass
-                    if not update:
-                        try:
-                            fields = conffile.read_drbdctrl_params(
-                                drbdctrl_res)
-                        except (IOError, OSError):
-                            pass
-                        finally:
-                            if drbdctrl_res is not None:
-                                try:
-                                    drbdctrl_res.close()
-                                except (IOError, OSError):
-                                    pass
-                        if fields is not None:
-                            try:
-                                address = fields[DrbdAdmConf.KEY_ADDRESS]
-                                idx = address.rfind(":")
-                                if idx != -1:
-                                    port = address[idx + 1:]
-                                else:
-                                    raise ValueError
-                                bdev = fields[DrbdAdmConf.KEY_BDEV]
-                                secret = fields[DrbdAdmConf.KEY_SECRET]
-                                update = True
-                            except (KeyError, ValueError):
-                                pass
-                    if secret is None:
-                        secret = generate_secret()
-                    if update:
-                        try:
-                            drbdctrl_res = open(
-                                build_path(DRBDCTRL_RES_PATH,
-                                DRBDCTRL_RES_NAME),
-                                "w")
-                            conffile.write_drbdctrl(drbdctrl_res, self._nodes,
-                                bdev, port, secret)
-                            drbdctrl_res.close()
-                            fn_rc = 0
-                        except (IOError, OSError):
-                            pass
-                        finally:
-                            if drbdctrl_res is not None:
-                                try:
-                                    drbdctrl_res.close()
-                                except (IOError, OSError):
-                                    pass
+            elif command == "invalidate":
+                self._conf_hash = None
+                fn_rc = 0
         except SyntaxException:
             pass
         except Exception as exc:

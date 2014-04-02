@@ -35,10 +35,11 @@ import drbdmanage.drbd.persistence
 from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, NODE_ADDR,
     NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
-    VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO)
+    VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO,
+    FLAG_DISKLESS, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_CONNECT)
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
-from drbdmanage.utils import get_terminal_size, build_path
+from drbdmanage.utils import (get_terminal_size, build_path, bool_to_string)
 from drbdmanage.utils import (COLOR_NONE, COLOR_RED, COLOR_DARKRED,
     COLOR_DARKGREEN, COLOR_BROWN, COLOR_DARKPINK, COLOR_TEAL)
 from drbdmanage.exceptions import AbortException
@@ -371,13 +372,18 @@ class DrbdManage(object):
             if fn_rc == 0:
                 props = dbus.Dictionary(signature="ss")
                 props[VOL_MINOR] = str(minor)
-                server_rc = self._server.create_volume(dbus.String(name),
-                  dbus.Int64(size), props)
+                server_rc = self._server.create_volume(
+                    dbus.String(name),
+                    dbus.Int64(size), props
+                )
                 fn_rc = self._list_rc_entries(server_rc)
 
                 if fn_rc == 0 and deploy is not None:
-                    server_rc = self._server.auto_deploy(dbus.String(name),
-                        dbus.Int32(deploy))
+                    server_rc = self._server.auto_deploy(
+                        dbus.String(name),
+                        dbus.Int32(deploy), dbus.Int32(0),
+                        dbus.Boolean(False)
+                    )
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_new_volume()
@@ -617,7 +623,7 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.disconnect(dbus.String(node_name),
-              dbus.String(res_name))
+              dbus.String(res_name), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_disconnect()
@@ -768,11 +774,11 @@ class DrbdManage(object):
 
 
     def cmd_assign(self, args):
-        fn_rc    = 1
+        fn_rc  = 1
         cstate = 0
         tstate = 0
         # Command parser configuration
-        order    = [ "node", "vol" ]
+        order    = [ "node", "res" ]
         params   = {}
         opt      = {}
         optalias = {}
@@ -785,7 +791,7 @@ class DrbdManage(object):
                 raise SyntaxException
 
             node_name = params["node"]
-            vol_name  = params["vol"]
+            res_name  = params["res"]
 
             client    = flags["--client"]
             overwrite = flags["--overwrite"]
@@ -804,18 +810,16 @@ class DrbdManage(object):
                 sys.stderr.write("Error: --overwrite and --discard "
                 "are mutually exclusive options\n")
                 raise SyntaxException
-            if client:
-                tstate = tstate | Assignment.FLAG_DISKLESS
-            if overwrite:
-                tstate = tstate | Assignment.FLAG_OVERWRITE
-            if discard:
-                tstate = tstate | Assignment.FLAG_DISCARD
-            if connect:
-                tstate = tstate | Assignment.FLAG_CONNECT
+
+            props = {}
+            props[FLAG_DISKLESS]  = bool_to_string(client)
+            props[FLAG_OVERWRITE] = bool_to_string(overwrite)
+            props[FLAG_DISCARD]   = bool_to_string(discard)
+            props[FLAG_CONNECT]   = bool_to_string(connect)
 
             self.dbus_init()
             server_rc = self._server.assign(dbus.String(node_name),
-              dbus.String(vol_name), dbus.UInt64(cstate), dbus.UInt64(tstate))
+              dbus.String(res_name), props)
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_assign()
@@ -861,7 +865,7 @@ class DrbdManage(object):
 
             self.dbus_init()
             server_rc = self._server.auto_deploy(dbus.String(res_name),
-              dbus.Int32(count))
+              dbus.Int32(count), dbus.Int32(0), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_deploy()
@@ -876,6 +880,7 @@ class DrbdManage(object):
 
 
     def cmd_extend(self, args):
+        # FIXME: illegal statement somewhere in here
         fn_rc    = 1
         rel_flag = False
         # Command parser configuration
@@ -891,22 +896,24 @@ class DrbdManage(object):
                 raise SyntaxException
 
             res_name  = params["res"]
-            count_str = params["count"]
-            if count_str.startswith("+"):
-                count_str = count_str[1:]
+            num_str = params["count"]
+            if num_str.startswith("+"):
+                num_str = num_str[1:]
                 rel_flag = True
-            count = 0
+            num = 0
             try:
-                count = int(count_str)
+                num = int(num_str)
             except ValueError:
                 raise SyntaxException
 
-            if count < 1:
+            if num < 1:
                 raise SyntaxException
+
+            count, delta = 0, num if rel_flag else num, 0
 
             self.dbus_init()
             server_rc = self._server.auto_extend(dbus.String(res_name),
-              dbus.Int32(count), dbus.Boolean(rel_flag))
+              dbus.Int32(count), dbus.Int32(delta), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_extend()
@@ -927,40 +934,43 @@ class DrbdManage(object):
 
 
     def cmd_reduce(self, args):
+        # FIXME: illegal statement somewhere in here
         fn_rc    = 1
         rel_flag = False
         try:
             res_name  = None
-            count_str = None
+            num_str = None
             while True:
                 arg = args.next_arg()
                 if arg is None:
                     break
                 if res_name is None:
                     res_name = arg
-                elif count_str is None:
-                    count_str = arg
+                elif num_str is None:
+                    num_str = arg
                 else:
                     raise SyntaxException
 
-            if res_name is None or count_str is None:
+            if res_name is None or num_str is None:
                 raise SyntaxException
 
-            if count_str.startswith("-"):
-                count_str = count_str[1:]
+            if num_str.startswith("-"):
+                num_str = num_str[1:]
                 rel_flag = True
-            count = 0
+            num = 0
             try:
-                count = int(count_str)
+                num = int(num_str)
             except ValueError:
                 raise SyntaxException
 
-            if count < 1:
+            if num < 1:
                 raise SyntaxException
+
+            count, delta = 0, num if rel_flag else num, 0
 
             self.dbus_init()
             server_rc = self._server.auto_reduce(dbus.String(res_name),
-              dbus.Int32(count), dbus.Boolean(rel_flag))
+              dbus.Int32(count), dbus.Int32(delta), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.syntax_reduce()
@@ -1017,9 +1027,10 @@ class DrbdManage(object):
 
 
     def cmd_update_pool(self, args):
+        # FIXME: ValueError: Unable to guess signature from an empty list
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.update_pool()
+        server_rc = self._server.update_pool([])
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1051,7 +1062,7 @@ class DrbdManage(object):
     def cmd_unassign(self, args):
         fn_rc = 1
         # Command parser configuration
-        order      = [ "node", "vol" ]
+        order      = [ "node", "res" ]
         params     = {}
         opt        = {}
         optalias   = {}
@@ -1060,10 +1071,10 @@ class DrbdManage(object):
         if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) == 0:
             node_name = params["node"]
-            vol_name  = params["vol"]
+            res_name  = params["res"]
             force     = flags["-f"]
             self.dbus_init()
-            server_rc = self._server.unassign(node_name, vol_name, force)
+            server_rc = self._server.unassign(node_name, res_name, force)
             fn_rc = self._list_rc_entries(server_rc)
         else:
             self.syntax_unassign()
@@ -1388,7 +1399,6 @@ class DrbdManage(object):
         for assg_entry in assg_list:
             try:
                 node_name, res_name, properties, vol_state_list = assg_entry
-                vol_id, vol_properties = vol_state_list
                 view = AssignmentView(properties, machine_readable)
                 v_node_id = self._property_text(view.get_property(NODE_ID))
                 v_cstate  = view.get_cstate()
@@ -1401,12 +1411,12 @@ class DrbdManage(object):
                             DrbdNodeView.get_name_maxlen(), node_name,
                             color(COLOR_NONE))
                           )
-                    sys.stdout.write("  %s%-*s%s %5d %35s%s%s -> %s%s\n"
+                    sys.stdout.write("  %s%-*s%s %5s %35s%s%s -> %s%s\n"
                         % (color(COLOR_DARKGREEN),
                         DrbdResourceView.get_name_maxlen(),
                         res_name, color(COLOR_NONE),
-                        v_node_id(), "", color(COLOR_RED),
-                        v_cstate(), v_tstate(),
+                        v_node_id, "", color(COLOR_RED),
+                        v_cstate, v_tstate,
                         color(COLOR_NONE))
                       )
 
@@ -1417,9 +1427,9 @@ class DrbdManage(object):
                         v_bdev = self._property_text(
                             vol_view.get_property(VOL_BDEV))
 
-                        sys.stdout.write("  %s* %s%6d%s %-48s %s%s  -> %s%s\n"
+                        sys.stdout.write("  %s* %s%6s%s %-48s %s%s  -> %s%s\n"
                             % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                            vol_id(),  color(COLOR_BROWN),
+                            vol_id,  color(COLOR_BROWN),
                             v_bdev,
                             color(COLOR_DARKRED), vol_view.get_cstate(),
                             vol_view.get_tstate(), color(COLOR_NONE))
@@ -1495,7 +1505,6 @@ class DrbdManage(object):
 
     def syntax_howto_join(self):
         sys.stderr.write("Syntax: howto-join <node>\n")
-
 
 
     def cmd_ping(self, args):
@@ -2052,6 +2061,8 @@ class DrbdManage(object):
         nodes_off_name = pers_impl.NODES_OFF_NAME
         res_len_name   = pers_impl.RES_LEN_NAME
         res_off_name   = pers_impl.RES_OFF_NAME
+        cconf_len_name = pers_impl.CCONF_LEN_NAME
+        cconf_off_name = pers_impl.CCONF_OFF_NAME
 
         drbdctrl = None
         try:
@@ -2068,6 +2079,9 @@ class DrbdManage(object):
                     + str(data_off) + ",\n"
                     "        \"" + res_len_name + "\": 3,\n"
                     "        \"" + res_off_name + "\": "
+                    + str(data_off) + ",\n"
+                    "        \"" + cconf_len_name + "\": 3,\n"
+                    "        \"" + cconf_off_name + "\": "
                     + str(data_off) + "\n"
                     "    }\n"
                     "}\n"
