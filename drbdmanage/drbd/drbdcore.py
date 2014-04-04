@@ -791,7 +791,7 @@ class DrbdManager(object):
         A valid name must match these conditions:
           * must at least be 1 byte long
           * must not be longer than specified by the caller
-          * contains a-z, A-Z, 0-9 and _ characters only
+          * contains a-z, A-Z, 0-9, - and _ characters only
           * contains at least one alpha character (a-z, A-Z)
           * must not start with a numeric character
         """
@@ -811,7 +811,7 @@ class DrbdManager(object):
                 alpha = True
             else:
                 if not ((item >= ord('0') and item <= ord('9') and idx >= 1)
-                  or item == ord("_")):
+                  or item == ord("-") or item == ord("_")):
                     raise InvalidNameException
             idx += 1
         if not alpha:
