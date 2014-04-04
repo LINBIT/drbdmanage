@@ -53,82 +53,6 @@ RANDOM_SOURCE = "/dev/urandom"
 SECRET_LEN    = 15
 
 
-def long_to_bin(number):
-    """
-    Encodes a number in an 8-byte big-endian binary field
-
-    @param   number: numeric value to encode
-    @type    number: int
-    @return: 8-byte binary field (big endian)
-    @rtype:  str
-    """
-    num64 = long(number) & 0xffffffffffffffff
-    if num64 != number:
-        raise OverflowError
-    field = bytearray('0' * 8)
-    idx = 0
-    while idx < 8:
-        field[idx] = chr((num64 >> (7 - idx) * 8) & 0xff)
-        idx += 1
-    return str(field)
-
-
-def long_from_bin(field):
-    """
-    Decodes an 8-byte big-endian binary field into a number
-
-    @param   field: 8-byte binary field (big-endian)
-    @type    field: str, byte, bytearray
-    @return: numeric value
-    @rtype:  long
-    """
-    num64 = 0
-    if len(field) != 8:
-        raise ValueError
-    idx = 0
-    while idx < 8:
-        num64 |= (ord(field[idx]) << ((7 - idx) * 8))
-        idx += 1
-    return long(num64)
-
-
-def hex_from_bin(field):
-    """
-    Generates a hexadecimal representation of the byte values of a data field
-
-    @param   field: source data field
-    @type    field: str, byte, bytearray
-    @return: hexadecimal representation of the data field
-    @rtype:  str
-    """
-    flen = len(field)
-    hexfield = bytearray(chr(0) * flen * 2)
-    idx = 0
-    while idx < flen:
-        num = ord(field[idx])
-
-        hi_bits  = (num & 0xf0) >> 4
-        lo_bits  = (num & 0x0f)
-
-        if hi_bits < 0xa:
-            # 0x30 is '0'
-            hi_chr = hi_bits | 0x30
-        else:
-            # 0x57 is 'a' minus 10 (because hi_chr is >= 10 here)
-            hi_chr = hi_bits + 0x57
-
-        if lo_bits < 0xa:
-            lo_chr = lo_bits | 0x30
-        else:
-            lo_chr = lo_bits + 0x57
-
-        hexfield[(idx * 2)]     = hi_chr
-        hexfield[(idx * 2) + 1] = lo_chr
-
-        idx += 1
-    return str(hexfield)
-
-
 def get_event_type(logline):
     """
     Extracts the event type field from a "drbdsetup events" log statement
@@ -434,7 +358,7 @@ class DataHash(object):
 
     HASH_LEN  = 32 # SHA-256
     _hashalgo = None
-    _hash     = None
+    _hash     = None # as hex-string
 
 
     def __init__(self):
@@ -448,17 +372,6 @@ class DataHash(object):
         self._hashalgo.update(data)
 
 
-    def get_hash(self):
-        """
-        Finishes hashing and returns the hash value in binary format
-
-        @return: hash value in binary format
-        """
-        if self._hash is None:
-            self._hash = self._hashalgo.digest()
-        return self._hash
-
-
     def get_hex_hash(self):
         """
         Finishes hashing and returns the hash value in hexadecimal format
@@ -469,17 +382,8 @@ class DataHash(object):
         @rtype:  str
         """
         if self._hash is None:
-            self._hash = self._hashalgo.digest()
-        return hex_from_bin(self._hash)
-
-
-    def get_hash_len(self):
-        """
-        Returns the length of the binary-format hash value in bytes
-
-        @return: number of bytes required to store the hash value
-        """
-        return self.HASH_LEN
+            self._hash = self._hashalgo.hexdigest()
+        return self._hash
 
 
     def get_hex_hash_len(self):
