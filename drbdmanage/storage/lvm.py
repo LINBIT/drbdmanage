@@ -93,6 +93,13 @@ class LVM(object):
               "unhandled exception: %s" % str(exc))
 
 
+    def _subproc_env(self):
+        return dict( os.environ.items() + [
+            ('LC_ALL', 'C'),
+            ('LANG', 'C'),
+            ])
+
+
     def create_blockdevice(self, name, vol_id, size):
         """
         Allocates a block device as backing storage for a DRBD volume
@@ -210,6 +217,7 @@ class LVM(object):
             lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
               "--units", "k", "--separator", ",", "--options",
               "vg_size,vg_free", self._conf[self.KEY_VG_NAME]], 0, lvs,
+              env=self._subproc_env(),
               stdout=subprocess.PIPE, close_fds=True)
             pool_str = lvm_proc.stdout.readline()
             if pool_str is not None:
@@ -247,6 +255,7 @@ class LVM(object):
 
         lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
           str(size) + "k", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
+          env=self._subproc_env(),
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         fn_rc = lvm_proc.wait()
@@ -258,6 +267,7 @@ class LVM(object):
 
         lvm_proc = subprocess.Popen([lvremove, "--force",
           self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove,
+          env=self._subproc_env(),
           close_fds=True
           ) # disabled: stdout=subprocess.PIPE
         fn_rc = lvm_proc.wait()
