@@ -38,8 +38,8 @@ VOL_MINOR           = "minor"
 VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
 
-NODE_NAME_MAXLEN    = 16
-RES_NAME_MAXLEN     = 16
+NODE_NAME_MAXLEN    = 32
+RES_NAME_MAXLEN     = 48    # Enough for an UUID string plus prefix
 
 DRBDCTRL_DEFAULT_PORT = 6999
 
