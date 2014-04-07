@@ -48,6 +48,9 @@ class DrbdManager(object):
     # Used as a return code to indicate that drbdadm could not be executed
     DRBDADM_EXEC_FAILED = 127
 
+    # Used as a return code to indicate that undeploying volumes failed
+    STOR_UNDEPLOY_FAILED = 126
+
 
     def __init__(self, server):
         self._server  = server
@@ -587,28 +590,37 @@ class DrbdManager(object):
                 self._resconf.write(drbd_proc.stdin, assignment, True)
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
-                if fn_rc == 0:
-                    assignment.set_cstate(0)
-                    assignment.set_tstate(0)
             else:
                 DrbdManager.DRBDADM_EXEC_FAILED
 
-            # undeploy all volumes
-            tstate = assignment.get_tstate()
-            if (tstate & Assignment.FLAG_DISKLESS) == 0:
-                for vol_state in assignment.iterate_volume_states():
-                    stor_rc = bd_mgr.remove_blockdevice(resource.get_name(),
-                      vol_state.get_id())
-                    if stor_rc == DM_SUCCESS:
+            if fn_rc == 0:
+                # undeploy all volumes
+                ud_errors = False
+                cstate = assignment.get_cstate()
+                if (cstate & Assignment.FLAG_DISKLESS) == 0:
+                    for vol_state in assignment.iterate_volume_states():
+                        stor_rc = bd_mgr.remove_blockdevice(
+                            resource.get_name(), vol_state.get_id()
+                        )
+                        if stor_rc == DM_SUCCESS:
+                            vol_state.set_cstate(0)
+                            vol_state.set_tstate(0)
+                        else:
+                            ud_errors = True
+                else:
+                    # if the assignment is diskless...
+                    for vol_state in assignment.iterate_volume_states():
                         vol_state.set_cstate(0)
                         vol_state.set_tstate(0)
-            else:
-                for vol_state in assignment.iterate_volume_states():
-                    vol_state.set_cstate(0)
-                    vol_state.set_tstate(0)
 
-            # Remove the external configuration file
-            self._server.remove_assignment_conf(resource.get_name())
+                if not ud_errors:
+                    # Remove the external configuration file
+                    self._server.remove_assignment_conf(resource.get_name())
+                    assignment.set_cstate(0)
+                    assignment.set_tstate(0)
+
+                fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors
+                    else DM_SUCCESS)
 
         return fn_rc
 

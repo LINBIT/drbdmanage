@@ -1252,11 +1252,11 @@ class DrbdManageServer(object):
                         Call the deployer plugin to select nodes for deploying
                         the resource
                         """
-                        diff = count - assigned_count
+                        diff = final_count - assigned_count
                         selected = []
                         sub_rc = deployer.deploy_select(
                             undeployed, selected,
-                            count, size_sum, True
+                            diff, size_sum, True
                         )
                         if sub_rc == DM_SUCCESS:
                             for node in selected:
@@ -1268,6 +1268,8 @@ class DrbdManageServer(object):
                                 )
                             self._drbd_mgr.perform_changes()
                             self.save_conf_data(persist)
+                        else:
+                            add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
                     else:
                         # ========================================
                         # REDUCE
@@ -1302,10 +1304,11 @@ class DrbdManageServer(object):
                             Call the deployer plugin to select nodes for
                             undeployment of the resource
                             """
+                            diff = ctr - final_count
                             selected = []
                             deployer.undeploy_select(
                                 deployed, selected,
-                                (ctr - final_count), True
+                                diff, True
                             )
                             for node in selected:
                                 assg = node.get_assignment(resource.get_name())

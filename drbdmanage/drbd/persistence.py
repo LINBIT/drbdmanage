@@ -278,6 +278,8 @@ class PersistenceImpl(object):
                 self._file.write(save_data)
                 self._file.write(chr(0))
 
+                self._align_zero_fill()
+
                 computed_hash = data_hash.get_hex_hash()
                 self.update_stored_hash(computed_hash)
                 logging.debug("save/hash: %s" % computed_hash)

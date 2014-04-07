@@ -940,7 +940,6 @@ class DrbdManage(object):
     def cmd_reduce(self, args):
         # FIXME: illegal statement somewhere in here
         fn_rc    = 1
-        rel_flag = False
         try:
             res_name  = None
             num_str = None
@@ -958,19 +957,16 @@ class DrbdManage(object):
             if res_name is None or num_str is None:
                 raise SyntaxException
 
-            if num_str.startswith("-"):
-                num_str = num_str[1:]
-                rel_flag = True
             num = 0
             try:
                 num = int(num_str)
             except ValueError:
                 raise SyntaxException
 
-            if num < 1:
+            if num == 0:
                 raise SyntaxException
 
-            if rel_flag:
+            if num < 0:
                 count = 0
                 delta = num
             else:
