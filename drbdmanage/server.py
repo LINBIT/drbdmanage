@@ -30,11 +30,12 @@ import logging.handlers
 from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
-    RES_PORT_NR_ERROR)
+    RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
+    FLAG_CONNECT)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_event_arg, get_event_source, get_event_type, get_free_number,
-    plugin_import, add_rc_entry, serial_filter, props_filter)
+    plugin_import, add_rc_entry, serial_filter, props_filter, string_to_bool)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
@@ -974,19 +975,19 @@ class DrbdManageServer(object):
             flag_connect   = True
             flag_discard   = False
             try:
-                flag_overwrite = props[TSTATE_PREFIX + FLAG_OVERWRITE]
+                flag_overwrite = string_to_bool(props[FLAG_OVERWRITE])
             except (KeyError, TypeError):
                 pass
             try:
-                flag_diskless  = props[TSTATE_PREFIX + FLAG_DISKLESS]
+                flag_diskless  = string_to_bool(props[FLAG_DISKLESS])
             except (KeyError, TypeError):
                 pass
             try:
-                flag_connect   = props[TSTATE_PREFIX + FLAG_CONNECT]
+                flag_connect   = string_to_bool(props[FLAG_CONNECT])
             except (KeyError, TypeError):
                 pass
             try:
-                flag_discard   = props[TSTATE_PREFIX + FLAG_DISCARD]
+                flag_discard   = string_to_bool(props[FLAG_DISCARD])
             except (KeyError, TypeError):
                 pass
 
@@ -1044,6 +1045,8 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except ValueError:
+            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
@@ -1223,6 +1226,8 @@ class DrbdManageServer(object):
                         # ========================================
                         # DEPLOY / EXTEND
                         # ========================================
+                        # FIXME: extend does nothing for some unknown reason,
+                        #        but succeeds (exit code = 0)
                         """
                         calculate the amount of memory required to deploy all
                         volumes of the resource
@@ -2566,8 +2571,9 @@ class DrbdManageServer(object):
                     for node in self._nodes.itervalues():
                         for assg in node.iterate_assignments():
                             res = assg.get_resource()
-                            sys.stderr.write("N:%-18s R:%-18s\n"
-                                % (node.get_name(), res.get_name())
+                            sys.stderr.write("N:%-18s R:%-18s 0x%x -> 0x%x\n"
+                                % (node.get_name(), res.get_name(),
+                                    assg.get_cstate(), assg.get_tstate())
                             )
                             for vol_state in assg.iterate_volume_states():
                                 vol_bdev_path = vol_state.get_bd_path()

@@ -880,7 +880,6 @@ class DrbdManage(object):
 
 
     def cmd_extend(self, args):
-        # FIXME: illegal statement somewhere in here
         fn_rc    = 1
         rel_flag = False
         # Command parser configuration
@@ -909,10 +908,15 @@ class DrbdManage(object):
             if num < 1:
                 raise SyntaxException
 
-            count, delta = 0, num if rel_flag else num, 0
+            if rel_flag:
+                count = 0
+                delta = num
+            else:
+                count = num
+                delta = 0
 
             self.dbus_init()
-            server_rc = self._server.auto_extend(dbus.String(res_name),
+            server_rc = self._server.auto_deploy(dbus.String(res_name),
               dbus.Int32(count), dbus.Int32(delta), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
@@ -966,10 +970,15 @@ class DrbdManage(object):
             if num < 1:
                 raise SyntaxException
 
-            count, delta = 0, num if rel_flag else num, 0
+            if rel_flag:
+                count = 0
+                delta = num
+            else:
+                count = num
+                delta = 0
 
             self.dbus_init()
-            server_rc = self._server.auto_reduce(dbus.String(res_name),
+            server_rc = self._server.auto_deploy(dbus.String(res_name),
               dbus.Int32(count), dbus.Int32(delta), dbus.Boolean(False))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
@@ -1029,7 +1038,7 @@ class DrbdManage(object):
     def cmd_update_pool(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.update_pool(dbus.Array([]))
+        server_rc = self._server.update_pool(dbus.Array([], signature="s"))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1219,7 +1228,7 @@ class DrbdManage(object):
                     v_pfree = self._property_text(
                         view.get_property(NODE_POOLFREE))
 
-                    sys.stdout.write("%s,%s,%s,%d,%d,%s\n"
+                    sys.stdout.write("%s,%s,%s,%s,%s,%s\n"
                       % (node_name, v_af,
                         v_addr, v_psize,
                         v_pfree, view.get_state())
@@ -1434,10 +1443,8 @@ class DrbdManage(object):
                             vol_view.get_tstate(), color(COLOR_NONE))
                           )
                 else:
-                    sys.stdout.write("%s,%s,%d,%s,%s\n"
-                        % (view.get_node(), view.get_resource(),
-                        view.get_node_id(), view.get_cstate(),
-                        view.get_tstate())
+                    sys.stdout.write("%s,%s,%s,%s,%s\n"
+                        % (node_name, res_name, v_node_id, v_cstate, v_tstate)
                       )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
