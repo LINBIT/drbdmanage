@@ -962,12 +962,34 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        # FIXME: process flags from props
         fn_rc   = []
         persist = None
         try:
-            tstate = Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT
+            tstate = Assignment.FLAG_DEPLOY
             cstate = 0
+
+            # Set flags from props
+            flag_overwrite = False
+            flag_diskless  = False
+            flag_connect   = True
+            flag_discard   = False
+            try:
+                flag_overwrite = props[TSTATE_PREFIX + FLAG_OVERWRITE]
+            except (KeyError, TypeError):
+                pass
+            try:
+                flag_diskless  = props[TSTATE_PREFIX + FLAG_DISKLESS]
+            except (KeyError, TypeError):
+                pass
+            try:
+                flag_connect   = props[TSTATE_PREFIX + FLAG_CONNECT]
+            except (KeyError, TypeError):
+                pass
+            try:
+                flag_discard   = props[TSTATE_PREFIX + FLAG_DISCARD]
+            except (KeyError, TypeError):
+                pass
+
             persist = self.begin_modify_conf()
             if persist is not None:
                 node     = self._nodes.get(node_name)
@@ -979,24 +1001,35 @@ class DrbdManageServer(object):
                     if assignment is not None:
                         add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
                     else:
-                        overwrite = (True if (tstate
-                          & Assignment.FLAG_OVERWRITE) != 0 else False)
-                        if (overwrite and
-                            (tstate & Assignment.FLAG_DISKLESS) != 0):
-                                add_rc_entry(fn_rc, DM_EINVAL,
-                                    dm_exc_text(DM_EINVAL))
-                        elif (overwrite and
-                            (tstate & Assignment.FLAG_DISCARD) != 0):
-                                add_rc_entry(fn_rc, DM_EINVAL,
-                                    dm_exc_text(DM_EINVAL))
+                        # check conflicting flags
+                        if (flag_overwrite and flag_diskless):
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL)
+                            )
+                        elif (flag_overwrite and flag_discard):
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL)
+                            )
                         else:
                             # If the overwrite flag is set on this
                             # assignment, turn it off on all the assignments
                             # to other nodes
-                            if overwrite:
+                            if flag_overwrite:
                                 for assg in resource.iterate_assignments():
                                     assg.clear_tstate_flags(
-                                      Assignment.FLAG_OVERWRITE)
+                                        Assignment.FLAG_OVERWRITE
+                                    )
+                            tstate = (
+                                tstate |
+                                (Assignment.FLAG_OVERWRITE if flag_overwrite
+                                    else 0) |
+                                (Assignment.FLAG_DISCARD   if flag_discard
+                                    else 0) |
+                                (Assignment.FLAG_CONNECT   if flag_connect
+                                    else 0) |
+                                (Assignment.FLAG_DISKLESS  if flag_diskless
+                                    else 0)
+                            )
                             assign_rc = (
                                 self._assign(node, resource, cstate, tstate)
                             )
@@ -1004,8 +1037,9 @@ class DrbdManageServer(object):
                                 self._drbd_mgr.perform_changes()
                                 self.save_conf_data(persist)
                             else:
-                                add_rc_entry(fn_rc, assign_rc,
-                                    dm_exc_text(assign_rc))
+                                add_rc_entry(
+                                    fn_rc, assign_rc, dm_exc_text(assign_rc)
+                                )
             else:
                 raise PersistenceException
         except PersistenceException:

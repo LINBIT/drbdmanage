@@ -126,7 +126,7 @@ class LVM(object):
                     break
                 tries += 1
         except Exception as exc:
-            logging.error("LVM plugin: Block device creation failed,"
+            logging.error("LVM plugin: Block device creation failed, "
               "unhandled exception: %s" % str(exc))
         return blockdev
 

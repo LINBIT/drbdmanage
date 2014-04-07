@@ -1027,10 +1027,9 @@ class DrbdManage(object):
 
 
     def cmd_update_pool(self, args):
-        # FIXME: ValueError: Unable to guess signature from an empty list
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.update_pool([])
+        server_rc = self._server.update_pool(dbus.Array([]))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
