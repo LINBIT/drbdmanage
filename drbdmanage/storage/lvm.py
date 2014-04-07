@@ -55,6 +55,7 @@ class LVM(object):
     LVM_CREATE   = "lvcreate"
     LVM_REMOVE   = "lvremove"
     LVM_LVS      = "lvs"
+    LVM_VGS      = "vgs"
 
     # LV exists error code
     LVM_EEXIST   = 5
@@ -210,13 +211,13 @@ class LVM(object):
         poolsize = -1
         poolfree = -1
 
-        lvs = self._lv_command_path(self.LVM_LVS)
+        vgs = self._lv_command_path(self.LVM_VGS)
         lvm_proc = None
 
         try:
-            lvm_proc = subprocess.Popen([lvs, "--noheadings", "--nosuffix",
+            lvm_proc = subprocess.Popen([vgs, "--noheadings", "--nosuffix",
               "--units", "k", "--separator", ",", "--options",
-              "vg_size,vg_free", self._conf[self.KEY_VG_NAME]], 0, lvs,
+              "vg_size,vg_free", self._conf[self.KEY_VG_NAME]],
               env=self._subproc_env(),
               stdout=subprocess.PIPE, close_fds=True)
             pool_str = lvm_proc.stdout.readline()
