@@ -847,3 +847,26 @@ class Selector(object):
         if key is not None and key in self._keys:
             return True
         return False
+
+
+def dict_to_aux_props(prop_map):
+    """
+    Generates an auxiliary properties array from a dict
+
+    The generated array is suitable for transfer through D-Bus
+    """
+    # TODO: test with python 2.6, reverse for <...> notation
+    #       may fail
+    return [ ( consts.AUX_PROP_PREFIX + key, str(val) ) 
+            for key, val in prop_map.items() ]
+
+
+def aux_props_to_dict(props):
+    """
+    Extracts auxiliary properties from an array into a dict
+    """
+    res = {}
+    for (key, val) in props:
+        if str(key).startswith(consts.AUX_PROP_PREFIX):
+            res[ key[len(consts.AUX_PROP_PREFIX):] ] = val
+    return res

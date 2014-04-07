@@ -39,7 +39,7 @@ VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
 
 NODE_NAME_MAXLEN    = 32
-RES_NAME_MAXLEN     = 48    # Enough for an UUID string plus prefix
+RES_NAME_MAXLEN     = 48    # Enough for a UUID string plus prefix
 
 DRBDCTRL_DEFAULT_PORT = 6999
 
@@ -49,6 +49,9 @@ DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
 DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
 
+
+# auxiliary property prefix
+AUX_PROP_PREFIX    = "aux:"
 
 # flags prefixes
 CSTATE_PREFIX       = "cstate:"
