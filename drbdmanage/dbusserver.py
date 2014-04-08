@@ -59,7 +59,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.create_node(...)
         """
-        return self._server.create_node(node_name, props)
+        return self._server.create_node(node_name, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -77,7 +77,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.create_resource(...)
         """
-        return self._server.create_resource(res_name, props)
+        return self._server.create_resource(res_name, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -86,7 +86,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.modify_resource(...)
         """
-        return self._server.modify_resource(res_name, serial, props)
+        return self._server.modify_resource(res_name, serial, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -95,7 +95,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.modify_volume(...)
         """
-        return self._server.modify_volume(res_name, vol_id, serial, props)
+        return self._server.modify_volume(res_name, vol_id, serial, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -123,7 +123,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.create_volume(...)
         """
-        return self._server.create_volume(res_name, size_kiB, props)
+        return self._server.create_volume(res_name, size_kiB, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -159,7 +159,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.modify_state(...)
         """
-        return self._server.modify_state(node_name, res_name, props)
+        return self._server.modify_state(node_name, res_name, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -186,7 +186,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.assign(...)
         """
-        return self._server.assign(node_name, res_name, props)
+        return self._server.assign(node_name, res_name, dict(props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -242,8 +242,8 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.resource_list(...)
         """
-        return self._server.list_resources(res_names, serial, filter_props,
-            req_props)
+        return self._server.list_resources(res_names, serial, dict(filter_props),
+            dict(req_props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -253,8 +253,8 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.resource_list(...)
         """
-        return self._server.list_volumes(res_names, serial, filter_props,
-            req_props)
+        return self._server.list_volumes(res_names, serial, dict(filter_props),
+            dict(req_props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -266,7 +266,7 @@ class DBusServer(dbus.service.Object):
         D-Bus interface for DrbdManageServer.assignment_list(...)
         """
         return self._server.list_assignments(
-            node_names, res_names, serial, filter_props, req_props)
+            node_names, res_names, serial, dict(filter_props), dict(req_props))
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
