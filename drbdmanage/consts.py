@@ -84,3 +84,5 @@ BOOL_FALSE          = "false"
 
 RES_PORT_NR_AUTO    = -1
 RES_PORT_NR_ERROR   = -2
+
+TQ_GET_PATH         = "get_path"

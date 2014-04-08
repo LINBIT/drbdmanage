@@ -1108,6 +1108,10 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     def get_minor(self):
         return self._minor
 
+    def get_path(self):
+        # TODO: return "pretty" name, /dev/drbd/by-res/...
+        return "/dev/drbd" + str(self.get_minor().get_value())
+
 
     def get_state(self):
         return self._state

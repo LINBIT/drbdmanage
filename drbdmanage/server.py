@@ -2342,6 +2342,21 @@ class DrbdManageServer(object):
                 "Generation of the join command failed")]
 
 
+    def TQ_get_path(self, res_name, vol_id="0"):
+        """ Get path of device node.
+            res_name is needed, vol_id is optional. """
+        # TODO: can this be per-node specific?
+        res = self._resources.get(res_name)
+        # TODO: throw exceptions?
+        if not res:
+            return ["Resource not found"]
+        vol_id_n = int(vol_id)
+        vol = res._volumes.get(vol_id_n)
+        if not vol:
+            return ["Vol_id invalid"]
+        return [vol.get_path()]
+
+
     def text_query(self, command):
         """
         Query text strings from the server
