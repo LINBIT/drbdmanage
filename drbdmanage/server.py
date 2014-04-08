@@ -26,6 +26,8 @@ import subprocess
 import fcntl
 import logging
 import logging.handlers
+import traceback
+import inspect
 
 from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
@@ -2278,6 +2280,68 @@ class DrbdManageServer(object):
         return fn_rc
 
 
+    def TQ_joinc(self, node_name=None):
+        if not node_name:
+            return [("Error: joinc query without a node name argument")]
+
+        fields    = None
+        secret    = None
+        bdev      = None
+        port      = None
+        l_addr    = None
+        l_node_id = None
+        r_addr    = None
+        r_node_id = None
+        r_name    = None
+
+        drbdctrl_res = None
+
+        conffile = DrbdAdmConf()
+        try:
+            drbdctrl_res = open(
+                build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
+                    "r")
+            fields = conffile.read_drbdctrl_params(drbdctrl_res)
+        except (IOError, OSError):
+            pass
+        finally:
+            if drbdctrl_res is not None:
+                try:
+                    drbdctrl_res.close()
+                except (IOError, OSError):
+                    pass
+
+        try:
+            address = fields[DrbdAdmConf.KEY_ADDRESS]
+            idx = address.rfind(":")
+            if idx != -1:
+                port = address[idx + 1:]
+            else:
+                raise ValueError
+            secret = fields[DrbdAdmConf.KEY_SECRET]
+            update = True
+        except (KeyError, ValueError):
+            pass
+
+        inst_node = self.get_instance_node()
+        rem_node  = self._nodes.get(node_name)
+
+        if inst_node is not None and rem_node is not None:
+            r_addr    = inst_node.get_addr()
+            r_node_id = str(inst_node.get_node_id())
+            r_name    = inst_node.get_name()
+            l_addr    = rem_node.get_addr()
+            l_node_id = str(rem_node.get_node_id())
+
+        if (all(secret, port, r_addr, r_node_id, r_name, l_addr, l_node_id)):
+                result_text = ["drbdmanage", "join", "-p",
+                    port, l_addr, l_node_id, r_addr, r_name,
+                    r_node_id, secret]
+        else:
+            result_text = [("Error: "
+                "Generation of the join command failed")]
+
+
     def text_query(self, command):
         """
         Query text strings from the server
@@ -2288,80 +2352,27 @@ class DrbdManageServer(object):
         @rtype:  list of str
         """
         fn_rc = []
+        result_text = []
         try:
             if len(command) < 1:
                 add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
                 return fn_rc, ["Error: empty argument list sent "
                     "to the drbdmanage server"]
 
-            # default result message
-            result_text = ["Error: unknown command"]
-            if command[0] == "joinc":
-                # remove "joinc "
-                if len(command) == 2:
-                    node_name = command[1]
-                    fields    = None
-                    secret    = None
-                    bdev      = None
-                    port      = None
-                    l_addr    = None
-                    l_node_id = None
-                    r_addr    = None
-                    r_node_id = None
-                    r_name    = None
-
-                    drbdctrl_res = None
-
-                    conffile = DrbdAdmConf()
-                    try:
-                        drbdctrl_res = open(
-                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
-                                "r")
-                        fields = conffile.read_drbdctrl_params(drbdctrl_res)
-                    except (IOError, OSError):
-                        pass
-                    finally:
-                        if drbdctrl_res is not None:
-                            try:
-                                drbdctrl_res.close()
-                            except (IOError, OSError):
-                                pass
-
-                    try:
-                        address = fields[DrbdAdmConf.KEY_ADDRESS]
-                        idx = address.rfind(":")
-                        if idx != -1:
-                            port = address[idx + 1:]
-                        else:
-                            raise ValueError
-                        secret = fields[DrbdAdmConf.KEY_SECRET]
-                        update = True
-                    except (KeyError, ValueError):
-                        pass
-
-                    inst_node = self.get_instance_node()
-                    rem_node  = self._nodes.get(node_name)
-
-                    if inst_node is not None and rem_node is not None:
-                        r_addr    = inst_node.get_addr()
-                        r_node_id = str(inst_node.get_node_id())
-                        r_name    = inst_node.get_name()
-                        l_addr    = rem_node.get_addr()
-                        l_node_id = str(rem_node.get_node_id())
-
-                    if (secret is not None and port is not None
-                        and r_addr is not None and r_node_id is not None
-                        and r_name is not None and l_addr is not None
-                        and l_node_id is not None):
-                            result_text = ["drbdmanage", "join", "-p",
-                                port, l_addr, l_node_id, r_addr, r_name,
-                                r_node_id, secret]
-                    else:
-                        result_text = [("Error: "
-                            "Generation of the join command failed")]
+            fn_name = "TQ_" + command.pop(0)
+            fn = getattr(self, fn_name)
+            if not fn:
+                result_text = ["Error: unknown command"]
+            else:
+                (takes, _, _, defs) = inspect.getargspec(fn)
+                takes.pop(0)                            # self
+                # TODO: varargs
+                if len(command) > len(takes):
+                    result_text = ["Error: too many arguments."]
+                elif len(command) + len(defs) < len(takes):
+                    result_text = ["Error: too few arguments."]
                 else:
-                    result_text = [("Error: joinc query without "
-                        "a node name argument")]
+                    result_text = fn(*command)
         except Exception as exc:
             # FIXME: useful error messages required here
             logging.error("text_query() command failed: %s" % str(exc))
