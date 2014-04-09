@@ -1205,118 +1205,123 @@ class DrbdManageServer(object):
                 maxcount = maxnodes if maxnodes < crtnodes else crtnodes
                 resource = self._resources[res_name]
                 assigned_count = resource.assigned_count()
+
+                # Calculate target node count
                 if delta != 0:
                     final_count = assigned_count + delta
+                    if final_count < 1:
+                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                        return fn_rc
                 else:
                     final_count = count
+
+
+                # Try to achieve it
                 if final_count > maxcount:
                     add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
+
                 elif final_count <= 0:
                     add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
-                elif final_count != assigned_count:
-                    if final_count > assigned_count:
-                        # ========================================
-                        # DEPLOY / EXTEND
-                        # ========================================
-                        # FIXME: extend does nothing for some unknown reason,
-                        #        but succeeds (exit code = 0)
-                        """
-                        calculate the amount of memory required to deploy all
-                        volumes of the resource
-                        """
-                        size_sum = 0
-                        for vol in resource.iterate_volumes():
-                            size_sum += vol.get_size_kiB()
-                        """
-                        filter nodes that do not have the resource deployed yet
-                        """
-                        undeployed = dict()
-                        for node in self._nodes.itervalues():
-                            if (resource.get_assignment(node.get_name())
-                                is not None):
-                                    # skip nodes, where:
-                                    #   - resource is deployed already
-                                    #   - resource is being deployed
-                                    #   - resource is being undeployed
-                                    continue
-                            undeployed[node.get_name()] = node
-                        """
-                        Call the deployer plugin to select nodes for deploying
-                        the resource
-                        """
-                        diff = final_count - assigned_count
-                        selected = []
-                        sub_rc = deployer.deploy_select(
-                            undeployed, selected,
-                            diff, size_sum, True
-                        )
-                        if sub_rc == DM_SUCCESS:
-                            for node in selected:
-                                self._assign(
-                                    node, resource,
-                                    0,
-                                    Assignment.FLAG_DEPLOY
-                                    | Assignment.FLAG_CONNECT
-                                )
-                            self._drbd_mgr.perform_changes()
-                            self.save_conf_data(persist)
-                        else:
-                            add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
-                    else:
-                        # ========================================
-                        # REDUCE
-                        # ========================================
-                        ctr = assigned_count
-                        # If there are assignments that are waiting for
-                        # deployment, but do not have the resource deployed
-                        # yet, undeploy those first
-                        if ctr > final_count:
-                            for assg in resource.iterate_assignments():
-                                if ((assg.get_tstate()
-                                    & Assignment.FLAG_DEPLOY != 0)
-                                    and (assg.get_cstate()
-                                    & Assignment.FLAG_DEPLOY == 0)):
-                                        assg.undeploy()
-                                        ctr -= 1
-                                if not ctr > final_count:
-                                    break
-                        if ctr > final_count:
-                            # Undeploy from nodes that have the
-                            # resource deployed
-                            # Collect nodes where the resource is deployed
-                            deployed = dict()
-                            for assg in resource.iterate_assignments():
-                                if ((assg.get_tstate()
-                                    & Assignment.FLAG_DEPLOY != 0)
-                                    and (assg.get_cstate()
-                                    & Assignment.FLAG_DEPLOY != 0)):
-                                        node = assg.get_node()
-                                        deployed[node.get_name()] = node
-                            """
-                            Call the deployer plugin to select nodes for
-                            undeployment of the resource
-                            """
-                            diff = ctr - final_count
-                            selected = []
-                            deployer.undeploy_select(
-                                deployed, selected,
-                                diff, True
+
+                elif final_count > assigned_count:
+                    # ========================================
+                    # DEPLOY / EXTEND
+                    # ========================================
+                    # FIXME: extend does nothing for some unknown reason,
+                    #        but succeeds (exit code = 0)
+                    """
+                    calculate the amount of memory required to deploy all
+                    volumes of the resource
+                    """
+                    size_sum = 0
+                    for vol in resource.iterate_volumes():
+                        size_sum += vol.get_size_kiB()
+                    """
+                    filter nodes that do not have the resource deployed yet
+                    """
+                    undeployed = dict()
+                    for node in self._nodes.itervalues():
+                        if (resource.get_assignment(node.get_name())
+                            is not None):
+                                # skip nodes, where:
+                                #   - resource is deployed already
+                                #   - resource is being deployed
+                                #   - resource is being undeployed
+                                continue
+                        undeployed[node.get_name()] = node
+                    """
+                    Call the deployer plugin to select nodes for deploying
+                    the resource
+                    """
+                    diff = final_count - assigned_count
+                    selected = []
+                    sub_rc = deployer.deploy_select(
+                        undeployed, selected,
+                        diff, size_sum, True
+                    )
+                    if sub_rc == DM_SUCCESS:
+                        for node in selected:
+                            self._assign(
+                                node, resource,
+                                0,
+                                Assignment.FLAG_DEPLOY
+                                | Assignment.FLAG_CONNECT
                             )
-                            for node in selected:
-                                assg = node.get_assignment(resource.get_name())
-                                if site_clients:
-                                    # turn the node into a client
-                                    assg.deploy_client()
-                                else:
-                                    self._unassign(assg, False)
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
-                else:
-                    if not count >= 1:
-                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
-                    else: # count > number of nodes
-                        add_rc_entry(fn_rc, DM_ENODECNT,
-                            dm_exc_text(DM_ENODECNT))
+                    else:
+                        add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+
+                elif final_count < assigned_count:
+                    # ========================================
+                    # REDUCE
+                    # ========================================
+                    ctr = assigned_count
+                    # If there are assignments that are waiting for
+                    # deployment, but do not have the resource deployed
+                    # yet, undeploy those first
+                    if ctr > final_count:
+                        for assg in resource.iterate_assignments():
+                            if ((assg.get_tstate()
+                                & Assignment.FLAG_DEPLOY != 0)
+                                and (assg.get_cstate()
+                                & Assignment.FLAG_DEPLOY == 0)):
+                                    assg.undeploy()
+                                    ctr -= 1
+                            if not ctr > final_count:
+                                break
+                    if ctr > final_count:
+                        # Undeploy from nodes that have the
+                        # resource deployed
+                        # Collect nodes where the resource is deployed
+                        deployed = dict()
+                        for assg in resource.iterate_assignments():
+                            if ((assg.get_tstate()
+                                & Assignment.FLAG_DEPLOY != 0)
+                                and (assg.get_cstate()
+                                & Assignment.FLAG_DEPLOY != 0)):
+                                    node = assg.get_node()
+                                    deployed[node.get_name()] = node
+                        """
+                        Call the deployer plugin to select nodes for
+                        undeployment of the resource
+                        """
+                        diff = ctr - final_count
+                        selected = []
+                        deployer.undeploy_select(
+                            deployed, selected,
+                            diff, True
+                        )
+                        for node in selected:
+                            assg = node.get_assignment(resource.get_name())
+                            if site_clients:
+                                # turn the node into a client
+                                assg.deploy_client()
+                            else:
+                                self._unassign(assg, False)
+                    self._drbd_mgr.perform_changes()
+                    self.save_conf_data(persist)
+
             # condition (final_count == assigned_count) is successful, too
 
             if site_clients:
@@ -2806,7 +2811,7 @@ class DrbdManageServer(object):
             tb = traceback.extract_tb(exc_tb, 3)
             # Everything passed as string, to make dbus happy
             args =  {
-                "file1": tb[0][0], 
+                "file1": tb[0][0],
                 "line1": str(tb[0][1]),
                 'exc': k.strip() }
             expl = "Internal error: In %(file1)s@%(line1)s: %(exc)s"
