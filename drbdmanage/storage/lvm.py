@@ -62,7 +62,7 @@ class LVM(object):
     LVM_EEXIST   = 5
 
     CONF_DEFAULTS = {
-      KEY_DEV_PATH : "/dev/mapper/",
+      KEY_DEV_PATH : "/dev/",
       KEY_VG_NAME  : DEFAULT_VG,
       KEY_LVM_PATH : "/sbin"
     }
@@ -287,7 +287,7 @@ class LVM(object):
     def _lv_path_prefix(self):
         vg_name  = self._conf[self.KEY_VG_NAME]
         dev_path = self._conf[self.KEY_DEV_PATH]
-        return build_path(dev_path, vg_name) + "-"
+        return build_path(dev_path, vg_name) + "/"
 
 
     def load_conf(self):
