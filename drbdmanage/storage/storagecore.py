@@ -67,7 +67,7 @@ class BlockDevice(GenericStorage):
     """
     Represents a block device
     """
-    NAME_MAXLEN = 20
+    NAME_MAXLEN = 60 ## at least as long as res name
 
     _path     = None
     _name     = None
