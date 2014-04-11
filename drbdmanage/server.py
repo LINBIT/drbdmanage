@@ -554,8 +554,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -667,8 +666,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -728,8 +726,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME),
                 [ RES_NAME, res_name ])
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -834,8 +831,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -898,8 +894,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -946,8 +941,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1048,8 +1042,7 @@ class DrbdManageServer(object):
         except ValueError:
             add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1097,8 +1090,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1337,8 +1329,7 @@ class DrbdManageServer(object):
         except PluginException:
             add_rc_entry(fn_rc, DM_EPLUGIN, dm_exc_text(DM_EPLUGIN))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1376,8 +1367,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1452,8 +1442,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1495,8 +1484,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             pass
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1535,8 +1523,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1580,8 +1567,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             pass
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc ) == 0:
@@ -1624,8 +1610,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1658,8 +1643,7 @@ class DrbdManageServer(object):
             logging.error("cannot save updated storage pool information")
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1820,8 +1804,7 @@ class DrbdManageServer(object):
                 add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, node_list
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
 
         return fn_rc, None
 
@@ -1862,8 +1845,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
 
         return fn_rc, None
 
@@ -1950,8 +1932,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, assg_list
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
 
         return fn_rc, None
 
@@ -1973,8 +1954,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -1999,8 +1979,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -2243,8 +2222,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
@@ -2274,8 +2252,7 @@ class DrbdManageServer(object):
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
@@ -2295,8 +2272,7 @@ class DrbdManageServer(object):
                 else:
                     add_rc_entry(fn_rc, DM_ECTRLVOL, dm_exc_text(DM_ECTRLVOL))
         except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
@@ -2797,13 +2773,38 @@ class DrbdManageServer(object):
 
     @staticmethod
     def catch_internal_error(exc):
+        # http://stackoverflow.com/questions/5736080/sys-exc-info1-type-and-format-in-python-2-71
+        expl = "Internal error (error traceback failed)"
+        args = {}
         try:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logging.critical("Internal error: unhandled exception: %s"
-              % (str(exc)))
-            logging.debug("Stack trace:\n%s", str(exc_tb))
+            k = (traceback.format_exception_only(exc_type, exc_obj))[0]
+            tb = traceback.extract_tb(exc_tb, 3)
+            # Everything passed as string, to make dbus happy
+            args =  {
+                "file1": tb[0][0], 
+                "line1": str(tb[0][1]),
+                'exc': k.strip() }
+            expl = "Internal error: In %(file1)s@%(line1)s: %(exc)s"
+            if len(tb) > 1:
+                args["file2"] = tb[1][0]
+                args["line2"] = str(tb[1][1])
+                expl += "; called from %(file2)s@%(line2)s"
+            logging.critical(expl % args)
+            logging.debug("--- start stack trace")
+            for l in traceback.format_tb(exc_tb):
+                logging.debug(l)
+            logging.debug("--- end stack trace")
         except Exception:
             pass
+        return (expl, args)
+
+
+    @staticmethod
+    def catch_and_append_internal_error(fn_rc, exc):
+        msg, args = DrbdManageServer.catch_internal_error(exc)
+        add_rc_entry(fn_rc, DM_DEBUG, msg, *args.items())
+
 
 """
 Tracing - may be used for debugging
