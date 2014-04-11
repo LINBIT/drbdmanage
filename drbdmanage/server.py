@@ -26,6 +26,7 @@ import subprocess
 import fcntl
 import logging
 import logging.handlers
+import re
 import traceback
 import inspect
 
@@ -36,7 +37,7 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     FLAG_CONNECT)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
-    get_event_arg, get_event_source, get_event_type, get_free_number,
+    get_free_number,
     plugin_import, add_rc_entry, serial_filter, props_filter, string_to_bool)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
@@ -115,6 +116,8 @@ class DrbdManageServer(object):
     _resources = None
     # Events log pipe
     _evt_file  = None
+    # RegEx pattern for events parsing
+    _evt_pat   = re.compile(r'(?P<type>\w+) (?P<source>[\w-]+)(?P<attrs>.*)')
     # Subprocess handle for the events log source
     _proc_evt  = None
     # Reader for the events log
@@ -289,31 +292,26 @@ class DrbdManageServer(object):
             if line is None:
                 break
             else:
-                if line.endswith("\n"):
-                    line = line[:len(line) - 1]
+                line = line.strip()
                 if self.dbg_events:
                     logging.debug("received event line: %s" % line)
                 sys.stderr.flush()
                 if not changed:
-                    event_type   = get_event_type(line)
-                    event_source = get_event_source(line)
-                    if event_type is not None and event_source is not None:
-                        # If the configuration resource changes to "Secondary"
-                        # role on a connected node, the configuration may have
-                        # changed
-                        if event_type == self.EVT_TYPE_CHANGE and \
-                          event_source == self.EVT_SRC_CON:
-                            event_res  = get_event_arg(line, self.EVT_ARG_NAME)
-                            event_role = get_event_arg(line, self.EVT_ARG_ROLE)
-                            if event_res == DRBDCTRL_RES_NAME and \
-                              event_role == self.EVT_ROLE_SECONDARY:
-                                event_con = get_event_arg(line,
-                                  self.EVT_ARG_CON)
-                                # if there is no "connection:" change
-                                # (peer connecting/disconnecting),
-                                # then the event is assumed to be a role change
-                                if event_con is None:
-                                    changed = True
+                    match = self._evt_pat.match(line)
+                    if not match:
+                        continue
+                    # try to parse args
+                    # TODO: maybe this pattern can be pre-compiled, too?
+                    line_data = dict( re.findall('([\w-]+):(\S+)', match.group('attrs')) )
+
+                    # If the configuration resource changes to "Secondary"
+                    # role on a connected node, the configuration may have
+                    # changed
+                    if match.group('type') == self.EVT_TYPE_CHANGE and        \
+                            match.group('source') == self.EVT_SRC_RES and     \
+                            line_data['name'] == DRBDCTRL_RES_NAME and \
+                            line_data['role'] == self.EVT_ROLE_SECONDARY:
+                        changed = True
         if changed:
             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
