@@ -257,9 +257,10 @@ def add_rc_entry(fn_rc, err_code, err_msg, *args):
 
     Used by the drbdmanage server
     """
+    if type(args) is dict:
+        args = [(k, v) for k, v in a.iteritems()]
     rc_entry = [ err_code, err_msg, args ]
     fn_rc.append(rc_entry)
-
 
 def serial_filter(serial, objects):
     """
