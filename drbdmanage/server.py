@@ -2336,13 +2336,12 @@ class DrbdManageServer(object):
             l_addr    = rem_node.get_addr()
             l_node_id = str(rem_node.get_node_id())
 
-        if (all(secret, port, r_addr, r_node_id, r_name, l_addr, l_node_id)):
-                result_text = ["drbdmanage", "join", "-p",
+        if (all([secret, port, r_addr, r_node_id, r_name, l_addr, l_node_id])):
+            return ["drbdmanage", "join", "-p",
                     port, l_addr, l_node_id, r_addr, r_name,
                     r_node_id, secret]
         else:
-            result_text = [("Error: "
-                "Generation of the join command failed")]
+            return [("Error: Generation of the join command failed")]
 
 
     def TQ_get_path(self, res_name, vol_id="0"):
