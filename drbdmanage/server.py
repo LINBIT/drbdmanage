@@ -308,7 +308,7 @@ class DrbdManageServer(object):
                     # role on a connected node, the configuration may have
                     # changed
                     if match.group('type') == self.EVT_TYPE_CHANGE and        \
-                            match.group('source') == self.EVT_SRC_RES and     \
+                            match.group('source') == self.EVT_SRC_CON and     \
                             line_data['name'] == DRBDCTRL_RES_NAME and \
                             line_data['role'] == self.EVT_ROLE_SECONDARY:
                         changed = True
