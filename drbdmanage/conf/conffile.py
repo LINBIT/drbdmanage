@@ -484,23 +484,24 @@ class DrbdAdmConf(object):
             "        disk        " + bdev + ";\n"
             "        meta-disk   internal;\n"
             "    }\n")
-        for node in nodes.itervalues():
+        if len(nodes) > 0:
+            for node in nodes.itervalues():
+                stream.write(
+                    "    on " + node.get_name() + " {\n"
+                    "        node-id     " + str(node.get_node_id())
+                    + ";\n"
+                    "        address     " + node.get_addr()
+                    + ":" + str(port) + ";\n"
+                    "    }\n"
+                )
             stream.write(
-                "    on " + node.get_name() + " {\n"
-                "        node-id     " + str(node.get_node_id())
-                + ";\n"
-                "        address     " + node.get_addr()
-                + ":" + str(port) + ";\n"
-                "    }\n"
-            )
-        stream.write(
-            "    connection-mesh {\n"
-            "        hosts")
-        for node in nodes.itervalues():
-            stream.write(" " + node.get_name())
-        stream.write(";\n"
-            "        net {\n"
-            "            protocol C;\n"
-            "        }\n"
-            "    }\n"
-        )
+                "    connection-mesh {\n"
+                "        hosts")
+            for node in nodes.itervalues():
+                stream.write(" " + node.get_name())
+            stream.write(";\n"
+                "        net {\n"
+                "            protocol C;\n"
+                "        }\n"
+                "    }\n")
+        stream.write("}\n")
