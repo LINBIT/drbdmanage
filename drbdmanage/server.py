@@ -1863,7 +1863,39 @@ class DrbdManageServer(object):
         """
         fn_rc = []
 
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        def resource_filter(res_names):
+            for res_name in res_names:
+                res = self._resources.get(res_name)
+                if res is None:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                        [ RES_NAME, res_name ])
+                else:
+                    yield res
+
+        try:
+            res_list = []
+            if res_names is not None and len(res_names) > 0:
+                selected_res = resource_filter(res_names)
+            else:
+                selected_res = self._resources.itervalues()
+            if serial > 0:
+                selected_res = serial_filter(serial, selected_res)
+
+            if filter_props is not None and len(filter_props) > 0:
+                selected_res = props_filter(selected_res, filter_props)
+
+            for res in selected_res:
+                vol_list = []
+                for vol in res.iterate_volumes():
+                    vol_entry = [ vol.get_id(), vol.get_properties(None) ]
+                    vol_list.append(vol_entry)
+                res_entry = [ res.get_name(),
+                    res.get_properties(req_props), vol_list ]
+                res_list.append(res_entry)
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc, res_list
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
 
         return fn_rc, None
 

@@ -1248,6 +1248,18 @@ class DrbdManage(object):
 
 
     def _list_resources(self, args, list_volumes):
+        """
+        Outputs human- or machine-readable lists of resources or volumes
+
+        For machine readable lists, if a resource list is requested, one line
+        per resource is generated; if a volume list is requested, multiple
+        lines per resource, containing one line for each volume of the
+        resource, are generated.
+        For human readable lists, if a resource list is requested, then only
+        resources are listed; if a volume list is requested, every resource
+        description is followed by a description of all volumes of the
+        respective resource.
+        """
         color = self.color
         # Command parser configuration
         order    = []
@@ -1265,12 +1277,20 @@ class DrbdManage(object):
 
         machine_readable = flags["-m"]
 
-        server_rc, res_list = self._server.list_resources(
-            dbus.Array([], signature="s"),
-            0,
-            dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s")
-        )
+        if list_volumes:
+            server_rc, res_list = self._server.list_volumes(
+                dbus.Array([], signature="s"),
+                0,
+                dbus.Dictionary({}, signature="ss"),
+                dbus.Array([], signature="s")
+            )
+        else:
+            server_rc, res_list = self._server.list_resources(
+                dbus.Array([], signature="s"),
+                0,
+                dbus.Dictionary({}, signature="ss"),
+                dbus.Array([], signature="s")
+            )
         if (not machine_readable) and (res_list is None
             or len(res_list) == 0):
                 sys.stdout.write("No resources defined\n")
@@ -1283,60 +1303,75 @@ class DrbdManage(object):
                     DrbdResourceView.get_name_maxlen(), "Resource",
                     color(COLOR_NONE), "Port",
                     color(COLOR_RED), "state", color(COLOR_NONE))
-                  )
+                )
             if list_volumes:
                 sys.stdout.write(
                   "  %s*%s%6s%s %14s %7s  %s%s\n"
                     % (color(COLOR_BROWN), color(COLOR_DARKPINK),
                     "id#", color(COLOR_BROWN), "size (MiB)", "minor#", "state",
                     color(COLOR_NONE))
-                  )
+                )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
         for res_entry in res_list:
             try:
-                res_name, properties = res_entry
-                view = DrbdResourceView(properties, machine_readable)
-                v_port  = self._property_text(view.get_property(RES_PORT))
+                if list_volumes:
+                    res_name, properties, vol_list = res_entry
+                else:
+                    res_name, properties = res_entry
+                res_view = DrbdResourceView(properties, machine_readable)
+                v_port  = self._property_text(res_view.get_property(RES_PORT))
                 if not machine_readable:
+                    # Human readable output of the resource description
                     sys.stdout.write(
                         "%s%-*s%s %7s         %s%s%s\n"
                         % (color(COLOR_DARKGREEN),
-                        view.get_name_maxlen(), res_name,
+                        res_view.get_name_maxlen(), res_name,
                         color(COLOR_NONE), v_port,
-                        color(COLOR_RED), view.get_state(), color(COLOR_NONE))
+                        color(COLOR_RED), res_view.get_state(),
+                        color(COLOR_NONE))
                     )
-                else:
+                if list_volumes:
+                    for vol_entry in vol_list:
+                        vol_id, vol_properties = vol_entry
+                        vol_view = DrbdVolumeView(vol_properties,
+                            machine_readable)
+                        v_minor = self._property_text(
+                            vol_view.get_property(VOL_MINOR)
+                        )
+                        if not machine_readable:
+                            # human readable output of the volume description
+                            size_MiB = SizeCalc.convert(
+                                vol_view.get_size_kiB(),
+                                SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB
+                            )
+                            if size_MiB < 1:
+                                size_MiB_str = "< 1"
+                            else:
+                                size_MiB_str = str(size_MiB)
+                            sys.stdout.write(
+                                "  %s*%s%6s%s %14s %7s  %s%s\n"
+                                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                                str(vol_view.get_id()), color(COLOR_BROWN),
+                                size_MiB_str,
+                                v_minor, vol_view.get_state(),
+                                color(COLOR_NONE))
+                            )
+                        else:
+                            # machine readable output of the volume description
+                            sys.stdout.write(
+                                "%s,%s,%d,%d,%s,%s,%s\n"
+                                % (res_view.get_name(),
+                                res_view.get_state(), str(vol_view.get_id()),
+                                vol_view.get_size_kiB(), v_port,
+                                v_minor, vol_view.get_state())
+                            )
+                elif machine_readable:
+                    # machine readable output of the resource description
                     sys.stdout.write(
                         "%s,%s,%s\n"
-                        % (res_name, v_port, view.get_state())
+                        % (res_name, v_port, res_view.get_state())
                     )
-                # if list_volumes:
-                #     volume_list = view.get_volumes()
-                #     for vol_view in volume_list:
-                #         if not machine_readable:
-                #             size_MiB = SizeCalc.convert(
-                #               vol_view.get_size_kiB(),
-                #               SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
-                #             if size_MiB < 1:
-                #                 size_MiB_str = "< 1"
-                #             else:
-                #                 size_MiB_str = str(size_MiB)
-                #             sys.stdout.write(
-                #               "  %s*%s%6d%s %14s %7s %s%s\n"
-                #                 % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                #                 vol_view.get_id(), color(COLOR_BROWN),
-                #                 size_MiB_str,
-                #                 vol_view.get_minor(), vol_view.get_state(),
-                #                 color(COLOR_NONE))
-                #               )
-                #         else:
-                #             sys.stdout.write(
-                #               "%s,%s,%d,%d,%s,%s,%s\n" % (view.get_name(),
-                #                 view.get_state(), vol_view.get_id(),
-                #                 vol_view.get_size_kiB(), view.get_port(),
-                #                 vol_view.get_minor(), vol_view.get_state())
-                #               )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
                 continue
