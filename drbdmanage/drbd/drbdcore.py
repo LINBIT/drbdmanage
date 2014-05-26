@@ -1048,8 +1048,10 @@ class DrbdResource(GenericDrbdObject):
 
         if selected(consts.RES_NAME):
             properties[consts.RES_NAME]   = self._name
-        if selected(consts.RES_SECRET):
-            properties[consts.RES_SECRET] = str(self._secret)
+        # Note: adding the shared secret to the properties list
+        #       commented out - R. Altnoeder 2014-04-24
+        # if selected(consts.RES_SECRET):
+        #     properties[consts.RES_SECRET] = str(self._secret)
         if selected(consts.RES_PORT):
             properties[consts.RES_PORT]   = str(self._port)
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
