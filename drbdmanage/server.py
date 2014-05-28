@@ -24,6 +24,7 @@ import time
 import gobject
 import subprocess
 import fcntl
+import errno
 import logging
 import logging.handlers
 import re

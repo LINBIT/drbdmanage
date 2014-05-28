@@ -1941,8 +1941,9 @@ class DrbdManage(object):
 
 
     def print_sub_commands(self):
+        col_width = 20
         (term_width, term_height) = get_terminal_size()
-        columns = term_width / 20;
+        columns = term_width / col_width if term_width >= col_width else 1
         i = 0
 
         for cmd_name in self.COMMANDS:
@@ -1961,8 +1962,9 @@ class DrbdManage(object):
 
 
     def cmd_usage(self, args):
+        col_width = 23
         (term_width, term_height) = get_terminal_size()
-        columns = term_width / 23;
+        columns = term_width / col_width if term_width >= col_width else 1
         i = 0
         sys.stdout.write("Usage: drbdmanage [options...] command [args...]\n"
                          "\n"

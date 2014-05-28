@@ -52,6 +52,11 @@ RANDOM_SOURCE = "/dev/urandom"
 # Length of random data for generating shared secrets
 SECRET_LEN    = 15
 
+# Default terminal dimensions
+# Used by get_terminal_size()
+DEFAULT_TERM_WIDTH  = 80
+DEFAULT_TERM_HEIGHT = 25
+
 
 def get_free_number(min_nr, max_nr, nr_list):
     """
@@ -199,7 +204,7 @@ def add_rc_entry(fn_rc, err_code, err_msg, *args):
     Used by the drbdmanage server
     """
     if type(args) is dict:
-        args = [(k, v) for k, v in a.iteritems()]
+        args = [(key, val) for key, val in args.iteritems()]
     rc_entry = [ err_code, err_msg, args ]
     fn_rc.append(rc_entry)
 
@@ -208,7 +213,7 @@ def serial_filter(serial, objects):
     Generator for iterating over objects with obj_serial > serial
     """
     for obj in objects:
-        obj_serial = obj.props.get(SERIAL)
+        obj_serial = obj.props.get(consts.SERIAL)
         if obj_serial is None or obj_serial > serial:
             yield obj
 
@@ -223,22 +228,28 @@ def props_filter(source, filter_props):
 
 
 def get_terminal_size():
-    def ioctl_GWINSZ(fd):
+    def ioctl_GWINSZ(term_fd):
         try:
             import fcntl, termios, struct, os
-            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+            term_dim = struct.unpack('hh',
+                fcntl.ioctl(term_fd, termios.TIOCGWINSZ, '1234'))
         except:
             return
-        return cr
-    cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
-    if not cr:
+        return term_dim
+    term_dim = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
+    if not term_dim:
         try:
-            fd = os.open(os.ctermid(), os.O_RDONLY)
-            cr = ioctl_GWINSZ(fd)
-            os.close(fd)
+            term_fd = os.open(os.ctermid(), os.O_RDONLY)
+            term_dim = ioctl_GWINSZ(term_fd)
+            os.close(term_fd)
         except:
             pass
-    return int(cr[1]), int(cr[0])
+    try:
+        (term_width, term_height) = int(term_dim[1]), int(term_dim[0])
+    except:
+        term_width  = DEFAULT_TERM_WIDTH
+        term_height = DEFAULT_TERM_HEIGHT
+    return term_width, term_height
 
 
 def generate_secret():
@@ -799,7 +810,7 @@ def dict_to_aux_props(prop_map):
     """
     # TODO: test with python 2.6, reverse for <...> notation
     #       may fail
-    return [ ( consts.AUX_PROP_PREFIX + key, str(val) ) 
+    return [ ( consts.AUX_PROP_PREFIX + key, str(val) )
             for key, val in prop_map.items() ]
 
 
