@@ -1360,9 +1360,9 @@ class DrbdManage(object):
                         else:
                             # machine readable output of the volume description
                             sys.stdout.write(
-                                "%s,%s,%d,%d,%s,%s,%s\n"
-                                % (res_view.get_name(),
-                                res_view.get_state(), str(vol_view.get_id()),
+                                "%s,%s,%s,%d,%s,%s,%s\n"
+                                % (res_name, res_view.get_state(),
+                                str(vol_view.get_id()),
                                 vol_view.get_size_kiB(), v_port,
                                 v_minor, vol_view.get_state())
                             )
