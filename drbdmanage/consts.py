@@ -40,6 +40,7 @@ VOL_BDEV            = "vol_bdev"
 
 NODE_NAME_MAXLEN    = 32
 RES_NAME_MAXLEN     = 48    # Enough for a UUID string plus prefix
+SNAPS_NAME_MAXLEN   = 32
 
 DRBDCTRL_DEFAULT_PORT = 6999
 

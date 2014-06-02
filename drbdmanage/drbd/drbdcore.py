@@ -795,6 +795,19 @@ class DrbdManager(object):
           self._server.get_conf_value(self._server.KEY_DRBDADM_PATH))
 
 
+class GenericDrbdObject(object):
+
+    """
+    Super class of Drbd* objects with a property list
+    """
+
+    props = None
+
+
+    def __init__(self):
+        self.props = {}
+
+
     @staticmethod
     def name_check(name, length):
         """
@@ -829,19 +842,6 @@ class DrbdManager(object):
         if not alpha:
             raise InvalidNameException
         return str(name_b)
-
-
-class GenericDrbdObject(object):
-
-    """
-    Super class of Drbd* objects with a property list
-    """
-
-    props = None
-
-
-    def __init__(self):
-        self.props = {}
 
 
     def properties_match(self, filter_props):
@@ -889,6 +889,7 @@ class DrbdResource(GenericDrbdObject):
     _state       = None
     _volumes     = None
     _assignments = None
+    _snapshots   = None
 
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
@@ -909,6 +910,7 @@ class DrbdResource(GenericDrbdObject):
         self._state        = 0
         self._volumes      = {}
         self._assignments  = {}
+        self._snapshots    = {}
         self.props[consts.SERIAL] = 1
 
 
@@ -921,7 +923,7 @@ class DrbdResource(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return DrbdManager.name_check(name, self.NAME_MAXLEN)
+        return GenericDrbdObject.name_check(name, DrbdResource.NAME_MAXLEN)
 
 
     def add_assignment(self, assignment):
@@ -936,6 +938,18 @@ class DrbdResource(GenericDrbdObject):
     def remove_assignment(self, assignment):
         node = assignment.get_node()
         del self._assignments[node.get_name()]
+
+
+    def add_snapshot(self, snapshot):
+        snapshots[snapshot.get_name()] = snapshot
+
+
+    def get_snapshot(self, name):
+        return self._snapshots.get(name)
+
+
+    def remove_snapshot(self, snapshot):
+        del self._snapshots[snapshot.get_name()]
 
 
     def iterate_assignments(self):
@@ -1294,7 +1308,7 @@ class DrbdNode(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return DrbdManager.name_check(name, self.NAME_MAXLEN)
+        return GenericDrbdObject.name_check(name, DrbdNode.NAME_MAXLEN)
 
 
     def add_assignment(self, assignment):
@@ -1600,6 +1614,7 @@ class Assignment(GenericDrbdObject):
     _resource    = None
     _vol_states  = None
     _node_id     = None
+    _snapshots   = None
     _cstate      = 0
     _tstate      = 0
     # return code of operations
@@ -1641,6 +1656,7 @@ class Assignment(GenericDrbdObject):
         for volume in resource.iterate_volumes():
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id      = int(node_id)
+        self._snapshots    = {}
         self.props[consts.SERIAL] = 1
         # current state
         self._cstate       = cstate

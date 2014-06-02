@@ -1975,6 +1975,70 @@ class DrbdManageServer(object):
         return fn_rc, None
 
 
+    def create_snapshot(self, res_name, snaps_name, node_names, props):
+        """
+        Create a snapshot of a resource's volumes on a number of nodes
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def list_snapshots(self, res_names, snaps_names, filter_props, req_props):
+        """
+        List the available snapshots of a resource
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def list_snapshot_assignments(self, res_names, snaps_names, nodes_names,
+        filter_props, req_props):
+        """
+        List the available snapshots of a resource on specific nodes
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def restore_snapshot(self, res_name, snaps_name, node_name):
+        """
+        Restore a snapshot
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def delete_snapshot_assignment(self, res_name, snaps_name, node_name):
+        """
+        Discard a resource's snapshot on a specific node
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def delete_snapshot(self, res_name, snaps_name):
+        """
+        Discard all instances of a resource's snapshot
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
+    def query_snapshot(self, res_name, node_name):
+        """
+        Query the state of a resource's snapshot on specific nodes
+        """
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+
     def save_conf(self):
         """
         Saves the current configuration to the drbdmanage control volume

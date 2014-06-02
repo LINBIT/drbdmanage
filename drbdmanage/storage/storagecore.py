@@ -80,8 +80,8 @@ class BlockDevice(GenericStorage):
 
 
     def name_check(self, name):
-        return drbdmanage.drbd.drbdcore.DrbdManager.name_check(
-            name, self.NAME_MAXLEN)
+        return drbdmanage.drbd.drbdcore.GenericDrbdObject.name_check(
+            name, BlockDevice.NAME_MAXLEN)
 
 
     def get_name(self):
