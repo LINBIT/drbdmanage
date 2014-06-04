@@ -229,7 +229,7 @@ class DBusServer(dbus.service.Object):
       in_signature="asta{ss}as", out_signature="a(isa(ss))" "a(sa{ss})")
     def list_nodes(self, node_names, serial, filter_props, req_props):
         """
-        D-Bus interface for DrbdManageServer.node_list(...)
+        D-Bus interface for DrbdManageServer.list_nodes(...)
         """
         return self._server.list_nodes(node_names, serial, filter_props,
             req_props)
@@ -240,10 +240,10 @@ class DBusServer(dbus.service.Object):
       out_signature="a(isa(ss))" "a(sa{ss})")
     def list_resources(self, res_names, serial, filter_props, req_props):
         """
-        D-Bus interface for DrbdManageServer.resource_list(...)
+        D-Bus interface for DrbdManageServer.list_resources(...)
         """
-        return self._server.list_resources(res_names, serial, dict(filter_props),
-            dict(req_props))
+        return self._server.list_resources(res_names, serial,
+            dict(filter_props), req_props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -251,10 +251,10 @@ class DBusServer(dbus.service.Object):
       out_signature="a(isa(ss))" "a(sa{ss}a(ia{ss}))")
     def list_volumes(self, res_names, serial, filter_props, req_props):
         """
-        D-Bus interface for DrbdManageServer.resource_list(...)
+        D-Bus interface for DrbdManageServer.list_volumes(...)
         """
         return self._server.list_volumes(res_names, serial, dict(filter_props),
-            dict(req_props))
+            req_props)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
@@ -263,10 +263,86 @@ class DBusServer(dbus.service.Object):
     def list_assignments(self, node_names, res_names, serial, filter_props,
         req_props):
         """
-        D-Bus interface for DrbdManageServer.assignment_list(...)
+        D-Bus interface for DrbdManageServer.list_assignments(...)
         """
         return self._server.list_assignments(
-            node_names, res_names, serial, dict(filter_props), dict(req_props))
+            node_names, res_names, serial, dict(filter_props), req_props)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ssasa{ss}",
+      out_signature="a(isa(ss))")
+    def create_snapshot(self, res_name, snaps_name, node_names, props):
+        """
+        D-Bus interface for DrbdManageServer.create_snapshot(...)
+        """
+        return self._server.create_snapshot(
+            res_name, snaps_name, node_names, dict(props))
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="asasa{ss}as",
+      out_signature="a(isa(ss))" "a(sa(sa{ss}))")
+    def list_snapshots(self, res_names, snaps_names, filter_props, req_props):
+        """
+        D-Bus interface for DrbdManageServer.list_snapshots(...)
+        """
+        return self._server.list_snapshots(
+            res_names, snaps_names, dict(filter_props), req_props)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="asasasa{ss}as",
+      out_signature="a(isa(ss))" "a(ssa(sa{ss}))")
+    def list_snapshot_assignments(self, res_names, snaps_names, node_names,
+        filter_props, req_props):
+        """
+        D-Bus interface for DrbdManageServer.list_snapshot_assignments(...)
+        """
+        return self._server.list_snapshot_assignments(
+            res_names, snaps_names, node_names,
+            dict(filter_props), req_props)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sss",
+      out_signature="a(isa(ss))")
+    def restore_snapshot(self, res_name, snaps_name, node_name):
+        """
+        D-Bus interface for DrbdManageServer.restore_snapshot(...)
+        """
+        return self._server.restore_snapshot(res_name, snaps_name, node_name)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="sss",
+      out_signature="a(isa(ss))")
+    def delete_snapshot_assignment(self, res_name, snaps_name, node_name):
+        """
+        D-Bus interface for DrbdManageServer.delete_snapshot_assignment(...)
+        """
+        return self._server.delete_snapshot_assignment(
+            res_name, snaps_name, node_name)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ss",
+      out_signature="a(isa(ss))")
+    def delete_snapshot(self, res_name, snaps_name):
+        """
+        D-Bus interface for DrbdManageServer.delete_snapshot(...)
+        """
+        return self._server.delete_snapshot(res_name, snaps_name)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="ss",
+      out_signature="a(isa(ss))" "a{ss}")
+    def query_snapshot(self, res_name, snaps_name):
+        """
+        D-Bus interface for DrbdManageServer.query_snapshot(...)
+        """
+        return self._server.query_snapshot(res_name, snaps_name)
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,

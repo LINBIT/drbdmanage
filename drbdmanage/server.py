@@ -308,11 +308,20 @@ class DrbdManageServer(object):
                     # If the configuration resource changes to "Secondary"
                     # role on a connected node, the configuration may have
                     # changed
-                    if match.group('type') == self.EVT_TYPE_CHANGE and        \
-                            match.group('source') == self.EVT_SRC_CON and     \
-                            line_data['name'] == DRBDCTRL_RES_NAME and \
-                            line_data['role'] == self.EVT_ROLE_SECONDARY:
-                        changed = True
+
+                    # FIXME: KeyError upon missing key/value pairs on the
+                    #        parsed drbdsetup events line temporarily fixed,
+                    #        but this should probably be changed so that it
+                    #        can interpret lines that do not have certain
+                    #        fields (like 'role'), too
+                    try:
+                        if (match.group('type')   == self.EVT_TYPE_CHANGE and
+                            match.group('source') == self.EVT_SRC_CON and
+                            line_data['name']     == DRBDCTRL_RES_NAME and
+                            line_data['role']     == self.EVT_ROLE_SECONDARY):
+                                changed = True
+                    except KeyError:
+                        pass
         if changed:
             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
@@ -1993,7 +2002,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def list_snapshot_assignments(self, res_names, snaps_names, nodes_names,
+    def list_snapshot_assignments(self, res_names, snaps_names, node_names,
         filter_props, req_props):
         """
         List the available snapshots of a resource on specific nodes
@@ -2030,7 +2039,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def query_snapshot(self, res_name, node_name):
+    def query_snapshot(self, res_name, snaps_name):
         """
         Query the state of a resource's snapshot on specific nodes
         """
