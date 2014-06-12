@@ -20,8 +20,9 @@
 
 import logging
 import drbdmanage.consts as consts
+import drbdmanage.drbd.drbdcommon as drbdcommon
 
-class DrbdSnapshot(GenericDrbdObject):
+class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
     _name        = None
@@ -35,7 +36,7 @@ class DrbdSnapshot(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return drbdmanage.drbd.GenericDrbdObject.name_check(
+        return drbdcommon.GenericDrbdObject.name_check(
             name, DrbdSnapshot.NAME_MAXLEN)
 
 
