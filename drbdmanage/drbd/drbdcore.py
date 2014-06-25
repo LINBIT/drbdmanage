@@ -472,7 +472,7 @@ class DrbdManager(object):
 
     def _undeploy_volume(self, assignment, vol_state):
         """
-        Undeploys a volume, then reset the state values of the volume state
+        Undeploys a volume, then resets the state values of the volume state
         entry, so it can be removed from the assignment by the cleanup
         function.
         """
@@ -865,6 +865,10 @@ class DrbdResource(GenericDrbdObject):
         return self._snapshots.get(name)
 
 
+    def iterate_snapshots(self):
+        return self._snapshots.itervalues()
+
+
     def remove_snapshot(self, snapshot):
         del self._snapshots[snapshot.get_name()]
 
@@ -1040,6 +1044,7 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     # returns a storagecore.MinorNr object
     def get_minor(self):
         return self._minor
+
 
     def get_path(self):
         # TODO: return "pretty" name, /dev/drbd/by-res/...
@@ -1531,7 +1536,7 @@ class Assignment(GenericDrbdObject):
     _resource    = None
     _vol_states  = None
     _node_id     = None
-    _snapshots   = None
+    _snaps_assgs = None
     _cstate      = 0
     _tstate      = 0
     # return code of operations
@@ -1573,7 +1578,7 @@ class Assignment(GenericDrbdObject):
         for volume in resource.iterate_volumes():
             self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
         self._node_id      = int(node_id)
-        self._snapshots    = {}
+        self._snaps_assgs  = {}
         self.props[consts.SERIAL] = 1
         # current state
         self._cstate       = cstate
@@ -1630,6 +1635,25 @@ class Assignment(GenericDrbdObject):
                 del self._vol_states[vol_st.get_id()]
         if update_assg:
             self.props[consts.SERIAL] = serial
+
+
+    def add_snaps_assg(self, snaps_assg):
+        self._snaps_assgs[snaps_assg.get_snapshot().get_name()] = snaps_assg
+
+
+    def iterate_snaps_assgs(self):
+        return self._snaps_assg.itervalues()
+
+
+    def get_snaps_assg(self, name):
+        return self._snaps_assg.get(name)
+
+
+    def remove_snaps_assg(self, name):
+        try:
+            del self._snaps_assgs[name]
+        except KeyError:
+            pass
 
 
     def remove(self):

@@ -42,3 +42,121 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     def get_name(self):
         return self._name
+
+
+class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
+
+    _snapshot         = None
+    _snaps_vol_states = None
+    _cstate           = 0
+    _tstate           = 0
+
+    TSTATE_MASK = 0
+    CSTATE_MASK = 0
+
+
+    def __init__(self, snapshot):
+        super(DrbdSnapshotAssignment, self).__init__()
+        self._snapshot        = snapshot
+        self_snaps_vol_states = {}
+
+
+    def add_snaps_vol_state(self, snaps_vol_state):
+        self._snaps_vol_states[snaps_vol_state.get_id()] = snaps_vol_state
+
+
+    def get_snaps_vol_state(self, vol_id):
+        return self._snaps_vol_states.get(vol_id)
+
+
+    def iterate_snaps_vol_states(self):
+        return self._snaps_vol_states.itervalues()
+
+
+    def remove_snaps_vol_state(self, vol_id):
+        try:
+            del self._snaps_vol_states[vol_id]
+        except KeyError:
+            pass
+
+
+    def get_snapshot(self):
+        return self._snapshot
+
+
+    def set_cstate(self, cstate):
+        self._cstate = cstate & self.CSTATE_MASK
+
+
+    def set_tstate(self, tstate):
+        self._tstate = tstate & self.TSTATE_MASK
+
+
+    def get_cstate(self):
+        return self._cstate
+
+
+    def get_tstate(self):
+        return self._tstate
+
+
+    def clear_cstate_flags(self, flags):
+        self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+
+
+    def set_tstate_flags(self, flags):
+        self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+
+
+    def clear_tstate_flags(self, flags):
+        self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
+
+
+class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
+
+    _vol_id      = None
+    _bd_path     = None
+    _blockdevice = None
+    _cstate      = 0
+    _tstate      = 0
+
+    TSTATE_MASK  = 0
+    CSTATE_MASK  = 0
+
+
+    def __init__(self, vol_id):
+        super(DrbdSnapthoVolumeState , self).__init__()
+        self._vol_id = vol_id
+
+
+    def get_id(self):
+        return self._vol_id
+
+
+    def set_cstate(self, cstate):
+        self._cstate = cstate & self.CSTATE_MASK
+
+
+    def set_tstate(self, tstate):
+        self._tstate = tstate & self.TSTATE_MASK
+
+
+    def get_cstate(self):
+        return self._cstate
+
+
+    def get_tstate(self):
+        return self._tstate
+
+
+    def clear_cstate_flags(self, flags):
+        self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+
+
+    def set_tstate_flags(self, flags):
+        self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+
+
+    def clear_tstate_flags(self, flags):
+        self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
+
