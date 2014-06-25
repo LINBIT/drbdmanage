@@ -32,10 +32,10 @@ import traceback
 import inspect
 
 from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
-    RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
-    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
-    RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT)
+    RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, SERVER_CONFFILE,
+    KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
+    DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO, RES_PORT_NR_ERROR,
+    FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS, FLAG_CONNECT)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_free_number,
@@ -62,7 +62,6 @@ class DrbdManageServer(object):
 
     DM_VERSION = "0.11"
 
-    CONFFILE = "/etc/drbdmanaged.conf"
     EVT_UTIL = "drbdsetup"
 
     EVT_TYPE_CHANGE = "change"
@@ -107,7 +106,8 @@ class DrbdManageServer(object):
       KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
       KEY_DRBDADM_PATH   : "/usr/sbin",
       KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
-      KEY_DRBD_CONFPATH  : "/var/drbd.d"
+      KEY_DRBD_CONFPATH  : "/var/drbd.d",
+      KEY_DRBDCTRL_VG    : DEFAULT_VG
     }
 
     # BlockDevice manager
@@ -354,7 +354,7 @@ class DrbdManageServer(object):
         """
         in_file = None
         try:
-            in_file = open(self.CONFFILE, "r")
+            in_file = open(SERVER_CONFFILE, "r")
             conffile = ConfFile(in_file)
             conf_loaded = conffile.get_conf()
             if conf_loaded is not None:
@@ -366,11 +366,11 @@ class DrbdManageServer(object):
         except IOError as ioerr:
             if ioerr.errno == errno.EACCES:
                 logging.warning("cannot open configuration file '%s', "
-                  "permission denied" % self.CONFFILE)
+                  "permission denied" % SERVER_CONFFILE)
             elif ioerr.errno != errno.ENOENT:
                 logging.warning("cannot open configuration file '%s', "
                   "error returned by the OS is: %s"
-                  % (self.CONFFILE, ioerr.strerror))
+                  % (SERVER_CONFFILE, ioerr.strerror))
         finally:
             if self._conf is None:
                 self._conf = self.CONF_DEFAULTS
@@ -2596,8 +2596,9 @@ class DrbdManageServer(object):
                 if port is None:
                     port         = str(DRBDCTRL_DEFAULT_PORT)
                 if bdev is None:
-                    bdev         = ("/dev/mapper/" + DEFAULT_VG
-                        + "-" + DRBDCTRL_RES_NAME)
+                    bdev         = ("/dev/"
+                        + self.get_conf_value(KEY_DRBDCTRL_VG)
+                        + "/" + DRBDCTRL_RES_NAME)
                 if secret is None:
                     secret = generate_secret()
 

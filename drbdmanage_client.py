@@ -32,16 +32,18 @@ import subprocess
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 
-from drbdmanage.consts import (DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV,
-    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, NODE_ADDR,
-    NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
-    VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO,
+from drbdmanage.consts import (SERVER_CONFFILE, KEY_DRBDCTRL_VG, DEFAULT_VG,
+    DRBDCTRL_DEFAULT_PORT, DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE,
+    DRBDCTRL_RES_PATH, NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE,
+    NODE_POOLFREE, RES_PORT, VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO,
     FLAG_DISKLESS, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_CONNECT)
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
-from drbdmanage.utils import (get_terminal_size, build_path, bool_to_string)
+from drbdmanage.utils import (get_terminal_size, build_path, bool_to_string,
+    map_val_or_dflt)
 from drbdmanage.utils import (COLOR_NONE, COLOR_RED, COLOR_DARKRED,
     COLOR_DARKGREEN, COLOR_BROWN, COLOR_DARKPINK, COLOR_TEAL)
+from drbdmanage.conf.conffile import ConfFile
 from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
@@ -72,7 +74,6 @@ class DrbdManage(object):
 
     VIEW_SEPARATOR_LEN = 78
 
-    DRBDCTRL_BLOCKDEV = "/dev/mapper/" + DEFAULT_VG + "-" + DRBDCTRL_RES_NAME
     UMHELPER_FILE     = "/sys/module/drbd/parameters/usermode_helper"
     UMHELPER_OVERRIDE = "/bin/true"
 
@@ -1619,9 +1620,28 @@ class DrbdManage(object):
                 )
             if quiet:
                 # ========================================
+                # Load the configuration
+                # (WITHOUT default values; only values
+                #  from the configuration file will
+                #  be loaded)
+                # ========================================
+                server_conf = self.load_server_conf()
+
+                # ========================================
+                # Set up the path to the drbdctrl LV
+                # ========================================
+                if server_conf is not None:
+                    drbdctrl_vg = map_val_or_dflt(
+                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG)
+                else:
+                    drbdctrl_vg = DEFAULT_VG
+                drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/"
+                    + DRBDCTRL_RES_NAME)
+
+                # ========================================
                 # Cleanup
                 # ========================================
-                self._init_join_cleanup()
+                self._init_join_cleanup(drbdctrl_vg)
 
                 # ========================================
                 # Initialize a new drbdmanage cluster
@@ -1629,11 +1649,11 @@ class DrbdManage(object):
 
                 # Create the .drbdctrl LV
                 self._ext_command(["lvcreate", "-n", DRBDCTRL_RES_NAME,
-                    "-L", "4m", DEFAULT_VG])
+                    "-L", "4m", drbdctrl_vg])
 
                 # Create meta-data
                 self._ext_command(["drbdmeta", "--force", "0",
-                    "v09", self.DRBDCTRL_BLOCKDEV, "internal",
+                    "v09", drbdctrl_blockdev, "internal",
                     "create-md", "31"])
 
                 # Configure the .drbdctrl resource
@@ -1642,10 +1662,9 @@ class DrbdManage(object):
                 self._ext_command(["drbdsetup", "new-minor", DRBDCTRL_RES_NAME,
                     "0", "0"])
                 self._ext_command(["drbdmeta", "0", "v09",
-                    self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+                    drbdctrl_blockdev, "internal", "apply-al"])
                 self._ext_command(["drbdsetup", "attach", "0",
-                    self.DRBDCTRL_BLOCKDEV,
-                    self.DRBDCTRL_BLOCKDEV, "internal"])
+                    drbdctrl_blockdev, drbdctrl_blockdev, "internal"])
                 self._ext_command(["drbdsetup",
                     "primary", DRBDCTRL_RES_NAME, "--force"])
                 init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
@@ -1667,7 +1686,7 @@ class DrbdManage(object):
                 self.dbus_init()
                 server_rc = self._server.init_node(
                     dbus.String(node_name), props,
-                    dbus.String(self.DRBDCTRL_BLOCKDEV), str(port)
+                    dbus.String(drbdctrl_blockdev), str(port)
                 )
 
                 fn_rc = self._list_rc_entries(server_rc)
@@ -1675,7 +1694,7 @@ class DrbdManage(object):
                 fn_rc = 0
         except AbortException:
             sys.stderr.write("Initialization failed\n")
-            self._init_join_rollback()
+            self._init_join_rollback(drbdctrl_vg)
         except SyntaxException:
             sys.stderr.write("Syntax: ipaddress [ { -p | --port } port\n")
         return fn_rc
@@ -1694,7 +1713,6 @@ class DrbdManage(object):
         flags    = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
 
-        bdev = self.DRBDCTRL_BLOCKDEV
         try:
             if CommandParser().parse(args, order, params, opt, optalias,
                 flags, flagsalias) != 0:
@@ -1739,9 +1757,28 @@ class DrbdManage(object):
                 )
             if quiet:
                 # ========================================
+                # Load the configuration
+                # (WITHOUT default values; only values
+                #  from the configuration file will
+                #  be loaded)
+                # ========================================
+                server_conf = self.load_server_conf()
+
+                # ========================================
+                # Set up the path to the drbdctrl LV
+                # ========================================
+                if server_conf is not None:
+                    drbdctrl_vg = map_val_or_dflt(
+                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG)
+                else:
+                    drbdctrl_vg = DEFAULT_VG
+                drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/"
+                    + DRBDCTRL_RES_NAME)
+
+                # ========================================
                 # Cleanup
                 # ========================================
-                self._init_join_cleanup()
+                self._init_join_cleanup(drbdctrl_vg)
 
                 # ========================================
                 # Join an existing drbdmanage cluster
@@ -1749,11 +1786,11 @@ class DrbdManage(object):
 
                 # Create the .drbdctrl LV
                 self._ext_command(["lvcreate", "-n",
-                    DRBDCTRL_RES_NAME, "-L", "4m", DEFAULT_VG])
+                    DRBDCTRL_RES_NAME, "-L", "4m", drbdctrl_vg])
 
                 # Create meta-data
                 self._ext_command(["drbdmeta", "--force", "0",
-                    "v09", self.DRBDCTRL_BLOCKDEV, "internal",
+                    "v09", drbdctrl_blockdev, "internal",
                     "create-md", "31"])
 
                 l_addr    = params["local_ip"]
@@ -1769,9 +1806,9 @@ class DrbdManage(object):
                 self._ext_command(["drbdsetup", "new-minor",
                     DRBDCTRL_RES_NAME, "0", "0"])
                 self._ext_command(["drbdmeta", "0", "v09",
-                    self.DRBDCTRL_BLOCKDEV, "internal", "apply-al"])
+                    drbdctrl_blockdev, "internal", "apply-al"])
                 self._ext_command(["drbdsetup", "attach", "0",
-                    self.DRBDCTRL_BLOCKDEV, self.DRBDCTRL_BLOCKDEV, "internal"])
+                    drbdctrl_blockdev, drbdctrl_blockdev, "internal"])
 
                 umh_f = None
                 umh   = None
@@ -1825,7 +1862,8 @@ class DrbdManage(object):
                 # resource configuration file
                 self.dbus_init()
                 # server_rc = self._server.update_res()
-                server_rc = self._server.join_node(bdev, port, secret)
+                server_rc = self._server.join_node(
+                    drbdctrl_blockdev, port, secret)
                 #server_rc = self._server.debug_console(dbus.String(
                 #    "gen drbdctrl " + secret + " " + port + " " + bdev
                 #))
@@ -1834,14 +1872,14 @@ class DrbdManage(object):
                 fn_rc = 0
         except AbortException:
             sys.stderr.write("Initialization failed\n")
-            self._init_join_rollback()
+            self._init_join_rollback(drbdctrl_vg)
         except SyntaxException:
             sys.stderr.write("Syntax: local_ip local_node_id peer_ip peer_name "
                 "peer_node_id secret\n")
         return fn_rc
 
 
-    def _init_join_cleanup(self):
+    def _init_join_cleanup(self, drbdctrl_vg):
         """
         Cleanup before init / join operations
 
@@ -1851,7 +1889,7 @@ class DrbdManage(object):
         self._ext_command(["drbdsetup", "down", DRBDCTRL_RES_NAME])
 
         # Delete any existing .drbdctrl LV
-        self._ext_command(["lvremove", "--force", DEFAULT_VG + "/"
+        self._ext_command(["lvremove", "--force", drbdctrl_vg + "/"
             + DRBDCTRL_RES_NAME])
 
         # Delete any existing configuration file
@@ -1861,7 +1899,7 @@ class DrbdManage(object):
             pass
 
 
-    def _init_join_rollback(self):
+    def _init_join_rollback(self, drbdctrl_vg):
         """
         Attempts cleanup after a failed init or join operation
         """
@@ -1871,7 +1909,7 @@ class DrbdManage(object):
         except AbortException:
             pass
         try:
-            self._ext_command(["lvremove", "--force", DEFAULT_VG + "/" +
+            self._ext_command(["lvremove", "--force", drbdctrl_vg + "/" +
                 DRBDCTRL_RES_NAME])
         except AbortException:
             pass
@@ -2161,6 +2199,28 @@ class DrbdManage(object):
         sys.stdout.write("empty drbdmanage control volume initialized.\n")
 
         return fn_rc
+
+
+    def load_server_conf(self):
+        in_file     = None
+        conf_loaded = None
+        try:
+            in_file = open(SERVER_CONFFILE, "r")
+            conffile = ConfFile(in_file)
+            conf_loaded = conffile.get_conf()
+        except IOError as ioerr:
+            sys.stderr.write("No server configuration file loaded:\n")
+            if ioerr.errno == errno.EACCES:
+                sys.stderr.write("Cannot open configuration file '%s', "
+                  "permission denied\n" % self.CONFFILE)
+            elif ioerr.errno != errno.ENOENT:
+                sys.stderr.write("Cannot open configuration file '%s', "
+                  "error returned by the OS is: %s\n"
+                  % (SERVER_CONFFILE, ioerr.strerror))
+        finally:
+            if in_file is not None:
+                in_file.close()
+        return conf_loaded
 
 
     COMMANDS = {

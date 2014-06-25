@@ -44,15 +44,17 @@ SNAPS_NAME_MAXLEN   = 32
 
 DRBDCTRL_DEFAULT_PORT = 6999
 
+KEY_DRBDCTRL_VG     = "drbdctrl-vg"
 DRBDCTRL_RES_NAME   = ".drbdctrl"
 DRBDCTRL_RES_FILE   = "drbdctrl.res"
 DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
 DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
 
+SERVER_CONFFILE     = "/etc/drbdmanaged.conf"
 
 # auxiliary property prefix
-AUX_PROP_PREFIX    = "aux:"
+AUX_PROP_PREFIX     = "aux:"
 
 # flags prefixes
 CSTATE_PREFIX       = "cstate:"
