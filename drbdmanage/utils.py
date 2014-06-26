@@ -802,24 +802,57 @@ class Selector(object):
         return False
 
 
-def dict_to_aux_props(prop_map):
-    """
-    Generates an auxiliary properties array from a dict
+def _aux_prop_name(key):
+    if str(key).startswith(consts.AUX_PROP_PREFIX):
+        return key[len(consts.AUX_PROP_PREFIX):]
+    else:
+        return None
 
-    The generated array is suitable for transfer through D-Bus
+
+def dict_to_aux_props(props):
     """
-    # TODO: test with python 2.6, reverse for <...> notation
-    #       may fail
-    return [ ( consts.AUX_PROP_PREFIX + key, str(val) )
-            for key, val in prop_map.items() ]
+    Turns a dictionary in to an auxiliary properties dictionary
+
+    Generates an auxiliary properties dictionary from an existing
+    dictionary by prefixing each key name with the auxiliary
+    property prefix
+    """
+    aux_props = {}
+    for (key, val) in props.iteritems():
+        aux_key = consts.AUX_PROP_PREFIX + str(key)
+        aux_props[aux_key] = str(val)
+    return aux_props
 
 
 def aux_props_to_dict(props):
     """
-    Extracts auxiliary properties from an array into a dict
+    Extracts auxiliary properties from a dictionary of properties
+
+    The auxiliary property prefix is removed from the key names
+    in the dictionary that is returned
     """
-    res = {}
-    for (key, val) in props:
-        if str(key).startswith(consts.AUX_PROP_PREFIX):
-            res[ key[len(consts.AUX_PROP_PREFIX):] ] = val
-    return res
+    aux_props = {}
+    for (key, val) in props.iteritems():
+        aux_key = _aux_prop_name(key)
+        if aux_key is not None:
+            aux_props[aux_key] = val
+    return aux_props
+
+
+def split_main_aux_props(props):
+    """
+    Splits a dictionary into two (main, aux) dictionaries
+
+    The first dictionary will contain drbdmanage-defined properties
+    (main properties). The second dictionary will contain user-added
+    properties (auxiliary properties).
+    """
+    main_props = {}
+    aux_props  = {}
+    for (key, val) in props.iteritems():
+        aux_key = _aux_prop_name(key)
+        if aux_key is not None:
+            aux_props[aux_key] = val
+        else:
+            main_props[key]    = val
+    return main_props, aux_props
