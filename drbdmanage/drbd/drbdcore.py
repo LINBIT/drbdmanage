@@ -162,7 +162,16 @@ class DrbdManager(object):
         assignments = node.iterate_assignments()
         for assg in assignments:
 
-            if assg.requires_action():
+            act_flag = assg.requires_action()
+            if act_flag and assg.is_empty():
+                if assg.requires_undeploy():
+                    # Assignment has no volumes deployed and is effectively
+                    # disabled; Nothing to do, except for setting the correct
+                    # state, so the assignment can be cleaned up
+                    assg.set_tstate(0)
+                    assg.set_cstate(0)
+                    state_changed = True
+            elif act_flag:
                 logging.debug("assigned resource %s cstate(%x)->tstate(%x)"
                   % (assg.get_resource().get_name(),
                   assg.get_cstate(), assg.get_tstate()))
@@ -180,7 +189,7 @@ class DrbdManager(object):
                 """
                 Undeploy an assignment/resource and all of its volumes
                 """
-                if (not failed_actions) and assg.requires_undeploy():
+                if assg.requires_undeploy():
                     pool_changed = True
                     fn_rc = self._undeploy_assignment(assg)
                     assg.set_rc(fn_rc)
@@ -240,6 +249,8 @@ class DrbdManager(object):
                             assg.set_rc(fn_rc)
                             if fn_rc != 0:
                                 failed_actions = True
+                            # skip other actions for undeployed volumes
+                            continue
 
                     """
                     Attach a volume to or detach a volume from local storage
@@ -264,28 +275,41 @@ class DrbdManager(object):
                 ============================================================
                 """
 
-                """
-                Deploy an assignment (finish deploying)
-                Volumes have already been deployed by the per-volume actions
-                at this point. Only if all volumes that should be deployed have
-                been deployed (current state vs. target state), then mark
-                the assignment as deployed, too.
-                """
-                if (not failed_actions) and assg.requires_deploy():
-                    pool_changed = True
-                    fn_rc = self._deploy_assignment(assg)
-                    assg.set_rc(fn_rc)
-                    if fn_rc != 0:
-                        failed_actions = True
+                # FIXME: this should probably be changed so that the other
+                #        actions (deploy/connect/etc.) do not operate on the
+                #        assignment any more if it has no active volumes;
+                #        for now, this just skips every other action and
+                #        sets the assignment's current state to 0 again to
+                #        make sure that it can be cleaned up as soon as its
+                #        target state changes to 0 (e.g., unassign/undeploy).
+                if assg.is_empty():
+                    if assg.get_cstate() != 0:
+                        assg.set_cstate(0)
+                        state_changed = True
+                else:
 
-                if (not failed_actions) and assg.requires_connect():
-                    fn_rc = self._connect(assg)
-                    assg.set_rc(fn_rc)
-                    if fn_rc != 0:
-                        failed_actions = True
+                    """
+                    Deploy an assignment (finish deploying)
+                    Volumes have already been deployed by the per-volume
+                    actions at this point. Only if all volumes that should be
+                    deployed have been deployed (current state vs.
+                    target state), then mark the assignment as deployed, too.
+                    """
+                    if (not failed_actions) and assg.requires_deploy():
+                        pool_changed = True
+                        fn_rc = self._deploy_assignment(assg)
+                        assg.set_rc(fn_rc)
+                        if fn_rc != 0:
+                            failed_actions = True
 
-                if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
-                    assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
+                    if (not failed_actions) and assg.requires_connect():
+                        fn_rc = self._connect(assg)
+                        assg.set_rc(fn_rc)
+                        if fn_rc != 0:
+                            failed_actions = True
+
+                    if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
+                        assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
         """
         Cleanup the server's data structures
@@ -333,17 +357,22 @@ class DrbdManager(object):
         """
         resource = assignment.get_resource()
 
-        logging.info("starting resource '%s'"
-          % resource.get_name())
-
-        # call drbdadm to bring up the resource
-        drbd_proc = self._drbdadm.adjust(resource.get_name())
-        if drbd_proc is not None:
-            self._resconf.write(drbd_proc.stdin, assignment, False)
-            drbd_proc.stdin.close()
-            fn_rc = drbd_proc.wait()
+        if assignment.is_empty():
+            logging.info("resource '%s' has no volumes, start skipped"
+                % resource.get_name())
+            fn_rc = 0
         else:
-            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+            logging.info("starting resource '%s'"
+              % resource.get_name())
+
+            # call drbdadm to bring up the resource
+            drbd_proc = self._drbdadm.adjust(resource.get_name())
+            if drbd_proc is not None:
+                self._resconf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
         return fn_rc
 
@@ -484,20 +513,49 @@ class DrbdManager(object):
         for peer_assg in resource.iterate_assignments():
             if (peer_assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
                 nodes.append(peer_assg.get_node())
+
+        # if there are any deployed volumes left in the configuration,
+        # remember to update the configuration file, otherwise remember to
+        # delete any existing configuration file
+        keep_conf = False
         for vstate in assignment.iterate_volume_states():
             if ((vstate.get_tstate() & DrbdVolumeState.FLAG_DEPLOY) != 0 and
               (vstate.get_cstate() & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                keep_conf = True
                 vol_states.append(vstate)
-        drbd_proc = self._drbdadm.adjust(resource.get_name())
-        if drbd_proc is not None:
-            self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-              nodes, vol_states)
-            drbd_proc.stdin.close()
-            fn_rc = drbd_proc.wait()
-            if fn_rc == 0:
-                vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        if keep_conf:
+            # Adjust the resource to only keep those volumes running that
+            # are currently deployed and not marked for becoming undeployed
+            #
+            # Update the configuration file
+            self._server.export_assignment_conf(assignment)
+            # Adjust the resource
+            drbd_proc = self._drbdadm.adjust(resource.get_name())
+            if drbd_proc is not None:
+                self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+                  nodes, vol_states)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
+                    vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         else:
-            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+            # There are no volumes left in the resource,
+            # stop the entire resource
+            #
+            # Stop the resource
+            drbd_proc = self._drbdadm.down(resource.get_name())
+            if drbd_proc is not None:
+                self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+                    nodes, vol_states)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
+                    vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            # Delete the configuration file, because it would not be valid
+            # without having any volumes
+            self._server.remove_assignment_conf(resource.get_name())
 
         if fn_rc == 0:
             fn_rc = -1
@@ -509,21 +567,12 @@ class DrbdManager(object):
                 fn_rc = 0
                 vol_state.set_cstate(0)
                 vol_state.set_tstate(0)
-
-        # if there are any deployed volumes left in the configuration, write
-        # a new configuration file, otherwise delete the configuration file
-        keep_conf = False
-        for remaining in assignment.iterate_volume_states():
-            if ((remaining.get_tstate() & DrbdVolumeState.FLAG_DEPLOY) != 0
-              and (remaining.get_cstate() & DrbdVolumeState.FLAG_DEPLOY) != 0):
-                keep_conf = True
-                break
-        if keep_conf:
-            # update configuration file
-            self._server.export_assignment_conf(assignment)
-        else:
-            # delete configuration file
-            self._server.remove_assignment_conf(assignment)
+                if not keep_conf:
+                    # there are no volumes left in the resource, set the
+                    # assignment's current state to 0 to enable
+                    # fast cleanup of the assignment in the case that the
+                    # target state changes to undeploy
+                    assignment.set_cstate(0)
 
         return fn_rc
 
@@ -539,25 +588,41 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         tstate   = assignment.get_tstate()
         primary  = self.primary_deployment(assignment)
+        empty    = True
         for vol_state in assignment.iterate_volume_states():
-            if (vol_state.get_tstate() & DrbdVolumeState.FLAG_DEPLOY != 0
-              and vol_state.get_cstate() & DrbdVolumeState.FLAG_DEPLOY == 0):
+            vol_tstate = vol_state.get_tstate()
+            vol_cstate = vol_state.get_cstate()
+
+            # If the assignment does not have any more active volumes,
+            # (empty == True), the assignment's current state will be
+            # set to 0, otherwise (empty == False), the assignment's
+            # current state may change depending on whether all the
+            # volumes have been deployed or not
+            if ((vol_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0 or
+                (vol_cstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                empty = False
+
+            if ((vol_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0
+              and (vol_cstate & DrbdVolumeState.FLAG_DEPLOY) == 0):
                 deploy_fail = True
-        if primary:
-            drbd_proc = self._drbdadm.primary(resource.get_name(), True)
-            if drbd_proc is not None:
-                self._resconf.write(drbd_proc.stdin, assignment, False)
-                drbd_proc.stdin.close()
-                fn_rc = drbd_proc.wait()
+        if not empty:
+            if primary:
+                drbd_proc = self._drbdadm.primary(resource.get_name(), True)
+                if drbd_proc is not None:
+                    self._resconf.write(drbd_proc.stdin, assignment, False)
+                    drbd_proc.stdin.close()
+                    fn_rc = drbd_proc.wait()
+                else:
+                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+                assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
+            elif tstate & Assignment.FLAG_DISCARD != 0:
+                fn_rc = self._reconnect(assignment)
+            if deploy_fail:
+                fn_rc = -1
             else:
-                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-            assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
-        elif tstate & Assignment.FLAG_DISCARD != 0:
-            fn_rc = self._reconnect(assignment)
-        if deploy_fail:
-            fn_rc = -1
+                assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
         else:
-            assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
+            assignment.set_cstate(0)
         return fn_rc
 
 
@@ -576,16 +641,8 @@ class DrbdManager(object):
         """
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
-        # call drbdadm to stop the DRBD on top of the blockdevice
-        drbd_proc = self._drbdadm.secondary(resource.get_name())
-        if drbd_proc is not None:
-            self._resconf.write(drbd_proc.stdin, assignment, True)
-            drbd_proc.stdin.close()
-            fn_rc = drbd_proc.wait()
-        else:
-            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
-        if fn_rc == 0:
+        if not assignment.is_empty():
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
             if drbd_proc is not None:
@@ -593,7 +650,7 @@ class DrbdManager(object):
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
             else:
-                DrbdManager.DRBDADM_EXEC_FAILED
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
             if fn_rc == 0:
                 # undeploy all volumes
@@ -614,15 +671,18 @@ class DrbdManager(object):
                     for vol_state in assignment.iterate_volume_states():
                         vol_state.set_cstate(0)
                         vol_state.set_tstate(0)
+        else:
+            # Assignment is empty, nothing to do, no undeploy errors
+            ud_errors = False
 
-                if not ud_errors:
-                    # Remove the external configuration file
-                    self._server.remove_assignment_conf(resource.get_name())
-                    assignment.set_cstate(0)
-                    assignment.set_tstate(0)
+        if not ud_errors:
+            # Remove the external configuration file
+            self._server.remove_assignment_conf(resource.get_name())
+            assignment.set_cstate(0)
+            assignment.set_tstate(0)
 
-                fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors
-                    else DM_SUCCESS)
+        fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors
+            else DM_SUCCESS)
 
         return fn_rc
 
@@ -1790,6 +1850,21 @@ class Assignment(GenericDrbdObject):
         return (self._cstate & self.FLAG_CONNECT) != 0
 
 
+    def is_empty(self):
+        """
+        Returns whether the assignment has any active volumes or not
+
+        @return: True if the assignment has active volumes; False otherwise
+        """
+        empty = True
+        if len(self._vol_states) > 0:
+            for vol_state in self._vol_states.itervalues():
+                if ((vol_state.get_tstate() & self.FLAG_DEPLOY) != 0 or
+                  (vol_state.get_cstate() & self.FLAG_DEPLOY) != 0):
+                    empty = False
+        return empty
+
+
     def requires_action(self):
         """
         Checks whether an assignment requires any action to be taken
@@ -1804,7 +1879,7 @@ class Assignment(GenericDrbdObject):
         for vol_state in self._vol_states.itervalues():
             if vol_state.requires_action():
                 req_act = True
-        return ((self._tstate & self.ACT_IGN_MASK) != self._cstate) or req_act
+        return (self._tstate != self._cstate) or req_act
 
 
     def requires_deploy(self):
