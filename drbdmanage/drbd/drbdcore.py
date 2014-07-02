@@ -1052,9 +1052,8 @@ class DrbdResource(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
                 bool_to_string(self._state & self.FLAG_REMOVE))
-        for key in self.props.iterkeys():
+        for (key, val) in self.props.iteritems():
             if selected(key):
-                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
@@ -1161,9 +1160,8 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
                 bool_to_string(self._state & self.FLAG_REMOVE))
-        for key in self.props.iterkeys():
+        for (key, val) in self.props.iteritems():
             if selected(key):
-                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
@@ -1377,9 +1375,8 @@ class DrbdNode(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL] = (
                 bool_to_string(self._state & self.FLAG_UPD_POOL))
-        for key in self.props.iterkeys():
+        for (key, val) in self.props.iteritems():
             if selected(key):
-                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
@@ -1575,9 +1572,8 @@ class DrbdVolumeState(GenericDrbdObject):
         if selected(consts.CSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.CSTATE_PREFIX + consts.FLAG_ATTACH] = (
                 bool_to_string(self._cstate & self.FLAG_ATTACH))
-        for key in self.props.iterkeys():
+        for (key, val) in self.props.iteritems():
             if selected(key):
-                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
@@ -2033,9 +2029,8 @@ class Assignment(GenericDrbdObject):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
                 bool_to_string(self._cstate & self.FLAG_DISKLESS))
 
-        for key in self.props.iterkeys():
+        for (key, val) in self.props.iteritems():
             if selected(key):
-                val = self.props.get(key)
                 if val is not None:
                     properties[key] = str(val)
         return properties
