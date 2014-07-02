@@ -809,6 +809,12 @@ def _aux_prop_name(key):
         return None
 
 
+def _is_aux_prop_name(key):
+    if str(key).startswith(consts.AUX_PROP_PREFIX):
+        return True
+    return False
+
+
 def dict_to_aux_props(props):
     """
     Turns a dictionary in to an auxiliary properties dictionary
@@ -856,3 +862,16 @@ def split_main_aux_props(props):
         else:
             main_props[key]    = val
     return main_props, aux_props
+
+
+def merge_aux_props(obj, props):
+    """
+    Merges all auxiliary properties contained in props into obj's properties
+
+    All auxiliary properties contained in props are extracted and merged into
+    the target object's (obj) properties (props). Existing auxiliary properties
+    in the target object are updated with the new values specified in props.
+    """
+    for (key, val) in props.iteritems():
+        if _is_aux_prop_name(key):
+            obj.props[key] = val

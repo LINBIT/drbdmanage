@@ -648,7 +648,9 @@ class DrbdNodePersistence(GenericPersistence):
             node.set_state(state)
             node.set_poolsize(poolsize)
             node.set_poolfree(poolfree)
-            node.props = properties["props"]
+            props = properties.get("props")
+            if props is not None:
+                node.props = props
         except Exception as exc:
             # FIXME
             raise exc
@@ -691,7 +693,9 @@ class DrbdResourcePersistence(GenericPersistence):
             for vol_properties in volume_list.itervalues():
                 volume = DrbdVolumePersistence.load(vol_properties)
                 resource.add_volume(volume)
-            resource.props = properties["props"]
+            props = properties.get("props")
+            if props is not None:
+                resource.props = props
         except Exception as exc:
             # FIXME
             raise exc
@@ -731,7 +735,9 @@ class DrbdVolumePersistence(GenericPersistence):
               minor
               )
             volume.set_state(long(properties["_state"]))
-            volume.props = properties["props"]
+            props = properties.get("props")
+            if props is not None:
+                volume.props = props
         except Exception as exc:
             # FIXME
             raise exc
@@ -744,7 +750,7 @@ class AssignmentPersistence(GenericPersistence):
     Serializes/deserializes Assignment objects
     """
 
-    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc" ]
+    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc", "props" ]
 
 
     def __init__(self, assignment):
@@ -788,6 +794,9 @@ class AssignmentPersistence(GenericPersistence):
               long(properties["_tstate"])
               )
             assignment.set_rc(properties["_rc"])
+            props = properties.get("props")
+            if props is not None:
+                assignment.props = props
             node.add_assignment(assignment)
             resource.add_assignment(assignment)
             vol_state_list = properties.get("volume_states")
@@ -836,7 +845,9 @@ class DrbdVolumeStatePersistence(GenericPersistence):
                 vol_state.set_blockdevice(blockdevice, bd_path)
             vol_state.set_cstate(properties["_cstate"])
             vol_state.set_tstate(properties["_tstate"])
-            vol_state.props = properties["props"]
+            props = properties.get("props")
+            if props is not None:
+                vol_state.props = props
         except Exception as exc:
             # FIXME
             raise exc

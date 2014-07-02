@@ -38,8 +38,8 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS, FLAG_CONNECT)
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
-    get_free_number,
-    plugin_import, add_rc_entry, serial_filter, props_filter, string_to_bool)
+    get_free_number, plugin_import, add_rc_entry, serial_filter, props_filter,
+    string_to_bool, split_main_aux_props, merge_aux_props)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
@@ -605,6 +605,7 @@ class DrbdManageServer(object):
                         if node_id != -1:
                             node = DrbdNode(node_name, addr, addrfam, node_id)
                             node.props[SERIAL] = self.new_serial()
+                            merge_aux_props(node, props)
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
                             # create or update the drbdctrl.res file
@@ -718,6 +719,7 @@ class DrbdManageServer(object):
                             resource = DrbdResource(res_name, port)
                             resource.set_secret(secret)
                             resource.props[SERIAL] = self.new_serial()
+                            merge_aux_props(resource, props)
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
                             add_rc_entry(fn_rc, DM_SUCCESS,
@@ -772,6 +774,7 @@ class DrbdManageServer(object):
                         else:
                             fn_rc = DM_EINVAL
                         # TODO: port change - not implemented
+                        merge_aux_props(resource, props)
                         self._resources[resource.get_name()] = resource
                         self.save_conf_data(persist)
                         fn_rc = DM_SUCCESS
@@ -883,6 +886,7 @@ class DrbdManageServer(object):
                         chg_serial = self.new_serial()
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
                         volume.props[SERIAL]   = chg_serial
+                        merge_aux_props(volume, props)
                         resource.props[SERIAL] = chg_serial
                         resource.add_volume(volume)
                         for assg in resource.iterate_assignments():
@@ -1039,6 +1043,9 @@ class DrbdManageServer(object):
                                 self._assign(node, resource, cstate, tstate)
                             )
                             if assign_rc == DM_SUCCESS:
+                                assignment = node.get_assignment(
+                                    resource.get_name())
+                                merge_aux_props(assignment, props)
                                 self._drbd_mgr.perform_changes()
                                 self.save_conf_data(persist)
                             else:
