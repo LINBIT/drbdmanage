@@ -1182,10 +1182,12 @@ class DrbdManage(object):
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
                     try:
-                        poolsize = SizeCalc.convert(int(prop_str),
+                        poolsize_kiB = int(prop_str)
+                        poolsize = SizeCalc.convert(poolsize_kiB,
                             SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
                         if poolsize >= 0:
-                            if poolsize < 1:
+                            if poolsize_kiB > 0 and poolsize < 1:
+                                # less than a megabyte but more than zero kiB
                                 poolsize_text = "< 1"
                             else:
                                 poolsize_text = str(poolsize)
@@ -1196,10 +1198,12 @@ class DrbdManage(object):
 
                     prop_str = view.get_property(NODE_POOLFREE)
                     try:
-                        poolfree = SizeCalc.convert(int(prop_str),
+                        poolfree_kiB = int(prop_str)
+                        poolfree = SizeCalc.convert(poolfree_kiB,
                             SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB)
                         if poolfree >= 0:
-                            if poolfree < 1:
+                            if poolfree_kiB > 0 and poolfree < 1:
+                                # less than a megabyte but more than zero kiB
                                 poolfree_text = "< 1"
                             else:
                                 poolfree_text = str(poolfree)

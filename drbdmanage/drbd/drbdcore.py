@@ -1721,6 +1721,78 @@ class Assignment(GenericDrbdObject):
         return self._node_id
 
 
+    def get_size_kiB(self):
+        """
+        Calculates the storage size occupied by this assignment
+        """
+        size_sum = 0
+        if ((self._cstate & FLAG_DEPLOY) != 0 or
+            (self._tstate & FLAG_DEPLOY) != 0):
+                for vol_state in self._vol_states.itervalues():
+                    if (((vol_state.get_cstate() &
+                        DrbdVolumeState.FLAG_DEPLOY) != 0) or
+                        (vol_state.get_tstate() &
+                        DrbdVolumeState.FLAG_DEPLOY != 0)):
+                            volume = vol_state.get_volume()
+                            size_sum += volume.get_size_kiB()
+        return size_sum
+
+
+    def get_size_kiB_correction(self):
+        """
+        Calculates the storage size for not-yet-deployed assignments
+        """
+        size_sum = 0
+        # TODO: Correct calculation for volumes that are transitioning from
+        #       diskless to backing storage
+
+        # Calculate corretions only for assignments that should be deployed
+        if (self._tstate & Assignment.FLAG_DEPLOY) != 0:
+            # Calculate size correction, if the assignment is not deployed, but
+            # should be deployed and sholud not be diskless:
+            if (((self._cstate & Assignment.FLAG_DEPLOY) == 0) and
+                ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
+                    size_sum += self._get_undeployed_corr()
+            # Calculate size correction, if the assignment is deployed, should
+            # remain deployed, and is diskless, but should transition from
+            # diskless to storage
+            elif (((self._cstate & Assignment.FLAG_DEPLOY) != 0) and
+                ((self._cstate & Assignment.FLAG_DISKLESS) != 0) and
+                ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
+                    size_sum += self._get_disless_corr()
+        return size_sum
+
+
+    def _get_undeployed_corr(self):
+        """
+        Volume sizes for not-yet-deployed volumes
+        """
+        size_sum = 0
+        for vol_state in self._vol_states.itervalues():
+            if (((vol_state.get_cstate() &
+                DrbdVolumeState.FLAG_DEPLOY) == 0) and
+                (vol_state.get_tstate() &
+                DrbdVolumeState.FLAG_DEPLOY != 0)):
+                    volume = vol_state.get_volume()
+                    size_sum += volume.get_size_kiB()
+        return size_sum
+
+
+    def _get_diskless_corr(self):
+        """
+        Volumes sizes for volumes that transition from diskless to storage
+        """
+        size_sum = 0
+        for vol_state in self._vol_states.itervalues():
+            if (((vol_state.get_cstate() &
+                DrbdVolumeState.FLAG_DEPLOY) != 0) and
+                ((vol_state.get_tstate() &
+                DrbdVolumeState.FLAG_DEPLOY) != 0)):
+                    volume = vol_state.get_volume()
+                    size_sum += volume.get_size_kiB()
+        return size_sum
+
+
     def get_cstate(self):
         return self._cstate
 

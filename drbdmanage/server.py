@@ -1684,9 +1684,20 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                stor_rc = self._bd_mgr.update_pool(inst_node)
-                if stor_rc == 0:
-                    fn_rc = DM_SUCCESS
+                (stor_rc, poolsize, poolfree) = (
+                    self._bd_mgr.update_pool(inst_node))
+                if stor_rc == DM_SUCCESS:
+                    size_sum = 0
+                    for assignment in inst_node.iterate_assignments():
+                        size_sum += assignment.get_size_kiB_correction()
+                    poolfree -= size_sum
+                    # If something is seriously wrong with the storage sizes,
+                    # (e.g. more storage required for deploying all resources
+                    #  than there is available), the pool is considered full
+                    if poolfree < 0:
+                        poolfree = 0
+                    inst_node.set_pool(poolsize, poolfree)
+                fn_rc = DM_SUCCESS
             else:
                 fn_rc = DM_ENOENT
         except Exception as exc:

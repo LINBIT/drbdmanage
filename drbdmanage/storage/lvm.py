@@ -210,7 +210,7 @@ class LVM(object):
         @type    node: DrbdNode object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        fn_rc    = 1
+        fn_rc    = DM_ESTORAGE
         poolsize = -1
         poolfree = -1
 
@@ -242,8 +242,7 @@ class LVM(object):
                     except ValueError:
                         poolsize = -1
                         poolfree = -1
-                    node.set_pool(poolsize, poolfree)
-                    fn_rc = 0
+                    fn_rc = DM_SUCCESS
         finally:
             if lvm_proc is not None:
                 try:
@@ -251,7 +250,7 @@ class LVM(object):
                 except Exception:
                     pass
                 lvm_proc.wait()
-        return fn_rc
+        return (fn_rc, poolsize, poolfree)
 
 
     def _create_lv(self, name, size):
