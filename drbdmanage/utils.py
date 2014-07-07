@@ -803,6 +803,13 @@ class Selector(object):
 
 
 def _aux_prop_name(key):
+    """
+    Returns the key of auxiliary properties without prefix, otherwise None
+
+    If 'key' starts with the prefix for auxiliary properties, the name without
+    the prefix is returned;
+    otherwise, None is returned
+    """
     if str(key).startswith(consts.AUX_PROP_PREFIX):
         return key[len(consts.AUX_PROP_PREFIX):]
     else:
@@ -810,6 +817,12 @@ def _aux_prop_name(key):
 
 
 def _is_aux_prop_name(key):
+    """
+    Returns True if the key names an auxiliary property, otherwise False
+
+    If 'key' starts with the prefix for auxiliary properties, True is returned,
+    otherwise, False is returned.
+    """
     if str(key).startswith(consts.AUX_PROP_PREFIX):
         return True
     return False

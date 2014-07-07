@@ -28,7 +28,7 @@ import drbdmanage.storage.storagecore
 
 from drbdmanage.consts import DEFAULT_VG
 from drbdmanage.exceptions import PersistenceException
-from drbdmanage.exceptions import DM_ENOENT, DM_SUCCESS
+from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import build_path
 from drbdmanage.conf.conffile import ConfFile
@@ -148,14 +148,16 @@ class LVM(object):
         @type    blockdevice: BlockDevice object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        # FIXME: this function should also return whether lvremove succeeded
+        fn_rc = DM_ESTORAGE
         try:
-            self._remove_lv(blockdevice.get_name())
-            del self._lvs[blockdevice.get_name()]
+            stor_rc = self._remove_lv(blockdevice.get_name())
+            if stor_rc == 0:
+                del self._lvs[blockdevice.get_name()]
+                fn_rc = DM_SUCCESS
         except KeyError:
             return DM_ENOENT
         self.save_state()
-        return DM_SUCCESS
+        return fn_rc
 
 
     def get_blockdevice(self, name, vol_id):

@@ -26,7 +26,7 @@ import drbdmanage.storage.lvm
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.exceptions import (InvalidMajorNrException,
     InvalidMinorNrException)
-from drbdmanage.exceptions import DM_ENOENT
+from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE
 
 
 
@@ -73,20 +73,38 @@ class BlockDeviceManager(object):
 
 
     def create_blockdevice(self, name, vol_id, size):
-        return self._plugin.create_blockdevice(name, vol_id, size)
+        blockdev = self._plugin.create_blockdevice(name, vol_id, size)
+        if blockdev is not None:
+            status = "successful"
+        else:
+            status = "failed"
+        logging.debug("BlockDeviceManager: create '%s': volume #%u, %u kiB, "
+            "%s"
+            % (name, vol_id, size, status))
+        return blockdev
 
 
     def remove_blockdevice(self, name, vol_id):
+        fn_rc = DM_ESTORAGE
         blockdev = self._plugin.get_blockdevice(name, vol_id)
         if blockdev is not None:
-            return self._plugin.remove_blockdevice(blockdev)
-        return DM_ENOENT
+            fn_rc = self._plugin.remove_blockdevice(blockdev)
+            logging.debug("BlockDeviceManager: remove '%s': blockdev=%s, rc=%d"
+                % (name, blockdev, fn_rc))
+        else:
+            logging.debug("BlockDeviceManager: remove '%s': has no "
+                "storage block device" % (name))
+            fn_rc = DM_ENOENT
+        return fn_rc
 
 
     def up_blockdevice(self, name, vol_id):
         blockdev = self._plugin.get_blockdevice(name, vol_id)
         if blockdev is not None:
             return self._plugin.up_blockdevice(blockdev)
+        else:
+            logging.debug("BlockDeviceManager: up '%s': has no "
+                "storage block device" % (name))
         return DM_ENOENT
 
 
@@ -94,6 +112,9 @@ class BlockDeviceManager(object):
         blockdev = self._plugin.get_blockdevice(name, vol_id)
         if blockdev is not None:
             return self._plugin.down_blockdevice(blockdev)
+        else:
+            logging.debug("BlockDeviceManager: down '%s': has no "
+                "storage block device" % (name))
         return DM_ENOENT
 
 
