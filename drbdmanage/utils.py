@@ -208,6 +208,7 @@ def add_rc_entry(fn_rc, err_code, err_msg, *args):
     rc_entry = [ err_code, err_msg, args ]
     fn_rc.append(rc_entry)
 
+
 def serial_filter(serial, objects):
     """
     Generator for iterating over objects with obj_serial > serial

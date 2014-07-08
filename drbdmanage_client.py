@@ -27,6 +27,7 @@ local drbdmanage server through D-Bus.
 
 import sys
 import os
+import errno
 import dbus
 import subprocess
 import drbdmanage.drbd.drbdcore
@@ -2216,7 +2217,7 @@ class DrbdManage(object):
             sys.stderr.write("No server configuration file loaded:\n")
             if ioerr.errno == errno.EACCES:
                 sys.stderr.write("Cannot open configuration file '%s', "
-                  "permission denied\n" % self.CONFFILE)
+                  "permission denied\n" % SERVER_CONFFILE)
             elif ioerr.errno != errno.ENOENT:
                 sys.stderr.write("Cannot open configuration file '%s', "
                   "error returned by the OS is: %s\n"

@@ -1698,11 +1698,11 @@ class Assignment(GenericDrbdObject):
 
 
     def iterate_snaps_assgs(self):
-        return self._snaps_assg.itervalues()
+        return self._snaps_assgs.itervalues()
 
 
     def get_snaps_assg(self, name):
-        return self._snaps_assg.get(name)
+        return self._snaps_assgs.get(name)
 
 
     def remove_snaps_assg(self, name):
@@ -1726,8 +1726,8 @@ class Assignment(GenericDrbdObject):
         Calculates the storage size occupied by this assignment
         """
         size_sum = 0
-        if ((self._cstate & FLAG_DEPLOY) != 0 or
-            (self._tstate & FLAG_DEPLOY) != 0):
+        if ((self._cstate & Assignment.FLAG_DEPLOY) != 0 or
+            (self._tstate & Assignment.FLAG_DEPLOY) != 0):
                 for vol_state in self._vol_states.itervalues():
                     if (((vol_state.get_cstate() &
                         DrbdVolumeState.FLAG_DEPLOY) != 0) or
@@ -1759,7 +1759,7 @@ class Assignment(GenericDrbdObject):
             elif (((self._cstate & Assignment.FLAG_DEPLOY) != 0) and
                 ((self._cstate & Assignment.FLAG_DISKLESS) != 0) and
                 ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
-                    size_sum += self._get_disless_corr()
+                    size_sum += self._get_diskless_corr()
         return size_sum
 
 
