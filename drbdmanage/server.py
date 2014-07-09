@@ -151,6 +151,9 @@ class DrbdManageServer(object):
     _cluster_conf = {}
     _cluster_conf[SERIAL] = 1
 
+    # Change generation flag; controls updates of the serial number
+    _change_open  = False
+
     # DEBUGGING FLAGS
     dbg_events = False
 
@@ -402,30 +405,63 @@ class DrbdManageServer(object):
         return self._cluster_conf.get(key)
 
 
-    def crt_serial(self):
+    def peek_serial(self):
         """
-        Returns the current serial number
-        """
-        serial = self._cluster_conf.get(SERIAL)
-        if serial is None:
-            serial = 1
-            self._cluster_conf[SERIAL] = serial
-        return serial
+        Returns the current serial number without changing it
 
-
-    def new_serial(self):
+        Returns the current serial number, whether or not it is still in use
+        for changes.
         """
-        Changes (increases) and returns the current serial number
-
-        The serial number should be increased upon configuration change
-        """
-        serial = self._cluster_conf.get(SERIAL)
-        if serial is None:
-            serial = 1
+        serial_str = self._cluster_conf.get(SERIAL)
+        if serial_str is None:
+            serial = 0
         else:
-            serial += 1
-        self._cluster_conf[SERIAL] = serial
+            try:
+                serial = int(serial_str)
+            except TypeError:
+                # FIXME: a better solution would be to find the greatest
+                #        serial number set on any object in the
+                #        configuration, and then to increase that number
+                #        and use it as the new serial number of the cluster
+                #        configuration.
+                #        Another possibility would be to reset the serial
+                #        number on
+                #        all objects to 0 and then set a serial of 1 here.
+                #        The current workaround merely keeps the system
+                #        running, but the serial numbers are totally messed
+                #        up if this happens.
+                logging.error("Unparseable serial number in the cluster "
+                    "configuration, setting serial=0 to recover")
+                serial = 0
         return serial
+
+
+    def get_serial(self):
+        """
+        Returns a serial number for configuration changes
+
+        Upon the first call of this function in a sequence of changes, a
+        new serial number is generated and returned. Upon subsequent calls,
+        the same serial number is returned until the change generation is
+        closed by calling close_serial().
+        """
+        serial = self.peek_serial()
+        if self._change_open == False:
+            self._change_open = True
+            serial += 1
+            self._cluster_conf[SERIAL] = str(serial)
+        return serial
+
+
+    def close_serial(self):
+        """
+        Closes the current generation of configuration changes
+
+        After a generation of configuration changes has been closed,
+        the next call of get_serial() will open a new change generation and
+        will return a new serial number.
+        """
+        self._change_open = False
 
 
     def get_drbd_mgr(self):
@@ -604,7 +640,7 @@ class DrbdManageServer(object):
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
                             node = DrbdNode(node_name, addr, addrfam, node_id)
-                            node.props[SERIAL] = self.new_serial()
+                            node.props[SERIAL] = self.get_serial()
                             merge_aux_props(node, props)
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
@@ -718,7 +754,7 @@ class DrbdManageServer(object):
                         else:
                             resource = DrbdResource(res_name, port)
                             resource.set_secret(secret)
-                            resource.props[SERIAL] = self.new_serial()
+                            resource.props[SERIAL] = self.get_serial()
                             merge_aux_props(resource, props)
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
@@ -883,7 +919,7 @@ class DrbdManageServer(object):
                     if vol_id == -1:
                         add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
-                        chg_serial = self.new_serial()
+                        chg_serial = self.get_serial()
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
                         volume.props[SERIAL]   = chg_serial
                         merge_aux_props(volume, props)
@@ -941,7 +977,7 @@ class DrbdManageServer(object):
                         volume.remove()
                         self._drbd_mgr.perform_changes()
                     else:
-                        chg_serial             = self.new_serial()
+                        chg_serial             = self.get_serial()
                         resource.props[SERIAL] = chg_serial
                         resource.remove_volume(vol_id)
                         for assg in resource.iterate_assignments():
@@ -1123,7 +1159,7 @@ class DrbdManageServer(object):
         """
         fn_rc = DM_DEBUG
         try:
-            serial = self.crt_serial()
+            serial = self.get_serial()
             node_id = self.get_free_node_id(resource)
             if node_id == -1:
                 # no free node ids
@@ -1158,7 +1194,7 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         try:
-            serial   = self.crt_serial()
+            serial   = self.get_serial()
             node     = assignment.get_node()
             resource = assignment.get_resource()
             assignment.props[SERIAL] = serial
@@ -2208,6 +2244,7 @@ class DrbdManageServer(object):
         try:
             if persist is not None:
                 persist.close()
+            self.close_serial()
         except Exception:
             pass
 
