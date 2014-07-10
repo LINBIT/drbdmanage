@@ -324,34 +324,50 @@ class DrbdManage(object):
                     deploy = int(deploy_str)
                 except ValueError:
                     pass
+            (size_digits, unit_suffix) = self.split_number_unit(size_str)
             try:
-                size = long(size_str)
+                size = long(size_digits)
             except Exception:
                 sys.stderr.write("Error: <size> must be a number\n")
                 raise SyntaxException
-            if unit_str is not None:
-                if unit_str  == "kiB":
-                    unit = SizeCalc.UNIT_kiB
-                elif unit_str  == "MiB":
-                    unit = SizeCalc.UNIT_MiB
-                elif unit_str == "GiB":
-                    unit = SizeCalc.UNIT_GiB
-                elif unit_str == "TiB":
-                    unit = SizeCalc.UNIT_TiB
-                elif unit_str == "PiB":
-                    unit = SizeCalc.UNIT_PiB
-                elif unit_str == "kB":
-                    unit = SizeCalc.UNIT_kB
-                elif unit_str == "MB":
-                    unit = SizeCalc.UNIT_MB
-                elif unit_str == "GB":
-                    unit = SizeCalc.UNIT_GB
-                elif unit_str == "TB":
-                    unit = SizeCalc.UNIT_TB
-                elif unit_str == "PB":
-                    unit = SizeCalc.UNIT_PB
-                else:
+
+            if unit_suffix is not None:
+                try:
+                    unit_suffix_sel = self.UNITS_MAP[unit_suffix.lower()]
+                except KeyError:
                     raise SyntaxException
+            if unit_str is not None:
+                try:
+                    unit_str_sel = self.UNITS_MAP[unit_str.lower()]
+                except KeyError:
+                    raise SyntaxException
+
+            if unit_str is None:
+                if unit_suffix is None:
+                    # no unit selected, default to GiB
+                    unit = SizeCalc.UNIT_GiB
+                else:
+                    # no unit parameter, but unit suffix present
+                    # use unit suffix
+                    unit = unit_suffix_sel
+            else:
+                if unit_suffix is None:
+                    # unit parameter set, but no unit suffix present
+                    # use unit parameter
+                    unit = unit_str_sel
+                else:
+                    # unit parameter set AND unit suffix present
+                    if unit_str_sel != unit_suffix_sel:
+                        # unit parameter and unit suffix disagree about the
+                        # selected unit, abort
+                        sys.stderr.write("Error: unit parameter and size "
+                            "suffix mismatch\n")
+                        raise SyntaxException
+                    else:
+                        # unit parameter and unit suffix agree about the
+                        # selected unit
+                        unit = unit_str_sel
+
             if unit != SizeCalc.UNIT_kiB:
                 size = SizeCalc.convert_round_up(size, unit,
                   SizeCalc.UNIT_kiB)
@@ -2118,6 +2134,21 @@ class DrbdManage(object):
             return ""
 
 
+    def split_number_unit(self, input):
+        split_idx = 0
+        for in_char in input:
+            if not (in_char >= '0'and in_char <= '9'):
+                break
+            split_idx += 1
+        number = input[:split_idx]
+        unit   = input[split_idx:]
+        if len(number) == 0:
+            number = None
+        if len(unit) == 0:
+            unit = None
+        return (number, unit)
+
+
     def _property_text(self, text):
         if text is None:
             return "N/A"
@@ -2226,6 +2257,28 @@ class DrbdManage(object):
             if in_file is not None:
                 in_file.close()
         return conf_loaded
+
+    """
+    Unit names are lower-case; functions using the lookup table should
+    convert the unit name to lower-case to look it up in this table
+    """
+    UNITS_MAP = {
+        "k"   : SizeCalc.UNIT_kiB,
+        "m"   : SizeCalc.UNIT_MiB,
+        "g"   : SizeCalc.UNIT_GiB,
+        "t"   : SizeCalc.UNIT_TiB,
+        "p"   : SizeCalc.UNIT_PiB,
+        "kib" : SizeCalc.UNIT_kiB,
+        "mib" : SizeCalc.UNIT_MiB,
+        "gib" : SizeCalc.UNIT_GiB,
+        "tib" : SizeCalc.UNIT_TiB,
+        "pib" : SizeCalc.UNIT_PiB,
+        "kb"  : SizeCalc.UNIT_kB,
+        "mb"  : SizeCalc.UNIT_MB,
+        "gb"  : SizeCalc.UNIT_GB,
+        "tb"  : SizeCalc.UNIT_TB,
+        "pb"  : SizeCalc.UNIT_PB,
+    }
 
 
     COMMANDS = {
