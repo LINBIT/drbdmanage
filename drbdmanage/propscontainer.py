@@ -7,19 +7,24 @@ class PropsContainer(object):
     Container for managing property dictionary
     """
 
-    _props  = None
-    _server = None
-
-    _saved_serial = None
+    _props      = None
+    _get_serial = None
 
 
-    def __init__(self, server, init_serial):
+    def __init__(self, get_serial_fn, init_serial, ins_props):
         """
         Initializes a new properties container
         """
-        self._server = server
-        self._props  = {}
+        self._get_serial = get_serial_fn
+        self._props      = {}
+
+        # Set the initial serial number
         self._props[consts.SERIAL] = init_serial
+
+        # Load initial properties, if present
+        if ins_props is not None:
+            for (key, val) in ins_props.iteritems():
+                self._props[str(key)] = str(val)
 
 
     def get_prop(self, key):
@@ -141,4 +146,4 @@ class PropsContainer(object):
         number, therefor an explicit call of this function for marking
         changes of the container's data is unnecessary.
         """
-        self._props[consts.SERIAL] = self._server.get_serial()
+        self._props[consts.SERIAL] = str(self._get_serial())

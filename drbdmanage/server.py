@@ -97,17 +97,17 @@ class DrbdManageServer(object):
 
     # defaults
     CONF_DEFAULTS = {
-      KEY_STOR_NAME      : "drbdmanage.storage.lvm.LVM",
-      KEY_DEPLOYER_NAME  : "drbdmanage.deployers.BalancedDeployer",
-      KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
-      KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),
-      KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
-      KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
-      KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
-      KEY_DRBDADM_PATH   : "/usr/sbin",
-      KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
-      KEY_DRBD_CONFPATH  : "/var/drbd.d",
-      KEY_DRBDCTRL_VG    : DEFAULT_VG
+        KEY_STOR_NAME      : "drbdmanage.storage.lvm.LVM",
+        KEY_DEPLOYER_NAME  : "drbdmanage.deployers.BalancedDeployer",
+        KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
+        KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),
+        KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
+        KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
+        KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
+        KEY_DRBDADM_PATH   : "/usr/sbin",
+        KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
+        KEY_DRBD_CONFPATH  : "/var/drbd.d",
+        KEY_DRBDCTRL_VG    : DEFAULT_VG
     }
 
     # BlockDevice manager
@@ -148,7 +148,7 @@ class DrbdManageServer(object):
     }
 
     # Global drbdmanage cluster configuration
-    _cluster_conf = {}
+    _cluster_conf         = {}
     _cluster_conf[SERIAL] = 1
 
     # Change generation flag; controls updates of the serial number
@@ -417,7 +417,7 @@ class DrbdManageServer(object):
             serial = 0
         else:
             try:
-                serial = int(serial_str)
+                serial = long(serial_str)
             except TypeError:
                 # FIXME: a better solution would be to find the greatest
                 #        serial number set on any object in the
@@ -579,6 +579,36 @@ class DrbdManageServer(object):
             peer_node.set_state(peer_node.get_state() | DrbdNode.FLAG_UPDATE)
 
 
+    def poke(self):
+        """
+        Causes cluster nodes to perform pending actions by changing the serial
+
+        Changes the serial number, thereby changing the hash value of the
+        cluster configuration and causing all connected nodes to perform
+        pending actions
+
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc   = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                self.get_serial()
+                self.save_conf_data(persist)
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+
     def create_node(self, node_name, props):
         """
         Registers a DRBD cluster node
@@ -639,7 +669,8 @@ class DrbdManageServer(object):
                     if addr is not None and addrfam is not None:
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
-                            node = DrbdNode(node_name, addr, addrfam, node_id)
+                            node = DrbdNode(node_name, addr, addrfam, node_id,
+                                self.get_serial)
                             node.props[SERIAL] = self.get_serial()
                             merge_aux_props(node, props)
                             self._nodes[node.get_name()] = node
@@ -752,7 +783,8 @@ class DrbdManageServer(object):
                             add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
                                 [ RES_PORT, str(port) ])
                         else:
-                            resource = DrbdResource(res_name, port)
+                            resource = DrbdResource(res_name, port,
+                                self.get_serial)
                             resource.set_secret(secret)
                             resource.props[SERIAL] = self.get_serial()
                             merge_aux_props(resource, props)
@@ -920,7 +952,8 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
                         chg_serial = self.get_serial()
-                        volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor))
+                        volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
+                            self.get_serial)
                         volume.props[SERIAL]   = chg_serial
                         merge_aux_props(volume, props)
                         resource.props[SERIAL] = chg_serial
@@ -1168,7 +1201,7 @@ class DrbdManageServer(object):
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
                 assignment = Assignment(node, resource, node_id,
-                    cstate, tstate)
+                    cstate, tstate, self.get_serial)
                 assignment.props[SERIAL] = serial
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.props[SERIAL] = serial
@@ -2111,7 +2144,7 @@ class DrbdManageServer(object):
         fn_rc = []
         persist  = None
         try:
-            persist = persistence_impl()
+            persist = persistence_impl(self)
             if persist.open(True):
                 self.save_conf_data(persist)
             else:
@@ -2136,7 +2169,7 @@ class DrbdManageServer(object):
         fn_rc = []
         persist  = None
         try:
-            persist = persistence_impl()
+            persist = persistence_impl(self)
             if persist.open(False):
                 self.load_conf_data(persist)
             else:
@@ -2195,7 +2228,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = persistence_impl()
+            persist = persistence_impl(self)
             if persist.open(False):
                 ret_persist = persist
         except Exception as exc:
@@ -2221,7 +2254,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = persistence_impl()
+            persist = persistence_impl(self)
             if persist.open(True):
                 if not self.hashes_match(persist.get_stored_hash()):
                     self.load_conf_data(persist)

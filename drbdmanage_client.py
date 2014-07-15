@@ -30,6 +30,7 @@ import os
 import errno
 import dbus
 import subprocess
+import time
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 
@@ -75,8 +76,9 @@ class DrbdManage(object):
 
     VIEW_SEPARATOR_LEN = 78
 
-    UMHELPER_FILE     = "/sys/module/drbd/parameters/usermode_helper"
-    UMHELPER_OVERRIDE = "/bin/true"
+    UMHELPER_FILE      = "/sys/module/drbd/parameters/usermode_helper"
+    UMHELPER_OVERRIDE  = "/bin/true"
+    UMHELPER_WAIT_TIME = 5.0
 
     def __init__(self):
         pass
@@ -204,6 +206,14 @@ class DrbdManage(object):
         return fn_rc
 
 
+    def cmd_poke(self, args):
+        fn_rc = 1
+        self.dbus_init()
+        server_rc = self._server.poke()
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+
     def cmd_new_node(self, args):
         fn_rc = 1
         # Command parser configuration
@@ -228,7 +238,6 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
             fn_rc = self._list_rc_entries(server_rc)
-            sys.stdout.write("")
 
             if fn_rc == 0:
                 server_rc, joinc = self._server.text_query(["joinc", name])
@@ -1860,8 +1869,12 @@ class DrbdManage(object):
                     "--_name=" + p_name,
                     "--shared-secret=" + secret,
                     "--cram-hmac-alg=sha256",
-                    "--ping-timeout=30",
                     "--protocol=C"])
+
+                # FIXME: wait here -- otherwise, restoring the user mode
+                #        helper will probably race with establishing the
+                #        network connection
+                time.sleep(self.UMHELPER_WAIT_TIME)
 
                 umh_f = None
                 if umh is not None:
@@ -2290,6 +2303,8 @@ class DrbdManage(object):
         "v"                 : cmd_list_volumes,
         "nodes"             : cmd_list_nodes,
         "n"                 : cmd_list_nodes,
+        "poke"              : cmd_poke,
+        "p"                 : cmd_poke,
         "new-node"          : cmd_new_node,
         "add-node"          : cmd_new_node,
         "nn"                : cmd_new_node,

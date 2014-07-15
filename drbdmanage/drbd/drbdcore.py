@@ -54,8 +54,8 @@ class DrbdManager(object):
     STOR_UNDEPLOY_FAILED = 126
 
 
-    def __init__(self, server):
-        self._server  = server
+    def __init__(self, ref_server):
+        self._server  = ref_server
         self._resconf = drbdmanage.conf.conffile.DrbdAdmConf()
         self.reconfigure()
 
@@ -868,6 +868,9 @@ class DrbdResource(GenericDrbdObject):
     _assignments = None
     _snapshots   = None
 
+    # Reference to the server's get_serial() function
+    _get_serial = None
+
     FLAG_REMOVE  = 0x1
     FLAG_NEW     = 0x2
 
@@ -879,7 +882,7 @@ class DrbdResource(GenericDrbdObject):
     # maximum volumes per resource
     MAX_RES_VOLS = 64
 
-    def __init__(self, name, port):
+    def __init__(self, name, port, get_serial_fn):
         super(DrbdResource, self).__init__()
         self._name         = self.name_check(name)
         self._secret       = "default"
@@ -888,6 +891,7 @@ class DrbdResource(GenericDrbdObject):
         self._volumes      = {}
         self._assignments  = {}
         self._snapshots    = {}
+        self._get_serial   = get_serial_fn
         self.props[consts.SERIAL] = 1
 
 
@@ -1075,6 +1079,9 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     _minor       = None
     _state       = None
 
+    # Reference to the server's get_serial() function
+    _get_serial = None
+
     FLAG_REMOVE  = 0x1
 
     # STATE_MASK must include all valid flags;
@@ -1082,7 +1089,7 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     # non-existent flags
     STATE_MASK   = FLAG_REMOVE
 
-    def __init__(self, vol_id, size_kiB, minor):
+    def __init__(self, vol_id, size_kiB, minor, get_serial_fn):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
@@ -1093,6 +1100,7 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         self._size_kiB     = size_kiB
         self._minor        = minor
         self._state        = 0
+        self._get_serial   = get_serial_fn
         self.props[consts.SERIAL] = 1
 
 
@@ -1193,6 +1201,9 @@ class DrbdNode(GenericDrbdObject):
 
     _assignments = None
 
+    # Reference to the server's get_serial() function
+    _get_serial = None
+
     FLAG_REMOVE   =     0x1
     FLAG_UPDATE   =     0x2
     FLAG_UPD_POOL = 0x10000
@@ -1203,7 +1214,7 @@ class DrbdNode(GenericDrbdObject):
     STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL | FLAG_UPDATE
 
 
-    def __init__(self, name, addr, addrfam, node_id):
+    def __init__(self, name, addr, addrfam, node_id, get_serial_fn):
         super(DrbdNode, self).__init__()
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on addr
@@ -1218,6 +1229,7 @@ class DrbdNode(GenericDrbdObject):
         self._state        = 0
         self._poolfree     = -1
         self._poolsize     = -1
+        self._get_serial   = get_serial_fn
         self.props[consts.SERIAL] = 1
 
 
@@ -1399,6 +1411,9 @@ class DrbdVolumeState(GenericDrbdObject):
     _cstate      = 0
     _tstate      = 0
 
+    # Reference to the server's get_serial() function
+    _get_serial = None
+
     FLAG_DEPLOY    = 0x1
     FLAG_ATTACH    = 0x2
 
@@ -1412,11 +1427,12 @@ class DrbdVolumeState(GenericDrbdObject):
     # non-existent flags
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
 
-    def __init__(self, volume):
+    def __init__(self, volume, get_serial_fn):
         super(DrbdVolumeState, self).__init__()
         self._volume       = volume
         self._cstate       = 0
         self._tstate       = 0
+        self._get_serial   = get_serial_fn
         self.props[consts.SERIAL] = 1
 
 
@@ -1598,6 +1614,9 @@ class Assignment(GenericDrbdObject):
     # return code of operations
     _rc          = 0
 
+    # Reference to the server's get_serial() function
+    _get_serial = None
+
     FLAG_DEPLOY    = 0x1
     FLAG_CONNECT   = 0x2
     FLAG_DISKLESS  = 0x4
@@ -1626,13 +1645,14 @@ class Assignment(GenericDrbdObject):
     ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
 
 
-    def __init__(self, node, resource, node_id, cstate, tstate):
+    def __init__(self, node, resource, node_id, cstate, tstate, get_serial_fn):
         super(Assignment, self).__init__()
         self._node         = node
         self._resource     = resource
         self._vol_states   = {}
         for volume in resource.iterate_volumes():
-            self._vol_states[volume.get_id()] = DrbdVolumeState(volume)
+            self._vol_states[volume.get_id()] = DrbdVolumeState(volume,
+                get_serial_fn)
         self._node_id      = int(node_id)
         self._snaps_assgs  = {}
         self.props[consts.SERIAL] = 1
@@ -1641,6 +1661,7 @@ class Assignment(GenericDrbdObject):
         # target state
         self._tstate       = tstate
         self._rc           = 0
+        self._get_serial   = get_serial_fn
 
 
     def get_node(self):
@@ -1680,7 +1701,7 @@ class Assignment(GenericDrbdObject):
             vol_st = self._vol_states.get(volume.get_id())
             if vol_st is None:
                 update_assg = True
-                vol_st = DrbdVolumeState(volume)
+                vol_st = DrbdVolumeState(volume, self._get_serial)
                 vol_st.props[consts.SERIAL] = serial
                 self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource

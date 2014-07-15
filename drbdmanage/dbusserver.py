@@ -54,6 +54,15 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="", out_signature="a(isa(ss))")
+    def poke(self):
+        """
+        D-Bus interface for DrbdManageServer.poke(...)
+        """
+        return self._server.poke()
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="sa{ss}", out_signature="a(isa(ss))")
     def create_node(self, node_name, props):
         """

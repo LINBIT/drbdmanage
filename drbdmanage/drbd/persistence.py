@@ -37,7 +37,7 @@ from drbdmanage.drbd.drbdcore import (DrbdNode, DrbdResource, DrbdVolume,
     DrbdVolumeState,Assignment)
 
 
-def persistence_impl():
+def persistence_impl(ref_server):
     """
     Return the persistence implementation of the drbdmanage control volume
 
@@ -46,11 +46,11 @@ def persistence_impl():
 
     @return: persistence layer object
     """
-    return PersistenceImpl()
+    return PersistenceImpl(ref_server)
 
 
 class PersistenceImplDummy(object):
-    def __init__(self):
+    def __init__(self, ref_server):
         pass
 
 
@@ -89,6 +89,7 @@ class PersistenceImpl(object):
     _server     = None
     _writeable  = False
     _hash_obj   = None
+    _server     = None
 
     IDX_NAME       = "index"
     NODES_OFF_NAME = "nodes_off"
@@ -125,8 +126,8 @@ class PersistenceImpl(object):
     MIN_REOPEN_TIMER    = 0.5
 
 
-    def __init__(self):
-        pass
+    def __init__(self, ref_server):
+        self._server = ref_server
 
 
     def open(self, modify):
@@ -264,14 +265,14 @@ class PersistenceImpl(object):
 
                 self._file.seek(self.IDX_OFFSET)
                 p_index = {
-                  self.NODES_OFF_NAME : nodes_off,
-                  self.NODES_LEN_NAME : nodes_len,
-                  self.RES_OFF_NAME   : res_off,
-                  self.RES_LEN_NAME   : res_len,
-                  self.ASSG_OFF_NAME  : assg_off,
-                  self.ASSG_LEN_NAME  : assg_len,
-                  self.CCONF_OFF_NAME : cconf_off,
-                  self.CCONF_LEN_NAME : cconf_len
+                    self.NODES_OFF_NAME : nodes_off,
+                    self.NODES_LEN_NAME : nodes_len,
+                    self.RES_OFF_NAME   : res_off,
+                    self.RES_LEN_NAME   : res_len,
+                    self.ASSG_OFF_NAME  : assg_off,
+                    self.ASSG_LEN_NAME  : assg_len,
+                    self.CCONF_OFF_NAME : cconf_off,
+                    self.CCONF_LEN_NAME : cconf_len
                 }
                 p_index_con[self.IDX_NAME] = p_index
                 save_data = self._container_to_json(p_index_con)
@@ -425,7 +426,8 @@ class PersistenceImpl(object):
                 nodes.clear()
                 if nodes_con is not None:
                     for properties in nodes_con.itervalues():
-                        node = DrbdNodePersistence.load(properties)
+                        node = DrbdNodePersistence.load(properties,
+                            self._server.get_serial)
                         if node is not None:
                             nodes[node.get_name()] = node
                         else:
@@ -436,7 +438,8 @@ class PersistenceImpl(object):
                 resources.clear()
                 if res_con is not None:
                     for properties in res_con.itervalues():
-                        resource = DrbdResourcePersistence.load(properties)
+                        resource = DrbdResourcePersistence.load(properties,
+                            self._server.get_serial)
                         if resource is not None:
                             resources[resource.get_name()] = resource
                         else:
@@ -447,7 +450,7 @@ class PersistenceImpl(object):
                 if assg_con is not None:
                     for properties in assg_con.itervalues():
                         assignment = AssignmentPersistence.load(properties,
-                          nodes, resources)
+                          nodes, resources, self._server.get_serial)
                         if assignment is None:
                             logging.debug("persistence: Failed to load an "
                               "Assignment object")
@@ -633,15 +636,16 @@ class DrbdNodePersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties):
+    def load(cls, properties, get_serial_fn):
         node = None
         try:
             node = DrbdNode(
-              properties["_name"],
-              properties["_addr"],
-              int(properties["_addrfam"]),
-              int(properties["_node_id"])
-              )
+                properties["_name"],
+                properties["_addr"],
+                int(properties["_addrfam"]),
+                int(properties["_node_id"]),
+                get_serial_fn
+            )
             state    = long(map_val_or_dflt(properties, "_state", 0))
             poolsize = long(map_val_or_dflt(properties, "_poolsize", -1))
             poolfree = long(map_val_or_dflt(properties, "_poolfree", -1))
@@ -681,17 +685,19 @@ class DrbdResourcePersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties):
+    def load(cls, properties, get_serial_fn):
         resource = None
         try:
-            resource = DrbdResource(properties["_name"], properties["_port"])
+            resource = DrbdResource(properties["_name"], properties["_port"],
+                get_serial_fn)
             secret = properties.get("_secret")
             if secret is not None:
                 resource.set_secret(secret)
             resource.set_state(properties["_state"])
             volume_list = properties["volumes"]
             for vol_properties in volume_list.itervalues():
-                volume = DrbdVolumePersistence.load(vol_properties)
+                volume = DrbdVolumePersistence.load(vol_properties,
+                    get_serial_fn)
                 resource.add_volume(volume)
             props = properties.get("props")
             if props is not None:
@@ -724,16 +730,17 @@ class DrbdVolumePersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties):
+    def load(cls, properties, get_serial_fn):
         volume = None
         try:
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
             volume = DrbdVolume(
-              properties["_id"],
-              long(properties["_size_kiB"]),
-              minor
-              )
+                properties["_id"],
+                long(properties["_size_kiB"]),
+                minor,
+                get_serial_fn
+            )
             volume.set_state(long(properties["_state"]))
             props = properties.get("props")
             if props is not None:
@@ -781,18 +788,19 @@ class AssignmentPersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties, nodes, resources):
+    def load(cls, properties, nodes, resources, get_serial_fn):
         assignment = None
         try:
             node = nodes[properties["node"]]
             resource = resources[properties["resource"]]
             assignment = Assignment(
-              node,
-              resource,
-              int(properties["_node_id"]),
-              long(properties["_cstate"]),
-              long(properties["_tstate"])
-              )
+                node,
+                resource,
+                int(properties["_node_id"]),
+                long(properties["_cstate"]),
+                long(properties["_tstate"]),
+                get_serial_fn
+            )
             assignment.set_rc(properties["_rc"])
             props = properties.get("props")
             if props is not None:
@@ -802,7 +810,7 @@ class AssignmentPersistence(GenericPersistence):
             vol_state_list = properties.get("volume_states")
             for vol_state_props in vol_state_list.itervalues():
                 vol_state = DrbdVolumeStatePersistence.load(
-                  vol_state_props, assignment)
+                  vol_state_props, assignment, get_serial_fn)
                 assignment.add_volume_state(vol_state)
         except Exception as exc:
             # FIXME
@@ -833,12 +841,12 @@ class DrbdVolumeStatePersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties, assignment):
+    def load(cls, properties, assignment, get_serial_fn):
         vol_state = None
         try:
             resource = assignment.get_resource()
             volume   = resource.get_volume(properties["id"])
-            vol_state = DrbdVolumeState(volume)
+            vol_state = DrbdVolumeState(volume, get_serial_fn)
             blockdevice = properties.get("_blockdevice")
             bd_path     = properties.get("_bd_path")
             if blockdevice is not None and bd_path is not None:
