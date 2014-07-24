@@ -622,7 +622,7 @@ class DrbdNodePersistence(GenericPersistence):
     """
 
     SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_node_id", "_state",
-      "_poolsize", "_poolfree", "props" ]
+      "_poolsize", "_poolfree" ]
 
 
     def __init__(self, node):
@@ -632,6 +632,7 @@ class DrbdNodePersistence(GenericPersistence):
     def save(self, container):
         node = self.get_object()
         properties  = self.load_dict(self.SERIALIZABLE)
+        properties["props"] = node.get_props().get_all_props()
         container[node.get_name()] = properties
 
 
@@ -639,22 +640,22 @@ class DrbdNodePersistence(GenericPersistence):
     def load(cls, properties, get_serial_fn):
         node = None
         try:
+            init_props  = properties.get("props")
+            state       = long(map_val_or_dflt(properties, "_state", 0))
+            poolsize    = long(map_val_or_dflt(properties, "_poolsize", -1))
+            poolfree    = long(map_val_or_dflt(properties, "_poolfree", -1))
             node = DrbdNode(
                 properties["_name"],
                 properties["_addr"],
                 int(properties["_addrfam"]),
                 int(properties["_node_id"]),
-                get_serial_fn
+                state,
+                poolsize,
+                poolfree,
+                get_serial_fn,
+                None,
+                init_props
             )
-            state    = long(map_val_or_dflt(properties, "_state", 0))
-            poolsize = long(map_val_or_dflt(properties, "_poolsize", -1))
-            poolfree = long(map_val_or_dflt(properties, "_poolfree", -1))
-            node.set_state(state)
-            node.set_poolsize(poolsize)
-            node.set_poolfree(poolfree)
-            props = properties.get("props")
-            if props is not None:
-                node.props = props
         except Exception as exc:
             # FIXME
             raise exc
@@ -667,7 +668,7 @@ class DrbdResourcePersistence(GenericPersistence):
     Serializes/deserializes DrbdResource objects
     """
 
-    SERIALIZABLE = [ "_name", "_secret", "_port", "_state", "props" ]
+    SERIALIZABLE = [ "_name", "_secret", "_port", "_state" ]
 
     def __init__(self, resource):
         super(DrbdResourcePersistence, self).__init__(resource)
@@ -681,6 +682,7 @@ class DrbdResourcePersistence(GenericPersistence):
             p_vol = DrbdVolumePersistence(volume)
             p_vol.save(volume_list)
         properties["volumes"] = volume_list
+        properties["props"]   = resource.get_props().get_all_props()
         container[resource.get_name()] = properties
 
 
@@ -688,22 +690,20 @@ class DrbdResourcePersistence(GenericPersistence):
     def load(cls, properties, get_serial_fn):
         resource = None
         try:
-            resource = DrbdResource(properties["_name"], properties["_port"],
-                get_serial_fn)
-            secret = properties.get("_secret")
-            if secret is not None:
-                resource.set_secret(secret)
-            resource.set_state(properties["_state"])
-            volume_list = properties["volumes"]
+            init_props   = properties.get("props")
+            secret       = properties.get("_secret")
+            state        = properties.get("state")
+            volume_list  = properties["volumes"]
+            init_volumes = []
             for vol_properties in volume_list.itervalues():
                 volume = DrbdVolumePersistence.load(vol_properties,
                     get_serial_fn)
-                resource.add_volume(volume)
-            props = properties.get("props")
-            if props is not None:
-                resource.props = props
+                init_volumes.append(volume)
+
+            resource = DrbdResource(properties["_name"], properties["_port"],
+                secret, state, init_volumes,
+                get_serial_fn, None, init_props)
         except Exception as exc:
-            # FIXME
             raise exc
         return resource
 
@@ -714,7 +714,7 @@ class DrbdVolumePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolume objects
     """
 
-    SERIALIZABLE = [ "_id", "_state", "_size_kiB", "props" ]
+    SERIALIZABLE = [ "_id", "_state", "_size_kiB" ]
 
 
     def __init__(self, volume):
@@ -726,6 +726,7 @@ class DrbdVolumePersistence(GenericPersistence):
         properties  = self.load_dict(self.SERIALIZABLE)
         minor = volume.get_minor()
         properties["minor"] = minor.get_value()
+        properties["props"] = volume.get_props().get_all_props()
         container[volume.get_id()] = properties
 
 
@@ -735,16 +736,16 @@ class DrbdVolumePersistence(GenericPersistence):
         try:
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
+            init_props  = properties.get("props")
             volume = DrbdVolume(
                 properties["_id"],
                 long(properties["_size_kiB"]),
                 minor,
-                get_serial_fn
+                properties["_state"],
+                get_serial_fn,
+                None,
+                init_props
             )
-            volume.set_state(long(properties["_state"]))
-            props = properties.get("props")
-            if props is not None:
-                volume.props = props
         except Exception as exc:
             # FIXME
             raise exc
@@ -757,7 +758,7 @@ class AssignmentPersistence(GenericPersistence):
     Serializes/deserializes Assignment objects
     """
 
-    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc", "props" ]
+    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc" ]
 
 
     def __init__(self, assignment):
@@ -784,6 +785,7 @@ class AssignmentPersistence(GenericPersistence):
             p_vol_state = DrbdVolumeStatePersistence(vol_state)
             p_vol_state.save(vol_state_list)
         properties["volume_states"] = vol_state_list
+        properties["props"]         = node.get_props().get_all_props()
         container[assg_name] = properties
 
 
@@ -793,25 +795,30 @@ class AssignmentPersistence(GenericPersistence):
         try:
             node = nodes[properties["node"]]
             resource = resources[properties["resource"]]
+            init_props  = properties.get("props")
+
+            vol_states = []
+            vol_state_list = properties.get("volume_states")
+            for vol_state_props in vol_state_list.itervalues():
+                vol_state = DrbdVolumeStatePersistence.load(
+                    vol_state_props, resource, get_serial_fn)
+                vol_states.append(vol_state)
+
             assignment = Assignment(
                 node,
                 resource,
                 int(properties["_node_id"]),
                 long(properties["_cstate"]),
                 long(properties["_tstate"]),
-                get_serial_fn
+                properties["_rc"],
+                vol_states,
+                get_serial_fn,
+                None,
+                init_props
             )
-            assignment.set_rc(properties["_rc"])
-            props = properties.get("props")
-            if props is not None:
-                assignment.props = props
-            node.add_assignment(assignment)
-            resource.add_assignment(assignment)
-            vol_state_list = properties.get("volume_states")
-            for vol_state_props in vol_state_list.itervalues():
-                vol_state = DrbdVolumeStatePersistence.load(
-                  vol_state_props, assignment, get_serial_fn)
-                assignment.add_volume_state(vol_state)
+            node.init_add_assignment(assignment)
+            resource.init_add_assignment(assignment)
+
         except Exception as exc:
             # FIXME
             raise exc
@@ -824,8 +831,7 @@ class DrbdVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolumeState objects
     """
 
-    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate",
-        "props" ]
+    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate" ]
 
 
     def __init__(self, vol_state):
@@ -836,26 +842,23 @@ class DrbdVolumeStatePersistence(GenericPersistence):
         vol_state = self.get_object()
         vol_id = vol_state.get_id()
         properties = self.load_dict(self.SERIALIZABLE)
-        properties["id"] = vol_id
+        properties["id"]    = vol_id
+        properties["props"] = vol_state.get_props().get_all_props()
         container[vol_id] = properties
 
 
     @classmethod
-    def load(cls, properties, assignment, get_serial_fn):
+    def load(cls, properties, resource, get_serial_fn):
         vol_state = None
         try:
-            resource = assignment.get_resource()
-            volume   = resource.get_volume(properties["id"])
-            vol_state = DrbdVolumeState(volume, get_serial_fn)
-            blockdevice = properties.get("_blockdevice")
-            bd_path     = properties.get("_bd_path")
-            if blockdevice is not None and bd_path is not None:
-                vol_state.set_blockdevice(blockdevice, bd_path)
-            vol_state.set_cstate(properties["_cstate"])
-            vol_state.set_tstate(properties["_tstate"])
-            props = properties.get("props")
-            if props is not None:
-                vol_state.props = props
+            volume = resource.get_volume(properties["id"])
+
+            init_props  = properties.get("props")
+
+            vol_state   = DrbdVolumeState(volume,
+                properties["_cstate"], properties["_tstate"],
+                properties.get("_blockdevice"), properties.get("_bd_path"),
+                get_serial_fn, None, init_props)
         except Exception as exc:
             # FIXME
             raise exc

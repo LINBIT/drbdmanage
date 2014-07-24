@@ -214,7 +214,7 @@ def serial_filter(serial, objects):
     Generator for iterating over objects with obj_serial > serial
     """
     for obj in objects:
-        obj_serial = obj.props.get(consts.SERIAL)
+        obj_serial = obj.get_props().get_prop(consts.SERIAL)
         if obj_serial is None or obj_serial > serial:
             yield obj
 
@@ -886,6 +886,17 @@ def merge_aux_props(obj, props):
     the target object's (obj) properties (props). Existing auxiliary properties
     in the target object are updated with the new values specified in props.
     """
+    aux_props = {}
     for (key, val) in props.iteritems():
         if _is_aux_prop_name(key):
-            obj.props[key] = val
+            aux_props[key] = val
+    obj.get_props().merge_props(aux_props)
+
+
+def aux_props_selector(props):
+    """
+    Selects auxiliary properties from a dictionary of properties
+    """
+    for (key, val) in props.iteritems():
+        if _is_aux_prop_name(key):
+            yield (key, val)

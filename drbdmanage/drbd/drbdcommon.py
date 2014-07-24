@@ -1,16 +1,19 @@
 #!/usr/bin/python
 
+import drbdmanage.propscontainer as propscon
+
 class GenericDrbdObject(object):
 
     """
     Super class of Drbd* objects with a property list
     """
 
-    props = None
+    _props = None
 
 
-    def __init__(self):
-        self.props = {}
+    def __init__(self, get_serial_fn, init_serial, init_props):
+        self._props = propscon.PropsContainer(get_serial_fn, init_serial,
+            init_props)
 
 
     @staticmethod
@@ -49,6 +52,13 @@ class GenericDrbdObject(object):
         return str(name_b)
 
 
+    def get_props(self):
+        """
+        Returns a reference to the DRBD object's properties container
+        """
+        return self._props
+
+
     def properties_match(self, filter_props):
         """
         Returns True if any of the criteria match the object's properties
@@ -59,7 +69,7 @@ class GenericDrbdObject(object):
         """
         match = False
         for key, val in filter_props.iteritems():
-            prop_val = self.props.get(key)
+            prop_val = self._props.get(key)
             if prop_val is not None:
                 if prop_val == val:
                     match = True

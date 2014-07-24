@@ -39,7 +39,7 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_free_number, plugin_import, add_rc_entry, serial_filter, props_filter,
-    string_to_bool, split_main_aux_props, merge_aux_props)
+    string_to_bool, split_main_aux_props, aux_props_selector)
 from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
     DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
@@ -670,9 +670,12 @@ class DrbdManageServer(object):
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
                             node = DrbdNode(node_name, addr, addrfam, node_id,
-                                self.get_serial)
-                            node.props[SERIAL] = self.get_serial()
-                            merge_aux_props(node, props)
+                                0, -1, -1,
+                                self.get_serial, None, None)
+                            # Merge only auxiliary properties into the
+                            # DrbdNode's properties container
+                            aux_props = aux_props_selector(props)
+                            node.get_props().merge_gen(aux_props)
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
                             # create or update the drbdctrl.res file
@@ -783,11 +786,14 @@ class DrbdManageServer(object):
                             add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
                                 [ RES_PORT, str(port) ])
                         else:
-                            resource = DrbdResource(res_name, port,
-                                self.get_serial)
+                            resource = DrbdResource(res_name,
+                                port, secret, 0, None,
+                                self.get_serial, None, None)
                             resource.set_secret(secret)
-                            resource.props[SERIAL] = self.get_serial()
-                            merge_aux_props(resource, props)
+                            # Merge only auxiliary properties into the
+                            # DrbdResource's properties container
+                            aux_props = aux_props_selector(props)
+                            resource.get_props().merge_gen(aux_props)
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
                             add_rc_entry(fn_rc, DM_SUCCESS,
@@ -842,7 +848,8 @@ class DrbdManageServer(object):
                         else:
                             fn_rc = DM_EINVAL
                         # TODO: port change - not implemented
-                        merge_aux_props(resource, props)
+                        aux_props = aux_props_selector(props)
+                        resource.get_props().merge_gen(aux_props)
                         self._resources[resource.get_name()] = resource
                         self.save_conf_data(persist)
                         fn_rc = DM_SUCCESS
@@ -953,10 +960,11 @@ class DrbdManageServer(object):
                     else:
                         chg_serial = self.get_serial()
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
-                            self.get_serial)
-                        volume.props[SERIAL]   = chg_serial
-                        merge_aux_props(volume, props)
-                        resource.props[SERIAL] = chg_serial
+                            0, self.get_serial, None, None)
+                        # Merge only auxiliary properties into the
+                        # DrbdVolume's properties container
+                        aux_props = aux_props_selector(props)
+                        volume.get_props().merge_gen(aux_props)
                         resource.add_volume(volume)
                         for assg in resource.iterate_assignments():
                             assg.update_volume_states(chg_serial)
@@ -1010,11 +1018,8 @@ class DrbdManageServer(object):
                         volume.remove()
                         self._drbd_mgr.perform_changes()
                     else:
-                        chg_serial             = self.get_serial()
-                        resource.props[SERIAL] = chg_serial
                         resource.remove_volume(vol_id)
                         for assg in resource.iterate_assignments():
-                            assg.props[SERIAL] = chg_serial
                             assg.remove_volume_state(vol_id)
                     self.save_conf_data(persist)
             else:
@@ -1114,7 +1119,8 @@ class DrbdManageServer(object):
                             if assign_rc == DM_SUCCESS:
                                 assignment = node.get_assignment(
                                     resource.get_name())
-                                merge_aux_props(assignment, props)
+                                aux_props = aux_props_selector(props)
+                                assignment.get_props().merge_gen(aux_props)
                                 self._drbd_mgr.perform_changes()
                                 self.save_conf_data(persist)
                             else:
@@ -1201,10 +1207,9 @@ class DrbdManageServer(object):
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
                 assignment = Assignment(node, resource, node_id,
-                    cstate, tstate, self.get_serial)
-                assignment.props[SERIAL] = serial
+                    cstate, tstate, 0, None,
+                    self.get_serial, None, None)
                 for vol_state in assignment.iterate_volume_states():
-                    vol_state.props[SERIAL] = serial
                     vol_state.deploy()
                     if tstate & Assignment.FLAG_DISKLESS == 0:
                         vol_state.attach()
@@ -1212,7 +1217,6 @@ class DrbdManageServer(object):
                 resource.add_assignment(assignment)
                 for assignment in resource.iterate_assignments():
                     if assignment.is_deployed():
-                        assignment.props[SERIAL] = serial
                         assignment.update_connections()
                 fn_rc = DM_SUCCESS
         except Exception as exc:
@@ -1230,7 +1234,6 @@ class DrbdManageServer(object):
             serial   = self.get_serial()
             node     = assignment.get_node()
             resource = assignment.get_resource()
-            assignment.props[SERIAL] = serial
             if (not force) and assignment.is_deployed():
                 assignment.disconnect()
                 assignment.undeploy()
@@ -1239,7 +1242,6 @@ class DrbdManageServer(object):
             for assignment in resource.iterate_assignments():
                 if assignment.get_node() != node \
                     and assignment.is_deployed():
-                        assignment.props[SERIAL] = serial
                         assignment.update_connections()
             self.cleanup()
         except Exception as exc:

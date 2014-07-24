@@ -24,6 +24,7 @@ import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
 import drbdmanage.storage.snapshots
+import drbdmanage.propscontainer as propscon
 
 """
 WARNING!
@@ -882,17 +883,35 @@ class DrbdResource(GenericDrbdObject):
     # maximum volumes per resource
     MAX_RES_VOLS = 64
 
-    def __init__(self, name, port, get_serial_fn):
-        super(DrbdResource, self).__init__()
+    def __init__(self, name, port, secret, state, init_volumes,
+                 get_serial_fn, init_serial, init_props):
+        super(DrbdResource, self).__init__(get_serial_fn, init_serial,
+            init_props)
         self._name         = self.name_check(name)
-        self._secret       = "default"
+        if secret is not None:
+            self._secret   = str(secret)
+        checked_state = None
+        if state is not None:
+            try:
+                checked_state = long(state)
+            except ValueError:
+                pass
+        if checked_state is not None:
+            self._state = checked_state & self.STATE_MASK
+        else:
+            self._state = 0
+
+        self._volumes = {}
+        if init_volumes is not None:
+            for volume in init_volumes:
+                self._volumes[volume.get_id()] = volume
+
+
         self._port         = port
         self._state        = 0
-        self._volumes      = {}
         self._assignments  = {}
         self._snapshots    = {}
         self._get_serial   = get_serial_fn
-        self.props[consts.SERIAL] = 1
 
 
     def get_name(self):
@@ -907,9 +926,15 @@ class DrbdResource(GenericDrbdObject):
         return GenericDrbdObject.name_check(name, DrbdResource.NAME_MAXLEN)
 
 
+    def init_add_assignment(self, assignment):
+        node = assignment.get_node()
+        self._assignments[node.get_name()] = assignment
+
+
     def add_assignment(self, assignment):
         node = assignment.get_node()
         self._assignments[node.get_name()] = assignment
+        self.get_props().new_serial()
 
 
     def get_assignment(self, name):
@@ -919,10 +944,12 @@ class DrbdResource(GenericDrbdObject):
     def remove_assignment(self, assignment):
         node = assignment.get_node()
         del self._assignments[node.get_name()]
+        self.get_props().new_serial()
 
 
     def add_snapshot(self, snapshot):
         self._snapshots[snapshot.get_name()] = snapshot
+        self.get_props().new_serial()
 
 
     def get_snapshot(self, name):
@@ -935,6 +962,7 @@ class DrbdResource(GenericDrbdObject):
 
     def remove_snapshot(self, snapshot):
         del self._snapshots[snapshot.get_name()]
+        self.get_props().new_serial()
 
 
     def iterate_assignments(self):
@@ -980,6 +1008,7 @@ class DrbdResource(GenericDrbdObject):
 
     def add_volume(self, volume):
         self._volumes[volume.get_id()] = volume
+        self.get_props().new_serial()
 
 
     def get_volume(self, vol_id):
@@ -990,6 +1019,7 @@ class DrbdResource(GenericDrbdObject):
         volume = self._volumes.get(vol_id)
         if volume is not None:
             del self._volumes[volume.get_id()]
+            self.get_props().new_serial()
 
 
     def iterate_volumes(self):
@@ -997,11 +1027,14 @@ class DrbdResource(GenericDrbdObject):
 
 
     def remove(self):
-        self._state |= self.FLAG_REMOVE
+        if (self._state & self.FLAG_REMOVE) == 0:
+            self._state |= self.FLAG_REMOVE
+            self.get_props().new_serial()
 
 
     def set_secret(self, secret):
         self._secret = secret
+        self.get_props().new_serial()
 
 
     def get_secret(self):
@@ -1013,7 +1046,9 @@ class DrbdResource(GenericDrbdObject):
 
 
     def set_state(self, state):
-        self._state = state & self.STATE_MASK
+        if state != self._state:
+            self._state = state & self.STATE_MASK
+            self.get_props().new_serial()
 
 
     def filter_match(self, filter_props):
@@ -1056,7 +1091,7 @@ class DrbdResource(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
                 bool_to_string(self._state & self.FLAG_REMOVE))
-        for (key, val) in self.props.iteritems():
+        for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
@@ -1089,19 +1124,30 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     # non-existent flags
     STATE_MASK   = FLAG_REMOVE
 
-    def __init__(self, vol_id, size_kiB, minor, get_serial_fn):
+    def __init__(self, vol_id, size_kiB, minor, state, get_serial_fn,
+                 init_serial, init_props):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
-        GenericDrbdObject.__init__(self)
+        GenericDrbdObject.__init__(self, get_serial_fn,
+            init_serial, init_props)
         self._id = int(vol_id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
         self._size_kiB     = size_kiB
         self._minor        = minor
-        self._state        = 0
+
+        checked_state = None
+        if state is not None:
+            try:
+                checked_state = long(state)
+            except ValueError:
+                pass
+            if checked_state is not None:
+                self._state = checked_state & self.STATE_MASK
+            else:
+                self._state = 0
         self._get_serial   = get_serial_fn
-        self.props[consts.SERIAL] = 1
 
 
     def get_id(self):
@@ -1123,11 +1169,15 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
 
 
     def set_state(self, state):
-        self._state = state & self.STATE_MASK
+        if state != self._state:
+            self._state = state & self.STATE_MASK
+            self.get_props().new_serial()
 
 
     def remove(self):
-        self._state |= self.FLAG_REMOVE
+        if (self._state & self.FLAG_REMOVE) == 0:
+            self._state |= self.FLAG_REMOVE
+            self.get_props().new_serial()
 
 
     def filter_match(self, filter_props):
@@ -1168,7 +1218,7 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
                 bool_to_string(self._state & self.FLAG_REMOVE))
-        for (key, val) in self.props.iteritems():
+        for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
@@ -1214,8 +1264,9 @@ class DrbdNode(GenericDrbdObject):
     STATE_MASK = FLAG_REMOVE | FLAG_UPD_POOL | FLAG_UPDATE
 
 
-    def __init__(self, name, addr, addrfam, node_id, get_serial_fn):
-        super(DrbdNode, self).__init__()
+    def __init__(self, name, addr, addrfam, node_id, state, poolsize, poolfree,
+                 get_serial_fn, init_serial, init_props):
+        super(DrbdNode, self).__init__(get_serial_fn, init_serial, init_props)
         self._name    = self.name_check(name)
         # TODO: there should be sanity checks on addr
         af_n = int(addrfam)
@@ -1226,11 +1277,21 @@ class DrbdNode(GenericDrbdObject):
         self._addr         = addr
         self._node_id      = node_id
         self._assignments  = {}
-        self._state        = 0
-        self._poolfree     = -1
-        self._poolsize     = -1
+
+        checked_state = None
+        if state is not None:
+            try:
+                checked_state = long(state)
+            except ValueError:
+                pass
+        if checked_state is not None:
+            self._state = checked_state & self.STATE_MASK
+        else:
+            self._state = 0
+
+        self._poolfree     = poolsize
+        self._poolsize     = poolfree
         self._get_serial   = get_serial_fn
-        self.props[consts.SERIAL] = 1
 
 
     def get_name(self):
@@ -1251,6 +1312,7 @@ class DrbdNode(GenericDrbdObject):
 
     def set_node_id(self, node_id):
         self._node_id = node_id
+        self.get_props().new_serial()
 
 
     def get_addrfam_label(self):
@@ -1267,7 +1329,10 @@ class DrbdNode(GenericDrbdObject):
 
 
     def set_state(self, state):
+        saved_state = self._state
         self._state = state & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
 
 
     def get_poolsize(self):
@@ -1279,33 +1344,50 @@ class DrbdNode(GenericDrbdObject):
 
 
     def set_poolsize(self, size):
-        self._poolsize = size
+        if size != self._poolsize:
+            self._poolsize = size
+            self.get_props().new_serial()
+
 
 
     def set_poolfree(self, size):
-        self._poolfree = size
+        if size != self._poolfree:
+            self._poolfree = size
+            self.get_props().new_serial()
 
 
     def set_pool(self, size, free):
-        self._poolsize = size
-        self._poolfree = free
+        if size != self._poolsize or free != self._poolfree:
+            self._poolsize = size
+            self._poolfree = free
+            self.get_props().new_serial()
 
 
     def remove(self):
-        self._state |= self.FLAG_REMOVE
+        if (self._state & self.FLAG_REMOVE) == 0:
+            self._state |= self.FLAG_REMOVE
+            self.get_props().new_serial()
 
 
     def upd_pool(self):
-        self._state |= self.FLAG_UPD_POOL
+        if (self._state & self.FLAG_UPD_POOL) == 0:
+            self._state |= self.FLAG_UPD_POOL
+            self.get_props().new_serial()
 
 
     def name_check(self, name):
         return GenericDrbdObject.name_check(name, DrbdNode.NAME_MAXLEN)
 
 
+    def init_add_assignment(self, assignment):
+        resource = assignment.get_resource()
+        self._assignments[resource.get_name()] = assignment
+
+
     def add_assignment(self, assignment):
         resource = assignment.get_resource()
         self._assignments[resource.get_name()] = assignment
+        self.get_props().new_serial()
 
 
     def get_assignment(self, name):
@@ -1320,6 +1402,7 @@ class DrbdNode(GenericDrbdObject):
     def remove_assignment(self, assignment):
         resource = assignment.get_resource()
         del self._assignments[resource.get_name()]
+        self.get_props().new_serial()
 
 
     def has_assignments(self):
@@ -1387,7 +1470,7 @@ class DrbdNode(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL] = (
                 bool_to_string(self._state & self.FLAG_UPD_POOL))
-        for (key, val) in self.props.iteritems():
+        for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
@@ -1427,13 +1510,39 @@ class DrbdVolumeState(GenericDrbdObject):
     # non-existent flags
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
 
-    def __init__(self, volume, get_serial_fn):
-        super(DrbdVolumeState, self).__init__()
+    def __init__(self, volume, cstate, tstate, blockdevice, bd_path,
+                 get_serial_fn, init_serial, init_props):
+        super(DrbdVolumeState, self).__init__(get_serial_fn,
+            init_serial, init_props)
         self._volume       = volume
-        self._cstate       = 0
-        self._tstate       = 0
+
+        if blockdevice is not None and bd_path is not None:
+            self._blockdevice = blockdevice
+            self._bd_path     = bd_path
+
+        checked_cstate = None
+        if cstate is not None:
+            try:
+                checked_cstate = long(cstate)
+            except ValueError:
+                pass
+        if checked_cstate is not None:
+            self._cstate = checked_cstate & self.CSTATE_MASK
+        else:
+            self._cstate = 0
+
+        checked_tstate = None
+        if tstate is not None:
+            try:
+                checked_tstate = long(tstate)
+            except ValueError:
+                pass
+        if checked_tstate is not None:
+            self._tstate = checked_tstate & self.TSTATE_MASK
+        else:
+            self._tstate = self.FLAG_DEPLOY | self.FLAG_ATTACH
+
         self._get_serial   = get_serial_fn
-        self.props[consts.SERIAL] = 1
 
 
     def get_volume(self):
@@ -1453,8 +1562,10 @@ class DrbdVolumeState(GenericDrbdObject):
 
 
     def set_blockdevice(self, blockdevice, bd_path):
-        self._blockdevice = blockdevice
-        self._bd_path     = bd_path
+        if blockdevice != self._blockdevice or bd_path != self._bd_path:
+            self._blockdevice = blockdevice
+            self._bd_path     = bd_path
+            self.get_props().new_serial()
 
 
     def requires_action(self):
@@ -1482,11 +1593,15 @@ class DrbdVolumeState(GenericDrbdObject):
 
 
     def set_cstate(self, cstate):
-        self._cstate = cstate & self.CSTATE_MASK
+        if cstate != self._cstate:
+            self._cstate = cstate & self.CSTATE_MASK
+            self.get_props().new_serial()
 
 
     def set_tstate(self, tstate):
-        self._tstate = tstate & self.TSTATE_MASK
+        if tstate != self._tstate:
+            self._tstate = tstate & self.TSTATE_MASK
+            self.get_props().new_serial()
 
 
     def get_cstate(self):
@@ -1498,35 +1613,56 @@ class DrbdVolumeState(GenericDrbdObject):
 
 
     def deploy(self):
-        self._tstate = self._tstate | self.FLAG_DEPLOY
+        if (self._tstate & self.FLAG_DEPLOY) == 0:
+            self._tstate = self._tstate | self.FLAG_DEPLOY
+            self.get_props().new_serial()
 
 
     def undeploy(self):
-        self._tstate = 0
+        if self._tstate != 0:
+            self._tstate = 0
+            self.get_props().new_serial()
 
 
     def attach(self):
-        self._tstate = self._tstate | self.FLAG_ATTACH
+        if (self._tstate & self.FLAG_ATTACH) == 0:
+            self._tstate = self._tstate | self.FLAG_ATTACH
+            self.get_props().new_serial()
 
 
     def detach(self):
-        self._tstate = (self._tstate | self.FLAG_ATTACH) ^ self.FLAG_ATTACH
+        if (self._tstate & self.FLAG_ATTACH) != 0:
+            self._tstate = ((self._tstate | self.FLAG_ATTACH)
+                ^ self.FLAG_ATTACH)
+            self.get_props().new_serial()
 
 
     def set_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = (self._cstate | flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def clear_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def set_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def clear_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def filter_match(self, filter_props):
@@ -1588,7 +1724,7 @@ class DrbdVolumeState(GenericDrbdObject):
         if selected(consts.CSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.CSTATE_PREFIX + consts.FLAG_ATTACH] = (
                 bool_to_string(self._cstate & self.FLAG_ATTACH))
-        for (key, val) in self.props.iteritems():
+        for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
@@ -1645,20 +1781,50 @@ class Assignment(GenericDrbdObject):
     ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
 
 
-    def __init__(self, node, resource, node_id, cstate, tstate, get_serial_fn):
-        super(Assignment, self).__init__()
+    def __init__(self, node, resource, node_id, cstate, tstate,
+                 init_rc, vol_states,
+                 get_serial_fn, init_serial, init_props):
+        super(Assignment, self).__init__(get_serial_fn, init_serial,
+            init_props)
         self._node         = node
         self._resource     = resource
         self._vol_states   = {}
+        if vol_states is not None:
+            for vol_state in vol_states:
+                self._vol_states[vol_state.get_id()] = vol_state
         for volume in resource.iterate_volumes():
-            self._vol_states[volume.get_id()] = DrbdVolumeState(volume,
-                get_serial_fn)
+            if self._vol_states.get(volume.get_id()) is None:
+                self._vol_states[volume.get_id()] = DrbdVolumeState(volume,
+                    0, 0, None, None,
+                    get_serial_fn, None, None)
         self._node_id      = int(node_id)
+        self._rc           = int(init_rc)
         self._snaps_assgs  = {}
-        self.props[consts.SERIAL] = 1
+
         # current state
-        self._cstate       = cstate
+        checked_cstate = None
+        if cstate is not None:
+            try:
+                checked_cstate = long(cstate)
+            except ValueError:
+                pass
+        if checked_cstate is not None:
+            self._cstate = checked_cstate & self.CSTATE_MASK
+        else:
+            self._cstate = 0
+
         # target state
+        checked_tstate = None
+        if tstate is not None:
+            try:
+                checked_tstate = long(tstate)
+            except ValueError:
+                pass
+        if checked_tstate is not None:
+            self._tstate = checked_tstate & self.TSTATE_MASK
+        else:
+            self._tstate = self.FLAG_DEPLOY
+
         self._tstate       = tstate
         self._rc           = 0
         self._get_serial   = get_serial_fn
@@ -1675,6 +1841,7 @@ class Assignment(GenericDrbdObject):
     # used by AssignmentPersistence
     def add_volume_state(self, vol_state):
         self._vol_states[vol_state.get_id()] = vol_state
+        self.get_props().new_serial()
 
 
     def iterate_volume_states(self):
@@ -1689,6 +1856,7 @@ class Assignment(GenericDrbdObject):
         vol_st = self._vol_states.get(vol_id)
         if vol_st is not None:
             del self._vol_states[vol_id]
+            self.get_props().new_serial()
 
 
     def update_volume_states(self, serial):
@@ -1701,8 +1869,8 @@ class Assignment(GenericDrbdObject):
             vol_st = self._vol_states.get(volume.get_id())
             if vol_st is None:
                 update_assg = True
-                vol_st = DrbdVolumeState(volume, self._get_serial)
-                vol_st.props[consts.SERIAL] = serial
+                vol_st = DrbdVolumeState(volume, 0, 0, None, None,
+                    self._get_serial, None, None)
                 self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource
         for vol_st in self._vol_states.itervalues():
@@ -1711,11 +1879,12 @@ class Assignment(GenericDrbdObject):
                 update_assg = True
                 del self._vol_states[vol_st.get_id()]
         if update_assg:
-            self.props[consts.SERIAL] = serial
+            self.get_props().new_serial()
 
 
     def add_snaps_assg(self, snaps_assg):
         self._snaps_assgs[snaps_assg.get_snapshot().get_name()] = snaps_assg
+        self.get_props().new_serial()
 
 
     def iterate_snaps_assgs(self):
@@ -1729,6 +1898,7 @@ class Assignment(GenericDrbdObject):
     def remove_snaps_assg(self, name):
         try:
             del self._snaps_assgs[name]
+            self.get_props().new_serial()
         except KeyError:
             pass
 
@@ -1819,7 +1989,9 @@ class Assignment(GenericDrbdObject):
 
 
     def set_cstate(self, cstate):
-        self._cstate = cstate & self.CSTATE_MASK
+        if cstate != self._cstate:
+            self._cstate = cstate & self.CSTATE_MASK
+            self.get_props().new_serial()
 
 
     def get_tstate(self):
@@ -1827,7 +1999,9 @@ class Assignment(GenericDrbdObject):
 
 
     def set_tstate(self, tstate):
-        self._tstate = tstate & self.TSTATE_MASK
+        if tstate != self._tstate:
+            self._tstate = tstate & self.TSTATE_MASK
+            self.get_props().new_serial()
 
 
     def deploy(self):
@@ -1837,7 +2011,9 @@ class Assignment(GenericDrbdObject):
         Used to indicate that an assignment's volumes should be deployed
         (installed) on the node
         """
-        self._tstate = self._tstate | self.FLAG_DEPLOY
+        if (self._tstate & self.FLAG_DEPLOY) == 0:
+            self._tstate = self._tstate | self.FLAG_DEPLOY
+            self.get_props().new_serial()
 
 
     def undeploy(self):
@@ -1847,7 +2023,9 @@ class Assignment(GenericDrbdObject):
         Used to indicate that an assignment's volumes should be undeployed
         (removed) from a node
         """
-        self._tstate = 0
+        if self._tstate != 0:
+            self._tstate = 0
+            self.get_props().new_serial()
 
 
     def connect(self):
@@ -1856,7 +2034,9 @@ class Assignment(GenericDrbdObject):
 
         Used to trigger a connect action on the assignment's resource
         """
-        self._tstate = self._tstate | self.FLAG_CONNECT
+        if (self._tstate & self.FLAG_CONNECT) == 0:
+            self._tstate = self._tstate | self.FLAG_CONNECT
+            self.get_props().new_serial()
 
 
     def reconnect(self):
@@ -1866,7 +2046,9 @@ class Assignment(GenericDrbdObject):
         Used to trigger reconnection of the assignment's resource's network
         connections (effectively, disconnect immediately followed by connect)
         """
-        self._tstate = self._tstate | self.FLAG_RECONNECT
+        if (self._tstate & self.FLAG_RECONNECT) == 0:
+            self._tstate = self._tstate | self.FLAG_RECONNECT
+            self.get_props().new_serial()
 
 
     def disconnect(self):
@@ -1875,7 +2057,10 @@ class Assignment(GenericDrbdObject):
 
         Used to trigger a disconnect action on the assignment's resource
         """
-        self._tstate = (self._tstate | self.FLAG_CONNECT) ^ self.FLAG_CONNECT
+        if (self._tstate & self.FLAG_CONNECT) != 0:
+            self._tstate = ((self._tstate | self.FLAG_CONNECT)
+                ^ self.FLAG_CONNECT)
+            self.get_props().new_serial()
 
 
     def deploy_client(self):
@@ -1885,7 +2070,11 @@ class Assignment(GenericDrbdObject):
         Used to indicate that an assignment's volumes should be connected
         on a node in DRBD9 client mode (without local storage)
         """
-        self._tstate = self._tstate | self.FLAG_DEPLOY | self.FLAG_DISKLESS
+        if ((self._tstate & self.FLAG_DEPLOY) == 0 or
+            (self._tstate & self.FLAG_DISKLESS) == 0):
+                self._tstate = (self._tstate | self.FLAG_DEPLOY
+                    | self.FLAG_DISKLESS)
+                self.get_props().new_serial()
 
 
     def update_connections(self):
@@ -1899,7 +2088,9 @@ class Assignment(GenericDrbdObject):
         Commonly, drbdadm adjust should be a good candidate to update
         connections.
         """
-        self._tstate = self._tstate | self.FLAG_UPD_CON
+        if (self._tstate & self.FLAG_UPD_CON) == 0:
+            self._tstate = self._tstate | self.FLAG_UPD_CON
+            self.get_props().new_serial()
 
 
     def set_rc(self, assg_rc):
@@ -1910,6 +2101,7 @@ class Assignment(GenericDrbdObject):
         for a failed action can be queried on a remote node.
         """
         self._rc = assg_rc
+        self.get_props().new_serial()
 
 
     def get_rc(self):
@@ -2029,19 +2221,31 @@ class Assignment(GenericDrbdObject):
 
 
     def set_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = (self._cstate | flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def clear_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def set_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def clear_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def filter_match(self, filter_props):
@@ -2122,7 +2326,7 @@ class Assignment(GenericDrbdObject):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
                 bool_to_string(self._cstate & self.FLAG_DISKLESS))
 
-        for (key, val) in self.props.iteritems():
+        for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
