@@ -18,13 +18,29 @@ class PropsContainer(object):
         self._get_serial = get_serial_fn
         self._props      = {}
 
-        # Set the initial serial number
-        self._props[consts.SERIAL] = init_serial
-
         # Load initial properties, if present
         if ins_props is not None:
             for (key, val) in ins_props.iteritems():
                 self._props[str(key)] = str(val)
+
+        # Set the initial serial number
+        checked_serial = None
+        if init_serial is not None:
+            try:
+                checked_serial = int(init_serial)
+            except ValueError:
+                pass
+        if checked_serial is not None:
+            self._props[consts.SERIAL] = str(checked_serial)
+        else:
+            current_serial = self._props.get(consts.SERIAL)
+            if current_serial is not None:
+                try:
+                    checked_serial = int(current_serial)
+                except ValueError:
+                    pass
+            if checked_serial is None:
+                self._props[consts.SERIAL] = str(self._get_serial())
 
 
     def get_prop(self, key):
@@ -48,6 +64,11 @@ class PropsContainer(object):
             if val is not None:
                 sel_props[str(key)] = str(val)
         return sel_props
+
+
+    def get_all_props(self):
+        all_props = self._props.copy()
+        return all_props
 
 
     def set_prop(self, key, val):
@@ -111,6 +132,20 @@ class PropsContainer(object):
         adding property entries to the container's dictionary
         """
         for (key, val) in ins_props.iteritems():
+            self._props[str(key)] = str(val)
+        self.new_serial()
+
+
+    def merge_gen(self, gen_obj):
+        """
+        Merges data from the supplied generator into the container's dictionary
+
+        The properties fetched from 'gen_obj' are merged into the container's
+        dictionary, either replacing the value of existing properties in the
+        container's dictionary with corresponing values fetched from
+        'gen_obj', or adding property entries to the container's dictionary
+        """
+        for (key, val) in gen_obj:
             self._props[str(key)] = str(val)
         self.new_serial()
 
