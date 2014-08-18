@@ -261,6 +261,7 @@ def generate_secret():
     @rtype:  str
     """
     secret = None
+    f_rnd  = None
     try:
         f_rnd = open(RANDOM_SOURCE, "r")
         rnd   = bytearray(SECRET_LEN)
@@ -270,8 +271,13 @@ def generate_secret():
         s_rnd = str(rnd)
         if count == SECRET_LEN:
             secret = str(base64.b64encode(s_rnd))
+        f_rnd.close()
     except IOError:
-        pass
+        if f_rnd is not None:
+            try:
+                f_rnd.close()
+            except IOError:
+                pass
     return secret
 
 
