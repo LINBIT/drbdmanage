@@ -67,6 +67,9 @@ class PropsContainer(object):
 
 
     def get_all_props(self):
+        """
+        Retrieves a dictionary of all properties
+        """
         all_props = self._props.copy()
         return all_props
 
@@ -77,8 +80,7 @@ class PropsContainer(object):
         """
         if key != consts.SERIAL:
             self._props[str(key)] = str(val)
-        if self._saved_serial == None:
-            self.new_serial()
+        self.new_serial()
 
 
     def set_selected_props(self, keys, ins_props):
