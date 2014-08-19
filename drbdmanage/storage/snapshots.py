@@ -57,12 +57,13 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     def __init__(self, snapshot):
         super(DrbdSnapshotAssignment, self).__init__()
-        self._snapshot        = snapshot
-        self_snaps_vol_states = {}
+        self._snapshot         = snapshot
+        self._snaps_vol_states = {}
 
 
     def add_snaps_vol_state(self, snaps_vol_state):
         self._snaps_vol_states[snaps_vol_state.get_id()] = snaps_vol_state
+        self.get_props().new_serial()
 
 
     def get_snaps_vol_state(self, vol_id):
@@ -76,6 +77,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     def remove_snaps_vol_state(self, vol_id):
         try:
             del self._snaps_vol_states[vol_id]
+            self.get_props().new_serial()
         except KeyError:
             pass
 
@@ -85,11 +87,15 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
 
     def set_cstate(self, cstate):
-        self._cstate = cstate & self.CSTATE_MASK
+        if cstate != self._cstate:
+            self._cstate = cstate & self.CSTATE_MASK
+            self.get_props().new_serial()
 
 
     def set_tstate(self, tstate):
-        self._tstate = tstate & self.TSTATE_MASK
+        if tstate != self._tstate:
+            self._tstate = tstate & self.TSTATE_MASK
+            self.get_props().new_serial()
 
 
     def get_cstate(self):
@@ -101,15 +107,24 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
 
     def clear_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def set_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def clear_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
 class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
@@ -125,7 +140,7 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
 
 
     def __init__(self, vol_id):
-        super(DrbdSnapthoVolumeState , self).__init__()
+        super(DrbdSnapshotVolumeState , self).__init__()
         self._vol_id = vol_id
 
 
@@ -134,11 +149,15 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
 
 
     def set_cstate(self, cstate):
-        self._cstate = cstate & self.CSTATE_MASK
+        if cstate != self._cstate:
+            self._cstate = cstate & self.CSTATE_MASK
+            self.get_props().new_serial()
 
 
     def set_tstate(self, tstate):
-        self._tstate = tstate & self.TSTATE_MASK
+        if tstate != self._tstate:
+            self._tstate = tstate & self.TSTATE_MASK
+            self.get_props().new_serial()
 
 
     def get_cstate(self):
@@ -150,13 +169,21 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
 
 
     def clear_cstate_flags(self, flags):
+        saved_cstate = self._cstate
         self._cstate = ((self._cstate | flags) ^ flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def set_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = (self._tstate | flags) & self.TSTATE_MASK
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
 
 
     def clear_tstate_flags(self, flags):
+        saved_tstate = self._tstate
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
-
+        if saved_tstate != self._tstate:
+            self.get_props().new_serial()
