@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import drbdmanage.propscontainer as propscon
+import drbdmanage.exceptions as dmexc
 
 class GenericDrbdObject(object):
 
@@ -33,7 +34,7 @@ class GenericDrbdObject(object):
         name_b   = bytearray(str(name), "utf-8")
         name_len = len(name_b)
         if name_len < 1 or name_len > length:
-            raise InvalidNameException
+            raise dmexc.InvalidNameException
         alpha = False
         idx = 0
         while idx < name_len:
@@ -45,10 +46,10 @@ class GenericDrbdObject(object):
             else:
                 if not ((item >= ord('0') and item <= ord('9') and idx >= 1)
                   or item == ord("-") or item == ord("_")):
-                    raise InvalidNameException
+                    raise dmexc.InvalidNameException
             idx += 1
         if not alpha:
-            raise InvalidNameException
+            raise dmexc.InvalidNameException
         return str(name_b)
 
 
@@ -68,8 +69,8 @@ class GenericDrbdObject(object):
         function returns True; otherwise it returns False.
         """
         match = False
-        for key, val in filter_props.iteritems():
-            prop_val = self._props.get(key)
+        for (key, val) in filter_props.iteritems():
+            prop_val = self._props.get_prop(key)
             if prop_val is not None:
                 if prop_val == val:
                     match = True
