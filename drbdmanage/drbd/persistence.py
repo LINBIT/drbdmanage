@@ -701,7 +701,7 @@ class DrbdResourcePersistence(GenericPersistence):
         try:
             init_props    = properties.get("props")
             secret        = properties.get("_secret")
-            state         = properties.get("state")
+            state         = properties.get("_state")
             volume_list   = properties["volumes"]
             snapshot_list = properties["snapshots"]
 

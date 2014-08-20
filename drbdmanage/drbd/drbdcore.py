@@ -911,8 +911,18 @@ class DrbdResource(GenericDrbdObject):
             for snapshot in init_snapshots:
                 self._snapshots[snapshot.get_name()] = snapshot
 
+        checked_state = None
+        if state is not None:
+            try:
+                checked_state = long(state)
+            except ValueError:
+                pass
+        if checked_state is not None:
+            self._state = checked_state & self.STATE_MASK
+        else:
+            self._state = 0
+
         self._port         = port
-        self._state        = 0
         self._assignments  = {}
         self._snapshots    = {}
         self._get_serial   = get_serial_fn
