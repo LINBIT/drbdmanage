@@ -22,6 +22,7 @@ import logging
 import drbdmanage.consts as consts
 import drbdmanage.drbd.drbdcommon as drbdcommon
 
+
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
@@ -29,8 +30,9 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
     _assignments = None
 
 
-    def __init__(self, name):
-        super(DrbdSnapshot, self).__init__()
+    def __init__(self, name, get_serial_fn, init_serial, init_props):
+        super(DrbdSnapshot, self).__init__(get_serial_fn, init_serial,
+            init_props)
         self._name        = self.name_check(name)
         self._assignments = {}
 
@@ -51,12 +53,15 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     _cstate           = 0
     _tstate           = 0
 
-    TSTATE_MASK = 0
-    CSTATE_MASK = 0
+    FLAG_DEPLOY = 1
+
+    TSTATE_MASK = FLAG_DEPLOY
+    CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, snapshot):
-        super(DrbdSnapshotAssignment, self).__init__()
+    def __init__(self, snapshot, get_serial_fn, init_serial, init_props):
+        super(DrbdSnapshotAssignment, self).__init__(get_serial_fn,
+            init_serial, init_props)
         self._snapshot         = snapshot
         self._snaps_vol_states = {}
 
@@ -135,12 +140,15 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
     _cstate      = 0
     _tstate      = 0
 
-    TSTATE_MASK  = 0
-    CSTATE_MASK  = 0
+    FLAG_DEPLOY = 1
+
+    TSTATE_MASK = FLAG_DEPLOY
+    CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, vol_id):
-        super(DrbdSnapshotVolumeState , self).__init__()
+    def __init__(self, vol_id, get_serial_fn, init_serial, init_props):
+        super(DrbdSnapshotVolumeState , self).__init__(get_serial_fn,
+            init_serial, init_props)
         self._vol_id = vol_id
 
 

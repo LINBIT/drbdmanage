@@ -27,6 +27,7 @@ import json
 import mmap
 import logging
 import drbdmanage.consts
+import drbdmanage.snapshots.persistence as snapspers
 
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.utils import DataHash
@@ -34,7 +35,7 @@ from drbdmanage.utils import map_val_or_dflt
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import (DrbdNode, DrbdResource, DrbdVolume,
-    DrbdVolumeState,Assignment)
+    DrbdVolumeState, Assignment)
 
 
 def persistence_impl(ref_server):
@@ -678,11 +679,19 @@ class DrbdResourcePersistence(GenericPersistence):
         resource = self.get_object()
         properties = self.load_dict(self.SERIALIZABLE)
         volume_list = dict()
+        # Save volumes
         for volume in resource.iterate_volumes():
             p_vol = DrbdVolumePersistence(volume)
             p_vol.save(volume_list)
         properties["volumes"] = volume_list
-        properties["props"]   = resource.get_props().get_all_props()
+        snapshot_list = dict()
+        # Save snapshots
+        for snapshot in resource.iterate_snapshots():
+            p_snaps = snapspers.DrbdSnapshotPersistence(snapshot)
+            p_snaps.save(snapshot_list)
+        properties["snapshots"] = snapshot_list
+        # Save properties
+        properties["props"] = resource.get_props().get_all_props()
         container[resource.get_name()] = properties
 
 
@@ -690,18 +699,29 @@ class DrbdResourcePersistence(GenericPersistence):
     def load(cls, properties, get_serial_fn):
         resource = None
         try:
-            init_props   = properties.get("props")
-            secret       = properties.get("_secret")
-            state        = properties.get("state")
-            volume_list  = properties["volumes"]
+            init_props    = properties.get("props")
+            secret        = properties.get("_secret")
+            state         = properties.get("state")
+            volume_list   = properties["volumes"]
+            snapshot_list = properties["snapshots"]
+
+            # Load DrbdVolume objects
             init_volumes = []
             for vol_properties in volume_list.itervalues():
                 volume = DrbdVolumePersistence.load(vol_properties,
                     get_serial_fn)
                 init_volumes.append(volume)
 
+            # Load DrbdSnapshot objects
+            init_snapshots = []
+            for snaps_properties in snapshot_list.itervalues():
+                snapshot = snapspers.DrbdSnapshotPersistence.load(
+                    snaps_properties, get_serial_fn)
+                init_snapshots.append(snapshot)
+
+            # Create the DrbdResource object
             resource = DrbdResource(properties["_name"], properties["_port"],
-                secret, state, init_volumes,
+                secret, state, init_volumes, init_snapshots,
                 get_serial_fn, None, init_props)
         except Exception as exc:
             raise exc

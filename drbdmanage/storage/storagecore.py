@@ -29,8 +29,6 @@ from drbdmanage.exceptions import (InvalidMajorNrException,
 from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE
 
 
-
-
 class BlockDevice(GenericStorage):
     """
     Represents a block device
@@ -261,12 +259,39 @@ class StoragePlugin(object):
 
         @param   name: resource name; subject to name constraints
         @type    name: str
-        @param   id: volume id
-        @type    id: int
+        @param   vol_id: volume id
+        @type    vol_id: int
         @param   size: size of the block device in kiB (binary kilobytes)
         @type    size: long
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
+        """
+        raise NotImplementedError
+
+
+    def create_snapshot(self, name, vol_id, blockdevice):
+        """
+        Allocates a block device as a snapshot of an existing block device
+
+        @param   name: snapshot name; subject to name constraints
+        @type    name: str
+        @param   vol_id: volume id
+        @type    vol_id: int
+        @param   blockdevice: the existing block device to snapshot
+        @type    blockdevice: BlockDevice object
+        @return: block device of the specified size
+        @rtype:  BlockDevice object; None if the allocation fails
+        """
+        raise NotImplementedError
+
+
+    def remove_snapshot(self, blockdevice):
+        """
+        Deallocates a snapshot block device
+
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @return: standard return code (see drbdmanage.exceptions)
         """
         raise NotImplementedError
 

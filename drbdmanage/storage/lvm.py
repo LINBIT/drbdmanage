@@ -25,6 +25,7 @@ import errno
 import logging
 import subprocess
 import drbdmanage.storage.storagecore
+import drbdmanage.storage.persistence as storpers
 
 from drbdmanage.consts import DEFAULT_VG
 from drbdmanage.exceptions import PersistenceException
@@ -32,8 +33,6 @@ from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import build_path
 from drbdmanage.conf.conffile import ConfFile
-from drbdmanage.storage.persistence import (BlockDevicePersistence,
-    BlockDevicePersistence)
 
 
 class LVM(object):
@@ -342,7 +341,7 @@ class LVM(object):
                       "match its signature")
             lvm_con = json.loads(load_data)
             for properties in lvm_con.itervalues():
-                blockdev = BlockDevicePersistence.load(properties)
+                blockdev = storpers.BlockDevicePersistence.load(properties)
                 if blockdev is not None:
                     self._lvs[blockdev.get_name()] = blockdev
         except Exception:
@@ -355,7 +354,7 @@ class LVM(object):
     def save_state(self):
         lvm_con = dict()
         for blockdev in self._lvs.itervalues():
-            bd_persist = BlockDevicePersistence(blockdev)
+            bd_persist = storpers.BlockDevicePersistence(blockdev)
             bd_persist.save(lvm_con)
         out_file = None
         try:

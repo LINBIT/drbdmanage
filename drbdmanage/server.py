@@ -49,6 +49,8 @@ from drbdmanage.exceptions import (InvalidMinorNrException,
     SyntaxException, VolSizeRangeException, dm_exc_text)
 from drbdmanage.drbd.drbdcore import (Assignment, DrbdManager,
     DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState)
+from drbdmanage.snapshots.snapshots import (DrbdSnapshot,
+    DrbdSnapshotAssignment, DrbdSnapshotVolumeState)
 from drbdmanage.drbd.persistence import persistence_impl
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
 from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
@@ -495,9 +497,7 @@ class DrbdManageServer(object):
         """
         node = None
         try:
-            node = self._nodes[name]
-        except KeyError:
-            pass
+            node = self._nodes.get(name)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
@@ -787,9 +787,8 @@ class DrbdManageServer(object):
                                 [ RES_PORT, str(port) ])
                         else:
                             resource = DrbdResource(res_name,
-                                port, secret, 0, None,
+                                port, secret, 0, None, None,
                                 self.get_serial, None, None)
-                            resource.set_secret(secret)
                             # Merge only auxiliary properties into the
                             # DrbdResource's properties container
                             aux_props = aux_props_selector(props)
@@ -2077,8 +2076,87 @@ class DrbdManageServer(object):
         """
         Create a snapshot of a resource's volumes on a number of nodes
         """
-        fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        # Work in progress...
+        #
+        # create_snapshot(res, name, node[], prop[])
+        # |- for each node
+        # |  '- check assignment of res on node
+        # '- create snapshot in res with name and prop[]
+        #    '- for each node
+        #       |- create snapshot assignment, link to res and assignment
+        #       '- for each volume in res
+        #          '- create snapshot volume state and mark as 'deploy'
+        fn_rc   = []
+        persist = None
+        try:
+            # Build a list of the selected nodes and ensure
+            # that all of the specified nodes actually exist
+            node_list = []
+            for node_name in node_names:
+                node = self._nodes.get(node_name)
+                if node is not None:
+                    node_list.append(node)
+                else:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                    raise AbortException
+
+            # Ensure that the specified resource exists
+            resource = self._resources.get(res_name)
+            if resource is None:
+                add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                raise AbortException
+
+            # Ensure that the specified resource is assigned to all
+            # selected nodes
+            for node in node_list:
+                if node.get_assignment(res_name) is None:
+                    add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                    raise AbortException
+
+            # Avoid a name collision with an existing snapshot
+            if resource.get_snapshot(snaps_name) is not None:
+                add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
+                raise AbortException
+
+            # Register a new snapshot of the selected resource
+            snapshot = DrbdSnapshot(self.get_serial, None, None)
+            # Merge only auxiliary properties into the
+            # Snapshot's properties container
+            aux_props = aux_props_selector(props)
+            snapshot.get_props().merge_gen(aux_props)
+            resource.add_snapshot(snapshot)
+            # Register the snapshot assignments
+            for node in node_list:
+                assignment = node.get_assignment(res_name)
+                snaps_assg = DrbdSnapshotAssignment(snapshot,
+                    self.get_serial, None, None)
+                # Create snapshot volume state objects
+                for vol_state in assignment.iterate_volume_states():
+                    cstate = vol_state.get_cstate()
+                    tstate = vol_state.get_tstate()
+                    # Snapshot volumes that are currently deployed
+                    if ((cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
+                        (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                            snaps_vol_state = DrbdSnapshotVolumeState(
+                                vol_state.get_id(),
+                                self.get_serial, None, None)
+                            # Set the snapshot volume to deploy
+                            snaps_vol_state.set_tstate_flags(
+                                DrbdSnapshotVolumeState.FLAG_DEPLOY)
+                            snaps_assg.add_snaps_vol_state(snaps_vol_state)
+                # Set the snapshot assignment to deploy
+                snaps.assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
+                assignment.add_snaps_assg(snaps_assg)
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except AbortException:
+            pass
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 

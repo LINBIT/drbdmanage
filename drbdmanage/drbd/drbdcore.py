@@ -23,7 +23,7 @@ import logging
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
-import drbdmanage.storage.snapshots
+import drbdmanage.snapshots.snapshots
 import drbdmanage.propscontainer as propscon
 
 """
@@ -883,7 +883,7 @@ class DrbdResource(GenericDrbdObject):
     # maximum volumes per resource
     MAX_RES_VOLS = 64
 
-    def __init__(self, name, port, secret, state, init_volumes,
+    def __init__(self, name, port, secret, state, init_volumes, init_snapshots,
                  get_serial_fn, init_serial, init_props):
         super(DrbdResource, self).__init__(get_serial_fn, init_serial,
             init_props)
@@ -906,6 +906,10 @@ class DrbdResource(GenericDrbdObject):
             for volume in init_volumes:
                 self._volumes[volume.get_id()] = volume
 
+        self.snapshots = {}
+        if init_snapshots is not None:
+            for snapshot in init_snapshots:
+                self._snapshots[snapshot.get_name()] = snapshot
 
         self._port         = port
         self._state        = 0
