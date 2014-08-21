@@ -46,7 +46,7 @@ from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
     DM_ENOTIMPL, DM_SUCCESS)
 from drbdmanage.exceptions import (InvalidMinorNrException,
     InvalidNameException, PersistenceException, PluginException,
-    SyntaxException, VolSizeRangeException, dm_exc_text)
+    SyntaxException, VolSizeRangeException, AbortException, dm_exc_text)
 from drbdmanage.drbd.drbdcore import (Assignment, DrbdManager,
     DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState)
 from drbdmanage.snapshots.snapshots import (DrbdSnapshot,
@@ -2089,6 +2089,10 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         try:
+            persist = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+
             # Build a list of the selected nodes and ensure
             # that all of the specified nodes actually exist
             node_list = []
@@ -2119,7 +2123,7 @@ class DrbdManageServer(object):
                 raise AbortException
 
             # Register a new snapshot of the selected resource
-            snapshot = DrbdSnapshot(self.get_serial, None, None)
+            snapshot = DrbdSnapshot(snaps_name, self.get_serial, None, None)
             # Merge only auxiliary properties into the
             # Snapshot's properties container
             aux_props = aux_props_selector(props)
@@ -2145,8 +2149,10 @@ class DrbdManageServer(object):
                                 DrbdSnapshotVolumeState.FLAG_DEPLOY)
                             snaps_assg.add_snaps_vol_state(snaps_vol_state)
                 # Set the snapshot assignment to deploy
-                snaps.assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
+                snaps_assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
                 assignment.add_snaps_assg(snaps_assg)
+            self.save_conf_data(persist)
+            self.end_modify_conf(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except AbortException:

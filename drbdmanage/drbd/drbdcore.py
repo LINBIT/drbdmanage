@@ -906,7 +906,7 @@ class DrbdResource(GenericDrbdObject):
             for volume in init_volumes:
                 self._volumes[volume.get_id()] = volume
 
-        self.snapshots = {}
+        self._snapshots = {}
         if init_snapshots is not None:
             for snapshot in init_snapshots:
                 self._snapshots[snapshot.get_name()] = snapshot
@@ -924,7 +924,6 @@ class DrbdResource(GenericDrbdObject):
 
         self._port         = port
         self._assignments  = {}
-        self._snapshots    = {}
         self._get_serial   = get_serial_fn
 
 
