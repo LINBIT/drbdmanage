@@ -44,12 +44,106 @@ class DrbdSnapshotPersistence(GenericPersistence):
 
 
     @classmethod
-    def load(cls, properties, get_serial_fn):
+    def load(cls, properties, resource, get_serial_fn):
         snapshot = None
         try:
             init_props = properties.get("props")
             snapshot = snaps.DrbdSnapshot(
-                properties["_name"], get_serial_fn, None, init_props)
+                properties["_name"], resource,
+                get_serial_fn, None, init_props)
         except Exception as exc:
             raise exc
         return snapshot
+
+
+class DrbdSnapshotAssignmentPersistence(GenericPersistence):
+
+    """
+    Serializes/deserializes DrbdSnapshotAssignment objects
+    """
+
+    SERIALIZABLE = [ "_cstate", "_tstate" ]
+
+
+    def __init__(self, snaps_assignment):
+        super(DrbdSnapshotAssignmentPersistence, self).__init__(
+            snaps_assignment)
+
+
+    def save(self, container):
+        snaps_assignment = self.get_object()
+        properties = self.load_dict(self.SERIALIZABLE)
+        properties["props"] = snaps_assignment.get_props().get_all_props()
+
+        # Save the DrbdSnapshotVolumeState objects
+        vol_states = {}
+        for snaps_vol_state in snaps_assignment.iterate_snaps_vol_states():
+            p_state = DrbdSnapshotVolumeStatePersistence(snaps_vol_state)
+            p_state.save(vol_states)
+        properties["vol_states"] = vol_states
+
+        snapshot   = snaps_assignment.get_snapshot()
+        snaps_name = snapshot.get_name()
+        properties["snapshot"] = snaps_name
+
+        container[snaps_name] = properties
+
+
+    @classmethod
+    def load(cls, properties, assignment, get_serial_fn):
+        snaps_assignment = None
+        try:
+            init_props = properties.get("props")
+            snaps_name = properties["snapshot"]
+
+            resource = assignment.get_resource()
+            snapshot = resource.get_snapshot(snaps_name)
+
+            snaps_assignment = snaps.DrbdSnapshotAssignment(
+                snapshot, assignment,
+                get_serial_fn, None, init_props
+            )
+
+            # Load the DrbdSnapshotVolumeState objects
+            vol_states = properties["vol_states"]
+            for vol_state in vol_states.itervalues():
+                snaps_vol_state = DrbdSnapshotVolumeStatePersistence.load(
+                    vol_state, get_serial_fn)
+                snaps_assignment.init_add_snaps_vol_state(snaps_vol_state)
+        except Exception as exc:
+            raise exc
+        return snaps_assignment
+
+
+class DrbdSnapshotVolumeStatePersistence(GenericPersistence):
+
+    """
+    Serializes/deserializes DrbdSnapshotVolumeState objects
+    """
+
+    SERIALIZABLE = [ "_vol_id", "_bd_path", "_blockdevice",
+        "_cstate", "_tstate" ]
+
+
+    def __init__(self, snaps_vol_state):
+        super(DrbdSnapshotVolumeStatePersistence, self).__init__(
+            snaps_vol_state)
+
+
+    def save(self, container):
+        snaps_vol_state = self.get_object()
+        properties = self.load_dict(self.SERIALIZABLE)
+        properties["props"] = snaps_vol_state.get_props().get_all_props()
+        container[snaps_vol_state.get_id()] = properties
+
+
+    @classmethod
+    def load(cls, properties, get_serial_fn):
+        init_props = properties.get("props")
+        snaps_vol_state = snaps.DrbdSnapshotVolumeState(
+            properties["_vol_id"],
+            properties["_cstate"], properties["_tstate"],
+            properties.get("_blockdevice"), properties.get("_bd_path"),
+            get_serial_fn, None, init_props
+        )
+        return snaps_vol_state

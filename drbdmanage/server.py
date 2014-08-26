@@ -787,7 +787,7 @@ class DrbdManageServer(object):
                                 [ RES_PORT, str(port) ])
                         else:
                             resource = DrbdResource(res_name,
-                                port, secret, 0, None, None,
+                                port, secret, 0, None,
                                 self.get_serial, None, None)
                             # Merge only auxiliary properties into the
                             # DrbdResource's properties container
@@ -2123,7 +2123,8 @@ class DrbdManageServer(object):
                 raise AbortException
 
             # Register a new snapshot of the selected resource
-            snapshot = DrbdSnapshot(snaps_name, self.get_serial, None, None)
+            snapshot = DrbdSnapshot(snaps_name, resource,
+                self.get_serial, None, None)
             # Merge only auxiliary properties into the
             # Snapshot's properties container
             aux_props = aux_props_selector(props)
@@ -2132,7 +2133,7 @@ class DrbdManageServer(object):
             # Register the snapshot assignments
             for node in node_list:
                 assignment = node.get_assignment(res_name)
-                snaps_assg = DrbdSnapshotAssignment(snapshot,
+                snaps_assg = DrbdSnapshotAssignment(snapshot, assignment,
                     self.get_serial, None, None)
                 # Create snapshot volume state objects
                 for vol_state in assignment.iterate_volume_states():
@@ -2143,13 +2144,13 @@ class DrbdManageServer(object):
                         (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
                             snaps_vol_state = DrbdSnapshotVolumeState(
                                 vol_state.get_id(),
+                                0, DrbdSnapshotVolumeState.FLAG_DEPLOY,
+                                None, None,
                                 self.get_serial, None, None)
-                            # Set the snapshot volume to deploy
-                            snaps_vol_state.set_tstate_flags(
-                                DrbdSnapshotVolumeState.FLAG_DEPLOY)
                             snaps_assg.add_snaps_vol_state(snaps_vol_state)
                 # Set the snapshot assignment to deploy
                 snaps_assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
+                snapshot.add_snaps_assg(snaps_assg)
                 assignment.add_snaps_assg(snaps_assg)
             self.save_conf_data(persist)
             self.end_modify_conf(persist)

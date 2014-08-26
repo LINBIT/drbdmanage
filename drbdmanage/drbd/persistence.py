@@ -24,8 +24,8 @@ import fcntl
 import errno
 import time
 import json
-import mmap
 import logging
+import traceback
 import drbdmanage.consts
 import drbdmanage.snapshots.persistence as snapspers
 
@@ -200,10 +200,10 @@ class PersistenceImpl(object):
         """
         if self._writeable:
             try:
-                p_index_con = dict()
-                p_nodes_con = dict()
-                p_res_con   = dict()
-                p_assg_con  = dict()
+                p_index_con = {}
+                p_nodes_con = {}
+                p_res_con   = {}
+                p_assg_con  = {}
                 data_hash   = DataHash()
 
                 # Prepare nodes container (and build assignments list)
@@ -287,8 +287,16 @@ class PersistenceImpl(object):
                 logging.debug("save/hash: %s" % computed_hash)
                 self._hash_obj = data_hash
             except Exception as exc:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
                 logging.error("cannot save data tables, "
-                  "encountered exception: %s" % str(exc))
+                    "Exception=%s" % (str(exc_type)))
+                logging.debug("persistence: save failed: "
+                  "Exception=%s: %s"
+                  % (exc_type, exc_obj))
+                logging.debug("*** begin stack trace")
+                for line in traceback.format_tb(exc_tb):
+                    logging.debug("    %s" % (line))
+                logging.debug("*** end stack trace")
                 raise PersistenceException
         else:
             # file not open for writing
@@ -459,9 +467,15 @@ class PersistenceImpl(object):
                     self._hash_obj = data_hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
+                logging.error("cannot load data tables, "
+                    "Exception=%s" % (str(exc_type)))
                 logging.debug("persistence: load failed: "
-                  "Exception %s (%s), %s\n%s"
-                  % (str(exc), exc_type, exc_obj, exc_tb))
+                  "Exception=%s: %s"
+                  % (exc_type, exc_obj))
+                logging.debug("*** begin stack trace")
+                for line in traceback.format_tb(exc_tb):
+                    logging.debug("    %s" % (line))
+                logging.debug("*** end stack trace")
                 raise PersistenceException
         else:
             # file not open
@@ -678,20 +692,23 @@ class DrbdResourcePersistence(GenericPersistence):
     def save(self, container):
         resource = self.get_object()
         properties = self.load_dict(self.SERIALIZABLE)
-        volume_list = dict()
+        volume_list = {}
         # Save volumes
         for volume in resource.iterate_volumes():
             p_vol = DrbdVolumePersistence(volume)
             p_vol.save(volume_list)
         properties["volumes"] = volume_list
-        snapshot_list = dict()
-        # Save snapshots
+
+        # Save the DrbdSnapshot objects
+        snapshot_list = {}
         for snapshot in resource.iterate_snapshots():
             p_snaps = snapspers.DrbdSnapshotPersistence(snapshot)
             p_snaps.save(snapshot_list)
         properties["snapshots"] = snapshot_list
+
         # Save properties
         properties["props"] = resource.get_props().get_all_props()
+
         container[resource.get_name()] = properties
 
 
@@ -712,17 +729,16 @@ class DrbdResourcePersistence(GenericPersistence):
                     get_serial_fn)
                 init_volumes.append(volume)
 
-            # Load DrbdSnapshot objects
-            init_snapshots = []
-            for snaps_properties in snapshot_list.itervalues():
-                snapshot = snapspers.DrbdSnapshotPersistence.load(
-                    snaps_properties, get_serial_fn)
-                init_snapshots.append(snapshot)
-
             # Create the DrbdResource object
             resource = DrbdResource(properties["_name"], properties["_port"],
-                secret, state, init_volumes, init_snapshots,
+                secret, state, init_volumes,
                 get_serial_fn, None, init_props)
+
+            # Load DrbdSnapshot objects
+            for snaps_properties in snapshot_list.itervalues():
+                snapshot = snapspers.DrbdSnapshotPersistence.load(
+                    snaps_properties, resource, get_serial_fn)
+                resource.init_add_snapshot(snapshot)
         except Exception as exc:
             raise exc
         return resource
@@ -797,15 +813,26 @@ class AssignmentPersistence(GenericPersistence):
 
         properties["node"]        = node_name
         properties["resource"]    = res_name
-
         assg_name = node_name + ":" + res_name
 
-        vol_state_list = dict()
+        properties["props"]         = node.get_props().get_all_props()
+
+        # Save the DrbdVolumeState objects
+        vol_state_list = {}
         for vol_state in assignment.iterate_volume_states():
             p_vol_state = DrbdVolumeStatePersistence(vol_state)
             p_vol_state.save(vol_state_list)
         properties["volume_states"] = vol_state_list
-        properties["props"]         = node.get_props().get_all_props()
+
+        # Save the DrbdSnapshotAssignment objects
+        snaps_assgs_list = {}
+        for snaps_assg in assignment.iterate_snaps_assgs():
+            p_snaps_assg = snapspers.DrbdSnapshotAssignmentPersistence(
+                snaps_assg
+            )
+            p_snaps_assg.save(snaps_assgs_list)
+        properties["snapshot_assignments"] = snaps_assgs_list
+
         container[assg_name] = properties
 
 
@@ -813,12 +840,13 @@ class AssignmentPersistence(GenericPersistence):
     def load(cls, properties, nodes, resources, get_serial_fn):
         assignment = None
         try:
-            node = nodes[properties["node"]]
-            resource = resources[properties["resource"]]
-            init_props  = properties.get("props")
+            node       = nodes[properties["node"]]
+            resource   = resources[properties["resource"]]
+            init_props = properties.get("props")
 
+            # Load the DrbdVolumeState objects
             vol_states = []
-            vol_state_list = properties.get("volume_states")
+            vol_state_list = properties["volume_states"]
             for vol_state_props in vol_state_list.itervalues():
                 vol_state = DrbdVolumeStatePersistence.load(
                     vol_state_props, resource, get_serial_fn)
@@ -836,9 +864,23 @@ class AssignmentPersistence(GenericPersistence):
                 None,
                 init_props
             )
+
+            # Load the DrbdSnapshotAssignment objects
+            snaps_assgs_list = properties["snapshot_assignments"]
+            for snaps_assg_props in snaps_assgs_list.itervalues():
+                snaps_assg = snapspers.DrbdSnapshotAssignmentPersistence.load(
+                    snaps_assg_props, assignment, get_serial_fn
+                )
+                assignment.init_add_snaps_assg(snaps_assg)
+
             node.init_add_assignment(assignment)
             resource.init_add_assignment(assignment)
 
+            # Link the DrbdSnapshotAssignment objects into the assignments
+            # list of their corresponding DrbdSnapshot objects
+            for snaps_assg in assignment.iterate_snaps_assgs():
+                snapshot = snaps_assg.get_snapshot()
+                snapshot.init_add_snaps_assg(snaps_assg)
         except Exception as exc:
             # FIXME
             raise exc

@@ -27,13 +27,15 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
     _name        = None
+    _resource    = None
     _assignments = None
 
 
-    def __init__(self, name, get_serial_fn, init_serial, init_props):
+    def __init__(self, name, resource, get_serial_fn, init_serial, init_props):
         super(DrbdSnapshot, self).__init__(get_serial_fn, init_serial,
             init_props)
         self._name        = self.name_check(name)
+        self._resource    = resource
         self._assignments = {}
 
 
@@ -46,10 +48,42 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         return self._name
 
 
+    def get_resource(self):
+        return self._resource
+
+
+    def add_snaps_assg(self, snaps_assg):
+        assignment = snaps_assg.get_assignment()
+        node       = assignment.get_node()
+        self._assignments[node.get_name()] = snaps_assg
+        self.get_props().new_serial()
+
+
+    def init_add_snaps_assg(self, snaps_assg):
+        assignment = snaps_assg.get_assignment()
+        node       = assignment.get_node()
+        self._assignments[node.get_name()] = snaps_assg
+
+
+    def get_snaps_assg(self, nodename):
+        return self._assignments.get(nodename)
+
+
+    def iterate_snaps_assg(self):
+        return self._assignments.itervalues()
+
+
+    def remove_snaps_assg(self, nodename):
+        del self._assignments[nodename]
+        self.get_props().new_serial()
+
+
 class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     _snapshot         = None
+    _assignment       = None
     _snaps_vol_states = None
+    _node             = None
     _cstate           = 0
     _tstate           = 0
 
@@ -59,16 +93,22 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, snapshot, get_serial_fn, init_serial, init_props):
+    def __init__(self, snapshot, assignment,
+                 get_serial_fn, init_serial, init_props):
         super(DrbdSnapshotAssignment, self).__init__(get_serial_fn,
             init_serial, init_props)
         self._snapshot         = snapshot
+        self._assignment       = assignment
         self._snaps_vol_states = {}
 
 
     def add_snaps_vol_state(self, snaps_vol_state):
         self._snaps_vol_states[snaps_vol_state.get_id()] = snaps_vol_state
         self.get_props().new_serial()
+
+
+    def init_add_snaps_vol_state(self, snaps_vol_state):
+        self._snaps_vol_states[snaps_vol_state.get_id()] = snaps_vol_state
 
 
     def get_snaps_vol_state(self, vol_id):
@@ -89,6 +129,10 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     def get_snapshot(self):
         return self._snapshot
+
+
+    def get_assignment(self):
+        return self._assignment
 
 
     def set_cstate(self, cstate):
@@ -146,10 +190,36 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
     CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, vol_id, get_serial_fn, init_serial, init_props):
+    def __init__(self, vol_id, cstate, tstate, blockdevice, bd_path,
+                 get_serial_fn, init_serial, init_props):
         super(DrbdSnapshotVolumeState , self).__init__(get_serial_fn,
             init_serial, init_props)
         self._vol_id = vol_id
+        if blockdevice is not None and bd_path is not None:
+            self._blockdevice = blockdevice
+            self._bd_path     = bd_path
+
+        checked_cstate = None
+        if cstate is not None:
+            try:
+                checked_cstate = long(cstate)
+            except ValueError:
+                pass
+        if checked_cstate is not None:
+            self._cstate = checked_cstate & self.CSTATE_MASK
+        else:
+            self._cstate = 0
+
+        checked_tstate = None
+        if tstate is not None:
+            try:
+                checked_tstate = long(tstate)
+            except ValueError:
+                pass
+        if checked_tstate is not None:
+            self._tstate = checked_tstate & self.TSTATE_MASK
+        else:
+            self._tstate = self.FLAG_DEPLOY
 
 
     def get_id(self):

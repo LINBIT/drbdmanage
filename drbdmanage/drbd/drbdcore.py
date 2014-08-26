@@ -883,7 +883,7 @@ class DrbdResource(GenericDrbdObject):
     # maximum volumes per resource
     MAX_RES_VOLS = 64
 
-    def __init__(self, name, port, secret, state, init_volumes, init_snapshots,
+    def __init__(self, name, port, secret, state, init_volumes,
                  get_serial_fn, init_serial, init_props):
         super(DrbdResource, self).__init__(get_serial_fn, init_serial,
             init_props)
@@ -906,11 +906,6 @@ class DrbdResource(GenericDrbdObject):
             for volume in init_volumes:
                 self._volumes[volume.get_id()] = volume
 
-        self._snapshots = {}
-        if init_snapshots is not None:
-            for snapshot in init_snapshots:
-                self._snapshots[snapshot.get_name()] = snapshot
-
         checked_state = None
         if state is not None:
             try:
@@ -924,6 +919,7 @@ class DrbdResource(GenericDrbdObject):
 
         self._port         = port
         self._assignments  = {}
+        self._snapshots    = {}
         self._get_serial   = get_serial_fn
 
 
@@ -958,6 +954,10 @@ class DrbdResource(GenericDrbdObject):
         node = assignment.get_node()
         del self._assignments[node.get_name()]
         self.get_props().new_serial()
+
+
+    def init_add_snapshot(self, snapshot):
+        self._snapshots[snapshot.get_name()] = snapshot
 
 
     def add_snapshot(self, snapshot):
@@ -1785,9 +1785,9 @@ class Assignment(GenericDrbdObject):
     # TSTATE_MASK must include all valid target state flags;
     # used to mask the value supplied to set_tstate() to prevent setting
     # non-existent flags
-    TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS
-                       | FLAG_UPD_CON | FLAG_RECONNECT
-                       | FLAG_OVERWRITE | FLAG_DISCARD)
+    TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS |
+                      FLAG_UPD_CON | FLAG_RECONNECT |
+                      FLAG_OVERWRITE | FLAG_DISCARD)
 
     # Mask applied to ignore action flags on the target state
     # of an assignment.
@@ -1898,6 +1898,10 @@ class Assignment(GenericDrbdObject):
     def add_snaps_assg(self, snaps_assg):
         self._snaps_assgs[snaps_assg.get_snapshot().get_name()] = snaps_assg
         self.get_props().new_serial()
+
+
+    def init_add_snaps_assg(self, snaps_assg):
+        self._snaps_assgs[snaps_assg.get_snapshot().get_name()] = snaps_assg
 
 
     def iterate_snaps_assgs(self):
