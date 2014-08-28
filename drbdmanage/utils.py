@@ -516,7 +516,7 @@ class CmdLineReader(object):
         """
         Remove spaces and tabs leading the next argument in the string
         """
-        cmdline_b = bytearray(self._cmdline)
+        cmdline_b = bytearray(self._cmdline, "utf_8", "replace")
         cmdlen = len(cmdline_b)
         idx = 0
         while idx < cmdlen:
