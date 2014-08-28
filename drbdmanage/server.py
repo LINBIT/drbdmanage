@@ -36,7 +36,7 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
     DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO, RES_PORT_NR_ERROR,
     FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS, FLAG_CONNECT)
-from drbdmanage.utils import NioLineReader
+from drbdmanage.utils import (NioLineReader, CmdLineReader)
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_free_number, plugin_import, add_rc_entry, serial_filter, props_filter,
     string_to_bool, split_main_aux_props, aux_props_selector)
@@ -2794,151 +2794,496 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def debug_console(self, command):
+    def debug_console(self, cmdline):
         """
         Set debugging options
         """
         fn_rc = 127
         try:
-            if command.startswith("set "):
-                # remove "set "
-                command = command[4:]
-                pos = command.find("=")
-                if pos != -1:
-                    key = command[:pos]
-                    val = command[pos + 1:]
-                    if key == "dbg_events":
-                        self.dbg_events = self._debug_parse_flag(val)
-                        fn_rc = 0
-                    elif key.lower() == "loglevel":
-                        loglevel = self._debug_parse_loglevel(val)
-                        self._root_logger.setLevel(loglevel)
-                        fn_rc = 0
-            elif command.startswith("run "):
-                # remove "run "
-                command = command[4:]
-                if command == "cleanup":
-                    self.cleanup()
-                    fn_rc = 0
-                elif command == "DrbdManager":
-                    self._drbd_mgr.run()
-                    fn_rc = 0
-            elif command.startswith("test "):
-                # remove "test "
-                command = command[5:]
-                if command == "stdout":
-                    sys.stdout.write("(stdout)\n")
-                    fn_rc = 0
-                elif command == "stderr":
-                    sys.stdout.write("(stderr)\n")
-                    fn_rc = 0
-            elif command.startswith("list "):
-                # remove "list "
-                command = command[5:]
-                if command == "n":
-                    sys.stderr.write(
-                        "== DEBUG == list nodes =================\n")
-                    for node in self._nodes.itervalues():
-                        sys.stderr.write("%-18s %-2d %-16s 0x%x\n"
-                            % (node.get_name(), node.get_addrfam(),
-                                node.get_addr(), node.get_state())
-                        )
-                    sys.stderr.write(
-                        "== end of list =========================\n")
-                    fn_rc = 0
-                elif command == "r":
-                    sys.stderr.write(
-                        "== DEBUG == list resources =============\n")
-                    for res in self._resources.itervalues():
-                        sys.stderr.write("%-18s 0x%x\n"
-                            % (res.get_name(), res.get_state()))
-                    sys.stderr.write(
-                        "== end of list =========================\n")
-                    fn_rc = 0
-                elif command == "v":
-                    sys.stderr.write(
-                        "== DEBUG == list volumes ===============\n")
-                    for res in self._resources.itervalues():
-                        for vol in res.iterate_volumes():
-                            sys.stderr.write("%-18s %5d %18d 0x%x\n"
-                                % (res.get_name(), vol.get_id(),
-                                    vol.get_size_kiB(), res.get_state())
-                            )
-                    sys.stderr.write(
-                        "== end of list =========================\n")
-                    fn_rc = 0
-                elif command == "a":
-                    sys.stderr.write(
-                        "== DEBUG == list assignments============\n")
-                    for node in self._nodes.itervalues():
-                        for assg in node.iterate_assignments():
-                            res = assg.get_resource()
-                            sys.stderr.write("N:%-18s R:%-18s 0x%x -> 0x%x\n"
-                                % (node.get_name(), res.get_name(),
-                                    assg.get_cstate(), assg.get_tstate())
-                            )
-                            for vol_state in assg.iterate_volume_states():
-                                vol_bdev_path = vol_state.get_bd_path()
-                                if vol_bdev_path is None:
-                                    vol_bdev_path = "(nodev)"
-                                sys.stderr.write("  V:%d %s 0x%x -> 0x%x\n"
-                                    % (vol_state.get_id(), vol_bdev_path,
-                                    vol_state.get_cstate(),
-                                    vol_state.get_tstate())
-                                )
-                    sys.stderr.write(
-                        "== end of list =========================\n")
-                    fn_rc = 0
-            elif command.startswith("gen drbdctrl "):
-                # remove "gen drbdctrl":
-                command = command[13:]
-                secret = None
-                port   = None
-                bdev   = None
-                conffile = DrbdAdmConf()
-                try:
-                    secret, port, bdev = command.split(" ")
-                except ValueError:
-                    pass
-                if (secret is not None and port is not None
-                    and bdev is not None):
+            args = CmdLineReader(cmdline)
+            command = args.next_arg()
+            if command is not None:
+                if command == "set":
                     try:
-                        drbdctrl_res = open(
-                            build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
-                            "w")
-                        conffile.write_drbdctrl(drbdctrl_res, self._nodes,
-                            bdev, port, secret)
-                        drbdctrl_res.close()
-                        fn_rc = 0
-                    except (IOError, OSError):
+                        subcommand = args.next_arg()
+                        if subcommand == "n":
+                            fn_rc == self._debug_set_node(args)
+                        elif subcommand == "r":
+                            fn_rc = self._debug_set_resource(args)
+                        elif subcommand == "v":
+                            fn_rc = self._debug_set_volume(args)
+                        elif subcommand == "a":
+                            fn_rc = self._debug_set_assignment(args)
+                        elif subcommand == "s":
+                            fn_rc = self._debug_set_snapshot(args)
+                        elif subcommand == "s/a":
+                            fn_rc = self._debug_set_snapshot_assignment(args)
+                        else:
+                            key, val = self._debug_keyval_split(subcommand)
+                            if key == "dbg_events":
+                                self.dbg_events = self._debug_parse_flag(val)
+                                fn_rc = 0
+                            elif key == "loglevel":
+                                loglevel = self._debug_parse_loglevel(val)
+                                self._root_logger.setLevel(loglevel)
+                                fn_rc = 0
+                    except AttributeError:
+                        fn_rc = 1
+                elif command == "run":
+                    try:
+                        item = args.next_arg()
+                        if item == "cleanup":
+                            self.cleanup()
+                            fn_rc = 0
+                        elif item == "DrbdManager":
+                            self._drbd_mgr.run()
+                            fn_rc = 0
+                    except AttributeError:
                         pass
-                    finally:
-                        if drbdctrl_res is not None:
-                            try:
-                                drbdctrl_res.close()
-                            except (IOError, OSError):
-                                pass
-            elif command.startswith("mod drbdctrl "):
-                # remove "mod drbdctrl "
-                command = command[13:]
-                secret = None
-                port   = None
-                bdev   = None
-                conffile = DrbdAdmConf()
-                try:
-                    secret, port, bdev = command.split(" ")
-                    fn_rc = self._configure_drbdctrl(False, secret, bdev, port)
-                except ValueError:
-                    fn_rc = self._configure_drbdctrl(False, None, None, None)
-            elif command == "invalidate":
-                self._conf_hash = None
-                fn_rc = 0
+                elif command == "test":
+                    try:
+                        item = args.next_arg()
+                        if item == "stdout":
+                            sys.stdout.write("(test stdout)\n")
+                            fn_rc = 0
+                        elif item == "stderr":
+                            sys.stderr.write("(test stderr)\n")
+                            fn_rc = 0
+                    except AttributeError:
+                        pass
+                elif command == "list":
+                    try:
+                        item = args.next_arg()
+                        if item == "n":
+                            fn_rc = self._debug_list_nodes(args)
+                        elif item == "r":
+                            fn_rc = self._debug_list_resources(args)
+                        elif item == "v":
+                            fn_rc = self._debug_list_volumes(args)
+                        elif item == "a":
+                            fn_rc = self._debug_list_assignments(args)
+                        elif item == "s":
+                            fn_rc = self._debug_list_snapshots(args)
+                        elif item == "s/a":
+                            fn_rc = self._debug_list_snapshot_assignments(args)
+                    except AttributeError:
+                        pass
+                elif command == "gen":
+                    try:
+                        item = args.next_arg()
+                        if item == "drbdctrl":
+                            self._debug_gen_drbdctrl(args)
+                    except AttributeError:
+                        pass
+                elif command == "mod":
+                    try:
+                        item = args.next_arg()
+                        if item == "drbdctrl":
+                            self._debug_mod_drbdctrl(args)
+                    except AttributeError:
+                        pass
+                elif command == "invalidate":
+                    self._conf_hash = None
+                    fn_rc = 0
         except SyntaxException:
-            pass
+            fn_rc = 1
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             fn_rc = DM_DEBUG
         return fn_rc
+
+
+    def _debug_gen_drbdctrl(self, args):
+        fn_rc = 1
+        secret = args.next_arg()
+        port   = args.next_arg()
+        bdev   = args.next_arg()
+        if (secret is not None and port is not None and bdev is not None):
+            drbdctrl_res = None
+            try:
+                conffile = DrbdAdmConf()
+                drbdctrl_res = open(
+                    build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w"
+                )
+                conffile.write_drbdctrl(
+                    drbdctrl_res, self._nodes, bdev, port, secret
+                )
+                drbdctrl_res.close()
+                fn_rc = 0
+            except (IOError, OSError):
+                pass
+            finally:
+                if drbdctrl_res is not None:
+                    try:
+                        drbdctrl_res.close()
+                    except (IOError, OSError):
+                        pass
+        return fn_rc
+
+
+    def _debug_mod_drbdctrl(self, args):
+        fn_rc = 1
+        secret = args.next_arg()
+        port   = args.next_arg()
+        bdev   = args.next_arg()
+        if (secret is not None and port is not None and bdev is not None):
+            fn_rc = self._configure_drbdctrl(False, secret, bdev, port)
+        else:
+            fn_rc = self._configure_drbdctrl(False, None, None, None)
+        return fn_rc
+
+
+    def _debug_list_nodes(self, args):
+        fn_rc = 1
+        title = "list: nodes"
+        nodename = args.next_arg()
+        if nodename is not None:
+            node = self._nodes.get(nodename)
+            if node is not None:
+                self._debug_section_begin(title)
+                self._debug_dump_node(node)
+                self._debug_section_end(title)
+                fn_rc = 0
+            else:
+                sys.stderr.write("Node '%s' not found\n" % (nodename))
+        else:
+            self._debug_section_begin(title)
+            for node in self._nodes.itervalues():
+                self._debug_dump_node(node)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_list_resources(self, args):
+        fn_rc = 1
+        title = "list: resources"
+        resname = args.next_arg()
+        if resname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                self._debug_section_begin(title)
+                self._debug_dump_resource(resource)
+                self._debug_section_end(title)
+                fn_rc = 0
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        else:
+            self._debug_section_begin(title)
+            for resource in self._resources.itervalues():
+                self._debug_dump_resource(resource)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_list_volumes(self, args):
+        fn_rc = 1
+        title = "list: resources"
+        resname = args.next_arg()
+        if resname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                self._debug_section_begin(title)
+                self._debug_dump_volumes(resource)
+                self._debug_section_end(title)
+                fn_rc = 0
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        else:
+            self._debug_section_begin(title)
+            for resource in self._resources.itervalues():
+                self._debug_dump_volumes(resource)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_list_assignments(self, args):
+        fn_rc = 1
+        title = "list: assignments"
+        objname = args.next_arg()
+        if objname is not None:
+            if objname.find("@") == 0:
+                nodename = objname[1:]
+                node = self._nodes.get(nodename)
+                if node is not None:
+                    self._debug_section_begin(title)
+                    for assg in node.iterate_assignments():
+                        self._debug_dump_assignment(assg)
+                    self._debug_section_end(title)
+                    fn_rc = 0
+                else:
+                    sys.stderr.write("Node '%s' not found\n" % (nodename))
+            else:
+                resource = self._resources.get(objname)
+                if resource is not None:
+                    self._debug_section_begin(title)
+                    for assg in resource.iterate_assignments():
+                        self._debug_dump_assignment(assg)
+                    self._debug_section_end(title)
+                    fn_rc = 0
+                else:
+                    sys.stderr.write("Resource '%s' not found\n" % (objname))
+        else:
+            self._debug_section_begin(title)
+            for node in self._nodes.itervalues():
+                for assg in node.iterate_assignments():
+                    self._debug_dump_assignment(assg)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_list_snapshots(self, args):
+        fn_rc = 1
+        title = "list: snapshots"
+        resname = args.next_arg()
+        if resname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                self._debug_section_begin(title)
+                for snapshot in resource.iterate_snapshots:
+                    self._debug_dump_snapshot(snapshot)
+                self._debug_section_end(title)
+                fn_rc = 0
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        else:
+            self._debug_section_begin(title)
+            for resource in self._resources.itervalues():
+                for snapshot in resource.iterate_snapshots():
+                    self._debug_dump_snapshot(snapshot)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_list_snapshot_assignments(self, args):
+        fn_rc = 1
+        title = "list: snapshot assignments"
+        resname   = args.next_arg()
+        snapsname = args.next_arg()
+        if resname is not None and snapsname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                snapshot = resource.get_snapshot(snapsname)
+                if snapshot is not None:
+                    self._debug_section_begin(title)
+                    for snaps_assg in snapshot.iterate_snaps_assg():
+                        self._debug_dump_snapshot_assignment(snaps_assg)
+                    self._debug_section_end(title)
+                    fn_rc = 0
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        else:
+            self._debug_section_begin(title)
+            for resource in self._resources.itervalues():
+                for snapshot in resource.iterate_snapshots():
+                    for snaps_assg in snapshot.iterate_snaps_assg():
+                        self._debug_dump_snapshot_assignment(snaps_assg)
+            self._debug_section_end(title)
+            fn_rc = 0
+        return fn_rc
+
+
+    def _debug_dump_node(self, node):
+        sys.stderr.write(
+            "  ID:%-18s AF:%-2u ADDR:%-16s S:0x%.16x\n"
+            % (node.get_name(), node.get_addrfam(),
+               node.get_addr(), node.get_state())
+        )
+
+
+    def _debug_dump_resource(self, resource):
+        sys.stderr.write(
+            "  ID:%-18s P:%.5u S:0x%.16x\n"
+            % (resource.get_name(), int(resource.get_port()),
+               resource.get_state())
+        )
+
+
+    def _debug_dump_volumes(self, resource):
+        sys.stderr.write(
+            "  R/ID:%-18s\n"
+            % (resource.get_name())
+        )
+        for volume in resource.iterate_volumes():
+            vol_size_kiB = volume.get_size_kiB()
+            sys.stderr.write(
+                "  * V/ID:%.5u M:%.7u SIZE:%.13u S:0x%.16x\n"
+                % (volume.get_id(), volume.get_minor().get_value(),
+                   vol_size_kiB, volume.get_state())
+            )
+
+
+    def _debug_dump_assignment(self, assg):
+        node     = assg.get_node()
+        resource = assg.get_resource()
+        sys.stderr.write(
+            "  N/ID:%-18s R/ID:%-18s\n"
+            % (node.get_name(), resource.get_name())
+        )
+        sys.stderr.write(
+            "  '- S/C:0x%.16x S/T:0x%.16x\n"
+            % (assg.get_cstate(),
+               assg.get_tstate())
+        )
+        for vol_state in assg.iterate_volume_states():
+            vol_bdev_path = vol_state.get_bd_path()
+            if vol_bdev_path is None:
+                vol_bdev_path = "(unset)"
+            sys.stderr.write(
+                "  * V/ID:%.5u 0x%.16x 0x%.16x\n"
+                % (vol_state.get_id(),
+                   vol_state.get_cstate(),
+                   vol_state.get_tstate())
+            )
+            sys.stderr.write(
+                "  '- BD:%s\n" % (vol_bdev_path)
+            )
+
+
+    def _debug_dump_snapshot(self, snapshot):
+        resource = snapshot.get_resource()
+        sys.stderr.write(
+            "  R/ID:%-18s S/ID:%-18s\n"
+            % (resource.get_name(), snapshot.get_name())
+        )
+
+
+    def _debug_dump_snapshot_assignment(self, snaps_assg):
+        assg     = snaps_assg.get_assignment()
+        snapshot = snaps_assg.get_snapshot()
+        node     = assg.get_node()
+        resource = assg.get_resource()
+        sys.stderr.write(
+            "  R/ID:%-18s S/ID:%-18s N/ID:%-18s\n"
+            % (resource.get_name(), snapshot.get_name(), node.get_name())
+        )
+        sys.stderr.write(
+            "  '- S/C:0x%.16x S/T:0x%.16x\n"
+            % (snaps_assg.get_cstate(), snaps_assg.get_tstate())
+        )
+        for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+            sys.stderr.write(
+                "  * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
+                % (snaps_vol_state.get_id(), snaps_vol_state.get_cstate(),
+                   snaps_vol_state.get_tstate())
+            )
+
+
+    def _debug_set_node(self, args):
+        fn_rc = 1
+        nodename = args.next_arg()
+        if nodename is not None:
+            node = self._nodes.get(nodename)
+            if node is not None:
+                keyval = args.next_arg()
+                key, val = self._debug_keyval_split(keyval)
+                if key == "state":
+                    try:
+                        state_update = long(val)
+                        node.set_state(state_update)
+                        fn_rc = 0
+                    except ValueError:
+                        pass
+            else:
+                sys.stderr.write("Node '%s' not found\n" % (nodename))
+        return fn_rc
+
+
+    def _debug_set_resource(self, args):
+        fn_rc = 1
+        resname = args.next_arg()
+        if resname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                keyval = args.next_arg()
+                key, val = self._debug_keyval_split(keyval)
+                if key == "state":
+                    try:
+                        state_update = long(val)
+                        resource.set_state(state_update)
+                        fn_rc = 0
+                    except ValueError:
+                        pass
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        return fn_rc
+
+
+    def _debug_set_volume(self, args):
+        fn_rc = 1
+        resname    = args.next_arg()
+        vol_id_str = args.next_arg()
+        if resname is not None:
+            resource = self._resources.get(resname)
+            if resource is not None:
+                try:
+                    vol_id = int(vol_id_str)
+                    volume = resource.get_volume(vol_id)
+                    if volume is not None:
+                        keyval = args.next_arg()
+                        key, val = self._debug_keyval_split(keyval)
+                        if key == "state":
+                            state_update = long(val)
+                            volume.set_state(state_update)
+                            fn_rc = 0
+                    else:
+                        sys.stderr.write(
+                            "Invalid volume index %u for resource '%s'\n"
+                            % (vol_id, resource.get_name())
+                        )
+                except ValueError:
+                    pass
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (resname))
+        return fn_rc
+
+
+    def _debug_set_assignment(self, args):
+        fn_rc = 1
+        nodename   = args.next_arg()
+        resname    = args.next_arg()
+        if nodename is not None and resname is not None:
+            node     = self._nodes.get(nodename)
+            resource = self._resources.get(resname)
+            if node is not None and resource is not None:
+                assg = node.get_assignment(resource.get_name())
+                if assg is not None:
+                    try:
+                        keyval = args.next_arg()
+                        key, val = self._debug_keyval_split(keyval)
+                        if key == "cstate":
+                            state_update = long(val)
+                            assg.set_cstate(state_update)
+                            fn_rc = 0
+                        elif key == "tstate":
+                            state_update = long(val)
+                            assg.set_tstate(state_update)
+                            fn_rc = 0
+                    except ValueError:
+                        pass
+                else:
+                    sys.stderr.write(
+                        "Resource '%s' is not assigned to node '%s'\n"
+                        % (resource.get_name(), node.get_name())
+                    )
+            else:
+                if node is None:
+                    sys.stderr.write("Node '%s' not found\n" % (nodename))
+                if resource is None:
+                    sys.stderr.write("Resource '%s' not found\n" % (resname))
+        return fn_rc
+
+
+    def _debug_set_snapshot(self, args):
+        return 1
+
+
+    def _debug_set_snapshot_assignment(self, args):
+        return 1
 
 
     def _debug_parse_flag(self, val):
@@ -2962,6 +3307,33 @@ class DrbdManageServer(object):
             if val.upper() == name:
                 return self.DM_LOGLEVELS[name]
         raise SyntaxException
+
+
+    def _debug_keyval_split(self, keyval):
+        split_idx = keyval.find("=")
+        key = keyval[:split_idx].lower()
+        val = keyval[split_idx + 1:]
+        return (key, val)
+
+
+    def _debug_section_begin(self, title):
+        self._debug_section_generic("BEGIN:", title)
+
+
+    def _debug_section_end(self, title):
+        self._debug_section_generic("END:", title)
+
+
+    def _debug_section_generic(self, prefix, title):
+        # the prefix should not be longer than 6 characters
+        section_ruler = "== DEBUG == %-6s %s ==" % (prefix, title)
+        title_len = len(title)
+        # extend the "=" line up to a total length of 75
+        # characters (added up with the text prefix, that's
+        # the magic '53' remaining characters here)
+        repeat = 53 - title_len if title_len <= 53 else 0
+        section_ruler += ("=" * repeat) + "\n"
+        sys.stderr.write(section_ruler)
 
 
     def shutdown(self):
