@@ -365,7 +365,7 @@ class DrbdManageServer(object):
             if conf_loaded is not None:
                 self._conf = (
                   ConfFile.conf_defaults_merge(self.CONF_DEFAULTS, conf_loaded)
-                  )
+                )
             else:
                 self._conf = self.CONF_DEFAULTS
         except IOError as ioerr:
@@ -2866,25 +2866,42 @@ class DrbdManageServer(object):
                             fn_rc = self._debug_list_snapshots(args)
                         elif item == "s/a":
                             fn_rc = self._debug_list_snapshot_assignments(args)
+                        elif item == "conf/server":
+                            fn_rc = self._debug_list_server_conf(args)
+                        elif item == "conf/cluster":
+                            fn_rc = self._debug_list_cluster_conf(args)
+                        elif item == "props":
+                            fn_rc = self._debug_list_props(args)
                     except AttributeError:
                         pass
                 elif command == "gen":
                     try:
                         item = args.next_arg()
                         if item == "drbdctrl":
-                            self._debug_gen_drbdctrl(args)
+                            fn_rc = self._debug_gen_drbdctrl(args)
                     except AttributeError:
                         pass
                 elif command == "mod":
                     try:
                         item = args.next_arg()
                         if item == "drbdctrl":
-                            self._debug_mod_drbdctrl(args)
+                            fn_rc = self._debug_mod_drbdctrl(args)
                     except AttributeError:
                         pass
                 elif command == "invalidate":
                     self._conf_hash = None
                     fn_rc = 0
+                elif command == "show":
+                    try:
+                        subcommand = args.next_arg()
+                        if subcommand == "hash":
+                            if self._conf_hash is None:
+                                sys.stderr.write("unset/invalid\n")
+                            else:
+                                sys.stderr.write("%s\n" % (self._conf_hash))
+                            fn_rc = 0
+                    except AttributeError:
+                        pass
         except SyntaxException:
             fn_rc = 1
         except Exception as exc:
@@ -2898,26 +2915,7 @@ class DrbdManageServer(object):
         secret = args.next_arg()
         port   = args.next_arg()
         bdev   = args.next_arg()
-        if (secret is not None and port is not None and bdev is not None):
-            drbdctrl_res = None
-            try:
-                conffile = DrbdAdmConf()
-                drbdctrl_res = open(
-                    build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w"
-                )
-                conffile.write_drbdctrl(
-                    drbdctrl_res, self._nodes, bdev, port, secret
-                )
-                drbdctrl_res.close()
-                fn_rc = 0
-            except (IOError, OSError):
-                pass
-            finally:
-                if drbdctrl_res is not None:
-                    try:
-                        drbdctrl_res.close()
-                    except (IOError, OSError):
-                        pass
+        fn_rc  = self._configure_drbdctrl(True, secret, bdev, port)
         return fn_rc
 
 
@@ -2926,10 +2924,7 @@ class DrbdManageServer(object):
         secret = args.next_arg()
         port   = args.next_arg()
         bdev   = args.next_arg()
-        if (secret is not None and port is not None and bdev is not None):
-            fn_rc = self._configure_drbdctrl(False, secret, bdev, port)
-        else:
-            fn_rc = self._configure_drbdctrl(False, None, None, None)
+        fn_rc  = self._configure_drbdctrl(False, secret, bdev, port)
         return fn_rc
 
 
@@ -3074,6 +3069,8 @@ class DrbdManageServer(object):
                         self._debug_dump_snapshot_assignment(snaps_assg)
                     self._debug_section_end(title)
                     fn_rc = 0
+                else:
+                    sys.stderr.write("Snapshot '%s' not found\n" % (snapsname))
             else:
                 sys.stderr.write("Resource '%s' not found\n" % (resname))
         else:
@@ -3085,6 +3082,162 @@ class DrbdManageServer(object):
             self._debug_section_end(title)
             fn_rc = 0
         return fn_rc
+
+
+    def _debug_list_props(self, args):
+        fn_rc        = 1
+        title        = "list: object properties"
+        props_format = "%-30s = %s\n"
+        obj_class    = args.next_arg()
+        obj_name     = args.next_arg()
+        prop_key     = args.next_arg()
+        props        = None
+        if obj_class == "n":
+            node = self._nodes.get(obj_name)
+            if node is not None:
+                props = node.get_props()
+            else:
+                sys.stderr.write("Node '%s' not found\n" % (obj_name))
+        elif obj_class == "r":
+            resource = self._resources.get(obj_name)
+            if resource is not None:
+                props = resource.get_props()
+            else:
+                sys.stderr.write("Resource '%s' not found\n" % (obj_name))
+        elif obj_class == "v":
+            split_idx = obj_name.find("/")
+            if split_idx != -1:
+                resname  = obj_name[:split_idx]
+                resource = self._resources.get(resname)
+                if resource is not None:
+                    vol_nr = obj_name[split_idx + 1:]
+                    try:
+                        vol_id   = int(vol_nr)
+                        volume   = resource.get_volume(vol_id)
+                        if volume is not None:
+                            props = volume.get_props()
+                        else:
+                            sys.stderr.write("Resource '%s' has no volume %d\n"
+                                % (resname, vol_id))
+                    except ValueError:
+                        sys.stderr.write("Invalid volume id '%s'\n" % (vol_id))
+                else:
+                    sys.stderr.write("Resource '%s' not found\n" % (resname))
+            else:
+                resource = self._resources.get(obj_name)
+                if resource is not None:
+                    props = resource.get_props()
+                else:
+                    sys.stderr.write("Resource '%s' not found\n" % (obj_name))
+        elif obj_class == "a":
+            split_idx = obj_name.find("/")
+            if split_idx != -1:
+                nodename = obj_name[:split_idx]
+                resname  = obj_name[split_idx + 1:]
+                vol_nr   = None
+                split_idx = resname.find("/")
+                if split_idx != -1:
+                    vol_nr  = resname[split_idx + 1:]
+                    resname = resname[:split_idx]
+                node     = self._nodes.get(nodename)
+                resource = self._resources.get(resname)
+                if node is not None and resource is not None:
+                    assg = node.get_assignment(resource.get_name())
+                    if assg is not None:
+                        if vol_nr is not None:
+                            try:
+                                vol_id    = int(vol_nr)
+                                vol_state = assg.get_volume_state(vol_id)
+                                if vol_state is not None:
+                                    props = vol_state.get_props()
+                                else:
+                                    sys.stderr.write(
+                                        "Assignment '%s/%s' has no state for "
+                                        + "volume %d\n"
+                                        % (node.get_name(),
+                                           resource.get_name(),
+                                           vol_id)
+                                    )
+                            except ValueError:
+                                sys.stderr.write(
+                                    "Invalid volume id '%s'\n"
+                                    % (vol_nr)
+                                )
+                        else:
+                            props = assg.get_props()
+                    else:
+                        sys.stderr.write(
+                            "Assignment '%s/%s' not found\n"
+                            % (node.get_name(), resource.get_name())
+                        )
+                else:
+                    if resource is None:
+                        sys.stderr.write(
+                            "Resource '%s' not found\n"
+                            % (resname)
+                        )
+                    if node is None:
+                        sys.stderr.write(
+                            "Node '%s' not found\n"
+                            % (node_name)
+                        )
+        else:
+            sys.stderr.write("Unknown object class '%s'\n" % (obj_class))
+        if props is not None:
+            if prop_key is None:
+                self._debug_section_begin(title)
+                for (prop_key, props_val) in props.iteritems():
+                    sys.stderr.write(props_format % (prop_key, props_val))
+                self._debug_section_end(title)
+                fn_rc = 0
+            else:
+                try:
+                    props_val = props.get_prop(prop_key)
+                    self._debug_section_begin(title)
+                    sys.stderr.write(props_format % (prop_key, props_val))
+                    self._debug_section_end(title)
+                    fn_rc = 0
+                except KeyError:
+                    sys.stderr.write("Property '%s' not found\n" % prop_key)
+        return fn_rc
+
+
+    def _debug_list_server_conf(self, args):
+        title = "list: server configuration"
+        self._debug_section_begin(title)
+        self._debug_list_conf(args, self._conf)
+        self._debug_section_end(title)
+        return 0
+
+
+    def _debug_list_cluster_conf(self, args):
+        title = "list: cluster configuration"
+        self._debug_section_begin(title)
+        self._debug_list_conf(args, self._cluster_conf)
+        self._debug_section_end(title)
+        return 0
+
+
+    def _debug_list_conf(self, args, conf):
+        keyval_format    = "%-30s = %s\n"
+        key_unset_format = "Key '%s' not found\n"
+        val_unset_format = "%-30s is unset\n"
+        key = args.next_arg()
+        if key is not None:
+            try:
+                val = conf[key]
+                if val is not None:
+                    sys.stderr.write(keyval_format % (key, val))
+                else:
+                    sys.stderr.write(val_unset_format % (key))
+            except KeyError:
+                sys.stderr.write(key_unset_format % (key))
+        else:
+            for (key, val) in conf.iteritems():
+                if val is not None:
+                    sys.stderr.write(keyval_format % (key, val))
+                else:
+                    sys.stderr.write(val_unset_format % (key))
 
 
     def _debug_dump_node(self, node):
@@ -3134,7 +3287,7 @@ class DrbdManageServer(object):
             if vol_bdev_path is None:
                 vol_bdev_path = "(unset)"
             sys.stderr.write(
-                "  * V/ID:%.5u 0x%.16x 0x%.16x\n"
+                "  * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
                 % (vol_state.get_id(),
                    vol_state.get_cstate(),
                    vol_state.get_tstate())
@@ -3216,10 +3369,14 @@ class DrbdManageServer(object):
     def _debug_set_volume(self, args):
         fn_rc = 1
         resname    = args.next_arg()
-        vol_id_str = args.next_arg()
         if resname is not None:
+            vol_id_str = None
+            split_idx  = resname.find("/")
+            if split_idx != -1:
+                vol_id_str = resname[split_idx + 1:]
+                resname    = resname[:split_idx]
             resource = self._resources.get(resname)
-            if resource is not None:
+            if resource is not None and vol_id_str is not None:
                 try:
                     vol_id = int(vol_id_str)
                     volume = resource.get_volume(vol_id)
@@ -3245,7 +3402,11 @@ class DrbdManageServer(object):
     def _debug_set_assignment(self, args):
         fn_rc = 1
         nodename   = args.next_arg()
-        resname    = args.next_arg()
+        resname    = None
+        split_idx  = nodename.find("/")
+        if split_idx != -1:
+            resname  = nodename[split_idx + 1:]
+            nodename = nodename[:split_idx]
         if nodename is not None and resname is not None:
             node     = self._nodes.get(nodename)
             resource = self._resources.get(resname)
