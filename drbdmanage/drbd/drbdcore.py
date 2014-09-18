@@ -643,6 +643,8 @@ class DrbdManager(object):
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
+        ud_errors = False
+        # No actions are required for empty assignments
         if not assignment.is_empty():
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
@@ -650,31 +652,28 @@ class DrbdManager(object):
                 self._resconf.write(drbd_proc.stdin, assignment, True)
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
-            else:
-                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
-            if fn_rc == 0:
-                # undeploy all volumes
-                ud_errors = False
-                cstate = assignment.get_cstate()
-                if (cstate & Assignment.FLAG_DISKLESS) == 0:
-                    for vol_state in assignment.iterate_volume_states():
-                        stor_rc = bd_mgr.remove_blockdevice(
-                            resource.get_name(), vol_state.get_id()
-                        )
-                        if stor_rc == DM_SUCCESS:
+                if fn_rc == 0:
+                    # undeploy all volumes
+                    cstate = assignment.get_cstate()
+                    if (cstate & Assignment.FLAG_DISKLESS) == 0:
+                        for vol_state in assignment.iterate_volume_states():
+                            stor_rc = bd_mgr.remove_blockdevice(
+                                resource.get_name(), vol_state.get_id()
+                            )
+                            if stor_rc == DM_SUCCESS:
+                                vol_state.set_cstate(0)
+                                vol_state.set_tstate(0)
+                            else:
+                                ud_errors = True
+                    else:
+                        # if the assignment is diskless...
+                        for vol_state in assignment.iterate_volume_states():
                             vol_state.set_cstate(0)
                             vol_state.set_tstate(0)
-                        else:
-                            ud_errors = True
-                else:
-                    # if the assignment is diskless...
-                    for vol_state in assignment.iterate_volume_states():
-                        vol_state.set_cstate(0)
-                        vol_state.set_tstate(0)
-        else:
-            # Assignment is empty, nothing to do, no undeploy errors
-            ud_errors = False
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+                ud_errors = True
 
         if not ud_errors:
             # Remove the external configuration file
