@@ -2024,7 +2024,7 @@ class DrbdManage(object):
             i = i + 1
             if i % columns:
                 sys.stdout.write("  ")
-            sys.stdout.write("{:<18}".format(cmd_name))
+            sys.stdout.write("%-18s" % (cmd_name))
             if not (i % columns):
                 sys.stdout.write("\n")
 
