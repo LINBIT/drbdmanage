@@ -1301,8 +1301,8 @@ class DrbdNode(GenericDrbdObject):
         else:
             self._state = 0
 
-        self._poolfree     = poolsize
-        self._poolsize     = poolfree
+        self._poolfree     = poolfree
+        self._poolsize     = poolsize
         self._get_serial   = get_serial_fn
 
 
