@@ -169,23 +169,22 @@ class DrbdManage(object):
                 if self._interactive:
                     sys.stdout.write("\n")
                 break
-            if cmdline.endswith("\n"):
-                cmdline = cmdline[:len(cmdline) - 1]
-            if cmdline.startswith("#"):
-                # remarks line
-                continue
-            args = CmdLineReader(cmdline)
-            arg = args.peek_arg()
-            if arg is None:
-                # empty line
-                continue
-            else:
-                fn_rc = self.exec_cmd(args, True)
-                if fn_rc != 0 and self._interactive:
-                    sys.stderr.write("  %sOperation failed%s\n"
-                          % (color(COLOR_RED), color(COLOR_NONE)))
-                if fn_rc != 0 and not self._interactive and not self._noerr:
-                    return fn_rc
+            # ignore remarks lines
+            if not cmdline.startswith("#"):
+                if cmdline.endswith("\n"):
+                    cmdline = cmdline[:len(cmdline) - 1]
+                args = CmdLineReader(cmdline)
+                arg = args.peek_arg()
+                # ignore empty lines
+                if arg is not None:
+                    fn_rc = self.exec_cmd(args, True)
+                    if fn_rc != 0 and self._interactive:
+                        sys.stderr.write("  %sOperation failed%s\n"
+                              % (color(COLOR_RED), color(COLOR_NONE)))
+                    if (fn_rc != 0 and
+                        not self._interactive and
+                        not self._noerr):
+                            return fn_rc
         return 0
 
 
@@ -1262,7 +1261,6 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
-                continue
         return 0
 
 
@@ -1405,7 +1403,6 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
-                continue
         return 0
 
 
@@ -1510,7 +1507,6 @@ class DrbdManage(object):
                       )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
-                continue
         return 0
 
 
@@ -2016,32 +2012,28 @@ class DrbdManage(object):
         col_width = 20
         (term_width, term_height) = get_terminal_size()
         columns = term_width / col_width if term_width >= col_width else 1
-        i = 0
 
+        items = 0
         for cmd_name in self.COMMANDS:
-            if len(cmd_name) == 1:
-                continue # ignore those one character aliases for now
-            i = i + 1
-            if i % columns:
-                sys.stdout.write("  ")
-            sys.stdout.write("%-18s" % (cmd_name))
-            if not (i % columns):
-                sys.stdout.write("\n")
 
-        if i % columns:
+            # ignore shortcut aliases (one and two characters) for now
+            if len(cmd_name) > 2:
+                items += 1
+                if items % columns != 0:
+                    sys.stdout.write("  ")
+                sys.stdout.write("%-18s" % (cmd_name))
+                if items % columns == 0:
+                    sys.stdout.write("\n")
+
+        if items % columns != 0:
             sys.stdout.write("\n")
         return 0
 
 
     def cmd_usage(self, args):
-        col_width = 23
-        (term_width, term_height) = get_terminal_size()
-        columns = term_width / col_width if term_width >= col_width else 1
-        i = 0
         sys.stdout.write("Usage: drbdmanage [options...] command [args...]\n"
                          "\n"
                          "where command is one out of:\n")
-
         self.print_sub_commands()
         return 0
 

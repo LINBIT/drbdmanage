@@ -178,8 +178,8 @@ class DrbdManageServer(object):
                 pass
         self.init_logging()
         logging.info("DRBDmanage server, version %s"
-              " -- initializing on node '%s'"
-              % (self.DM_VERSION, self._instance_node_name))
+                     " -- initializing on node '%s'"
+                     % (self.DM_VERSION, self._instance_node_name))
         self._nodes     = dict()
         self._resources = dict()
         # load the server configuration file
@@ -197,7 +197,7 @@ class DrbdManageServer(object):
             self.init_events()
         except (OSError, IOError):
             logging.critical("failed to initialize drbdsetup events tracing, "
-                "aborting startup")
+                             "aborting startup")
             exit(1)
         # update storage pool information if it is unknown
         inst_node = self.get_instance_node()
@@ -232,19 +232,27 @@ class DrbdManageServer(object):
         """
         # FIXME: maybe any existing subprocess should be killed first?
         evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
-          self.EVT_UTIL)
-        self._proc_evt = subprocess.Popen([self.EVT_UTIL, "events2", "all"], 0,
-          evt_util, stdout=subprocess.PIPE, close_fds=True)
+                              self.EVT_UTIL)
+        self._proc_evt = subprocess.Popen(
+            [self.EVT_UTIL, "events2", "all"], 0,
+            evt_util, stdout=subprocess.PIPE,
+            close_fds=True
+        )
         self._evt_file = self._proc_evt.stdout
         fcntl.fcntl(self._evt_file.fileno(),
-          fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
+                    fcntl.F_SETFL,
+                    fcntl.F_GETFL | os.O_NONBLOCK)
         self._reader = NioLineReader(self._evt_file)
         # detect readable data on the pipe
-        self._evt_in_h = gobject.io_add_watch(self._evt_file.fileno(),
-          gobject.IO_IN, self.drbd_event)
+        self._evt_in_h = gobject.io_add_watch(
+            self._evt_file.fileno(),
+            gobject.IO_IN, self.drbd_event
+        )
         # detect broken pipe
-        self._evt_hup_h = gobject.io_add_watch(self._evt_file.fileno(),
-          gobject.IO_HUP, self.restart_events)
+        self._evt_hup_h = gobject.io_add_watch(
+            self._evt_file.fileno(),
+            gobject.IO_HUP, self.restart_events
+        )
 
 
     def restart_events(self, evt_fd, condition):
@@ -254,27 +262,23 @@ class DrbdManageServer(object):
         """
         # unregister any existing event handlers for the events log
         log_error = True
-        retry = False
         logging.error("drbdsetup events tracing has failed, restarting")
         if self._evt_in_h is not None:
             gobject.source_remove(self._evt_in_h)
-        while True:
+
+        retry = True
+        while retry:
             try:
                 self.init_events()
                 retry = False
-            except OSError:
-                retry = True
-            except IOError:
-                retry = True
-            if log_error:
-                logging.critical("cannot restart drbdsetup events tracing, "
-                    "this node is inoperational")
-                logging.critical("retrying restart of drbdsetup events "
-                    "tracing every 30 seconds")
-                log_error = False
-            if not retry:
-                break
-            time.sleep(30)
+            except (OSError, IOError):
+                if log_error:
+                    logging.critical("cannot restart drbdsetup events tracing, "
+                        "this node is inoperational")
+                    logging.critical("retrying restart of drbdsetup events "
+                        "tracing every 30 seconds")
+                    log_error = False
+                time.sleep(30)
         logging.info("drbdsetup events tracing reestablished")
         self._drbd_mgr.run()
         # Unregister this event handler, init_events has registered a new one
@@ -304,29 +308,33 @@ class DrbdManageServer(object):
                 sys.stderr.flush()
                 if not changed:
                     match = self._evt_pat.match(line)
-                    if not match:
-                        continue
-                    # try to parse args
-                    # TODO: maybe this pattern can be pre-compiled, too?
-                    line_data = dict( re.findall('([\w-]+):(\S+)', match.group('attrs')) )
+                    if match:
+                        # try to parse args
+                        # TODO: maybe this pattern can be pre-compiled, too?
+                        line_data = dict(re.findall('([\w-]+):(\S+)',
+                                         match.group('attrs')))
 
-                    # If the configuration resource changes to "Secondary"
-                    # role on a connected node, the configuration may have
-                    # changed
+                        # If the configuration resource changes to "Secondary"
+                        # role on a connected node, the configuration may have
+                        # changed
 
-                    # FIXME: KeyError upon missing key/value pairs on the
-                    #        parsed drbdsetup events line temporarily fixed,
-                    #        but this should probably be changed so that it
-                    #        can interpret lines that do not have certain
-                    #        fields (like 'role'), too
-                    try:
-                        if (match.group('type')   == self.EVT_TYPE_CHANGE and
-                            match.group('source') == self.EVT_SRC_CON and
-                            line_data['name']     == DRBDCTRL_RES_NAME and
-                            line_data['role']     == self.EVT_ROLE_SECONDARY):
-                                changed = True
-                    except KeyError:
-                        pass
+                        # FIXME: KeyError upon missing key/value pairs on the
+                        #        parsed drbdsetup events line temporarily
+                        #        fixed, but this should probably be changed so
+                        #        that it can interpret lines that do not have
+                        #        certain fields (like 'role'), too
+                        try:
+                            evt_type   = match.group('type')
+                            evt_source = match.group('source')
+
+                            if (evt_type          == self.EVT_TYPE_CHANGE and
+                                evt_source        == self.EVT_SRC_CON and
+                                line_data['name'] == DRBDCTRL_RES_NAME and
+                                line_data['role'] == self.EVT_ROLE_SECONDARY):
+                                    changed = True
+                        except KeyError:
+                            # Ignore lines with missing fields
+                            pass
         if changed:
             self._drbd_mgr.run()
         # True = GMainLoop shall not unregister this event handler
@@ -364,7 +372,9 @@ class DrbdManageServer(object):
             conf_loaded = conffile.get_conf()
             if conf_loaded is not None:
                 self._conf = (
-                  ConfFile.conf_defaults_merge(self.CONF_DEFAULTS, conf_loaded)
+                    ConfFile.conf_defaults_merge(
+                        self.CONF_DEFAULTS, conf_loaded
+                    )
                 )
             else:
                 self._conf = self.CONF_DEFAULTS
@@ -574,9 +584,9 @@ class DrbdManageServer(object):
         """
         inst_node = self.get_instance_node()
         for peer_node in self._nodes.itervalues():
-            if peer_node == inst_node:
-                continue
-            peer_node.set_state(peer_node.get_state() | DrbdNode.FLAG_UPDATE)
+            if peer_node != inst_node:
+                peer_node.set_state(peer_node.get_state() |
+                                    DrbdNode.FLAG_UPDATE)
 
 
     def poke(self):
@@ -1328,14 +1338,12 @@ class DrbdManageServer(object):
                     """
                     undeployed = dict()
                     for node in self._nodes.itervalues():
-                        if (resource.get_assignment(node.get_name())
-                            is not None):
-                                # skip nodes, where:
-                                #   - resource is deployed already
-                                #   - resource is being deployed
-                                #   - resource is being undeployed
-                                continue
-                        undeployed[node.get_name()] = node
+                        # skip nodes, where:
+                        #   - resource is deployed already
+                        #   - resource is being deployed
+                        #   - resource is being undeployed
+                        if (resource.get_assignment(node.get_name()) is None):
+                            undeployed[node.get_name()] = node
                     """
                     Call the deployer plugin to select nodes for deploying
                     the resource
@@ -3163,8 +3171,8 @@ class DrbdManageServer(object):
                                     props = vol_state.get_props()
                                 else:
                                     sys.stderr.write(
-                                        "Assignment '%s/%s' has no state for "
-                                        + "volume %d\n"
+                                        ("Assignment '%s/%s' has no state for "
+                                         + "volume %d\n")
                                         % (node.get_name(),
                                            resource.get_name(),
                                            vol_id)
@@ -3190,7 +3198,7 @@ class DrbdManageServer(object):
                     if node is None:
                         sys.stderr.write(
                             "Node '%s' not found\n"
-                            % (node_name)
+                            % (nodename)
                         )
         else:
             sys.stderr.write("Unknown object class '%s'\n" % (obj_class))

@@ -844,13 +844,13 @@ class DrbdManager(object):
         if (tstate & Assignment.FLAG_OVERWRITE) == 0:
             if (tstate & Assignment.FLAG_DISCARD) == 0:
                 for peer_assg in resource.iterate_assignments():
-                    if peer_assg == assignment:
-                        continue
-                    if ((peer_assg.get_cstate() & Assignment.FLAG_DEPLOY) != 0
-                      or (peer_assg.get_tstate() & Assignment.FLAG_OVERWRITE)
-                      != 0):
-                        primary = False
-                        break
+                    if peer_assg != assignment:
+                        pa_cstate = peer_assg.get_cstate()
+                        pa_tstate = peer_assg.get_tstate()
+                        if ((pa_cstate & Assignment.FLAG_DEPLOY != 0 or
+                            (pa_tstate & Assignment.FLAG_OVERWRITE) != 0)):
+                                primary = False
+                                break
             else:
                 primary = False
         return primary
@@ -1884,15 +1884,14 @@ class Assignment(GenericDrbdObject):
         update_assg = False
         # create volume states for new volumes in the resource
         for volume in self._resource.iterate_volumes():
-            # skip volumes that are pending removal
-            if volume.get_state() & DrbdVolume.FLAG_REMOVE != 0:
-                continue
-            vol_st = self._vol_states.get(volume.get_id())
-            if vol_st is None:
-                update_assg = True
-                vol_st = DrbdVolumeState(volume, 0, 0, None, None,
-                    self._get_serial, None, None)
-                self._vol_states[volume.get_id()] = vol_st
+            # only process volumes that are not pending removal
+            if (volume.get_state() & DrbdVolume.FLAG_REMOVE) == 0:
+                vol_st = self._vol_states.get(volume.get_id())
+                if vol_st is None:
+                    update_assg = True
+                    vol_st = DrbdVolumeState(volume, 0, 0, None, None,
+                        self._get_serial, None, None)
+                    self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource
         for vol_st in self._vol_states.itervalues():
             volume = self._resource.get_volume(vol_st.get_id())
