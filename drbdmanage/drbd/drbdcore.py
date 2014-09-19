@@ -325,9 +325,18 @@ class DrbdManager(object):
 
 
     def adjust_drbdctrl(self):
-        # call drbdadm to bring up the resource
-        drbd_proc = self._drbdadm.ext_conf_adjust(
-          consts.DRBDCTRL_RES_NAME)
+        # call drbdadm to bring up the control volume
+        drbd_proc = self._drbdadm.ext_conf_adjust(consts.DRBDCTRL_RES_NAME)
+        if drbd_proc is not None:
+            fn_rc = drbd_proc.wait()
+        else:
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+        return fn_rc
+
+
+    def down_drbdctrl(self):
+        # call drbdadm to stop the control volume
+        drbd_proc = self._drbdadm.ext_conf_down(consts.DRBDCTRL_RES_NAME)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
         else:

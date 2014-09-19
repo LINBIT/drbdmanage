@@ -2902,6 +2902,17 @@ class DrbdManageServer(object):
                             fn_rc = 0
                     except AttributeError:
                         pass
+                elif command == "exit":
+                    try:
+                        exit_code_str = args.next_arg()
+                        exit_code     = int(exit_code_str)
+                        exit_msg = ("server shutdown (debug command): exit %d"
+                                    % (exit_code))
+                        sys.stderr.write(exit_msg + "\n")
+                        logging.debug(exit_msg)
+                        exit(exit_code)
+                    except (ValueError, AttributeError):
+                        pass
         except SyntaxException:
             fn_rc = 1
         except Exception as exc:
@@ -3502,6 +3513,9 @@ class DrbdManageServer(object):
         Stops this drbdmanage server instance
         """
         logging.info("server shutdown (requested by function call)")
+        logging.info("shutting down the control volume")
+        self._drbd_mgr.down_drbdctrl()
+        logging.info("server shutdown complete, exiting")
         # FIXME: Maybe the drbdsetup child process should be terminated first?
         exit(0)
 
