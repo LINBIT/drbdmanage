@@ -33,7 +33,8 @@ WARNING!
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.drbd.drbdcommon import GenericDrbdObject
 from drbdmanage.exceptions import (IncompatibleDataException,
-    InvalidAddrFamException, InvalidNameException, VolSizeRangeException)
+    InvalidAddrFamException, InvalidNameException, VolSizeRangeException,
+    PersistenceException)
 from drbdmanage.exceptions import DM_SUCCESS
 from drbdmanage.utils import (Selector, bool_to_string)
 
@@ -68,7 +69,7 @@ class DrbdManager(object):
     #       trying to load the new configuration. If DrbdManager fails
     #       to load the configuration, it should probably rather stop
     #       than loop at some point.
-    def run(self):
+    def run(self, override_hash_check, poke_cluster):
         """
         Performs actions to reflect changes to the drbdmanage configuration
 
@@ -77,43 +78,93 @@ class DrbdManager(object):
         each resource in the configuration.
         According to the target state of each resource, resources/volumes
         are deployed/undeployed/attached/detached/connected/disconnected/etc...
+
+        If override_hash_check is set, then the hash comparison that
+        determines whether the configuration has changed is skipped,
+        and the function continues as if the configuration has changed, even
+        if it actually has not changed.
+
+        If poke_cluster is set and a check for changes requested for the local
+        node is carried out, then an update of the serial number is forced.
+        This will implicitly change the configuration, thereby notifying
+        all cluster nodes to perform any requested changes.
+
+        Flags state summary:
+            override_hash_check == False and poke_cluster == False:
+                If the hash has changed, check for and run local changes
+            override_hash_check == False and poke_cluster == True:
+                If the hash has changed, check for and run local changes and
+                force an update of the serial number
+            override_hash_check == True and poke_cluster == False:
+                Always check for and run local changes
+            override_hash_check == True and poke_cluster == True:
+                Always check for and run local changes and force an update
+                of the serial number
+
+        @type:  override_hash_check: bool
+        @type:  poke_cluster:        bool
         """
         persist = None
         logging.debug("DrbdManager: invoked")
         try:
-            # check whether the configuration hash has changed
-            persist = self._server.open_conf()
-            if persist is not None:
-                logging.debug("DrbdManager: hash check: %s"
-                  % persist.get_stored_hash())
-                if self._server.hashes_match(persist.get_stored_hash()):
-                    # configuration did not change, bail out
-                    logging.debug("DrbdManager: hash unchanged, "
-                      "finished")
-                    return
-            # configuration hash has changed
-            # lock and reload the configuration
-            persist.close()
-            persist = self._server.begin_modify_conf()
-            if persist is not None:
-                if self.perform_changes():
-                    logging.debug("DrbdManager: state changed, "
-                      "saving data tables")
-                    self._server.save_conf_data(persist)
+            # Always perform changes requested for the local node if the
+            # hash check is overridden
+            run_changes = override_hash_check
+            if override_hash_check == False:
+                # check whether the configuration hash has changed
+                persist = self._server.open_conf()
+                if persist is not None:
+                    logging.debug("DrbdManager: hash check: %s"
+                                  % persist.get_stored_hash())
+                    # if the configuration changed, enable performing
+                    # changes requested for the local node
+                    if self._server.hashes_match(persist.get_stored_hash()):
+                        logging.debug("DrbdManager: hash unchanged")
+                    else:
+                        logging.debug("DrbdManager: hash changed")
+                        run_changes = True
+                    persist.close()
                 else:
-                    logging.debug("DrbdManager: state unchanged")
-            else:
-                logging.debug("DrbdManager: cannot load data tables")
-            logging.debug("DrbdManager: finished")
+                    logging.debug("DrbdManager: cannot open the "
+                                  "control volume (read-only)")
+
+            if run_changes == True:
+                # close the read-only stream, then lock and open the
+                # configuration for reading and writing
+                persist = self._server.begin_modify_conf()
+                if persist is not None:
+                    old_serial = self._server.peek_serial()
+                    changed    = self.perform_changes()
+                    new_serial = self._server.peek_serial()
+                    if (poke_cluster == True and new_serial == old_serial):
+                        # increase the serial number, implicitly changing the
+                        # hash and thereby running requested changes on all
+                        # cluster nodes
+                        self._server.get_serial()
+                        changed = True
+                    if changed == True:
+                        logging.debug("DrbdManager: state changed, "
+                                      "saving control volume data")
+                        self._server.save_conf_data(persist)
+                    else:
+                        logging.debug("DrbdManager: state unchanged")
+                else:
+                    logging.debug("DrbdManager: cannot open the "
+                                  "control volume (read-write)")
+        except PersistenceException:
+            exc_type, exc_obj, exc_trace = sys.exc_info()
+            logging.debug("DrbdManager: caught PersistenceException:")
+            logging.debug("Stack trace:\n%s" % (str(exc_trace)))
         except Exception as exc:
-            # FIXME PersistenceException should at least be ignored here
-            exc_type, exc_obj, exc_tb = sys.exc_info()
-            logging.error("DrbdManager: abort, unhandled exception: %s"
-              % str(exc))
-            logging.debug("Stack trace:\n%s" % str(exc_tb))
+            exc_type, exc_obj, exc_trace = sys.exc_info()
+            logging.debug("DrbdManager: abort, unhandled exception: %s"
+                          % (str(exc)))
+            logging.debug("Stack trace:\n%s" % (str(exc_trace)))
         finally:
-            # this also works for read access
+            # end_modify_conf() also works for both, read-only and
+            # read-write streams
             self._server.end_modify_conf(persist)
+            logging.debug("DrbdManager: finished")
 
 
     # FIXME

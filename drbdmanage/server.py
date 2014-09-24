@@ -280,7 +280,7 @@ class DrbdManageServer(object):
                     log_error = False
                 time.sleep(30)
         logging.info("drbdsetup events tracing reestablished")
-        self._drbd_mgr.run()
+        self._drbd_mgr.run(False, False)
         # Unregister this event handler, init_events has registered a new one
         # for the new events pipe
         return False
@@ -336,7 +336,7 @@ class DrbdManageServer(object):
                             # Ignore lines with missing fields
                             pass
         if changed:
-            self._drbd_mgr.run()
+            self._drbd_mgr.run(False, False)
         # True = GMainLoop shall not unregister this event handler
         return True
 
@@ -600,20 +600,13 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc   = []
-        persist = None
         try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                self.get_serial()
-                self.save_conf_data(persist)
-            else:
-                raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+            # Run the DrbdManager, overriding the hash check and changing
+            # the serial number to cause all cluster nodes to run
+            # any scheduled changes
+            self._drbd_mgr.run(True, True)
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
-        finally:
-            self.end_modify_conf(persist)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
@@ -2844,7 +2837,9 @@ class DrbdManageServer(object):
                             self.cleanup()
                             fn_rc = 0
                         elif item == "DrbdManager":
-                            self._drbd_mgr.run()
+                            # override the hash check, but do not poke
+                            # the cluster
+                            self._drbd_mgr.run(True, False)
                             fn_rc = 0
                     except AttributeError:
                         pass
