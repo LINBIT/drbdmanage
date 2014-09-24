@@ -211,50 +211,66 @@ class DrbdManager(object):
         """
         Check all assignments for changes
         """
-        assignments = node.iterate_assignments()
-        for assg in assignments:
+        for assg in node.iterate_assignments():
+            (set_state_changed, set_pool_changed) = (
+                self._assignment_actions(assg)
+            )
+            if set_state_changed:
+                state_changed = True
+            if set_pool_changed:
+                pool_changed = True
 
-            act_flag = assg.requires_action()
-            if act_flag and assg.is_empty():
-                if assg.requires_undeploy():
-                    # Assignment has no volumes deployed and is effectively
-                    # disabled; Nothing to do, except for setting the correct
-                    # state, so the assignment can be cleaned up
-                    assg.set_tstate(0)
-                    assg.set_cstate(0)
-                    state_changed = True
-            elif act_flag:
-                logging.debug("assigned resource %s cstate(%x)->tstate(%x)"
-                  % (assg.get_resource().get_name(),
-                  assg.get_cstate(), assg.get_tstate()))
+        """
+        Cleanup the server's data structures
+        (remove entries that are no longer required)
+        """
+        self._server.cleanup()
 
-                state_changed  = True
-                failed_actions = False
+        if pool_changed:
+            self._server.update_pool_data()
 
-                """
-                ============================================================
-                Actions for assignments
-                (concerning all volumes of a resource)
-                ============================================================
-                """
+        return state_changed
 
-                """
-                Undeploy an assignment/resource and all of its volumes
-                """
-                if assg.requires_undeploy():
-                    pool_changed = True
-                    fn_rc = self._undeploy_assignment(assg)
-                    assg.set_rc(fn_rc)
-                    if fn_rc != 0:
-                        failed_actions = True
-                    # ignore other actions for the same assignment
-                    # after undeploy
-                    continue
 
+    def _assignment_actions(self, assg):
+        """
+        ============================================================
+        Actions for assignments
+        (concerning all volumes of a resource)
+        ============================================================
+        """
+        state_changed  = False
+        pool_changed   = False
+        failed_actions = False
+        act_flag = assg.requires_action()
+        if act_flag and assg.is_empty():
+            if assg.requires_undeploy():
+                # Assignment has no volumes deployed and is effectively
+                # disabled; Nothing to do, except for setting the correct
+                # state, so the assignment can be cleaned up
+                assg.set_tstate(0)
+                assg.set_cstate(0)
+                state_changed = True
+        elif act_flag:
+            logging.debug("assigned resource %s cstate(%x)->tstate(%x)"
+              % (assg.get_resource().get_name(),
+              assg.get_cstate(), assg.get_tstate()))
+            state_changed = True
+
+            """
+            Undeploy an assignment/resource and all of its volumes
+            """
+            if assg.requires_undeploy():
+                pool_changed = True
+                fn_rc = self._undeploy_assignment(assg)
+                assg.set_rc(fn_rc)
+                if fn_rc != 0:
+                    failed_actions = True
+            else:
                 """
                 Disconnect an assignment/resource
                 """
-                if (not failed_actions) and assg.requires_disconnect():
+                if assg.requires_disconnect():
                     fn_rc = self._disconnect(assg)
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
@@ -282,43 +298,14 @@ class DrbdManager(object):
                 (actions that concern a single volume of a resource)
                 ============================================================
                 """
-
                 for vol_state in assg.iterate_volume_states():
-
-                    """
-                    Deploy or undeploy a volume
-                    """
-                    if (not failed_actions):
-                        if vol_state.requires_deploy():
-                            pool_changed = True
-                            fn_rc = self._deploy_volume(assg, vol_state)
-                            assg.set_rc(fn_rc)
-                            if fn_rc != 0:
-                                failed_actions = True
-                        elif vol_state.requires_undeploy():
-                            pool_changed = True
-                            fn_rc = self._undeploy_volume(assg, vol_state)
-                            assg.set_rc(fn_rc)
-                            if fn_rc != 0:
-                                failed_actions = True
-                            # skip other actions for undeployed volumes
-                            continue
-
-                    """
-                    Attach a volume to or detach a volume from local storage
-                    """
-                    if (not failed_actions):
-                        if vol_state.requires_attach():
-                            fn_rc = self._attach(assg, vol_state)
-                            assg.set_rc(fn_rc)
-                            if fn_rc != 0:
-                                failed_actions = True
-                        elif vol_state.requires_detach():
-                            fn_rc = self._detach(assg, vol_state)
-                            assg.set_rc(fn_rc)
-                            if fn_rc != 0:
-                                failed_actions = True
-
+                    (set_pool_changed, set_failed_actions) = (
+                        self._volume_actions(assg, vol_state)
+                    )
+                    if set_pool_changed:
+                        pool_changed = True
+                    if set_failed_actions:
+                        failed_actions = True
 
                 """
                 ============================================================
@@ -363,16 +350,45 @@ class DrbdManager(object):
                     if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
                         assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
-        """
-        Cleanup the server's data structures
-        (remove entries that are no longer required)
-        """
-        self._server.cleanup()
+        return (state_changed, pool_changed)
 
-        if pool_changed:
-            self._server.update_pool_data()
 
-        return state_changed
+    def _volume_actions(self, assg, vol_state):
+        """
+        Deploy or undeploy a volume
+        """
+        pool_changed   = False
+        failed_actions = False
+
+        if vol_state.requires_undeploy():
+            pool_changed = True
+            fn_rc = self._undeploy_volume(assg, vol_state)
+            assg.set_rc(fn_rc)
+            if fn_rc != 0:
+                failed_actions = True
+        else:
+            if vol_state.requires_deploy():
+                pool_changed = True
+                fn_rc = self._deploy_volume(assg, vol_state)
+                assg.set_rc(fn_rc)
+                if fn_rc != 0:
+                    failed_actions = True
+            """
+            Attach a volume to or detach a volume from local storage
+            """
+            if (not failed_actions):
+                if vol_state.requires_attach():
+                    fn_rc = self._attach(assg, vol_state)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
+                        failed_actions = True
+                elif vol_state.requires_detach():
+                    fn_rc = self._detach(assg, vol_state)
+                    assg.set_rc(fn_rc)
+                    if fn_rc != 0:
+                        failed_actions = True
+
+        return (pool_changed, failed_actions)
 
 
     def adjust_drbdctrl(self):
