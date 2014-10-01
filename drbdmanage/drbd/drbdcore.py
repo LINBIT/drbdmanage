@@ -25,6 +25,8 @@ import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
 import drbdmanage.snapshots.snapshots
 import drbdmanage.propscontainer as propscon
+import drbdmanage.exceptions as dmexc
+import drbdmanage.drbd.commands as drbdcmd
 
 """
 WARNING!
@@ -934,7 +936,7 @@ class DrbdManager(object):
 
 
 class DrbdResource(GenericDrbdObject):
-    NAME_MAXLEN   = consts.RES_NAME_MAXLEN
+    NAME_MAXLEN  = consts.RES_NAME_MAXLEN
 
     _name        = None
     _secret      = None
@@ -1007,7 +1009,15 @@ class DrbdResource(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return GenericDrbdObject.name_check(name, DrbdResource.NAME_MAXLEN)
+        checked_name = GenericDrbdObject.name_check(
+            name,
+            DrbdResource.NAME_MAXLEN
+        )
+        # A resource can not be named "all", because that is a
+        # keyword in the drbdsetup/drbdadm utilities
+        if checked_name.lower() == drbdcmd.DrbdAdm.RES_ALL_KEYWORD:
+            raise dmexc.InvalidNameException
+        return checked_name
 
 
     def init_add_assignment(self, assignment):

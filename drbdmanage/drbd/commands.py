@@ -30,7 +30,8 @@ class DrbdAdm(object):
     Calls the external drbdadm command to control DRBD
     """
 
-    EXECUTABLE = "drbdadm"
+    EXECUTABLE      = "drbdadm"
+    RES_ALL_KEYWORD = "all"
 
     execpath = None
 
