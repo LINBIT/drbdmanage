@@ -61,7 +61,7 @@ class LVM(object):
     LVM_EEXIST   = 5
 
     CONF_DEFAULTS = {
-      KEY_DEV_PATH : "/dev/",
+      KEY_DEV_PATH : "/dev",
       KEY_VG_NAME  : DEFAULT_VG,
       KEY_LVM_PATH : "/sbin"
     }
