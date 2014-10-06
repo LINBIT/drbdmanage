@@ -279,65 +279,66 @@ class DrbdAdmConf(object):
                 secret = ""
 
             # begin resource
-            stream.write("resource %s {\n"
-              "    net {\n"
-              "        cram-hmac-alg sha1;\n"
-              "        shared-secret \"%s\";\n"
-              "    }\n"
-              % (resource.get_name(), secret)
-              )
-
-            # begin resource/volumes
-            for volume in resource.iterate_volumes():
-                vol_state = assignment.get_volume_state(volume.get_id())
-                if vol_state is None:
-                    raise ValueError
-                bd_path = vol_state.get_bd_path()
-                if bd_path is None:
-                    bd_path = "none"
-                minor = volume.get_minor()
-                if minor is None:
-                    raise InvalidMinorNrException
-                if (vol_state.get_cstate() & vol_state.FLAG_DEPLOY != 0
-                  and vol_state.get_tstate() & vol_state.FLAG_DEPLOY != 0):
-                    stream.write("    volume %d {\n"
-                      "        device /dev/drbd%d minor %d;\n"
-                      "        disk %s;\n"
-                      "        meta-disk internal;\n"
-                      "    }\n"
-                      % (volume.get_id(), minor.get_value(), minor.get_value(),
-                        bd_path)
-                      )
-            # end resource/volumes
+            stream.write(
+                "resource %s {\n"
+                "    net {\n"
+                "        cram-hmac-alg sha1;\n"
+                "        shared-secret \"%s\";\n"
+                "    }\n"
+                % (resource.get_name(), secret)
+            )
 
             # begin resource/nodes
             for assignment in resource.iterate_assignments():
-                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0)
-                  or undeployed_flag):
-                    node = assignment.get_node()
-                    stream.write("    on %s {\n"
-                      "        node-id %s;\n"
-                      "        address %s:%d;\n"
-                      "    }\n"
-                      % (node.get_name(), assignment.get_node_id(),
-                        node.get_addr(), resource.get_port())
-                      )
+                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0) or
+                    undeployed_flag):
+                        node = assignment.get_node()
+                        stream.write(
+                            "    on %s {\n"
+                            "        node-id %s;\n"
+                            "        address %s:%d;\n"
+                            % (node.get_name(), assignment.get_node_id(),
+                               node.get_addr(), resource.get_port())
+                        )
+                        for vol_state in assignment.iterate_volume_states():
+                            tstate = vol_state.get_tstate()
+                            if (tstate & vol_state.FLAG_DEPLOY) != 0:
+                                volume  = vol_state.get_volume()
+                                minor   = volume.get_minor()
+                                if minor is None:
+                                    raise InvalidMinorNrException
+                                bd_path = vol_state.get_bd_path()
+                                if bd_path is None:
+                                    bd_path = "none"
+                                stream.write(
+                                    "        volume %d {\n"
+                                    "            device /dev/drbd%d "
+                                    "minor %d;\n"
+                                    "            disk %s;\n"
+                                    "            meta-disk internal;\n"
+                                    "        }\n"
+                                    % (volume.get_id(), minor.get_value(),
+                                       minor.get_value(), bd_path)
+                                )
+                        stream.write("    }\n")
             # end resource/nodes
 
             # begin resource/connection
-            stream.write("    connection-mesh {\n"
-              "        hosts"
-              )
+            stream.write(
+                "    connection-mesh {\n"
+                "        hosts"
+            )
             for assignment in resource.iterate_assignments():
-                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0)
-                  or undeployed_flag):
-                    node = assignment.get_node()
-                    stream.write(" %s" % (node.get_name()))
+                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0) or
+                    undeployed_flag):
+                        node = assignment.get_node()
+                        stream.write(" %s" % (node.get_name()))
             stream.write(";\n")
-            stream.write("        net {\n"
-              "            protocol C;\n"
-              "        }\n"
-              )
+            stream.write(
+                "        net {\n"
+                "            protocol C;\n"
+                "        }\n"
+            )
             stream.write("    }\n")
             # end resource/connection
 
@@ -345,10 +346,10 @@ class DrbdAdmConf(object):
             # end resource
         except InvalidMinorNrException:
             logging.critical("DrbdAdmConf: Volume configuration has no "
-              "MinorNr object")
+                             "MinorNr object")
         except Exception as exc:
             logging.error("Cannot generate configuration file, "
-              "unhandled exception: %s" % str(exc))
+                          "unhandled exception: %s" % str(exc))
 
 
     def write_excerpt(self, stream, assignment, nodes, vol_states):
@@ -372,57 +373,63 @@ class DrbdAdmConf(object):
                 secret = ""
 
             # begin resource
-            stream.write("resource %s {\n"
-              "    net {\n"
-              "        cram-hmac-alg sha1;\n"
-              "        shared-secret \"%s\";\n"
-              "    }\n"
-              % (resource.get_name(), secret)
-              )
-
-            # begin resource/volumes
-            for vol_state in vol_states:
-                volume = vol_state.get_volume()
-                bd_path = vol_state.get_bd_path()
-                if bd_path is None:
-                    bd_path = "none"
-                minor = volume.get_minor()
-                if minor is None:
-                    raise InvalidMinorNrException
-                stream.write("    volume %d {\n"
-                  "        device /dev/drbd%d minor %d;\n"
-                  "        disk %s;\n"
-                  "        meta-disk internal;\n"
-                  "    }\n"
-                  % (volume.get_id(), minor.get_value(), minor.get_value(),
-                    bd_path)
-                  )
-            # end resource/volumes
+            stream.write(
+                "resource %s {\n"
+                "    net {\n"
+                "        cram-hmac-alg sha1;\n"
+                "        shared-secret \"%s\";\n"
+                "    }\n"
+                % (resource.get_name(), secret)
+            )
 
             # begin resource/nodes
             for node in nodes:
                 assg = node.get_assignment(resource.get_name())
                 if assg is not None:
-                    stream.write("    on %s {\n"
-                      "        node-id %s;\n"
-                      "        address %s:%d;\n"
-                      "    }\n"
-                      % (node.get_name(), assg.get_node_id(),
-                        node.get_addr(), resource.get_port())
-                      )
+                    stream.write(
+                        "    on %s {\n"
+                        "        node-id %s;\n"
+                        "        address %s:%d;\n"
+                        % (node.get_name(), assg.get_node_id(),
+                           node.get_addr(), resource.get_port())
+                    )
+                    # begin resource/nodes/volumes
+                    node_vol_states = vol_states.get(node.get_name())
+                    for vol_state in node_vol_states:
+                        volume  = vol_state.get_volume()
+                        minor   = volume.get_minor()
+                        if minor is None:
+                            raise InvalidMinorNrException
+                        bd_path = vol_state.get_bd_path()
+                        if bd_path is None:
+                            bd_path = "none"
+
+                        stream.write(
+                            "        volume %d {\n"
+                            "            device /dev/drbd%d minor %d;\n"
+                            "            disk %s;\n"
+                            "            meta-disk internal;\n"
+                            "        }\n"
+                            % (volume.get_id(), minor.get_value(),
+                               minor.get_value(), bd_path)
+                        )
+                    # end resource/nodes/volumes
+                    stream.write("    }\n")
             # end resource/nodes
 
             # begin resource/connection
-            stream.write("    connection-mesh {\n"
-              "        hosts"
-              )
+            stream.write(
+                "    connection-mesh {\n"
+                "        hosts"
+            )
             for node in nodes:
                 stream.write(" %s" % (node.get_name()))
             stream.write(";\n")
-            stream.write("        net {\n"
-              "            protocol C;\n"
-              "        }\n"
-              )
+            stream.write(
+                "        net {\n"
+                "            protocol C;\n"
+                "        }\n"
+            )
             stream.write("    }\n")
             # end resource/connection
 
@@ -430,10 +437,10 @@ class DrbdAdmConf(object):
             # end resource
         except InvalidMinorNrException:
             logging.critical("DrbdAdmConf: Volume configuration has no "
-              "MinorNr object")
+                             "MinorNr object")
         except Exception as exc:
             logging.error("Cannot generate configuration file, "
-              "unhandled exception: %s" % str(exc))
+                          "unhandled exception: %s" % str(exc))
 
 
     def read_drbdctrl_params(self, stream):
