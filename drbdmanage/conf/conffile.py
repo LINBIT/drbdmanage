@@ -289,18 +289,19 @@ class DrbdAdmConf(object):
             )
 
             # begin resource/nodes
-            for assignment in resource.iterate_assignments():
-                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0) or
+            local_node = assignment.get_node()
+            for assg in resource.iterate_assignments():
+                if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or
                     undeployed_flag):
-                        node = assignment.get_node()
+                        node = assg.get_node()
                         stream.write(
                             "    on %s {\n"
                             "        node-id %s;\n"
                             "        address %s:%d;\n"
-                            % (node.get_name(), assignment.get_node_id(),
+                            % (node.get_name(), assg.get_node_id(),
                                node.get_addr(), resource.get_port())
                         )
-                        for vol_state in assignment.iterate_volume_states():
+                        for vol_state in assg.iterate_volume_states():
                             tstate = vol_state.get_tstate()
                             if (tstate & vol_state.FLAG_DEPLOY) != 0:
                                 volume  = vol_state.get_volume()
@@ -309,7 +310,22 @@ class DrbdAdmConf(object):
                                     raise InvalidMinorNrException
                                 bd_path = vol_state.get_bd_path()
                                 if bd_path is None:
-                                    bd_path = "none"
+                                    if node is local_node:
+                                        # If the local node has no
+                                        # backend storage, configure it as
+                                        # a DRBD client
+                                        bd_path = "none"
+                                    else:
+                                        # If a remote node has no
+                                        # backend storage (probably because it
+                                        # is not deployed yet), pretend that
+                                        # there is backend storage on that
+                                        # node. This should prevent a
+                                        # situation where drbdadm refuses to
+                                        # adjust the configuration because
+                                        # none of the nodes seems to have some
+                                        # backend storage
+                                        bd_path = "/dev/null"
                                 stream.write(
                                     "        volume %d {\n"
                                     "            device /dev/drbd%d "
@@ -328,10 +344,10 @@ class DrbdAdmConf(object):
                 "    connection-mesh {\n"
                 "        hosts"
             )
-            for assignment in resource.iterate_assignments():
-                if ((assignment.get_tstate() & assignment.FLAG_DEPLOY != 0) or
+            for assg in resource.iterate_assignments():
+                if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or
                     undeployed_flag):
-                        node = assignment.get_node()
+                        node = assg.get_node()
                         stream.write(" %s" % (node.get_name()))
             stream.write(";\n")
             stream.write(
@@ -383,6 +399,7 @@ class DrbdAdmConf(object):
             )
 
             # begin resource/nodes
+            local_node = assignment.get_node()
             for node in nodes:
                 assg = node.get_assignment(resource.get_name())
                 if assg is not None:
@@ -402,7 +419,19 @@ class DrbdAdmConf(object):
                             raise InvalidMinorNrException
                         bd_path = vol_state.get_bd_path()
                         if bd_path is None:
-                            bd_path = "none"
+                            if node is local_node:
+                                # If the local node has no backend storage,
+                                # configure it as a DRBD client
+                                bd_path = "none"
+                            else:
+                                # If a remote node has no backend storage
+                                # (probably because it is not deployed yet),
+                                # pretend that there is backend storage
+                                # on that node. This should prevent a
+                                # situation where drbdadm refuses to adjust
+                                # the configuration because none of the nodes
+                                # seems to have some backend storage
+                                bd_path = "/dev/null"
 
                         stream.write(
                             "        volume %d {\n"

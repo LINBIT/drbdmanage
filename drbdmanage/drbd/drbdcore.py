@@ -536,34 +536,51 @@ class DrbdManager(object):
             if (peer_assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
                 nodes.append(peer_assg.get_node())
 
-        vol_states  = {}
-        deploy_flag = DrbdVolumeState.FLAG_DEPLOY
-        assg_res    = assignment.get_resource()
+        local_node       = assignment.get_node()
+        local_vol_states = []
+        vol_states       = {}
+        deploy_flag      = DrbdVolumeState.FLAG_DEPLOY
+        assg_res         = assignment.get_resource()
+
+        # LOCAL NODE
+        # - add the current volume no matter what
+        #   its current state or target state is, so drbdadm
+        #   can see it in the configuration and operate on it
+        # - add those other volumes that are already deployed
+        local_vol_states.append(vol_state)
+        for vstate in assignment.iterate_volume_states():
+            if (((vstate.get_tstate() & deploy_flag) != 0 and
+                (vstate.get_cstate() & deploy_flag) != 0)):
+                    # do not add the same volume state object
+                    # twice; the volume state for the current
+                    # volume has already been added
+                    if vstate is not vol_state:
+                        local_vol_states.append(vstate)
+        vol_states[local_node.get_name()] = local_vol_states
+
+        # OTHER NODES
+        # - pretend that all volumes that the local node has are also
+        #   on all other nodes
         for assg_node in nodes:
             peer_assg = assg_node.get_assignment(assg_res.get_name())
-            assg_vol_states = []
-            if peer_assg is assignment:
-                # for this assignment (on the local node):
-                # add the current volume state object no matter what
-                # its current state or target state is, so drbdadm
-                # can see it in the configuration and operate on it
-                assg_vol_states.append(vol_state)
-                for vstate in assignment.iterate_volume_states():
-                    if (((vstate.get_tstate() & deploy_flag) != 0 and
-                        (vstate.get_cstate() & deploy_flag) != 0)):
-                            # do not add the same volume state object
-                            # twice; the volume state for the current
-                            # volume has already been added
-                            if vstate is not vol_state:
-                                assg_vol_states.append(vstate)
-            else:
-                for vstate in assignment.iterate_volume_states():
-                    # For other nodes, pretend that all volumes are deployed;
-                    # this works around a problem where drbdadm fails to
-                    # create meta-data because some remote nodes have
-                    # no volumes configured
-                    assg_vol_states.append(vstate)
-            vol_states[assg_node.get_name()] = assg_vol_states
+            # prevent adding the local node twice
+            if peer_assg is not assignment:
+                assg_vol_states = []
+                for local_vstate in local_vol_states:
+                    peer_vstate = peer_assg.get_volume_state(
+                        local_vstate.get_id()
+                    )
+                    if peer_vstate is not None:
+                        assg_vol_states.append(peer_vstate)
+                    else:
+                        # The volume state list should be the same for
+                        # all assignments; if it is not, log an error
+                        logging.error(
+                            "Volume state list mismatch between multiple "
+                            "assignments for resource %s"
+                            % (assg_res.get_name())
+                        )
+                vol_states[assg_node.get_name()] = assg_vol_states
 
         # Meta-data creation for assignments that have local storage
         if not diskless:
