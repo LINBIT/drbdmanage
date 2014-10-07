@@ -84,7 +84,7 @@ setup(
                 ("/usr/share/man/man8", ["man-pages/drbdmanage.8.gz"]),
                 ("/usr/share/dbus-1/system-services",
                     ["conf/org.drbd.drbdmanaged.service"]),
-                ("/var/drbd.d", []),
+                ("/var/lib/drbd.d", []),
                 ("/var/lib/drbdmanage", [])
                ],
     cmdclass={

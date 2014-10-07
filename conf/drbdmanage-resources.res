@@ -2,4 +2,4 @@
 # drbdmanage temporary resource configuration files
 # ============================================================
 
-include "/var/drbd.d/*.res";
+include "/var/lib/drbd.d/*.res";

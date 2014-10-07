@@ -1093,7 +1093,7 @@
                 the local node are exported.
                 The configuration files will be created (or updated) in
                 the drbdmanage directory for temporary configuration files,
-                typically <option>/var/drbd.d</option>.
+                typically <option>/var/lib/drbd.d</option>.
             </para>
           </listitem>
         </varlistentry>

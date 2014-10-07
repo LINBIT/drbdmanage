@@ -108,7 +108,7 @@ class DrbdManageServer(object):
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
         KEY_DRBDADM_PATH   : "/usr/sbin",
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
-        KEY_DRBD_CONFPATH  : "/var/drbd.d",
+        KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
         KEY_DRBDCTRL_VG    : DEFAULT_VG
     }
 
