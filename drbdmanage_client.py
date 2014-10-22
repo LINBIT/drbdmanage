@@ -221,8 +221,8 @@ class DrbdManage(object):
         params     = {}
         opt        = { "-a" : None }
         optalias   = { "--address-family" : "a" }
-        flags      = {}
-        flagsalias = {}
+        flags      = { "-q" : False }
+        flagsalias = { " --quiet" : "-q" }
         if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) == 0:
             name = params["name"]
@@ -241,8 +241,30 @@ class DrbdManage(object):
 
             if fn_rc == 0:
                 server_rc, joinc = self._server.text_query(["joinc", name])
-                sys.stdout.write("\nJoin command for node %s:\n"
-                    "%s\n" % (name, " ".join(joinc)))
+                joinc_text = str(" ".join(joinc))
+
+                # Text queries do not return error codes, so check whether the
+                # string returned by the server looks like a join command or
+                # like an error message
+                if joinc_text.startswith("Error:"):
+                    sys.stderr.write(joinc_text + "\n")
+                else:
+                    try:
+                        sshc = ["ssh", "-oBatchMode=yes", "-oConnectTimeout=2",
+                                "root@" + ip]
+                        if subprocess.call(sshc + ["true"]) == 0:
+                            sys.stdout.write("\nExecuting join command on "
+                                             "%s using ssh.\n" % (name))
+                            ssh_joinc = (sshc + joinc +
+                                         ([ "-q" ] if flags["-q"] else []))
+                            subprocess.check_call(ssh_joinc)
+                        else:
+                            sys.stdout.write("\nJoin command for node %s:\n"
+                                             "%s\n" % (name, joinc_text))
+                    except subprocess.CalledProcessError:
+                        sys.stderr.write("Error: Attempt to execute the " +
+                                         "join command remotely failed\n")
+
             fn_rc = self._list_rc_entries(server_rc)
 
         else:
