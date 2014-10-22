@@ -61,6 +61,7 @@ from drbdmanage.drbd.views import DrbdResourceView
 from drbdmanage.drbd.views import DrbdVolumeView
 from drbdmanage.drbd.views import DrbdVolumeStateView
 from drbdmanage.storage.storagecore import MinorNr
+from drbdmanage.defaultip import default_ip
 
 
 class DrbdManage(object):
@@ -1598,6 +1599,8 @@ class DrbdManage(object):
         flagsalias = { "--quiet" : "-q" }
 
         try:
+            params["address"] = default_ip();
+
             if CommandParser().parse(args, order, params, opt, optalias,
                 flags, flagsalias) != 0:
                     raise SyntaxException

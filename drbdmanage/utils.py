@@ -571,7 +571,8 @@ class CommandParser(object):
         olen = len(order)
         ctr = 0
         while ctr < olen:
-            params[order[ctr]] = None
+            if not params.has_key(order[ctr]):
+                params[order[ctr]] = None
             ctr += 1
         ctr = 0
         arg = args.next_arg()
@@ -606,9 +607,10 @@ class CommandParser(object):
                     fn_rc = 1
                     break
             arg = args.next_arg()
-        if ctr < olen:
-            sys.stderr.write("Error: Incomplete command line\n")
-            fn_rc = 1
+        for val in params.itervalues():
+            if val == None:
+                sys.stderr.write("Error: Incomplete command line\n")
+                fn_rc = 1
         return fn_rc
 
 
