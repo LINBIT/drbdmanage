@@ -328,13 +328,12 @@ class DrbdAdmConf(object):
                                         bd_path = "/dev/null"
                                 stream.write(
                                     "        volume %d {\n"
-                                    "            device /dev/drbd%d "
-                                    "minor %d;\n"
+                                    "            device minor %d;\n"
                                     "            disk %s;\n"
                                     "            meta-disk internal;\n"
                                     "        }\n"
                                     % (volume.get_id(), minor.get_value(),
-                                       minor.get_value(), bd_path)
+                                       bd_path)
                                 )
                         stream.write("    }\n")
             # end resource/nodes
@@ -435,12 +434,12 @@ class DrbdAdmConf(object):
 
                         stream.write(
                             "        volume %d {\n"
-                            "            device /dev/drbd%d minor %d;\n"
+                            "            device minor %d;\n"
                             "            disk %s;\n"
                             "            meta-disk internal;\n"
                             "        }\n"
                             % (volume.get_id(), minor.get_value(),
-                               minor.get_value(), bd_path)
+                               bd_path)
                         )
                     # end resource/nodes/volumes
                     stream.write("    }\n")
@@ -477,9 +476,9 @@ class DrbdAdmConf(object):
         # FIXME: these parameters should be read from the section of the
         #        current node
         params = [
-            [ "shared-secret" , DrbdAdmConf.KEY_SECRET ],
-            [ "disk"          , DrbdAdmConf.KEY_BDEV   ],
-            [ "address"       , DrbdAdmConf.KEY_ADDRESS]
+            ["shared-secret",   DrbdAdmConf.KEY_SECRET],
+            ["disk",            DrbdAdmConf.KEY_BDEV],
+            ["address",         DrbdAdmConf.KEY_ADDRESS]
         ]
         fields   = {}
         while True:
@@ -516,7 +515,7 @@ class DrbdAdmConf(object):
             "        shared-secret   \"" + secret + "\";\n"
             "    }\n"
             "    volume 0 {\n"
-            "        device      /dev/drbd0;\n"
+            "        device      minor 0;\n"
             "        disk        " + bdev + ";\n"
             "        meta-disk   internal;\n"
             "    }\n")
