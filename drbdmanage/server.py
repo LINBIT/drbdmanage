@@ -69,13 +69,17 @@ class DrbdManageServer(object):
     EVT_TYPE_CHANGE = "change"
     EVT_TYPE_EXISTS = "exists"
     EVT_SRC_CON     = "connection"
+    EVT_SRC_PEERDEV = "peer-device"
     EVT_SRC_RES     = "resource"
     EVT_ARG_NAME    = "name"
     EVT_ARG_ROLE    = "role"
+    EVT_ARG_REPL    = "replication"
     EVT_ARG_CON     = "connection"
 
     EVT_ROLE_PRIMARY   = "Primary"
     EVT_ROLE_SECONDARY = "Secondary"
+
+    EVT_REPL_SYNCTARGET = "SyncTarget"
 
     LOGGING_FORMAT = "drbdmanaged[%(process)d]: %(levelname)-10s %(message)s"
 
@@ -308,37 +312,64 @@ class DrbdManageServer(object):
                 sys.stderr.flush()
                 if not changed:
                     match = self._evt_pat.match(line)
-                    if match:
+                    if match is not None:
                         # try to parse args
                         # TODO: maybe this pattern can be pre-compiled, too?
-                        line_data = dict(re.findall('([\w-]+):(\S+)',
-                                         match.group('attrs')))
+                        line_data = dict(
+                            re.findall('([\w-]+):(\S+)', match.group('attrs'))
+                        )
 
-                        # If the configuration resource changes to "Secondary"
-                        # role on a connected node, the configuration may have
-                        # changed
+                        evt_type   = match.group('type')
+                        evt_source = match.group('source')
 
-                        # FIXME: KeyError upon missing key/value pairs on the
-                        #        parsed drbdsetup events line temporarily
-                        #        fixed, but this should probably be changed so
-                        #        that it can interpret lines that do not have
-                        #        certain fields (like 'role'), too
-                        try:
-                            evt_type   = match.group('type')
-                            evt_source = match.group('source')
-
-                            if (evt_type          == self.EVT_TYPE_CHANGE and
-                                evt_source        == self.EVT_SRC_CON and
-                                line_data['name'] == DRBDCTRL_RES_NAME and
-                                line_data['role'] == self.EVT_ROLE_SECONDARY):
-                                    changed = True
-                        except KeyError:
-                            # Ignore lines with missing fields
-                            pass
+                        # Detect potential changes of the data on the
+                        # control volume
+                        changed = self._drbd_event_change_trigger(
+                            evt_type, evt_source, line_data
+                        )
         if changed:
             self._drbd_mgr.run(False, False)
         # True = GMainLoop shall not unregister this event handler
         return True
+
+
+    def _drbd_event_change_trigger(self, evt_type, evt_source, line_data):
+        changed = False
+        try:
+            if (evt_type          == self.EVT_TYPE_CHANGE and
+                line_data[self.EVT_ARG_NAME] == DRBDCTRL_RES_NAME):
+                    # Check: role change to Secondary
+                    try:
+                        if (evt_source == self.EVT_SRC_CON and
+                            line_data[self.EVT_ARG_ROLE] ==
+                            self.EVT_ROLE_SECONDARY):
+                                changed = True
+                                if self.dbg_events:
+                                    logging.debug(
+                                        "event change trigger role:Secondary"
+                                    )
+                    except KeyError:
+                        # Ignore: Not a role change
+                        pass
+
+                    # Check: replication change to SyncTarget
+                    try:
+                        if (evt_source == self.EVT_SRC_PEERDEV and
+                            line_data[self.EVT_ARG_REPL] ==
+                            self.EVT_REPL_SYNCTARGET):
+                                changed = True
+                                if self.dbg_events:
+                                    logging.debug(
+                                        "event change trigger "
+                                        "replication:SyncTarget"
+                                    )
+                    except KeyError:
+                        # Ignore: Not a replication change
+                        pass
+        except KeyError:
+            # Ignore lines with missing fields (line_data keys)
+            pass
+        return changed
 
 
     def init_logging(self):
