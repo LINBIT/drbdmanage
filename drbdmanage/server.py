@@ -1283,6 +1283,50 @@ class DrbdManageServer(object):
         return DM_SUCCESS
 
 
+    def cluster_free_query(self, redundancy):
+        """
+        Determines the maximum size of an n-times redundantly deployed volume
+        """
+        fn_rc = []
+        # Default of 0 if the free space is unknown
+        # TODO: There should be a distinction between the two cases:
+        #       1) there is no free space
+        #       2) there are too few nodes that have a known poolfree size
+        #          to determine whether there is any free space
+        free_space = 0
+        try:
+            if redundancy >= 1:
+                if redundancy <= len(self._nodes):
+                    # Select nodes where the amount of free space on that node is known
+                    selected = []
+                    for node in self._nodes.itervalues():
+                        poolfree = node.get_poolfree()
+                        if poolfree != -1:
+                            selected.append(node)
+
+                    # Sort by free space
+                    selected = sorted(
+                        selected,
+                        key=lambda node: node.get_poolfree(), reverse=True
+                    )
+                    if len(selected) >= redundancy:
+                        node = selected[redundancy - 1]
+                        free_space = node.get_poolfree()
+                else:
+                    # requested redundancy exceeds the
+                    # number of nodes in the cluster
+                    add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
+            else:
+                # requested a redundancy of less than 1, which is an invalid
+                # number of nodes
+                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc, free_space
+
+
     def auto_deploy(self, res_name, count, delta, site_clients):
         """
         Deploys a resource to a number of nodes

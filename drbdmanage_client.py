@@ -887,6 +887,61 @@ class DrbdManage(object):
           "  --overwrite and --discard\n")
 
 
+    def cmd_free_space(self, args):
+        fn_rc    = 1
+        # Command parser configuration
+        order    = [ "redundancy" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { "-m" : False }
+        flagsalias = { "--machine-readable" : "-m" }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            redundancy_str = params["redundancy"]
+            redundancy = 0
+            try:
+                redundancy = int(redundancy_str)
+            except ValueError:
+                raise SyntaxException
+
+            if redundancy < 1:
+                raise SyntaxException
+
+            self.dbus_init()
+            server_rc, free_space = (
+                self._server.cluster_free_query(dbus.Int32(redundancy))
+            )
+
+            successful = self._is_rc_successful(server_rc)
+            if successful:
+                machine_readable = flags["-m"]
+                if machine_readable:
+                    sys.stdout.write("%lu\n" % (free_space))
+                else:
+                    sys.stdout.write(
+                        "The maximum size for a %dx redundant "
+                        "volume is %lu kB\n"
+                        % (redundancy, free_space)
+                    )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_free_space()
+        return fn_rc
+
+
+    def syntax_free_space(self):
+        sys.stderr.write(
+            "Syntax: free-space [ --machine-readable | -m ] "
+            "<redundancy-count>\n"
+        )
+        sys.stderr.write("    Queries the maximum size of a volume that "
+          "could be\n    deployed with the specified level of redundancy\n")
+
+
     def cmd_deploy(self, args):
         fn_rc    = 1
         # Command parser configuration
@@ -2075,6 +2130,26 @@ class DrbdManage(object):
         """
         Lists default error messages for a list of server return codes
         """
+        return self._process_rc_entries(server_rc, True)
+
+
+    def _is_rc_successful(self, server_rc):
+        """
+        Indicates whether server return codes contain a success message
+        """
+        successful = (True if self._process_rc_entries(server_rc, False) == 0
+                      else False)
+        return successful
+
+
+    def _process_rc_entries(self, server_rc, output):
+        """
+        Processes a list of server return codes
+
+        * Indicates whether the return codes contain a success message
+        * If the output flag is set, prints the default error message for
+          each return code
+        """
         fn_rc = 1
         try:
             for rc_entry in server_rc:
@@ -2082,7 +2157,8 @@ class DrbdManage(object):
                     rc_num, rc_fmt, rc_args = rc_entry
                     if rc_num == DM_SUCCESS:
                         fn_rc = 0
-                    self.error_msg_text(rc_num)
+                    if output:
+                        self.error_msg_text(rc_num)
                 except (TypeError, ValueError):
                     sys.stderr.write("WARNING: unparseable return code "
                         "omitted\n")
@@ -2353,6 +2429,7 @@ class DrbdManage(object):
         "flags"             : cmd_flags,
         "attach"            : cmd_attach,
         "detach"            : cmd_detach,
+        "free-space"        : cmd_free_space,
         "assign"            : cmd_assign,
         "unassign"          : cmd_unassign,
         "deploy"            : cmd_deploy,

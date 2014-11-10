@@ -208,6 +208,15 @@ class DBusServer(dbus.service.Object):
 
 
     @dbus.service.method(DBUS_DRBDMANAGED,
+      in_signature="i", out_signature="a(isa(ss))" "x")
+    def cluster_free_query(self, redundancy):
+        """
+        D-Bus interface for DrbdManageServer.cluster_free_query(...)
+        """
+        return self._server.cluster_free_query(redundancy)
+
+
+    @dbus.service.method(DBUS_DRBDMANAGED,
       in_signature="siib", out_signature="a(isa(ss))")
     def auto_deploy(self, res_name, count, delta, site_clients):
         """
