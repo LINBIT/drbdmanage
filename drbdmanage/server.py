@@ -2606,6 +2606,14 @@ class DrbdManageServer(object):
             if persist is not None:
                 sub_rc = self._create_node(True, name, props, bdev, port)
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
+                    # attempt to determine the amount of total and free
+                    # storage space on the local node; if that fails, total
+                    # and free space will be determined later, either when
+                    # volumes are created or when the drbdmanage server
+                    # is restarted
+                    # therefore, the return code is intentionally ignored
+                    self.update_pool_data()
+                    # save the changes to the control volume
                     self.save_conf_data(persist)
                 else:
                     add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
