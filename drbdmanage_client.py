@@ -31,6 +31,7 @@ import errno
 import dbus
 import subprocess
 import time
+import traceback
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 
@@ -1738,11 +1739,13 @@ class DrbdManage(object):
                 # ========================================
                 if server_conf is not None:
                     drbdctrl_vg = map_val_or_dflt(
-                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG)
+                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
+                    )
                 else:
                     drbdctrl_vg = DEFAULT_VG
-                drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/"
-                    + DRBDCTRL_RES_NAME)
+                drbdctrl_blockdev = (
+                    "/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME
+                )
 
                 # ========================================
                 # Cleanup
@@ -1754,25 +1757,43 @@ class DrbdManage(object):
                 # ========================================
 
                 # Create the .drbdctrl LV
-                self._ext_command(["lvcreate", "-n", DRBDCTRL_RES_NAME,
-                    "-L", "4m", drbdctrl_vg])
+                self._ext_command(
+                    [
+                        "lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m",
+                        drbdctrl_vg
+                    ]
+                )
 
                 # Create meta-data
-                self._ext_command(["drbdmeta", "--force", "0",
-                    "v09", drbdctrl_blockdev, "internal",
-                    "create-md", "31"])
+                self._ext_command(
+                    [
+                        "drbdmeta", "--force", "0", "v09", drbdctrl_blockdev,
+                        "internal", "create-md", "31"
+                    ]
+                )
 
                 # Configure the .drbdctrl resource
-                self._ext_command(["drbdsetup", "new-resource",
-                    DRBDCTRL_RES_NAME, "0"])
-                self._ext_command(["drbdsetup", "new-minor", DRBDCTRL_RES_NAME,
-                    "0", "0"])
-                self._ext_command(["drbdmeta", "0", "v09",
-                    drbdctrl_blockdev, "internal", "apply-al"])
-                self._ext_command(["drbdsetup", "attach", "0",
-                    drbdctrl_blockdev, drbdctrl_blockdev, "internal"])
-                self._ext_command(["drbdsetup",
-                    "primary", DRBDCTRL_RES_NAME, "--force"])
+                self._ext_command(
+                    ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, "0"]
+                )
+                self._ext_command(
+                    ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
+                )
+                self._ext_command(
+                    [
+                        "drbdmeta", "0", "v09",
+                        drbdctrl_blockdev, "internal", "apply-al"
+                    ]
+                )
+                self._ext_command(
+                    [
+                        "drbdsetup", "attach", "0", drbdctrl_blockdev,
+                        drbdctrl_blockdev, "internal"
+                    ]
+                )
+                self._ext_command(
+                    ["drbdsetup", "primary", DRBDCTRL_RES_NAME, "--force"]
+                )
                 init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
 
                 # FIXME: return codes broken atm because of new API, turn
@@ -1781,8 +1802,9 @@ class DrbdManage(object):
                 #if init_rc != 0:
                     # an error message is printed by _drbdctrl_init()
                 #    raise AbortException
-                self._ext_command(["drbdsetup", "secondary",
-                    DRBDCTRL_RES_NAME])
+                self._ext_command(
+                    ["drbdsetup", "secondary", DRBDCTRL_RES_NAME]
+                )
 
 
                 props = {}
@@ -1875,11 +1897,13 @@ class DrbdManage(object):
                 # ========================================
                 if server_conf is not None:
                     drbdctrl_vg = map_val_or_dflt(
-                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG)
+                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
+                    )
                 else:
                     drbdctrl_vg = DEFAULT_VG
-                drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/"
-                    + DRBDCTRL_RES_NAME)
+                drbdctrl_blockdev = (
+                    "/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME
+                )
 
                 # ========================================
                 # Cleanup
@@ -1891,13 +1915,21 @@ class DrbdManage(object):
                 # ========================================
 
                 # Create the .drbdctrl LV
-                self._ext_command(["lvcreate", "-n",
-                    DRBDCTRL_RES_NAME, "-L", "4m", drbdctrl_vg])
+                self._ext_command(
+                    [
+                        "lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m",
+                        drbdctrl_vg
+                    ]
+                )
 
                 # Create meta-data
-                self._ext_command(["drbdmeta", "--force", "0",
-                    "v09", drbdctrl_blockdev, "internal",
-                    "create-md", "31"])
+                self._ext_command(
+                    [
+                        "drbdmeta", "--force", "0", "v09",
+                        drbdctrl_blockdev, "internal",
+                        "create-md", "31"
+                    ]
+                )
 
                 l_addr    = params["local_ip"]
                 p_addr    = params["peer_ip"]
@@ -1907,28 +1939,53 @@ class DrbdManage(object):
                 secret    = params["secret"]
 
                 # Configure the .drbdctrl resource
-                self._ext_command(["drbdsetup", "new-resource",
-                    DRBDCTRL_RES_NAME, l_node_id])
-                self._ext_command(["drbdsetup", "new-minor",
-                    DRBDCTRL_RES_NAME, "0", "0"])
-                self._ext_command(["drbdmeta", "0", "v09",
-                    drbdctrl_blockdev, "internal", "apply-al"])
-                self._ext_command(["drbdsetup", "attach", "0",
-                    drbdctrl_blockdev, drbdctrl_blockdev, "internal"])
+                self._ext_command(
+                    ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, l_node_id]
+                )
+                self._ext_command(
+                    ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
+                )
+                self._ext_command(
+                    [
+                        "drbdmeta", "0", "v09",
+                        drbdctrl_blockdev, "internal", "apply-al"
+                    ]
+                )
+                self._ext_command(
+                    [
+                        "drbdsetup", "attach", "0",
+                        drbdctrl_blockdev, drbdctrl_blockdev, "internal"
+                    ]
+                )
 
                 umh_f = None
                 umh   = None
                 try:
-                    umh_f = open(
-                        self.UMHELPER_FILE, "r")
+                    umh_f = open(self.UMHELPER_FILE, "r")
                     umh = umh_f.read(8192)
+                    # The kernel adds a newline character when the file
+                    # is read, but does not remove any newline characters
+                    # when the same content is written back.
+                    # For this reason, a trailing newline character will be
+                    # removed to avoid filling up the file with trailing
+                    # newlines upon multiple runs of the join procedure
+                    if umh.endswith("\n"):
+                        umh = umh[:-1]
                     umh_f.close()
                     umh_f = None
-                    umh_f = open(
-                        self.UMHELPER_FILE, "w")
+                    umh_f = open(self.UMHELPER_FILE, "w")
                     umh_f.write(self.UMHELPER_OVERRIDE)
                 except (IOError, OSError) as err:
-                    print(err)
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    exc_lines = traceback.format_exception_only(
+                        exc_type, exc_obj
+                    )
+                    exc_text = exc_lines[0]
+                    sys.stderr.write(
+                        "Warning: Reading the current usermode helper "
+                        "failed:\n%s"
+                        % (exc_text)
+                    )
                     raise AbortException
                 finally:
                     if umh_f is not None:
@@ -1937,15 +1994,18 @@ class DrbdManage(object):
                         except (IOError, OSError):
                             pass
 
-                proc_rc = self._ext_command(["drbdsetup", "connect",
-                    DRBDCTRL_RES_NAME,
-                    "ipv4:" + l_addr + ":" + str(port),
-                    "ipv4:" + p_addr + ":" + str(port),
-                    "--peer-node-id=" + p_node_id,
-                    "--_name=" + p_name,
-                    "--shared-secret=" + secret,
-                    "--cram-hmac-alg=sha256",
-                    "--protocol=C"])
+                proc_rc = self._ext_command(
+                    [
+                        "drbdsetup", "connect", DRBDCTRL_RES_NAME,
+                        "ipv4:" + l_addr + ":" + str(port),
+                        "ipv4:" + p_addr + ":" + str(port),
+                        "--peer-node-id=" + p_node_id,
+                        "--_name=" + p_name,
+                        "--shared-secret=" + secret,
+                        "--cram-hmac-alg=sha256",
+                        "--protocol=C"
+                    ]
+                )
 
                 # FIXME: wait here -- otherwise, restoring the user mode
                 #        helper will probably race with establishing the
@@ -1955,12 +2015,19 @@ class DrbdManage(object):
                 umh_f = None
                 if umh is not None:
                     try:
-                        umh_f = open(
-                        self.UMHELPER_FILE, "w")
+                        umh_f = open(self.UMHELPER_FILE, "w")
                         umh_f.write(umh)
                     except (IOError, OSError) as err:
-                        print(err)
-                        raise AbortException
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        exc_lines = traceback.format_exception_only(
+                            exc_type, exc_obj
+                        )
+                        exc_text = exc_lines[0]
+                        sys.stderr.write(
+                            "Warning: Resetting the usermode helper failed:\n"
+                            "%s"
+                            % (exc_text)
+                        )
                     finally:
                         if umh_f is not None:
                             try:
@@ -1973,7 +2040,8 @@ class DrbdManage(object):
                 self.dbus_init()
                 # server_rc = self._server.update_res()
                 server_rc = self._server.join_node(
-                    drbdctrl_blockdev, port, secret)
+                    drbdctrl_blockdev, port, secret
+                )
                 #server_rc = self._server.debug_console(dbus.String(
                 #    "gen drbdctrl " + secret + " " + port + " " + bdev
                 #))
@@ -1984,8 +2052,10 @@ class DrbdManage(object):
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback(drbdctrl_vg)
         except SyntaxException:
-            sys.stderr.write("Syntax: local_ip local_node_id peer_ip peer_name "
-                "peer_node_id secret\n")
+            sys.stderr.write(
+                "Syntax: local_ip local_node_id peer_ip peer_name "
+                "peer_node_id secret\n"
+            )
         return fn_rc
 
 
@@ -1996,11 +2066,14 @@ class DrbdManage(object):
         Notice: Caller should handle AbortException
         """
         # Shut down any existing drbdmanage control volume
-        self._ext_command(["drbdsetup", "down", DRBDCTRL_RES_NAME])
+        self._ext_command(
+            ["drbdsetup", "down", DRBDCTRL_RES_NAME]
+        )
 
         # Delete any existing .drbdctrl LV
-        self._ext_command(["lvremove", "--force", drbdctrl_vg + "/"
-            + DRBDCTRL_RES_NAME])
+        self._ext_command(
+            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_RES_NAME]
+        )
 
         # Delete any existing configuration file
         try:
@@ -2014,13 +2087,15 @@ class DrbdManage(object):
         Attempts cleanup after a failed init or join operation
         """
         try:
-            self._ext_command(["drbdsetup", "down",
-                DRBDCTRL_RES_NAME])
+            self._ext_command(
+                ["drbdsetup", "down", DRBDCTRL_RES_NAME]
+            )
         except AbortException:
             pass
         try:
-            self._ext_command(["lvremove", "--force", drbdctrl_vg + "/" +
-                DRBDCTRL_RES_NAME])
+            self._ext_command(
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_RES_NAME]
+            )
         except AbortException:
             pass
 
@@ -2043,7 +2118,7 @@ class DrbdManage(object):
             quiet         = flags["-q"]
 
             if not quiet:
-                quiet = self.user_confirm((
+                quiet = self.user_confirm(
                     "You are going to initalize a new "
                     "drbdmanage control volume on:\n"
                     "  %s\n"
@@ -2056,7 +2131,8 @@ class DrbdManage(object):
                     "managed by drbdmanage\n"
                     "\n"
                     "Confirm:\n"
-                    % drbdctrl_file))
+                    % (drbdctrl_file)
+                )
             if quiet:
                 fn_rc = self._drbdctrl_init(drbdctrl_file)
             else:
