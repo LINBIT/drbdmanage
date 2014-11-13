@@ -2754,20 +2754,30 @@ class DrbdManageServer(object):
                 return fn_rc, ["Error: empty argument list sent "
                     "to the drbdmanage server"]
 
-            fn_name = "TQ_" + command.pop(0)
-            fn = getattr(self, fn_name)
-            if not fn:
+            func_name = "TQ_" + command.pop(0)
+            text_query_func = getattr(self, func_name)
+            if text_query_func is None:
                 result_text = ["Error: unknown command"]
             else:
-                (takes, _, _, defs) = inspect.getargspec(fn)
-                takes.pop(0)                            # self
+                # optional arguments are those that have default values
+                # specified in the function declaration
+                (mandatory_args, _, _, optional_args) = (
+                    inspect.getargspec(text_query_func)
+                )
+                # remove the "self" argument
+                mandatory_args.pop(0)
+
+                mandatory_args_len = len(mandatory_args)
+                optional_args_len  = (0 if optional_args is None
+                                      else len(optional_args))
+                command_len        = len(command)
                 # TODO: varargs
-                if len(command) > len(takes):
+                if command_len > mandatory_args_len:
                     result_text = ["Error: too many arguments."]
-                elif len(command) + len(defs) < len(takes):
+                elif command_len + optional_args_len < mandatory_args_len:
                     result_text = ["Error: too few arguments."]
                 else:
-                    result_text = fn(*command)
+                    result_text = text_query_func(*command)
         except Exception as exc:
             # FIXME: useful error messages required here
             logging.error("text_query() command failed: %s" % str(exc))
