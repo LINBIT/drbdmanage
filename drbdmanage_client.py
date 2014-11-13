@@ -1650,6 +1650,53 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: howto-join <node>\n")
 
 
+    def cmd_query_conf(self, args):
+        """
+        Retrieves the configuration file for a resource on a specified node
+        """
+        fn_rc = 1
+        # Command parser configuration
+        order    = [ "node", "res" ]
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { }
+        flagsalias = { }
+        try:
+            if CommandParser().parse(args, order, params, opt, optalias,
+              flags, flagsalias) != 0:
+                raise SyntaxException
+
+            node_name = params["node"]
+            res_name  = params["res"]
+            self.dbus_init()
+            server_rc, res_config = self._server.text_query(
+                [
+                    "export_conf",
+                    node_name, res_name
+                ]
+            )
+
+            # Server generated error messages do not end with newline,
+            # but the configuration file does, so compensate for that
+            # to avoid a superfluous empty line at the end of the
+            # configuration output
+            if res_config[0].endswith("\n"):
+                format = "%s"
+            else:
+                format = "%s\n"
+
+            sys.stdout.write(format % res_config[0])
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_query_conf()
+        return fn_rc
+
+
+    def syntax_query_conf(self):
+        sys.stderr.write("Syntax: query-conf <node> <resource>\n")
+
+
     def cmd_ping(self, args):
         fn_rc = 1
         try:
@@ -2524,7 +2571,8 @@ class DrbdManage(object):
         "usage"             : cmd_usage,
         "init"              : cmd_init,
         "join"              : cmd_join,
-        "howto-join"        : cmd_howto_join
+        "howto-join"        : cmd_howto_join,
+        "query-conf"        : cmd_query_conf
       }
 
 

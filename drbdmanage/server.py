@@ -30,6 +30,7 @@ import logging.handlers
 import re
 import traceback
 import inspect
+import StringIO
 
 from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, SERVER_CONFFILE,
@@ -2735,6 +2736,34 @@ class DrbdManageServer(object):
         if not vol:
             return ["Vol_id invalid"]
         return [vol.get_path()]
+
+
+    def TQ_export_conf(self, node_name, res_name):
+        """
+        Export the configuration file for a DRBD resource on a specified node
+        """
+        response = []
+        node     = self._nodes.get(node_name)
+        resource = self._resources.get(res_name)
+        if node is not None and resource is not None:
+            assignment = node.get_assignment(res_name)
+            if assignment is not None:
+                conf_buffer = StringIO.StringIO()
+                writer = DrbdAdmConf()
+                writer.write(conf_buffer, assignment, False)
+                response = [conf_buffer.getvalue()]
+                conf_buffer.close()
+            else:
+                response = [
+                    "Error: Resource %s is not assigned to node %s"
+                    % (res_name, node_name)
+                ]
+        else:
+            if node is None:
+                response = ["Error: Node %s not found" % (node_name)]
+            else:
+                response = ["Error: Resource %s not found" %(res_name)]
+        return response
 
 
     def text_query(self, command):
