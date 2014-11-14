@@ -1711,6 +1711,31 @@ class DrbdManage(object):
         return fn_rc
 
 
+    def cmd_startup(self, args):
+        fn_rc = 1
+        try:
+            sys.stdout.write(
+                "Attempting to startup the server through "
+                "D-Bus activation...\n"
+            )
+            self.dbus_init()
+            server_rc = self._server.ping()
+            if server_rc == 0:
+                sys.stdout.write(
+                    "D-Bus connection successful, "
+                    "server is running and reachable\n"
+                )
+                fn_rc = 0
+        except dbus.exceptions.DBusException:
+            sys.stderr.write(
+                "D-Bus connection FAILED -- the D-Bus server may have "
+                "been unable to activate\nthe drbdmanage service.\n"
+                "Review the syslog for error messages logged by the "
+                "D-Bus server\nor the drbdmanage server\n"
+            )
+        return fn_rc
+
+
     def cmd_init(self, args):
         """
         Initializes a new drbdmanage cluster
@@ -2563,9 +2588,10 @@ class DrbdManage(object):
         "update-pool"       : cmd_update_pool,
         "save"              : cmd_save,
         "load"              : cmd_load,
-        "shutdown"          : cmd_shutdown,
         "export"            : cmd_export_conf,
         "ping"              : cmd_ping,
+        "startup"           : cmd_startup,
+        "shutdown"          : cmd_shutdown,
         "initcv"            : cmd_initcv,
         "exit"              : cmd_exit,
         "usage"             : cmd_usage,
