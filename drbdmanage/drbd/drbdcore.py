@@ -772,6 +772,13 @@ class DrbdManager(object):
                     fn_rc = drbd_proc.wait()
                 else:
                     fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+                drbd_proc = self._drbdadm.secondary(resource.get_name())
+                if drbd_proc is not None:
+                    self._resconf.write(drbd_proc.stdin, assignment, False)
+                    drbd_proc.stdin.close()
+                    fn_rc = drbd_proc.wait()
+                else:
+                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
             elif tstate & Assignment.FLAG_DISCARD != 0:
                 fn_rc = self._reconnect(assignment)
