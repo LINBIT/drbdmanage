@@ -37,7 +37,7 @@ from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
     KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
     DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO, RES_PORT_NR_ERROR,
     FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS, FLAG_CONNECT)
-from drbdmanage.utils import (NioLineReader, CmdLineReader)
+from drbdmanage.utils import (NioLineReader, CmdLineReader, MetaData)
 from drbdmanage.utils import (build_path, extend_path, generate_secret,
     get_free_number, plugin_import, add_rc_entry, serial_filter, props_filter,
     string_to_bool, split_main_aux_props, aux_props_selector)
@@ -1312,7 +1312,19 @@ class DrbdManageServer(object):
                     )
                     if len(selected) >= redundancy:
                         node = selected[redundancy - 1]
-                        free_space = node.get_poolfree()
+                        gross_free = node.get_poolfree()
+                        max_peers = self.DEFAULT_MAX_PEERS
+                        try:
+                            max_peers = int(
+                                self.get_conf_value(self.KEY_MAX_PEERS)
+                            )
+                        except ValueError:
+                            # Unparseable configuration value;
+                            # no-op: keep default value
+                            pass
+                        free_space = MetaData.get_net_data_kiB(
+                            gross_free, max_peers
+                        )
                 else:
                     # requested redundancy exceeds the
                     # number of nodes in the cluster
@@ -1400,8 +1412,21 @@ class DrbdManageServer(object):
                     volumes of the resource
                     """
                     size_sum = 0
+                    max_peers = self.DEFAULT_MAX_PEERS
+                    try:
+                        max_peers = int(
+                            self.get_conf_value(self.KEY_MAX_PEERS)
+                        )
+                    except ValueError:
+                        # Unparseable configuration entry;
+                        # no-op: use default value instead
+                        pass
                     for vol in resource.iterate_volumes():
-                        size_sum += vol.get_size_kiB()
+                        # Calculate required gross space for a volume
+                        # with the specified net space
+                        size_sum += MetaData.get_gross_data_kiB(
+                            vol.get_size_kiB(), max_peers
+                        )
                     """
                     filter nodes that do not have the resource deployed yet
                     """

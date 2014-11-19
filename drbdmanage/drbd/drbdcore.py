@@ -38,6 +38,7 @@ from drbdmanage.exceptions import (IncompatibleDataException,
     InvalidAddrFamException, InvalidNameException, VolSizeRangeException,
     PersistenceException)
 from drbdmanage.exceptions import DM_SUCCESS
+from drbdmanage.utils import MetaData
 from drbdmanage.utils import (Selector, bool_to_string)
 
 
@@ -497,10 +498,22 @@ class DrbdManager(object):
         if not diskless:
             bd_mgr   = self._server.get_bd_mgr()
 
+            max_peers = self._server.DEFAULT_MAX_PEERS
+            try:
+                max_peers = int(
+                    self._server.get_conf_value(
+                        self._server.KEY_MAX_PEERS
+                    )
+                )
+            except ValueError:
+                pass
+
+            net_size   = volume.get_size_kiB()
+            gross_size = MetaData.get_gross_data_kiB(net_size, max_peers)
             blockdev = bd_mgr.create_blockdevice(
                 resource.get_name(),
                 volume.get_id(),
-                volume.get_size_kiB()
+                gross_size
             )
 
             if blockdev is not None:
@@ -585,35 +598,10 @@ class DrbdManager(object):
         # Meta-data creation for assignments that have local storage
         if not diskless:
             if blockdev is not None:
-                max_node_id = 0
-                try:
-                    max_node_id = int(
-                        self._server.get_conf_value(
-                            self._server.KEY_MAX_NODE_ID
-                        )
-                    )
-                except ValueError:
-                    pass
-                finally:
-                    if max_node_id < 1:
-                        max_node_id = self._server.DEFAULT_MAX_NODE_ID
-
-                max_peers = 0
-                try:
-                    max_peers = int(
-                        self._server.get_conf_value(
-                            self._server.KEY_MAX_PEERS
-                        )
-                    )
-                except ValueError:
-                    pass
-                finally:
-                    if max_peers < 1 or max_peers > max_node_id:
-                        max_peers = self._server.DEFAULT_MAX_NODE_ID
-
                 # Initialize DRBD metadata
-                drbd_proc = self._drbdadm.create_md(resource.get_name(),
-                  vol_state.get_id(), max_peers)
+                drbd_proc = self._drbdadm.create_md(
+                    resource.get_name(), vol_state.get_id(), max_peers
+                )
                 if drbd_proc is not None:
                     self._resconf.write_excerpt(drbd_proc.stdin, assignment,
                                                 nodes, vol_states)
@@ -2117,7 +2105,9 @@ class Assignment(GenericDrbdObject):
                         (vol_state.get_tstate() &
                         DrbdVolumeState.FLAG_DEPLOY != 0)):
                             volume = vol_state.get_volume()
-                            size_sum += volume.get_size_kiB()
+                            size_sum += MetaData.get_gross_data_kiB(
+                                volume.get_size_kiB()
+                            )
         return size_sum
 
 
@@ -2132,7 +2122,7 @@ class Assignment(GenericDrbdObject):
         # Calculate corretions only for assignments that should be deployed
         if (self._tstate & Assignment.FLAG_DEPLOY) != 0:
             # Calculate size correction, if the assignment is not deployed, but
-            # should be deployed and sholud not be diskless:
+            # should be deployed and should not be diskless:
             if (((self._cstate & Assignment.FLAG_DEPLOY) == 0) and
                 ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
                     size_sum += self._get_undeployed_corr()
@@ -2157,7 +2147,9 @@ class Assignment(GenericDrbdObject):
                 (vol_state.get_tstate() &
                 DrbdVolumeState.FLAG_DEPLOY != 0)):
                     volume = vol_state.get_volume()
-                    size_sum += volume.get_size_kiB()
+                    size_sum += MetaData.get_gross_data_kiB(
+                        volume.get_size_kiB()
+                    )
         return size_sum
 
 

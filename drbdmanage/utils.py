@@ -779,6 +779,120 @@ class SizeCalc(object):
         return result
 
 
+class MetaData(object):
+
+    # Size of the static-size DRBD meta data header
+    MD_HEADER_SIZE = 4096
+
+    # Size of the activity log area
+    # TODO: this should be variable in future versions to account for
+    #       different al-stripe-size settings, etc.
+    AL_SIZE = 32768
+
+    # Bitmap coverage for the meta data header (MD_HEADER_SIZE + AL_SIZE)
+    # Sized for the theoretical limit of 63 peers (64 node cluster)
+    BM_HEADER = 126
+
+    # Size of data area covered by one bitmap byte
+    BM_BYTE_COVERAGE = 32768
+
+    # Unit of alignment; must be a multiple of 1024
+    ALIGNMENT = 4096
+
+
+    @classmethod
+    def get_gross_data_kiB(self, net_data_kiB, peers):
+        # Do not allow volumes with a negative or empty size
+        if net_data_kiB < MetaData.ALIGNMENT / 1024:
+            net_data_kiB = MetaData.ALIGNMENT
+
+        # Round up to the next alignment boundary
+        net_data_b = long(net_data_kiB * 1024)
+        if net_data_b % MetaData.ALIGNMENT != 0:
+            net_data_b = ((long(net_data_b / MetaData.ALIGNMENT) + 1) *
+                          MetaData.ALIGNMENT)
+
+        bitmap_size_b = ((long(net_data_b / MetaData.BM_BYTE_COVERAGE) + 1) *
+                         peers + (MetaData.ALIGNMENT - 1) + MetaData.BM_HEADER)
+
+        # calculate additional bitmap size required so the bitmap
+        # can cover the space it occupies itself
+        # (which increases the bitmap size, therefore requiring some more
+        #  bitmap space to cover the additional space, and thereby increases
+        #  the space again, so this is obviously a recursive problem, and
+        #  that's where the unintuitive calculation comes from)
+        # This is an upper-bound calculation, so the gross data size
+        # calculated will be a sligth overestimate
+        # (It overestimates the bitmap's self-coverage by the size of a bitmap
+        #  for up to one additional gigabyte of net data)
+        bitmap_overhead_units = long(net_data_b / (2 ** 30))
+        if net_data_b % (2 ** 30) != 0:
+            bitmap_overhead_units += 1
+        bitmap_overhead = bitmap_overhead_units * (peers ** 2) + peers + 1
+
+        # DRBD meta data headers (activity log & static size header)
+        # TODO: The activity log size is actually variable
+        headers = MetaData.MD_HEADER_SIZE + MetaData.AL_SIZE
+
+        gross_data_b = net_data_b + bitmap_size_b + bitmap_overhead + headers
+
+        # Align to the upper alignment boundary
+        gross_data_blocks = gross_data_b / MetaData.ALIGNMENT
+        if gross_data_b % MetaData.ALIGNMENT != 0:
+            gross_data_blocks += 1
+
+        gross_data_kiB = gross_data_blocks * (MetaData.ALIGNMENT / 1024)
+
+        return gross_data_kiB
+
+
+    @classmethod
+    def get_net_data_kiB(self, gross_data_kiB, peers):
+        # Align negative sizes to zero:
+        if gross_data_kiB < 0:
+            gross_data_kiB = 0
+
+        # Round down to the next alignment boundary
+        gross_data_b = (long(gross_data_kiB / (MetaData.ALIGNMENT / 1024)) *
+                        MetaData.ALIGNMENT)
+
+        # calculate the size of the area occupied by the bitmap so that
+        # the calculation will overerstimate the size of the bitmap area
+        # in the same way that get_gross_data_kiB() does
+        bitmap_size_b = ((long(gross_data_b / MetaData.BM_BYTE_COVERAGE) + 1) *
+                         peers + (MetaData.ALIGNMENT - 1) + MetaData.BM_HEADER)
+        # add-in the get_gross_data_kiB() function's overerstimate for the
+        # bitmap's self-coverage
+        # (The get_gross_data_kiB() function overestimates the bitmap's
+        #  self-coverage by the size of a bitmap for up to one additional
+        #  gigabyte of net data)
+        bitmap_overhead_b = (peers ** 2) + peers + 1
+
+        # DRBD meta data headers (activity log & static size header)
+        # TODO: The activity log size is actually variable
+        headers = MetaData.MD_HEADER_SIZE + MetaData.AL_SIZE
+
+        overhead = bitmap_size_b + bitmap_overhead_b + headers
+        net_data_b = 0
+        if overhead < gross_data_b:
+            net_data_b = gross_data_b - overhead
+
+        # Align/truncate to the lower alignment boundary
+        net_data_blocks = net_data_b / MetaData.ALIGNMENT
+        net_data_kiB    = net_data_blocks * (MetaData.ALIGNMENT / 1024)
+
+        return net_data_kiB
+
+
+    @classmethod
+    def align(self, size):
+        result = size
+        if size % (MetaData.ALIGNMENT * 1024) != 0:
+            result = ((int(size / MetaData.ALIGNMENT / 1024) + 1) *
+                   MetaData.ALIGNMENT * 1024)
+        return result
+
+
 class Selector(object):
 
     """
