@@ -223,7 +223,7 @@ class DrbdManage(object):
         opt        = { "-a" : None }
         optalias   = { "--address-family" : "a" }
         flags      = { "-q" : False }
-        flagsalias = { " --quiet" : "-q" }
+        flagsalias = { "--quiet" : "-q" }
         if CommandParser().parse(args, order, params, opt, optalias,
           flags, flagsalias) == 0:
             name = params["name"]
