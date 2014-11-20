@@ -67,24 +67,23 @@ class ConfFile(object):
 
             if line.endswith("\n"):
                 line = line[:len(line) - 1]
+
             if key is None:
                 # new key/val line
-                # check for comment lines
-                if comment_line(line):
-                    continue
-                idx = split_idx(line, '=')
-                if idx != -1:
-                    raw_key = line[:idx]
-                    raw_val = line[idx + 1:]
-                    key = unescape(raw_key)
-                    val = unescape(raw_val)
-                else:
-                    # TODO: bad line, no key/val pair
-                    continue
+                if not comment_line(line):
+                    idx = split_idx(line, '=')
+                    if idx != -1:
+                        raw_key = line[:idx]
+                        raw_val = line[idx + 1:]
+                        key = unescape(raw_key)
+                        val = unescape(raw_val)
+                    else:
+                        # TODO: bad line, no key/val pair
+                        pass
             else:
                 # val continuation line
                 val += unescape(line)
-            if not extend_line(raw_val):
+            if key is not None and not extend_line(raw_val):
                 conf[key] = val
                 key = None
                 val = None
