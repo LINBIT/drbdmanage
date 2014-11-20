@@ -34,12 +34,13 @@ WARNING!
 """
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.drbd.drbdcommon import GenericDrbdObject
-from drbdmanage.exceptions import (IncompatibleDataException,
-    InvalidAddrFamException, InvalidNameException, VolSizeRangeException,
-    PersistenceException)
+from drbdmanage.exceptions import (
+    IncompatibleDataException, InvalidAddrFamException, InvalidNameException,
+    VolSizeRangeException, PersistenceException
+)
 from drbdmanage.exceptions import DM_SUCCESS
 from drbdmanage.utils import MetaData
-from drbdmanage.utils import (Selector, bool_to_string)
+from drbdmanage.utils import Selector, bool_to_string
 
 
 class DrbdManager(object):
@@ -196,9 +197,11 @@ class DrbdManager(object):
         """
         node = self._server.get_instance_node()
         if node is None:
-            logging.warning("DrbdManager: abort, this node ('%s') has "
-              "no entry in the data tables"
-              % self._server.get_instance_node_name())
+            logging.warning(
+                "DrbdManager: abort, this node ('%s') has no entry in "
+                "the data tables"
+                % (self._server.get_instance_node_name())
+            )
             return False
 
 
@@ -427,9 +430,11 @@ class DrbdManager(object):
                     try:
                         self._up_resource(assg)
                     except Exception as exc:
-                        logging.debug("failed to start resource '%s', "
-                        "unhandled exception: %s"
-                        % (assg.get_resource().get_name(), str(exc)))
+                        logging.debug(
+                            "failed to start resource '%s', "
+                            "unhandled exception: %s"
+                            % (assg.get_resource().get_name(), str(exc))
+                        )
 
 
     def _up_resource(self, assignment):
@@ -439,12 +444,13 @@ class DrbdManager(object):
         resource = assignment.get_resource()
 
         if assignment.is_empty():
-            logging.info("resource '%s' has no volumes, start skipped"
-                % resource.get_name())
+            logging.info(
+                "resource '%s' has no volumes, start skipped"
+                % (resource.get_name())
+            )
             fn_rc = 0
         else:
-            logging.info("starting resource '%s'"
-              % resource.get_name())
+            logging.info("starting resource '%s'" % resource.get_name())
 
             # call drbdadm to bring up the resource
             drbd_proc = self._drbdadm.adjust(resource.get_name())
@@ -466,8 +472,7 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
-        logging.info("stopping resource '%s'"
-          % resource.get_name())
+        logging.info("stopping resource '%s'" % (resource.get_name()))
 
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.down(resource.get_name())
@@ -652,7 +657,7 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
-        nodes      = []
+        nodes = []
         for peer_assg in resource.iterate_assignments():
             if (peer_assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
                 nodes.append(peer_assg.get_node())
@@ -719,8 +724,10 @@ class DrbdManager(object):
             fn_rc = -1
             tstate = assignment.get_tstate()
             if (tstate & Assignment.FLAG_DISKLESS) == 0:
-                fn_rc = bd_mgr.remove_blockdevice(resource.get_name(),
-                  vol_state.get_id())
+                fn_rc = bd_mgr.remove_blockdevice(
+                    resource.get_name(),
+                    vol_state.get_id()
+                )
             if fn_rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS) != 0:
                 fn_rc = 0
                 vol_state.set_cstate(0)
@@ -758,11 +765,11 @@ class DrbdManager(object):
             # volumes have been deployed or not
             if ((vol_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0 or
                 (vol_cstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
-                empty = False
+                    empty = False
 
-            if ((vol_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0
-              and (vol_cstate & DrbdVolumeState.FLAG_DEPLOY) == 0):
-                deploy_fail = True
+            if ((vol_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
+                (vol_cstate & DrbdVolumeState.FLAG_DEPLOY) == 0):
+                    deploy_fail = True
         if not empty:
             if primary:
                 drbd_proc = self._drbdadm.primary(resource.get_name(), True)
@@ -845,8 +852,7 @@ class DrbdManager(object):
             assignment.set_cstate(0)
             assignment.set_tstate(0)
 
-        fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors
-            else DM_SUCCESS)
+        fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors else DM_SUCCESS)
 
         return fn_rc
 
@@ -856,8 +862,8 @@ class DrbdManager(object):
         Connects a resource on the current node to all peer nodes
         """
         resource = assignment.get_resource()
-        discard_flag = True if ((assignment.get_tstate()
-          & Assignment.FLAG_DISCARD) != 0) else False
+        tstate = assignment.get_tstate()
+        discard_flag = ((tstate & Assignment.FLAG_DISCARD) != 0)
         drbd_proc = self._drbdadm.connect(resource.get_name(), discard_flag)
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
@@ -941,8 +947,10 @@ class DrbdManager(object):
         """
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
-        drbd_proc = self._drbdadm.attach(resource.get_name(),
-          vol_state.get_id())
+        drbd_proc = self._drbdadm.attach(
+            resource.get_name(),
+            vol_state.get_id()
+        )
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
             drbd_proc.stdin.close()
@@ -961,8 +969,10 @@ class DrbdManager(object):
         Detaches a volume
         """
         resource = assignment.get_resource()
-        drbd_proc = self._drbdadm.detach(resource.get_name(),
-          vol_state.get_id())
+        drbd_proc = self._drbdadm.detach(
+            resource.get_name(),
+            vol_state.get_id()
+        )
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, True)
             drbd_proc.stdin.close()
@@ -1018,7 +1028,8 @@ class DrbdManager(object):
         Called by the server's reconfigure() function
         """
         self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(
-          self._server.get_conf_value(self._server.KEY_DRBDADM_PATH))
+            self._server.get_conf_value(self._server.KEY_DRBDADM_PATH)
+        )
 
 
 class DrbdResource(GenericDrbdObject):
@@ -1048,8 +1059,10 @@ class DrbdResource(GenericDrbdObject):
 
     def __init__(self, name, port, secret, state, init_volumes,
                  get_serial_fn, init_serial, init_props):
-        super(DrbdResource, self).__init__(get_serial_fn, init_serial,
-            init_props)
+        super(DrbdResource, self).__init__(
+            get_serial_fn, init_serial,
+            init_props
+        )
         self._name         = self.name_check(name)
         if secret is not None:
             self._secret   = str(secret)
@@ -1096,8 +1109,7 @@ class DrbdResource(GenericDrbdObject):
 
     def name_check(self, name):
         checked_name = GenericDrbdObject.name_check(
-            name,
-            DrbdResource.NAME_MAXLEN
+            name, DrbdResource.NAME_MAXLEN
         )
         # A resource can not be named "all", because that is a
         # keyword in the drbdsetup/drbdadm utilities
@@ -1164,7 +1176,7 @@ class DrbdResource(GenericDrbdObject):
         """
         count = 0
         for assg in self._assignments.itervalues():
-            if (assg.get_tstate() & Assignment.FLAG_DEPLOY != 0):
+            if (assg.get_tstate() & Assignment.FLAG_DEPLOY) != 0:
                 count += 1
         return count
 
@@ -1184,9 +1196,9 @@ class DrbdResource(GenericDrbdObject):
         """
         count = 0
         for assg in self._assignments.itervalues():
-            if (assg.get_cstate() & assg.get_tstate()
-              & Assignment.FLAG_DEPLOY != 0):
-                count += 1
+            if ((assg.get_cstate() & assg.get_tstate() &
+                Assignment.FLAG_DEPLOY) != 0):
+                    count += 1
         return count
 
 
@@ -1265,16 +1277,17 @@ class DrbdResource(GenericDrbdObject):
             selected = selector.all_selector
 
         if selected(consts.RES_NAME):
-            properties[consts.RES_NAME]   = self._name
+            properties[consts.RES_NAME] = self._name
         # Note: adding the shared secret to the properties list
         #       commented out - R. Altnoeder 2014-04-24
         # if selected(consts.RES_SECRET):
         #     properties[consts.RES_SECRET] = str(self._secret)
         if selected(consts.RES_PORT):
-            properties[consts.RES_PORT]   = str(self._port)
+            properties[consts.RES_PORT] = str(self._port)
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
-                bool_to_string(self._state & self.FLAG_REMOVE))
+                bool_to_string(self._state & self.FLAG_REMOVE)
+            )
         for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
@@ -1313,8 +1326,9 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         if not size_kiB > 0:
             raise VolSizeRangeException
         super(DrbdVolume, self).__init__(size_kiB)
-        GenericDrbdObject.__init__(self, get_serial_fn,
-            init_serial, init_props)
+        GenericDrbdObject.__init__(
+            self, get_serial_fn, init_serial, init_props
+        )
         self._id = int(vol_id)
         if self._id < 0 or self._id >= DrbdResource.MAX_RES_VOLS:
             raise ValueError
@@ -1401,7 +1415,8 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
             properties[consts.VOL_MINOR] = str(self._minor.get_value())
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
-                bool_to_string(self._state & self.FLAG_REMOVE))
+                bool_to_string(self._state & self.FLAG_REMOVE)
+            )
         for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
@@ -1647,13 +1662,16 @@ class DrbdNode(GenericDrbdObject):
             properties[consts.NODE_POOLFREE] = str(self._poolfree)
         if selected(consts.TSTATE_PREFIX + consts.FLAG_REMOVE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_REMOVE] = (
-                bool_to_string(self._state & self.FLAG_REMOVE))
+                bool_to_string(self._state & self.FLAG_REMOVE)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPDATE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPDATE] = (
-                bool_to_string(self._state & self.FLAG_UPDATE))
+                bool_to_string(self._state & self.FLAG_UPDATE)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL] = (
-                bool_to_string(self._state & self.FLAG_UPD_POOL))
+                bool_to_string(self._state & self.FLAG_UPD_POOL)
+            )
         for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
@@ -1696,8 +1714,9 @@ class DrbdVolumeState(GenericDrbdObject):
 
     def __init__(self, volume, cstate, tstate, blockdevice, bd_path,
                  get_serial_fn, init_serial, init_props):
-        super(DrbdVolumeState, self).__init__(get_serial_fn,
-            init_serial, init_props)
+        super(DrbdVolumeState, self).__init__(
+            get_serial_fn, init_serial, init_props
+        )
         self._volume       = volume
 
         if blockdevice is not None and bd_path is not None:
@@ -1757,23 +1776,23 @@ class DrbdVolumeState(GenericDrbdObject):
 
 
     def requires_deploy(self):
-        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
-          and (self._cstate & self.FLAG_DEPLOY == 0))
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._cstate & self.FLAG_DEPLOY == 0))
 
 
     def requires_attach(self):
-        return ((self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH)
-          and (self._cstate & self.FLAG_ATTACH == 0))
+        return ((self._tstate & self.FLAG_ATTACH == self.FLAG_ATTACH) and
+                (self._cstate & self.FLAG_ATTACH == 0))
 
 
     def requires_undeploy(self):
-        return ((self._tstate & self.FLAG_DEPLOY == 0)
-          and (self._cstate & self.FLAG_DEPLOY != 0))
+        return ((self._tstate & self.FLAG_DEPLOY == 0) and
+                (self._cstate & self.FLAG_DEPLOY != 0))
 
 
     def requires_detach(self):
-        return ((self._tstate & self.FLAG_ATTACH == 0)
-          and (self._cstate & self.FLAG_ATTACH != 0))
+        return ((self._tstate & self.FLAG_ATTACH == 0) and
+                (self._cstate & self.FLAG_ATTACH != 0))
 
 
     def set_cstate(self, cstate):
@@ -1816,8 +1835,8 @@ class DrbdVolumeState(GenericDrbdObject):
 
     def detach(self):
         if (self._tstate & self.FLAG_ATTACH) != 0:
-            self._tstate = ((self._tstate | self.FLAG_ATTACH)
-                ^ self.FLAG_ATTACH)
+            self._tstate = ((self._tstate | self.FLAG_ATTACH) ^
+                            self.FLAG_ATTACH)
             self.get_props().new_serial()
 
 
@@ -1892,22 +1911,28 @@ class DrbdVolumeState(GenericDrbdObject):
             properties[consts.VOL_SIZE]  = str(self._volume.get_size_kiB())
         if selected(consts.VOL_BDEV):
             properties[consts.VOL_BDEV]  = (
-                "" if self._bd_path is None else str(self._bd_path))
+                "" if self._bd_path is None else str(self._bd_path)
+            )
         if selected(consts.VOL_MINOR):
             properties[consts.VOL_MINOR] = (
-                str(self._volume.get_minor().get_value()))
+                str(self._volume.get_minor().get_value())
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._tstate & self.FLAG_DEPLOY))
+                bool_to_string(self._tstate & self.FLAG_DEPLOY)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.TSTATE_PREFIX + consts.FLAG_ATTACH] = (
-                bool_to_string(self._tstate & self.FLAG_ATTACH))
+                bool_to_string(self._tstate & self.FLAG_ATTACH)
+            )
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._cstate & self.FLAG_DEPLOY))
+                bool_to_string(self._cstate & self.FLAG_DEPLOY)
+            )
         if selected(consts.CSTATE_PREFIX + consts.FLAG_ATTACH):
             properties[consts.CSTATE_PREFIX + consts.FLAG_ATTACH] = (
-                bool_to_string(self._cstate & self.FLAG_ATTACH))
+                bool_to_string(self._cstate & self.FLAG_ATTACH)
+            )
         for (key, val) in self.get_props().iteritems():
             if selected(key):
                 if val is not None:
@@ -1968,8 +1993,9 @@ class Assignment(GenericDrbdObject):
     def __init__(self, node, resource, node_id, cstate, tstate,
                  init_rc, vol_states,
                  get_serial_fn, init_serial, init_props):
-        super(Assignment, self).__init__(get_serial_fn, init_serial,
-            init_props)
+        super(Assignment, self).__init__(
+            get_serial_fn, init_serial, init_props
+        )
         self._node         = node
         self._resource     = resource
         self._vol_states   = {}
@@ -1978,9 +2004,11 @@ class Assignment(GenericDrbdObject):
                 self._vol_states[vol_state.get_id()] = vol_state
         for volume in resource.iterate_volumes():
             if self._vol_states.get(volume.get_id()) is None:
-                self._vol_states[volume.get_id()] = DrbdVolumeState(volume,
+                self._vol_states[volume.get_id()] = DrbdVolumeState(
+                    volume,
                     0, 0, None, None,
-                    get_serial_fn, None, None)
+                    get_serial_fn, None, None
+                )
         self._node_id      = int(node_id)
         self._rc           = int(init_rc)
         self._snaps_assgs  = {}
@@ -2052,8 +2080,11 @@ class Assignment(GenericDrbdObject):
                 vol_st = self._vol_states.get(volume.get_id())
                 if vol_st is None:
                     update_assg = True
-                    vol_st = DrbdVolumeState(volume, 0, 0, None, None,
-                        self._get_serial, None, None)
+                    vol_st = DrbdVolumeState(
+                        volume,
+                        0, 0, None, None,
+                        self._get_serial, None, None
+                    )
                     self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource
         for vol_st in self._vol_states.itervalues():
@@ -2099,7 +2130,7 @@ class Assignment(GenericDrbdObject):
         return self._node_id
 
 
-    def get_size_kiB(self):
+    def get_gross_size_kiB(self, peers):
         """
         Calculates the storage size occupied by this assignment
         """
@@ -2107,18 +2138,18 @@ class Assignment(GenericDrbdObject):
         if ((self._cstate & Assignment.FLAG_DEPLOY) != 0 or
             (self._tstate & Assignment.FLAG_DEPLOY) != 0):
                 for vol_state in self._vol_states.itervalues():
-                    if (((vol_state.get_cstate() &
-                        DrbdVolumeState.FLAG_DEPLOY) != 0) or
-                        (vol_state.get_tstate() &
-                        DrbdVolumeState.FLAG_DEPLOY != 0)):
+                    cstate = vol_state.get_cstate()
+                    tstate = vol_state.get_tstate()
+                    if ((cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 or
+                        (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
                             volume = vol_state.get_volume()
                             size_sum += MetaData.get_gross_data_kiB(
-                                volume.get_size_kiB()
+                                volume.get_size_kiB(), peers
                             )
         return size_sum
 
 
-    def get_size_kiB_correction(self):
+    def get_gross_size_kiB_correction(self, peers):
         """
         Calculates the storage size for not-yet-deployed assignments
         """
@@ -2130,48 +2161,50 @@ class Assignment(GenericDrbdObject):
         if (self._tstate & Assignment.FLAG_DEPLOY) != 0:
             # Calculate size correction, if the assignment is not deployed, but
             # should be deployed and should not be diskless:
-            if (((self._cstate & Assignment.FLAG_DEPLOY) == 0) and
-                ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
-                    size_sum += self._get_undeployed_corr()
+            if ((self._cstate & Assignment.FLAG_DEPLOY) == 0 and
+                (self._tstate & Assignment.FLAG_DISKLESS) == 0):
+                    size_sum += self._get_undeployed_corr(peers)
             # Calculate size correction, if the assignment is deployed, should
             # remain deployed, and is diskless, but should transition from
             # diskless to storage
-            elif (((self._cstate & Assignment.FLAG_DEPLOY) != 0) and
-                ((self._cstate & Assignment.FLAG_DISKLESS) != 0) and
-                ((self._tstate & Assignment.FLAG_DISKLESS) == 0)):
-                    size_sum += self._get_diskless_corr()
+            elif ((self._cstate & Assignment.FLAG_DEPLOY) != 0 and
+                  (self._cstate & Assignment.FLAG_DISKLESS) != 0 and
+                  (self._tstate & Assignment.FLAG_DISKLESS) == 0):
+                    size_sum += self._get_diskless_corr(peers)
         return size_sum
 
 
-    def _get_undeployed_corr(self):
+    def _get_undeployed_corr(self, peers):
         """
         Volume sizes for not-yet-deployed volumes
         """
         size_sum = 0
         for vol_state in self._vol_states.itervalues():
-            if (((vol_state.get_cstate() &
-                DrbdVolumeState.FLAG_DEPLOY) == 0) and
-                (vol_state.get_tstate() &
-                DrbdVolumeState.FLAG_DEPLOY != 0)):
+            cstate = vol_state.get_cstate()
+            tstate = vol_state.get_tstate()
+            if ((cstate & DrbdVolumeState.FLAG_DEPLOY) == 0 and
+                (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
                     volume = vol_state.get_volume()
                     size_sum += MetaData.get_gross_data_kiB(
-                        volume.get_size_kiB()
+                        volume.get_size_kiB(), peers
                     )
         return size_sum
 
 
-    def _get_diskless_corr(self):
+    def _get_diskless_corr(self, peers):
         """
         Volumes sizes for volumes that transition from diskless to storage
         """
         size_sum = 0
         for vol_state in self._vol_states.itervalues():
-            if (((vol_state.get_cstate() &
-                DrbdVolumeState.FLAG_DEPLOY) != 0) and
-                ((vol_state.get_tstate() &
-                DrbdVolumeState.FLAG_DEPLOY) != 0)):
+            cstate = vol_state.get_cstate()
+            tstate = vol_state.get_tstate()
+            if ((cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
+                (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
                     volume = vol_state.get_volume()
-                    size_sum += volume.get_size_kiB()
+                    size_sum += MetaData.get_gross_data_kiB(
+                        volume.get_size_kiB(), peers
+                    )
         return size_sum
 
 
@@ -2249,8 +2282,8 @@ class Assignment(GenericDrbdObject):
         Used to trigger a disconnect action on the assignment's resource
         """
         if (self._tstate & self.FLAG_CONNECT) != 0:
-            self._tstate = ((self._tstate | self.FLAG_CONNECT)
-                ^ self.FLAG_CONNECT)
+            self._tstate = ((self._tstate | self.FLAG_CONNECT) ^
+                            self.FLAG_CONNECT)
             self.get_props().new_serial()
 
 
@@ -2263,8 +2296,8 @@ class Assignment(GenericDrbdObject):
         """
         if ((self._tstate & self.FLAG_DEPLOY) == 0 or
             (self._tstate & self.FLAG_DISKLESS) == 0):
-                self._tstate = (self._tstate | self.FLAG_DEPLOY
-                    | self.FLAG_DISKLESS)
+                self._tstate = (self._tstate | self.FLAG_DEPLOY |
+                                self.FLAG_DISKLESS)
                 self.get_props().new_serial()
 
 
@@ -2332,8 +2365,8 @@ class Assignment(GenericDrbdObject):
         if len(self._vol_states) > 0:
             for vol_state in self._vol_states.itervalues():
                 if ((vol_state.get_tstate() & self.FLAG_DEPLOY) != 0 or
-                  (vol_state.get_cstate() & self.FLAG_DEPLOY) != 0):
-                    empty = False
+                    (vol_state.get_cstate() & self.FLAG_DEPLOY) != 0):
+                        empty = False
         return empty
 
 
@@ -2364,8 +2397,8 @@ class Assignment(GenericDrbdObject):
 
         @returns: True if the assignment needs to be deployed; False otherwise
         """
-        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
-          and (self._cstate & self.FLAG_DEPLOY == 0))
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._cstate & self.FLAG_DEPLOY == 0))
 
 
     def requires_connect(self):
@@ -2378,8 +2411,8 @@ class Assignment(GenericDrbdObject):
         @returns: True if the assignment requires a connect action;
                   False otherwise
         """
-        return ((self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
-          and (self._cstate & self.FLAG_CONNECT == 0))
+        return ((self._tstate & self.FLAG_CONNECT == self.FLAG_CONNECT) and
+                (self._cstate & self.FLAG_CONNECT == 0))
 
 
     def requires_undeploy(self):
@@ -2393,8 +2426,8 @@ class Assignment(GenericDrbdObject):
         @returns: True if the assignment needs to be undeployed;
                   False otherwise
         """
-        return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY)
-          and (self._tstate & self.FLAG_DEPLOY == 0))
+        return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._tstate & self.FLAG_DEPLOY == 0))
 
 
     def requires_disconnect(self):
@@ -2407,8 +2440,8 @@ class Assignment(GenericDrbdObject):
         @returns: True if the assignment requires a disconnect action;
                   False otherwise
         """
-        return ((self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT)
-          and (self._tstate & self.FLAG_CONNECT == 0))
+        return ((self._cstate & self.FLAG_CONNECT == self.FLAG_CONNECT) and
+                (self._tstate & self.FLAG_CONNECT == 0))
 
 
     def set_cstate_flags(self, flags):
@@ -2486,36 +2519,46 @@ class Assignment(GenericDrbdObject):
         # target state flags
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._tstate & self.FLAG_DEPLOY))
+                bool_to_string(self._tstate & self.FLAG_DEPLOY)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_CONNECT):
             properties[consts.TSTATE_PREFIX + consts.FLAG_CONNECT] = (
-                bool_to_string(self._tstate & self.FLAG_CONNECT))
+                bool_to_string(self._tstate & self.FLAG_CONNECT)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DISKLESS):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DISKLESS] = (
-                bool_to_string(self._tstate & self.FLAG_DISKLESS))
+                bool_to_string(self._tstate & self.FLAG_DISKLESS)
+            )
         # target state - action flags
         if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_CON):
             properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_CON] = (
-                bool_to_string(self._tstate & self.FLAG_UPD_CON))
+                bool_to_string(self._tstate & self.FLAG_UPD_CON)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE] = (
-                bool_to_string(self._tstate & self.FLAG_OVERWRITE))
+                bool_to_string(self._tstate & self.FLAG_OVERWRITE)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_DISCARD):
             properties[consts.TSTATE_PREFIX + consts.FLAG_DISCARD] = (
-                bool_to_string(self._tstate & self.FLAG_DISCARD))
+                bool_to_string(self._tstate & self.FLAG_DISCARD)
+            )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_RECONNECT):
             properties[consts.TSTATE_PREFIX + consts.FLAG_RECONNECT] = (
-                bool_to_string(self._tstate & self.FLAG_RECONNECT))
+                bool_to_string(self._tstate & self.FLAG_RECONNECT)
+            )
         # current state flags
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
-                bool_to_string(self._cstate & self.FLAG_DEPLOY))
+                bool_to_string(self._cstate & self.FLAG_DEPLOY)
+            )
         if selected(consts.CSTATE_PREFIX + consts.FLAG_CONNECT):
             properties[consts.CSTATE_PREFIX + consts.FLAG_CONNECT] = (
-                bool_to_string(self._cstate & self.FLAG_CONNECT))
+                bool_to_string(self._cstate & self.FLAG_CONNECT)
+            )
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DISKLESS):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
-                bool_to_string(self._cstate & self.FLAG_DISKLESS))
+                bool_to_string(self._cstate & self.FLAG_DISKLESS)
+            )
 
         for (key, val) in self.get_props().iteritems():
             if selected(key):

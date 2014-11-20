@@ -72,33 +72,40 @@ class LVM(object):
 
     def __init__(self):
         try:
-            self._lvs   = dict()
+            self._lvs   = {}
             conf_loaded = None
             try:
                 self.load_state()
             except PersistenceException:
-                logging.warning("LVM plugin: Cannot load state file '%s'"
-                  % self.LVM_SAVEFILE)
+                logging.warning(
+                    "LVM plugin: Cannot load state file '%s'"
+                    % (self.LVM_SAVEFILE)
+                )
             try:
                 conf_loaded = self.load_conf()
             except IOError:
-                logging.warning("LVM plugin: Cannot load "
-                  "configuration file '%s'" % self.LVM_CONFFILE)
+                logging.warning(
+                    "LVM plugin: Cannot load configuration file '%s'"
+                    % (self.LVM_CONFFILE)
+                )
             if conf_loaded is None:
                 self._conf = self.CONF_DEFAULTS
             else:
-                self._conf = ConfFile.conf_defaults_merge(self.CONF_DEFAULTS,
-                  conf_loaded)
+                self._conf = ConfFile.conf_defaults_merge(
+                    self.CONF_DEFAULTS, conf_loaded
+                )
         except Exception as exc:
-            logging.error("LVM plugin: initialization failed, "
-              "unhandled exception: %s" % str(exc))
+            logging.error(
+                "LVM plugin: initialization failed, unhandled exception: %s"
+                % (str(exc))
+            )
 
 
     def _subproc_env(self):
-        return dict( os.environ.items() + [
-            ('LC_ALL', 'C'),
-            ('LANG', 'C'),
-            ])
+        env = dict(os.environ.items())
+        env['LC_ALL'] = 'C'
+        env['LANG']   = 'C'
+        return env
 
 
     def create_blockdevice(self, name, vol_id, size):
@@ -122,7 +129,8 @@ class LVM(object):
                 fn_rc = self._create_lv(lv_name, size)
                 if fn_rc == 0:
                     blockdev = drbdmanage.storage.storagecore.BlockDevice(
-                      lv_name, size, self._lv_path_prefix() + lv_name)
+                        lv_name, size, self._lv_path_prefix() + lv_name
+                    )
                     self._lvs[lv_name] = blockdev
                     self.save_state()
                     break
@@ -134,8 +142,11 @@ class LVM(object):
                     break
                 tries += 1
         except Exception as exc:
-            logging.error("LVM plugin: Block device creation failed, "
-              "unhandled exception: %s" % str(exc))
+            logging.error(
+                "LVM plugin: Block device creation failed, "
+                "unhandled exception: %s"
+                % (str(exc))
+            )
         return blockdev
 
 
@@ -217,11 +228,13 @@ class LVM(object):
         lvm_proc = None
 
         try:
-            lvm_proc = subprocess.Popen([vgs, "--noheadings", "--nosuffix",
-              "--units", "k", "--separator", ",", "--options",
-              "vg_size,vg_free", self._conf[self.KEY_VG_NAME]],
-              env=self._subproc_env(),
-              stdout=subprocess.PIPE, close_fds=True)
+            lvm_proc = subprocess.Popen(
+                [vgs, "--noheadings", "--nosuffix", "--units", "k",
+                 "--separator", ",", "--options", "vg_size,vg_free",
+                 self._conf[self.KEY_VG_NAME]],
+                env=self._subproc_env(),
+                stdout=subprocess.PIPE, close_fds=True
+            )
             pool_str = lvm_proc.stdout.readline()
             if pool_str is not None:
                 pool_str = pool_str.strip()
@@ -255,11 +268,12 @@ class LVM(object):
     def _create_lv(self, name, size):
         lvcreate = self._lv_command_path(self.LVM_CREATE)
 
-        lvm_proc = subprocess.Popen([lvcreate, "-n", name, "-L",
-          str(size) + "k", self._conf[self.KEY_VG_NAME]], 0, lvcreate,
-          env=self._subproc_env(),
-          close_fds=True
-          ) # disabled: stdout=subprocess.PIPE
+        lvm_proc = subprocess.Popen(
+            [lvcreate, "-n", name, "-L", str(size) + "k",
+             self._conf[self.KEY_VG_NAME]],
+            0, lvcreate,
+            env=self._subproc_env(), close_fds=True
+          )
         fn_rc = lvm_proc.wait()
         return fn_rc
 
@@ -267,11 +281,11 @@ class LVM(object):
     def _remove_lv(self, name):
         lvremove = self._lv_command_path(self.LVM_REMOVE)
 
-        lvm_proc = subprocess.Popen([lvremove, "--force",
-          self._conf[self.KEY_VG_NAME] + "/" + name], 0, lvremove,
-          env=self._subproc_env(),
-          close_fds=True
-          ) # disabled: stdout=subprocess.PIPE
+        lvm_proc = subprocess.Popen(
+            [lvremove, "--force", self._conf[self.KEY_VG_NAME] + "/" + name],
+            0, lvremove,
+            env=self._subproc_env(), close_fds=True
+        )
         fn_rc = lvm_proc.wait()
         return fn_rc
 
@@ -299,12 +313,17 @@ class LVM(object):
             conf = conffile.get_conf()
         except IOError as ioerr:
             if ioerr.errno == errno.EACCES:
-                logging.error("LVM plugin: cannot open configuration file "
-                  "'%s': Permission denied" % self.LVM_CONFFILE)
+                logging.error(
+                    "LVM plugin: cannot open configuration file "
+                    "'%s': Permission denied"
+                    % (self.LVM_CONFFILE)
+                )
             elif ioerr.errno != errno.ENOENT:
-                logging.error("LVM plugin: cannot open configuration file "
-                  "'%s', error returned by the OS is: %s"
-                  % (self.LVM_CONFFILE, ioerr.strerror))
+                logging.error(
+                    "LVM plugin: cannot open configuration file "
+                    "'%s', error returned by the OS is: %s"
+                    % (self.LVM_CONFFILE, ioerr.strerror)
+                )
         finally:
             if in_file is not None:
                 in_file.close()
@@ -337,8 +356,9 @@ class LVM(object):
                 data_hash.update(load_data)
                 computed_hash = data_hash.get_hex_hash()
                 if computed_hash != stored_hash:
-                    logging.warning("LVM plugin: state data does not "
-                      "match its signature")
+                    logging.warning(
+                        "LVM plugin: state data does not match its signature"
+                    )
             lvm_con = json.loads(load_data)
             for properties in lvm_con.itervalues():
                 blockdev = storpers.BlockDevicePersistence.load(properties)
@@ -352,7 +372,7 @@ class LVM(object):
 
 
     def save_state(self):
-        lvm_con = dict()
+        lvm_con = {}
         for blockdev in self._lvs.itervalues():
             bd_persist = storpers.BlockDevicePersistence(blockdev)
             bd_persist.save(lvm_con)
@@ -365,8 +385,10 @@ class LVM(object):
             out_file.write(save_data)
             out_file.write("sig:" + data_hash.get_hex_hash() + "\n")
         except Exception as exc:
-            logging.error("LVM plugin: saving state data failed, "
-             "unhandled exception: %s" % str(exc))
+            logging.error(
+                "LVM plugin: saving state data failed, unhandled exception: %s"
+                % str(exc)
+            )
             raise PersistenceException
         finally:
             if out_file is not None:

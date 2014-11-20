@@ -73,27 +73,26 @@ def get_free_number(min_nr, max_nr, nr_list):
     @type    nr_list: list of int or long values
     @return: first free number within min..max; or -1 on error
     """
-    fnr = -1
+    free_nr = -1
     if min_nr <= max_nr:
         items = len(nr_list)
         if items == 0:
-            fnr = min_nr
+            free_nr = min_nr
         else:
             nr_list.sort()
             idx = 0
-            lnr = min_nr - 1
-            while True:
-                cnr = nr_list[idx]
-                if cnr - lnr > 1:
-                    fnr = lnr + 1
-                    break
-                idx += 1
-                if not idx < items:
-                    if cnr < max_nr:
-                        fnr = cnr + 1
-                    break
-                lnr = cnr
-    return fnr
+            last_nr = min_nr - 1
+            while free_nr == -1:
+                current_nr = nr_list[idx]
+                if current_nr - last_nr > 1:
+                    free_nr = last_nr + 1
+                else:
+                    idx += 1
+                    if not idx < items:
+                        if current_nr < max_nr:
+                            free_nr = current_nr + 1
+                    last_nr = current_nr
+    return free_nr
 
 
 def fill_list(in_list, out_list, count):
@@ -109,11 +108,11 @@ def fill_list(in_list, out_list, count):
     if out_len < count:
         out_len = count - out_len
         in_len  = len(in_list)
-        ctr     = 0
+        idx     = 0
         max_len = out_len if out_len < in_len else in_len
-        while ctr < max_len:
-            out_list.append(in_list[ctr])
-            ctr += 1
+        while idx < max_len:
+            out_list.append(in_list[idx])
+            idx += 1
 
 
 def build_path(prefix, filename):
@@ -230,13 +229,17 @@ def props_filter(source, filter_props):
 
 def get_terminal_size():
     def ioctl_GWINSZ(term_fd):
+        term_dim = None
         try:
             import fcntl, termios, struct, os
-            term_dim = struct.unpack('hh',
-                fcntl.ioctl(term_fd, termios.TIOCGWINSZ, '1234'))
+            term_dim = struct.unpack(
+                'hh',
+                fcntl.ioctl(term_fd, termios.TIOCGWINSZ, '1234')
+            )
         except:
-            return
+            pass
         return term_dim
+    # Assign the first value that's not a NoneType
     term_dim = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
     if not term_dim:
         try:
@@ -582,8 +585,9 @@ class CommandParser(object):
                 if key is not None:
                     val = args.next_arg()
                     if val is None:
-                        sys.stderr.write("Error: Missing argument for "
-                          "option '%s'\n" % (arg))
+                        sys.stderr.write(
+                            "Error: Missing argument for option '%s'\n" % (arg)
+                        )
                         fn_rc = 1
                         break
                     else:
@@ -593,8 +597,9 @@ class CommandParser(object):
                     if key is not None:
                         flags[key] = True
                     else:
-                        sys.stderr.write("Error: Unknown option name '%s'\n"
-                          % (arg))
+                        sys.stderr.write(
+                            "Error: Unknown option name '%s'\n" % (arg)
+                        )
                         fn_rc = 1
                         break
             else:
@@ -602,8 +607,9 @@ class CommandParser(object):
                     params[order[ctr]] = arg
                     ctr += 1
                 else:
-                    sys.stderr.write("Error: Unexpected extra argument '%s'\n"
-                      % (arg))
+                    sys.stderr.write(
+                        "Error: Unexpected extra argument '%s'\n" % (arg)
+                    )
                     fn_rc = 1
                     break
             arg = args.next_arg()
@@ -885,11 +891,11 @@ class MetaData(object):
 
 
     @classmethod
-    def align(self, size):
+    def align(cls, size):
         result = size
-        if size % (MetaData.ALIGNMENT * 1024) != 0:
-            result = ((int(size / MetaData.ALIGNMENT / 1024) + 1) *
-                   MetaData.ALIGNMENT * 1024)
+        if size % MetaData.ALIGNMENT != 0:
+            result = ((int(size / MetaData.ALIGNMENT) + 1) *
+                      MetaData.ALIGNMENT)
         return result
 
 

@@ -34,8 +34,9 @@ from drbdmanage.utils import DataHash
 from drbdmanage.utils import map_val_or_dflt
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
-from drbdmanage.drbd.drbdcore import (DrbdNode, DrbdResource, DrbdVolume,
-    DrbdVolumeState, Assignment)
+from drbdmanage.drbd.drbdcore import (
+    DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState, Assignment
+)
 
 
 def persistence_impl(ref_server):
@@ -174,17 +175,20 @@ class PersistenceImpl(object):
             if fail:
                 fail_ctr += 1
                 if error == errno.ENOENT:
-                    logging.error("cannot open control volume '%s': "
-                      "object not found" % self.CONF_FILE)
+                    logging.error(
+                        "cannot open control volume '%s': "
+                        "object not found" % (self.CONF_FILE))
                     secs = self.ENOENT_REOPEN_TIMER
                 else:
                     rnd_byte = os.urandom(1)
                     secs = float(ord(rnd_byte)) / 100 + self.MIN_REOPEN_TIMER
                 time.sleep(secs)
         if not fail_ctr < self.MAX_FAIL_COUNT:
-            logging.error("cannot open control volume '%s' "
-              "(%d failed attempts)"
-              % (self.CONF_FILE, self.MAX_FAIL_COUNT))
+            logging.error(
+                "cannot open control volume '%s' "
+                "(%d failed attempts)"
+                % (self.CONF_FILE, self.MAX_FAIL_COUNT)
+            )
         return fn_rc
 
 
@@ -284,15 +288,18 @@ class PersistenceImpl(object):
 
                 computed_hash = data_hash.get_hex_hash()
                 self.update_stored_hash(computed_hash)
-                logging.debug("save/hash: %s" % computed_hash)
+                logging.debug("save/hash: %s" % (computed_hash))
                 self._hash_obj = data_hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                logging.error("cannot save data tables, "
-                    "Exception=%s" % (str(exc_type)))
-                logging.debug("persistence: save failed: "
-                  "Exception=%s: %s"
-                  % (exc_type, exc_obj))
+                logging.error(
+                    "cannot save data tables, Exception=%s"
+                    % (str(exc_type))
+                )
+                logging.debug(
+                    "persistence: save failed: Exception=%s: %s"
+                    % (exc_type, exc_obj)
+                )
                 logging.debug("*** begin stack trace")
                 for line in traceback.format_tb(exc_tb):
                     logging.debug("    %s" % (line))
@@ -300,8 +307,9 @@ class PersistenceImpl(object):
                 raise PersistenceException
         else:
             # file not open for writing
-            raise IOError("Persistence save() without a "
-              "writeable file descriptor")
+            raise IOError(
+                "Persistence save() without a writeable file descriptor"
+            )
 
 
     # Get the hash of the configuration on persistent storage
@@ -330,8 +338,9 @@ class PersistenceImpl(object):
                 raise PersistenceException
         else:
             # file not open
-            raise IOError("Persistence get_stored_hash() without an "
-              "open file descriptor")
+            raise IOError(
+                "Persistence get_stored_hash() without an open file descriptor"
+            )
         return stored_hash
 
 
@@ -351,8 +360,10 @@ class PersistenceImpl(object):
             except Exception:
                 raise PersistenceException
         else:
-            raise IOError("Persistence update_stored_hash() without a "
-              "writeable file descriptor")
+            raise IOError(
+                "Persistence update_stored_hash() without a "
+                "writeable file descriptor"
+            )
 
 
     def load(self, cluster_conf, nodes, resources):
@@ -427,33 +438,42 @@ class PersistenceImpl(object):
                 stored_hash   = self.get_stored_hash()
                 logging.debug("load/hash: %s" % stored_hash)
                 if computed_hash != stored_hash:
-                    logging.warning("information in the data tables "
-                      "does not match its signature")
+                    logging.warning(
+                        "information in the data tables does not match "
+                        "its signature"
+                    )
                 # TODO: if the signature is wrong, load an earlier backup
                 #       of the configuration
 
                 nodes.clear()
                 if nodes_con is not None:
                     for properties in nodes_con.itervalues():
-                        node = DrbdNodePersistence.load(properties,
-                            self._server.get_serial)
+                        node = DrbdNodePersistence.load(
+                            properties,
+                            self._server.get_serial
+                        )
                         if node is not None:
                             nodes[node.get_name()] = node
                         else:
-                            logging.debug("persistence: Failed to load a "
-                              "DrbdNode object")
+                            logging.debug(
+                                "persistence: Failed to load a DrbdNode object"
+                            )
                             errors = True
 
                 resources.clear()
                 if res_con is not None:
                     for properties in res_con.itervalues():
-                        resource = DrbdResourcePersistence.load(properties,
-                            self._server.get_serial)
+                        resource = DrbdResourcePersistence.load(
+                            properties,
+                            self._server.get_serial
+                        )
                         if resource is not None:
                             resources[resource.get_name()] = resource
                         else:
-                            logging.debug("persistence: Failed to load a "
-                              "DrbdResource object")
+                            logging.debug(
+                                "persistence: Failed to load a "
+                                "DrbdResource object"
+                            )
                             errors = True
 
                 if assg_con is not None:
@@ -461,17 +481,22 @@ class PersistenceImpl(object):
                         assignment = AssignmentPersistence.load(properties,
                           nodes, resources, self._server.get_serial)
                         if assignment is None:
-                            logging.debug("persistence: Failed to load an "
-                              "Assignment object")
+                            logging.debug(
+                                "persistence: Failed to load an "
+                                "Assignment object"
+                            )
                             errors = True
                     self._hash_obj = data_hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
-                logging.error("cannot load data tables, "
-                    "Exception=%s" % (str(exc_type)))
-                logging.debug("persistence: load failed: "
-                  "Exception=%s: %s"
-                  % (exc_type, exc_obj))
+                logging.error(
+                    "cannot load data tables, Exception=%s"
+                    % (str(exc_type))
+                )
+                logging.debug(
+                    "persistence: load failed: Exception=%s: %s"
+                    % (exc_type, exc_obj)
+                )
                 logging.debug("*** begin stack trace")
                 for line in traceback.format_tb(exc_tb):
                     logging.debug("    %s" % (line))
@@ -479,10 +504,10 @@ class PersistenceImpl(object):
                 raise PersistenceException
         else:
             # file not open
-            logging.debug("persistence: data tables load attempted before "
-              "opening the control volume")
-            raise IOError("data tables load attempted before opening the "
-              "control volume")
+            errmsg = ("data tables load attempted before opening "
+                      "the control volume")
+            logging.debug("persistence: " + errmsg)
+            raise IOError(errmsg)
         if errors:
             raise PersistenceException
 
@@ -636,8 +661,8 @@ class DrbdNodePersistence(GenericPersistence):
     Serializes/deserializes DrbdNode objects
     """
 
-    SERIALIZABLE = [ "_name", "_addr", "_addrfam", "_node_id", "_state",
-      "_poolsize", "_poolfree" ]
+    SERIALIZABLE = ["_name", "_addr", "_addrfam", "_node_id", "_state",
+                    "_poolsize", "_poolfree"]
 
 
     def __init__(self, node):
@@ -683,7 +708,7 @@ class DrbdResourcePersistence(GenericPersistence):
     Serializes/deserializes DrbdResource objects
     """
 
-    SERIALIZABLE = [ "_name", "_secret", "_port", "_state" ]
+    SERIALIZABLE = ["_name", "_secret", "_port", "_state"]
 
     def __init__(self, resource):
         super(DrbdResourcePersistence, self).__init__(resource)
@@ -725,19 +750,24 @@ class DrbdResourcePersistence(GenericPersistence):
             # Load DrbdVolume objects
             init_volumes = []
             for vol_properties in volume_list.itervalues():
-                volume = DrbdVolumePersistence.load(vol_properties,
-                    get_serial_fn)
+                volume = DrbdVolumePersistence.load(
+                    vol_properties,
+                    get_serial_fn
+                )
                 init_volumes.append(volume)
 
             # Create the DrbdResource object
-            resource = DrbdResource(properties["_name"], properties["_port"],
+            resource = DrbdResource(
+                properties["_name"], properties["_port"],
                 secret, state, init_volumes,
-                get_serial_fn, None, init_props)
+                get_serial_fn, None, init_props
+            )
 
             # Load DrbdSnapshot objects
             for snaps_properties in snapshot_list.itervalues():
                 snapshot = snapspers.DrbdSnapshotPersistence.load(
-                    snaps_properties, resource, get_serial_fn)
+                    snaps_properties, resource, get_serial_fn
+                )
                 resource.init_add_snapshot(snapshot)
         except Exception as exc:
             raise exc
@@ -750,7 +780,7 @@ class DrbdVolumePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolume objects
     """
 
-    SERIALIZABLE = [ "_id", "_state", "_size_kiB" ]
+    SERIALIZABLE = ["_id", "_state", "_size_kiB"]
 
 
     def __init__(self, volume):
@@ -794,7 +824,7 @@ class AssignmentPersistence(GenericPersistence):
     Serializes/deserializes Assignment objects
     """
 
-    SERIALIZABLE = [ "_node_id", "_cstate", "_tstate", "_rc" ]
+    SERIALIZABLE = ["_node_id", "_cstate", "_tstate", "_rc"]
 
 
     def __init__(self, assignment):
@@ -811,11 +841,11 @@ class AssignmentPersistence(GenericPersistence):
         node_name   = node.get_name()
         res_name    = resource.get_name()
 
-        properties["node"]        = node_name
-        properties["resource"]    = res_name
+        properties["node"] = node_name
+        properties["resource"] = res_name
         assg_name = node_name + ":" + res_name
 
-        properties["props"]         = node.get_props().get_all_props()
+        properties["props"] = node.get_props().get_all_props()
 
         # Save the DrbdVolumeState objects
         vol_state_list = {}
@@ -849,7 +879,8 @@ class AssignmentPersistence(GenericPersistence):
             vol_state_list = properties["volume_states"]
             for vol_state_props in vol_state_list.itervalues():
                 vol_state = DrbdVolumeStatePersistence.load(
-                    vol_state_props, resource, get_serial_fn)
+                    vol_state_props, resource, get_serial_fn
+                )
                 vol_states.append(vol_state)
 
             assignment = Assignment(
@@ -893,7 +924,7 @@ class DrbdVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolumeState objects
     """
 
-    SERIALIZABLE = [ "_bd_path", "_blockdevice", "_cstate", "_tstate" ]
+    SERIALIZABLE = ["_bd_path", "_blockdevice", "_cstate", "_tstate"]
 
 
     def __init__(self, vol_state):
@@ -917,10 +948,12 @@ class DrbdVolumeStatePersistence(GenericPersistence):
 
             init_props  = properties.get("props")
 
-            vol_state   = DrbdVolumeState(volume,
+            vol_state   = DrbdVolumeState(
+                volume,
                 properties["_cstate"], properties["_tstate"],
                 properties.get("_blockdevice"), properties.get("_bd_path"),
-                get_serial_fn, None, init_props)
+                get_serial_fn, None, init_props
+            )
         except Exception as exc:
             # FIXME
             raise exc

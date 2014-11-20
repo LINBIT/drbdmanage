@@ -92,62 +92,62 @@ class AssignmentView(GenericView):
 
     # Machine readable texts for current state flags
     MR_CSTATE_TEXTS = [
-        [ consts.CSTATE_PREFIX + consts.FLAG_CONNECT,
-            consts.FLAG_CONNECT,    None,       None ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
-            consts.FLAG_DEPLOY,     None,       None ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DISKLESS,
-            consts.FLAG_DISKLESS,   None,       None ]
+        [consts.CSTATE_PREFIX + consts.FLAG_CONNECT,
+         consts.FLAG_CONNECT,    None,       None],
+        [consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
+         consts.FLAG_DEPLOY,     None,       None],
+        [consts.CSTATE_PREFIX + consts.FLAG_DISKLESS,
+         consts.FLAG_DISKLESS,   None,       None]
     ]
 
     # Machine readable texts for target state flags
     MR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_CONNECT,
-            consts.FLAG_CONNECT,    None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
-            consts.FLAG_DEPLOY,     None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DISKLESS,
-            consts.FLAG_DISKLESS,   None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DISCARD,
-            consts.FLAG_DISCARD,    None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE,
-            consts.FLAG_OVERWRITE,  None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
-            consts.FLAG_RECONNECT,  None,       None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
-            consts.FLAG_UPD_CON,    None,       None ]
+        [consts.TSTATE_PREFIX + consts.FLAG_CONNECT,
+         consts.FLAG_CONNECT,    None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
+         consts.FLAG_DEPLOY,     None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_DISKLESS,
+         consts.FLAG_DISKLESS,   None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_DISCARD,
+         consts.FLAG_DISCARD,    None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE,
+         consts.FLAG_OVERWRITE,  None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
+         consts.FLAG_RECONNECT,  None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
+         consts.FLAG_UPD_CON,    None,       None]
     ]
 
     # Human readable texts for current state flags
     HR_CSTATE_TEXTS = [
-        [ consts.CSTATE_PREFIX + consts.FLAG_CONNECT,
-            "c",     "-",    "?" ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
-            "d",     "-",    "?" ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DISKLESS,
-            "D",     "-",    "?" ]
+        [consts.CSTATE_PREFIX + consts.FLAG_CONNECT,
+         "c",     "-",    "?"],
+        [consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
+         "d",     "-",    "?"],
+        [consts.CSTATE_PREFIX + consts.FLAG_DISKLESS,
+         "D",     "-",    "?"]
     ]
 
     # Human readable texts for target state flags (without action flags)
     HR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_CONNECT,
-            "c",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
-            "d",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DISKLESS,
-            "D",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_CONNECT,
+         "c",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
+         "d",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_DISKLESS,
+         "D",     "-",    "?"]
     ]
 
     # Human readable texts for target state action flags
     HR_ACTFLAGS_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_DISCARD,
-            "d",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE,
-            "o",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
-            "r",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
-            "u",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_DISCARD,
+         "d",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE,
+         "o",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
+         "r",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
+         "u",     "-",    "?"]
     ]
 
 
@@ -196,23 +196,23 @@ class DrbdNodeView(GenericView):
 
     # Machine readable texts for target state flags
     MR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            consts.FLAG_REMOVE,     None,   None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
-            consts.FLAG_UPD_POOL,   None,   None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
-            consts.FLAG_UPDATE,     None,   None ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         consts.FLAG_REMOVE,     None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
+         consts.FLAG_UPD_POOL,   None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
+         consts.FLAG_UPDATE,     None,   None]
 
     ]
 
     # Human readable texts for target state flags
     HR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            "r",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
-            "p",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
-            "u",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         "r",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
+         "p",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
+         "u",     "-",    "?"]
     ]
 
 
@@ -256,14 +256,14 @@ class DrbdResourceView(GenericView):
 
     # Machine readable texts for target state flags
     MR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            consts.FLAG_REMOVE,     None,   None ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         consts.FLAG_REMOVE,     None,   None]
     ]
 
     # Human readable texts for target state flags
     HR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            "r",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         "r",     "-",    "?"]
     ]
 
 
@@ -307,14 +307,14 @@ class DrbdVolumeView(GenericView):
 
     # Machine readable texts for target state flags
     MR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            consts.FLAG_REMOVE,     None,   None ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         consts.FLAG_REMOVE,     None,   None]
     ]
 
     # Human readable texts for target state flags
     HR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
-            "r",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_REMOVE,
+         "r",     "-",    "?"]
     ]
 
 
@@ -361,34 +361,34 @@ class DrbdVolumeStateView(GenericView):
 
     # Machine readable texts for current state flags
     MR_CSTATE_TEXTS = [
-        [ consts.CSTATE_PREFIX + consts.FLAG_ATTACH,
-            consts.FLAG_ATTACH,     None,   None ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
-            consts.FLAG_DEPLOY,     None,   None ]
+        [consts.CSTATE_PREFIX + consts.FLAG_ATTACH,
+         consts.FLAG_ATTACH,     None,   None],
+        [consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
+         consts.FLAG_DEPLOY,     None,   None]
     ]
 
     # Human readable texts for current state flags
     HR_CSTATE_TEXTS = [
-        [ consts.CSTATE_PREFIX + consts.FLAG_ATTACH,
-            "a",     "-",    "?" ],
-        [ consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
-            "d",     "-",    "?" ]
+        [consts.CSTATE_PREFIX + consts.FLAG_ATTACH,
+         "a",     "-",    "?"],
+        [consts.CSTATE_PREFIX + consts.FLAG_DEPLOY,
+         "d",     "-",    "?"]
     ]
 
     # Machine readable texts for target state flags
     MR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_ATTACH,
-            consts.FLAG_ATTACH,     None,   None ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
-            consts.FLAG_DEPLOY,     None,   None ]
+        [consts.TSTATE_PREFIX + consts.FLAG_ATTACH,
+         consts.FLAG_ATTACH,     None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
+         consts.FLAG_DEPLOY,     None,   None]
     ]
 
     # Human readable texts for target state flags
     HR_TSTATE_TEXTS = [
-        [ consts.TSTATE_PREFIX + consts.FLAG_ATTACH,
-            "a",     "-",    "?" ],
-        [ consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
-            "d",     "-",    "?" ]
+        [consts.TSTATE_PREFIX + consts.FLAG_ATTACH,
+         "a",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_DEPLOY,
+         "d",     "-",    "?"]
     ]
 
 

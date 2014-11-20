@@ -42,7 +42,7 @@ class GenericPersistence(object):
         @return: object variables for serialization
         @rtype:  dict
         """
-        properties = dict()
+        properties = {}
         for key in serializable:
             try:
                 val = self._obj.__dict__[key]

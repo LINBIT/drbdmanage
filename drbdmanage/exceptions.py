@@ -91,28 +91,28 @@ DM_ECTRLVOL = 116
 # DEBUG value
 DM_DEBUG    = 1023
 
-_DM_EXC_TEXTS = dict()
+_DM_EXC_TEXTS = {}
 _DM_EXC_TEXTS[DM_SUCCESS]  = "Operation completed successfully"
 _DM_EXC_TEXTS[DM_ENAME]    = "Invalid name"
 _DM_EXC_TEXTS[DM_ENOENT]   = "Object not found"
 _DM_EXC_TEXTS[DM_EEXIST]   = "Object already exists"
 _DM_EXC_TEXTS[DM_EIPTYPE]  = "Invalid IP protocol type"
 _DM_EXC_TEXTS[DM_EMINOR]   = "Minor number out of range or no " \
-  "free minor numbers"
+                             "free minor numbers"
 _DM_EXC_TEXTS[DM_EVOLSZ]   = "Volume size out of range"
 _DM_EXC_TEXTS[DM_EINVAL]   = "Invalid option"
 _DM_EXC_TEXTS[DM_DEBUG]    = "Debug exception / internal error"
 _DM_EXC_TEXTS[DM_ENOTIMPL] = "Function not implemented"
 _DM_EXC_TEXTS[DM_EPERSIST] = "I/O error while accessing persistent " \
-  "configuration storage"
+                             "configuration storage"
 _DM_EXC_TEXTS[DM_ENODEID]  = "Invalid node id or no free node id number"
 _DM_EXC_TEXTS[DM_EVOLID]   = "Invalid volume id or no free volume id number"
 _DM_EXC_TEXTS[DM_EPORT]    = "Invalid port number or no free port numbers"
 _DM_EXC_TEXTS[DM_ESTORAGE] = "The storage subsystem failed to perform the " \
-  "requested operation"
+                             "requested operation"
 _DM_EXC_TEXTS[DM_ENOSPC]   = "Not enough free memory"
 _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
-  "nodes in the cluster"
+                             "nodes in the cluster"
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 _DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"

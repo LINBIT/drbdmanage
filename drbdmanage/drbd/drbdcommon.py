@@ -13,8 +13,9 @@ class GenericDrbdObject(object):
 
 
     def __init__(self, get_serial_fn, init_serial, init_props):
-        self._props = propscon.PropsContainer(get_serial_fn, init_serial,
-            init_props)
+        self._props = propscon.PropsContainer(
+            get_serial_fn, init_serial, init_props
+        )
 
 
     @staticmethod
@@ -44,9 +45,9 @@ class GenericDrbdObject(object):
             elif item >= ord('A') and item <= ord('Z'):
                 alpha = True
             else:
-                if not ((item >= ord('0') and item <= ord('9') and idx >= 1)
-                  or item == ord("-") or item == ord("_")):
-                    raise dmexc.InvalidNameException
+                if (not ((item >= ord('0') and item <= ord('9') and idx >= 1) or
+                    item == ord("-") or item == ord("_"))):
+                        raise dmexc.InvalidNameException
             idx += 1
         if not alpha:
             raise dmexc.InvalidNameException

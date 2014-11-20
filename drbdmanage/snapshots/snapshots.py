@@ -32,8 +32,9 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
 
     def __init__(self, name, resource, get_serial_fn, init_serial, init_props):
-        super(DrbdSnapshot, self).__init__(get_serial_fn, init_serial,
-            init_props)
+        super(DrbdSnapshot, self).__init__(
+            get_serial_fn, init_serial, init_props
+        )
         self._name        = self.name_check(name)
         self._resource    = resource
         self._assignments = {}
@@ -41,7 +42,8 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     def name_check(self, name):
         return drbdcommon.GenericDrbdObject.name_check(
-            name, DrbdSnapshot.NAME_MAXLEN)
+            name, DrbdSnapshot.NAME_MAXLEN
+        )
 
 
     def get_name(self):
@@ -95,8 +97,9 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     def __init__(self, snapshot, assignment,
                  get_serial_fn, init_serial, init_props):
-        super(DrbdSnapshotAssignment, self).__init__(get_serial_fn,
-            init_serial, init_props)
+        super(DrbdSnapshotAssignment, self).__init__(
+            get_serial_fn, init_serial, init_props
+        )
         self._snapshot         = snapshot
         self._assignment       = assignment
         self._snaps_vol_states = {}
@@ -192,8 +195,9 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
 
     def __init__(self, vol_id, cstate, tstate, blockdevice, bd_path,
                  get_serial_fn, init_serial, init_props):
-        super(DrbdSnapshotVolumeState , self).__init__(get_serial_fn,
-            init_serial, init_props)
+        super(DrbdSnapshotVolumeState , self).__init__(
+            get_serial_fn, init_serial, init_props
+        )
         self._vol_id = vol_id
         if blockdevice is not None and bd_path is not None:
             self._blockdevice = blockdevice

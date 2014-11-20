@@ -31,9 +31,12 @@ class BlockDevicePersistence(GenericPersistence):
     This class is for use by storage plugins.
     """
 
-    SERIALIZABLE = [ "_name", "_path" ]
+    SERIALIZABLE = ["_name", "_path"]
+
+
     def __init__(self, blockdev):
         super(BlockDevicePersistence, self).__init__(blockdev)
+
 
     def save(self, container):
         blockdev = self.get_object()
@@ -41,15 +44,16 @@ class BlockDevicePersistence(GenericPersistence):
         properties["size_kiB"] = blockdev.get_size_kiB()
         container[blockdev.get_name()] = properties
 
+
     @classmethod
     def load(cls, properties):
         blockdev = None
         try:
             blockdev = drbdmanage.storage.storagecore.BlockDevice(
-              properties["_name"],
-              properties["size_kiB"],
-              properties["_path"]
-              )
+                properties["_name"],
+                properties["size_kiB"],
+                properties["_path"]
+            )
         except Exception:
             pass
         return blockdev

@@ -50,7 +50,8 @@ class DrbdSnapshotPersistence(GenericPersistence):
             init_props = properties.get("props")
             snapshot = snaps.DrbdSnapshot(
                 properties["_name"], resource,
-                get_serial_fn, None, init_props)
+                get_serial_fn, None, init_props
+            )
         except Exception as exc:
             raise exc
         return snapshot
@@ -67,7 +68,8 @@ class DrbdSnapshotAssignmentPersistence(GenericPersistence):
 
     def __init__(self, snaps_assignment):
         super(DrbdSnapshotAssignmentPersistence, self).__init__(
-            snaps_assignment)
+            snaps_assignment
+        )
 
 
     def save(self, container):
@@ -121,13 +123,14 @@ class DrbdSnapshotVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdSnapshotVolumeState objects
     """
 
-    SERIALIZABLE = [ "_vol_id", "_bd_path", "_blockdevice",
-        "_cstate", "_tstate" ]
+    SERIALIZABLE = ["_vol_id", "_bd_path", "_blockdevice",
+                    "_cstate", "_tstate"]
 
 
     def __init__(self, snaps_vol_state):
         super(DrbdSnapshotVolumeStatePersistence, self).__init__(
-            snaps_vol_state)
+            snaps_vol_state
+        )
 
 
     def save(self, container):

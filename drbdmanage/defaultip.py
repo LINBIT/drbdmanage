@@ -14,25 +14,32 @@ def get_ip_address(ifname):
     # 0x8915 is SIOCGIFADDR
     return socket.inet_ntoa(
         fcntl.ioctl(sock.fileno(), 0x8915,
-        struct.pack('256s', ifname[:15]))[20:24]
+                    struct.pack('256s', ifname[:15]))[20:24]
     )
 
 
 def get_interface_of_default_route():
-    """Read the default gateway directly from /proc."""
+    """
+    Reads the default gateway directly from /proc
+    """
+    interface = None
     with open("/proc/net/route") as fh:
         for line in fh:
             fields = line.strip().split()
             if fields[1] == '00000000' and int(fields[3], 16) & 2 != 0:
-                return fields[0]
+                interface = fields[0]
+    return interface
 
 
 def default_ip():
     """
     Returns the IP address of the default route interface
     """
+    ipaddress = None
     interface = get_interface_of_default_route()
-    return get_ip_address(interface) if interface else None
+    if interface is not None:
+        ipaddress = get_ip_address(interface)
+    return ipaddress
 
 
 if __name__ == "__main__":

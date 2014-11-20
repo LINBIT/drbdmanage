@@ -69,7 +69,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: adjust %s" % res_name)
+        logging.debug("DrbdAdm: adjust %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
         return self._run_drbdadm(args)
 
@@ -80,7 +80,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.warning("DEPRECATED: DrbdAdm: up %s" % res_name)
+        logging.warning("DEPRECATED: DrbdAdm: up %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-", "up", res_name]
         return self._run_drbdadm(args)
 
@@ -91,7 +91,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: down %s" % res_name)
+        logging.debug("DrbdAdm: down %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-", "down", res_name]
         return self._run_drbdadm(args)
 
@@ -105,9 +105,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         if force:
-            logging.debug("DrbdAdm: primary %s --force" % res_name)
+            logging.debug("DrbdAdm: primary %s --force" % (res_name))
         else:
-            logging.debug("DrbdAdm: primary %s" % res_name)
+            logging.debug("DrbdAdm: primary %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-"]
         if force:
             args.append("--")
@@ -122,7 +122,7 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: secondary %s" % res_name)
+        logging.debug("DrbdAdm: secondary %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
         return self._run_drbdadm(args)
 
@@ -133,9 +133,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         if discard:
-            logging.debug("DrbdAdm: connect %s --discard-my-data" % res_name)
+            logging.debug("DrbdAdm: connect %s --discard-my-data" % (res_name))
         else:
-            logging.debug("DrbdAdm: connect %s" % res_name)
+            logging.debug("DrbdAdm: connect %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-"]
         if discard:
             args.append("--")
@@ -150,7 +150,7 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: disconnect %s" % res_name)
+        logging.debug("DrbdAdm: disconnect %s" % (res_name))
         args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
         return self._run_drbdadm(args)
 
@@ -162,7 +162,7 @@ class DrbdAdm(object):
         """
         logging.debug("DrbdAdm: attach %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "attach",
-          res_name + "/" + str(vol_id)]
+                res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
 
 
@@ -173,7 +173,7 @@ class DrbdAdm(object):
         """
         logging.debug("DrbdAdm: detach %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "detach",
-          res_name + "/" + str(vol_id)]
+                res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
 
 
@@ -184,7 +184,7 @@ class DrbdAdm(object):
         """
         logging.debug("DrbdAdm: create-md %s %d" % (res_name, vol_id))
         args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
-          "--", "--force", "create-md", res_name + "/" + str(vol_id)]
+                "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(args)
 
 
@@ -195,16 +195,20 @@ class DrbdAdm(object):
         """
         drbd_proc = None
         try:
-            drbd_proc = subprocess.Popen(args, 0, self.execpath,
-              stdin=subprocess.PIPE, close_fds=True)
+            drbd_proc = subprocess.Popen(
+                args, 0, self.execpath,
+                stdin=subprocess.PIPE, close_fds=True
+            )
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
                 logging.error("Cannot find the drbdadm utility")
             elif oserr.errno == errno.EACCES:
-                logging.error("Cannot execute the drbdadm utility, "
-                  "permission denied")
+                logging.error(
+                    "Cannot execute the drbdadm utility, permission denied"
+                )
             else:
-                logging.error("Cannot execute the drbdadm utility, "
-                  "error returned by the OS is: "
-                  "%s\n" % oserr.strerror)
+                logging.error(
+                    "Cannot execute the drbdadm utility, error returned by "
+                    "the OS is: %s\n"
+                    % (oserr.strerror))
         return drbd_proc

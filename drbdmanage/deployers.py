@@ -62,8 +62,8 @@ class BalancedDeployer(object):
                     selected.append(node)
             else:
                 wildcat.append(node)
-        selected = sorted(selected,
-          key=lambda node: node.get_poolfree(), reverse=True)
+        selected = sorted(selected, key=lambda node: node.get_poolfree(),
+                          reverse=True)
         drbdmanage.utils.fill_list(selected, result, count)
         if len(result) < count:
             if deploy_unknown:

@@ -18,7 +18,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import sys
 import logging
 
 from drbdmanage.exceptions import InvalidMinorNrException
@@ -59,7 +58,7 @@ class ConfFile(object):
 
         key  = None
         val  = None
-        conf = dict()
+        conf = {}
 
         while True:
             line = in_file.readline()
@@ -102,7 +101,7 @@ class ConfFile(object):
         any keys that had not been defined in the default configuration.
         The new configuration contains only keys from the default configuration.
         """
-        conf = dict()
+        conf = {}
         for key in conf_defaults.iterkeys():
             val = conf_loaded.get(key)
             if val is not None:
@@ -122,7 +121,7 @@ class ConfFile(object):
         plus any keys defined by the configuration loaded from the configuration
         file.
         """
-        conf = dict()
+        conf = {}
         conf = cls.conf_defaults_merge(conf_defaults, conf_loaded)
         for key in conf_loaded.iterkeys():
             val = conf.get(key)
@@ -518,7 +517,8 @@ class DrbdAdmConf(object):
             "        device      minor 0;\n"
             "        disk        " + bdev + ";\n"
             "        meta-disk   internal;\n"
-            "    }\n")
+            "    }\n"
+        )
         if len(nodes) > 0:
             for node in nodes.itervalues():
                 stream.write(
@@ -531,12 +531,15 @@ class DrbdAdmConf(object):
                 )
             stream.write(
                 "    connection-mesh {\n"
-                "        hosts")
+                "        hosts"
+            )
             for node in nodes.itervalues():
                 stream.write(" " + node.get_name())
-            stream.write(";\n"
+            stream.write(
+                ";\n"
                 "        net {\n"
                 "            protocol C;\n"
                 "        }\n"
-                "    }\n")
+                "    }\n"
+            )
         stream.write("}\n")

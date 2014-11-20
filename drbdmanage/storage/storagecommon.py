@@ -1,6 +1,9 @@
 #!/usr/bin/python
 
+import drbdmanage.utils
+
 class GenericStorage(object):
+
     _size_kiB = None
 
 
@@ -31,5 +34,6 @@ class GenericStorage(object):
         @return: volume size in the selected scale unit
         @rtype:  long
         """
-        return drbdmanage.utils.SizeCalc.convert(self._size_kiB,
-          drbdmanage.utils.SizeCalc.UNIT_kiB, unit)
+        return drbdmanage.utils.SizeCalc.convert(
+            self._size_kiB, drbdmanage.utils.SizeCalc.UNIT_kiB, unit
+        )

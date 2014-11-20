@@ -32,26 +32,36 @@ import traceback
 import inspect
 import StringIO
 
-from drbdmanage.consts import (SERIAL, NODE_NAME, NODE_ADDR, NODE_AF,
-    RES_NAME, RES_PORT, VOL_MINOR, DEFAULT_VG, SERVER_CONFFILE,
-    KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, DRBDCTRL_RES_NAME,
-    DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO, RES_PORT_NR_ERROR,
-    FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS, FLAG_CONNECT)
-from drbdmanage.utils import (NioLineReader, CmdLineReader, MetaData)
-from drbdmanage.utils import (build_path, extend_path, generate_secret,
-    get_free_number, plugin_import, add_rc_entry, serial_filter, props_filter,
-    string_to_bool, split_main_aux_props, aux_props_selector)
-from drbdmanage.exceptions import (DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,
-    DM_EMINOR, DM_ENAME, DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST,
-    DM_EPLUGIN, DM_EPORT, DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ,
-    DM_ENOTIMPL, DM_SUCCESS)
-from drbdmanage.exceptions import (InvalidMinorNrException,
-    InvalidNameException, PersistenceException, PluginException,
-    SyntaxException, VolSizeRangeException, AbortException, dm_exc_text)
-from drbdmanage.drbd.drbdcore import (Assignment, DrbdManager,
-    DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState)
-from drbdmanage.snapshots.snapshots import (DrbdSnapshot,
-    DrbdSnapshotAssignment, DrbdSnapshotVolumeState)
+from drbdmanage.consts import (
+    SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
+    DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
+    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
+    RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
+    FLAG_CONNECT
+)
+from drbdmanage.utils import NioLineReader, CmdLineReader, MetaData
+from drbdmanage.utils import (
+    build_path, extend_path, generate_secret, get_free_number, plugin_import,
+    add_rc_entry, serial_filter, props_filter, string_to_bool,
+    split_main_aux_props, aux_props_selector
+)
+from drbdmanage.exceptions import (
+    DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
+    DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
+    DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOTIMPL, DM_SUCCESS
+)
+from drbdmanage.exceptions import (
+    InvalidMinorNrException, InvalidNameException, PersistenceException,
+    PluginException, SyntaxException, VolSizeRangeException, AbortException,
+    dm_exc_text
+)
+from drbdmanage.drbd.drbdcore import (
+    Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
+    DrbdVolumeState
+)
+from drbdmanage.snapshots.snapshots import (
+    DrbdSnapshot, DrbdSnapshotAssignment, DrbdSnapshotVolumeState
+)
 from drbdmanage.drbd.persistence import persistence_impl
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
 from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
@@ -185,8 +195,8 @@ class DrbdManageServer(object):
         logging.info("DRBDmanage server, version %s"
                      " -- initializing on node '%s'"
                      % (self.DM_VERSION, self._instance_node_name))
-        self._nodes     = dict()
-        self._resources = dict()
+        self._nodes     = {}
+        self._resources = {}
         # load the server configuration file
         self.load_server_conf()
         # ensure that the PATH environment variable is set up
@@ -278,10 +288,14 @@ class DrbdManageServer(object):
                 retry = False
             except (OSError, IOError):
                 if log_error:
-                    logging.critical("cannot restart drbdsetup events tracing, "
-                        "this node is inoperational")
-                    logging.critical("retrying restart of drbdsetup events "
-                        "tracing every 30 seconds")
+                    logging.critical(
+                        "cannot restart drbdsetup events tracing, "
+                        "this node is inoperational"
+                    )
+                    logging.critical(
+                        "retrying restart of drbdsetup events "
+                        "tracing every 30 seconds"
+                    )
                     log_error = False
                 time.sleep(30)
         logging.info("drbdsetup events tracing reestablished")
@@ -304,9 +318,7 @@ class DrbdManageServer(object):
         changed = False
         while True:
             line = self._reader.readline()
-            if line is None:
-                break
-            else:
+            if line is not None:
                 line = line.strip()
                 if self.dbg_events:
                     logging.debug("received event line: %s" % line)
@@ -328,6 +340,8 @@ class DrbdManageServer(object):
                         changed = self._drbd_event_change_trigger(
                             evt_type, evt_source, line_data
                         )
+            else:
+                break
         if changed:
             self._drbd_mgr.run(False, False)
         # True = GMainLoop shall not unregister this event handler
@@ -337,13 +351,13 @@ class DrbdManageServer(object):
     def _drbd_event_change_trigger(self, evt_type, evt_source, line_data):
         changed = False
         try:
-            if (evt_type          == self.EVT_TYPE_CHANGE and
+            if (evt_type == self.EVT_TYPE_CHANGE and
                 line_data[self.EVT_ARG_NAME] == DRBDCTRL_RES_NAME):
                     # Check: role change to Secondary
                     try:
+                        role = line_data[self.EVT_ARG_ROLE]
                         if (evt_source == self.EVT_SRC_CON and
-                            line_data[self.EVT_ARG_ROLE] ==
-                            self.EVT_ROLE_SECONDARY):
+                            role == self.EVT_ROLE_SECONDARY):
                                 changed = True
                                 if self.dbg_events:
                                     logging.debug(
@@ -355,9 +369,9 @@ class DrbdManageServer(object):
 
                     # Check: replication change to SyncTarget
                     try:
+                        replication = line_data[self.EVT_ARG_REPL]
                         if (evt_source == self.EVT_SRC_PEERDEV and
-                            line_data[self.EVT_ARG_REPL] ==
-                            self.EVT_REPL_SYNCTARGET):
+                            replication == self.EVT_REPL_SYNCTARGET):
                                 changed = True
                                 if self.dbg_events:
                                     logging.debug(
@@ -378,8 +392,8 @@ class DrbdManageServer(object):
         Initialize global logging
         """
         self._root_logger = logging.getLogger("")
-        syslog_h    = logging.handlers.SysLogHandler(address="/dev/log")
-        syslog_f    = logging.Formatter(fmt=self.LOGGING_FORMAT)
+        syslog_h = logging.handlers.SysLogHandler(address="/dev/log")
+        syslog_f = logging.Formatter(fmt=self.LOGGING_FORMAT)
         syslog_h.setFormatter(syslog_f)
         self._root_logger.addHandler(syslog_h)
         self._root_logger.setLevel(logging.INFO)
@@ -412,12 +426,16 @@ class DrbdManageServer(object):
                 self._conf = self.CONF_DEFAULTS
         except IOError as ioerr:
             if ioerr.errno == errno.EACCES:
-                logging.warning("cannot open configuration file '%s', "
-                  "permission denied" % SERVER_CONFFILE)
+                logging.warning(
+                    "cannot open configuration file '%s', permission denied"
+                    % (SERVER_CONFFILE)
+                )
             elif ioerr.errno != errno.ENOENT:
-                logging.warning("cannot open configuration file '%s', "
-                  "error returned by the OS is: %s"
-                  % (SERVER_CONFFILE, ioerr.strerror))
+                logging.warning(
+                    "cannot open configuration file '%s', "
+                    "error returned by the OS is: %s"
+                    % (SERVER_CONFFILE, ioerr.strerror)
+                )
         finally:
             if self._conf is None:
                 self._conf = self.CONF_DEFAULTS
@@ -474,8 +492,10 @@ class DrbdManageServer(object):
                 #        The current workaround merely keeps the system
                 #        running, but the serial numbers are totally messed
                 #        up if this happens.
-                logging.error("Unparseable serial number in the cluster "
-                    "configuration, setting serial=0 to recover")
+                logging.error(
+                    "Unparseable serial number in the cluster "
+                    "configuration, setting serial=0 to recover"
+                )
                 serial = 0
         return serial
 
@@ -542,6 +562,8 @@ class DrbdManageServer(object):
             node = self._nodes.get(name)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
+            # FIXME: where does that come from? This function is supposed
+            #        to return a node or no node, but not something else
             return DM_DEBUG
         return node
 
@@ -704,9 +726,11 @@ class DrbdManageServer(object):
                     if addr is not None and addrfam is not None:
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
-                            node = DrbdNode(node_name, addr, addrfam, node_id,
+                            node = DrbdNode(
+                                node_name, addr, addrfam, node_id,
                                 0, -1, -1,
-                                self.get_serial, None, None)
+                                self.get_serial, None, None
+                            )
                             # Merge only auxiliary properties into the
                             # DrbdNode's properties container
                             aux_props = aux_props_selector(props)
@@ -714,8 +738,11 @@ class DrbdManageServer(object):
                             self._nodes[node.get_name()] = node
                             self._cluster_nodes_update()
                             # create or update the drbdctrl.res file
-                            if (self._configure_drbdctrl(initial,
-                                None, bdev, port) == 0):
+                            check_configure = self._configure_drbdctrl(
+                                initial,
+                                None, bdev, port
+                            )
+                            if check_configure == 0:
                                 self._drbd_mgr.adjust_drbdctrl()
                                 fn_rc = DM_SUCCESS
                             else:
@@ -778,7 +805,7 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                [ NODE_NAME, node_name ])
+                         [ NODE_NAME, node_name ])
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
@@ -806,7 +833,7 @@ class DrbdManageServer(object):
                 resource = self._resources.get(res_name)
                 if resource is not None:
                     add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST),
-                        [ RES_NAME, resource.get_name() ])
+                                 [ RES_NAME, resource.get_name() ])
                 else:
                     port = RES_PORT_NR_AUTO
                     secret = generate_secret()
@@ -819,11 +846,13 @@ class DrbdManageServer(object):
                             port = self.get_free_port_nr()
                         if port < 1 or port > 65535:
                             add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
-                                [ RES_PORT, str(port) ])
+                                         [ RES_PORT, str(port) ])
                         else:
-                            resource = DrbdResource(res_name,
+                            resource = DrbdResource(
+                                res_name,
                                 port, secret, 0, None,
-                                self.get_serial, None, None)
+                                self.get_serial, None, None
+                            )
                             # Merge only auxiliary properties into the
                             # DrbdResource's properties container
                             aux_props = aux_props_selector(props)
@@ -831,10 +860,10 @@ class DrbdManageServer(object):
                             self._resources[resource.get_name()] = resource
                             self.save_conf_data(persist)
                             add_rc_entry(fn_rc, DM_SUCCESS,
-                                dm_exc_text(DM_SUCCESS))
+                                         dm_exc_text(DM_SUCCESS))
                     else:
                         add_rc_entry(fn_rc, DM_ESECRETG,
-                            dm_exc_text(DM_ESECRETG))
+                                     dm_exc_text(DM_ESECRETG))
             else:
                 raise PersistenceException
         except ValueError:
@@ -994,7 +1023,7 @@ class DrbdManageServer(object):
                     else:
                         chg_serial = self.get_serial()
                         volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
-                            0, self.get_serial, None, None)
+                                            0, self.get_serial, None, None)
                         # Merge only auxiliary properties into the
                         # DrbdVolume's properties container
                         aux_props = aux_props_selector(props)
@@ -1152,7 +1181,8 @@ class DrbdManageServer(object):
                             )
                             if assign_rc == DM_SUCCESS:
                                 assignment = node.get_assignment(
-                                    resource.get_name())
+                                    resource.get_name()
+                                )
                                 aux_props = aux_props_selector(props)
                                 assignment.get_props().merge_gen(aux_props)
                                 self._drbd_mgr.perform_changes()
@@ -1192,12 +1222,12 @@ class DrbdManageServer(object):
                     node = self._nodes[node_name]
                 except KeyError:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        [ NODE_NAME, node_name ])
+                                 [ NODE_NAME, node_name ])
                 try:
                     resource = self._resources[res_name]
                 except KeyError:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        [ RES_NAME, res_name ])
+                                 [ RES_NAME, res_name ])
                 if node is None or resource is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
@@ -1241,8 +1271,8 @@ class DrbdManageServer(object):
                 # The block device is set upon allocation of the backend
                 # storage area on the target node
                 assignment = Assignment(node, resource, node_id,
-                    cstate, tstate, 0, None,
-                    self.get_serial, None, None)
+                                        cstate, tstate, 0, None,
+                                        self.get_serial, None, None)
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
                     if tstate & Assignment.FLAG_DISKLESS == 0:
@@ -1274,8 +1304,8 @@ class DrbdManageServer(object):
             else:
                 assignment.remove()
             for assignment in resource.iterate_assignments():
-                if assignment.get_node() != node \
-                    and assignment.is_deployed():
+                if (assignment.get_node() != node and
+                    assignment.is_deployed()):
                         assignment.update_connections()
             self.cleanup()
         except Exception as exc:
@@ -1298,7 +1328,8 @@ class DrbdManageServer(object):
         try:
             if redundancy >= 1:
                 if redundancy <= len(self._nodes):
-                    # Select nodes where the amount of free space on that node is known
+                    # Select nodes where the amount of free space on
+                    # that node is known
                     selected = []
                     for node in self._nodes.itervalues():
                         poolfree = node.get_poolfree()
@@ -1430,7 +1461,7 @@ class DrbdManageServer(object):
                     """
                     filter nodes that do not have the resource deployed yet
                     """
-                    undeployed = dict()
+                    undeployed = {}
                     for node in self._nodes.itervalues():
                         # skip nodes, where:
                         #   - resource is deployed already
@@ -1453,8 +1484,8 @@ class DrbdManageServer(object):
                             self._assign(
                                 node, resource,
                                 0,
-                                Assignment.FLAG_DEPLOY
-                                | Assignment.FLAG_CONNECT
+                                Assignment.FLAG_DEPLOY |
+                                Assignment.FLAG_CONNECT
                             )
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
@@ -1471,10 +1502,10 @@ class DrbdManageServer(object):
                     # yet, undeploy those first
                     if ctr > final_count:
                         for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate()
-                                & Assignment.FLAG_DEPLOY != 0)
-                                and (assg.get_cstate()
-                                & Assignment.FLAG_DEPLOY == 0)):
+                            if ((assg.get_tstate() &
+                                Assignment.FLAG_DEPLOY != 0) and
+                                (assg.get_cstate() &
+                                Assignment.FLAG_DEPLOY == 0)):
                                     assg.undeploy()
                                     ctr -= 1
                             if not ctr > final_count:
@@ -1483,12 +1514,12 @@ class DrbdManageServer(object):
                         # Undeploy from nodes that have the
                         # resource deployed
                         # Collect nodes where the resource is deployed
-                        deployed = dict()
+                        deployed = {}
                         for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate()
-                                & Assignment.FLAG_DEPLOY != 0)
-                                and (assg.get_cstate()
-                                & Assignment.FLAG_DEPLOY != 0)):
+                            if ((assg.get_tstate() &
+                                Assignment.FLAG_DEPLOY != 0) and
+                                (assg.get_cstate() &
+                                Assignment.FLAG_DEPLOY != 0)):
                                     node = assg.get_node()
                                     deployed[node.get_name()] = node
                         """
@@ -1579,8 +1610,8 @@ class DrbdManageServer(object):
                 self._assign(
                     node, resource,
                     0,
-                    Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT
-                    | Assignment.FLAG_DISKLESS
+                    Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT |
+                    Assignment.FLAG_DISKLESS
                 )
             else:
                 tstate = assg.get_tstate()
@@ -1612,10 +1643,11 @@ class DrbdManageServer(object):
                         # OVERWRITE overrides DISCARD
                         if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
                             tstate_clear_mask |= Assignment.FLAG_DISCARD
-                            tstate_set_mask = ((tstate_set_mask
-                              | Assignment.FLAG_DISCARD)
-                              ^ Assignment.FLAG_DISCARD)
-                        elif (tstate_set_mask & Assignment.FLAG_DISCARD ) != 0:
+                            tstate_set_mask = (
+                                (tstate_set_mask | Assignment.FLAG_DISCARD) ^
+                                Assignment.FLAG_DISCARD
+                            )
+                        elif (tstate_set_mask & Assignment.FLAG_DISCARD) != 0:
                             tstate_clear_mask |= Assignment.FLAG_OVERWRITE
                         assg.clear_cstate_flags(cstate_clear_mask)
                         assg.set_cstate_flags(cstate_set_mask)
@@ -1628,7 +1660,8 @@ class DrbdManageServer(object):
                             for peer_assg in resource.iterate_assignments():
                                 if peer_assg != assg:
                                     peer_assg.clear_tstate_flags(
-                                      Assignment.FLAG_OVERWRITE)
+                                        Assignment.FLAG_OVERWRITE
+                                    )
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
             else:
@@ -1751,13 +1784,13 @@ class DrbdManageServer(object):
                         vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
                             add_rc_entry(fn_rc, DM_ENOENT,
-                                dm_exc_text(DM_ENOENT))
+                                         dm_exc_text(DM_ENOENT))
                         else:
                             vol_state.attach()
                             self._drbd_mgr.perform_changes()
                             self.save_conf_data(persist)
                             add_rc_entry(fn_rc, DM_SUCCESS,
-                                dm_exc_text(DM_SUCCESS))
+                                         dm_exc_text(DM_SUCCESS))
         except PersistenceException:
             pass
         except Exception as exc:
@@ -1794,7 +1827,8 @@ class DrbdManageServer(object):
                     else:
                         vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
-                            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                            add_rc_entry(fn_rc, DM_ENOENT,
+                                         dm_exc_text(DM_ENOENT))
                         else:
                             vol_state.detach()
                             self._drbd_mgr.perform_changes()
@@ -1857,11 +1891,23 @@ class DrbdManageServer(object):
             inst_node = self.get_instance_node()
             if inst_node is not None:
                 (stor_rc, poolsize, poolfree) = (
-                    self._bd_mgr.update_pool(inst_node))
+                    self._bd_mgr.update_pool(inst_node)
+                )
                 if stor_rc == DM_SUCCESS:
+                    max_peers = self.DEFAULT_MAX_PEERS
+                    try:
+                        max_peers = int(
+                            self.get_conf_value(self.KEY_MAX_PEERS)
+                        )
+                    except ValueError:
+                        # Unparseable configuration value;
+                        # no-op: keep default value
+                        pass
                     size_sum = 0
                     for assignment in inst_node.iterate_assignments():
-                        size_sum += assignment.get_size_kiB_correction()
+                        size_sum += assignment.get_gross_size_kiB_correction(
+                            peers
+                        )
                     poolfree -= size_sum
                     # If something is seriously wrong with the storage sizes,
                     # (e.g. more storage required for deploying all resources
@@ -1893,9 +1939,9 @@ class DrbdManageServer(object):
                 for assignment in node.iterate_assignments():
                     tstate = assignment.get_tstate()
                     cstate = assignment.get_cstate()
-                    if (cstate & Assignment.FLAG_DEPLOY) == 0 \
-                      and (tstate & Assignment.FLAG_DEPLOY) == 0:
-                        removable.append(assignment)
+                    if ((cstate & Assignment.FLAG_DEPLOY) == 0 and
+                        (tstate & Assignment.FLAG_DEPLOY) == 0):
+                            removable.append(assignment)
             for assignment in removable:
                 assignment.remove()
 
@@ -1915,8 +1961,11 @@ class DrbdManageServer(object):
                     self._configure_drbdctrl(False, None, None, None)
                     self._drbd_mgr.adjust_drbdctrl()
                 except (IOError, OSError) as reconf_err:
-                    logging.error("Cannot reconfigure the control volume, "
-                      "error description is: %s" % str(reconf_err))
+                    logging.error(
+                        "Cannot reconfigure the control volume, "
+                        "error description is: %s"
+                        % str(reconf_err)
+                    )
                 self._cluster_nodes_update()
 
             # delete volume assignments that are marked for removal
@@ -1927,29 +1976,29 @@ class DrbdManageServer(object):
                     for vol_state in assg.iterate_volume_states():
                         vol_cstate = vol_state.get_cstate()
                         vol_tstate = vol_state.get_tstate()
-                        if (vol_cstate & DrbdVolumeState.FLAG_DEPLOY == 0) \
-                          and (vol_tstate & DrbdVolumeState.FLAG_DEPLOY == 0):
-                            removable.append(vol_state)
+                        if ((vol_cstate & DrbdVolumeState.FLAG_DEPLOY == 0) and
+                            (vol_tstate & DrbdVolumeState.FLAG_DEPLOY == 0)):
+                                removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
 
             # delete volumes that are marked for removal and that are not
             # deployed on any node
             for resource in self._resources.itervalues():
-                volumes = dict()
+                volumes = {}
                 # collect volumes marked for removal
                 for volume in resource.iterate_volumes():
-                    if volume.get_state() & DrbdVolume.FLAG_REMOVE != 0:
+                    if (volume.get_state() & DrbdVolume.FLAG_REMOVE) != 0:
                         volumes[volume.get_id()] = volume
                 for assg in resource.iterate_assignments():
                     removable = []
                     for vol_state in assg.iterate_volume_states():
                         volume = volumes.get(vol_state.get_id())
                         if volume is not None:
-                            if vol_state.get_cstate() \
-                              & DrbdVolumeState.FLAG_DEPLOY != 0:
-                                # delete the volume from the removal list
-                                del volumes[vol_state.get_id()]
+                            if ((vol_state.get_cstate() &
+                                DrbdVolumeState.FLAG_DEPLOY) != 0):
+                                    # delete the volume from the removal list
+                                    del volumes[vol_state.get_id()]
                             else:
                                 removable.append(vol_state)
                         for vol_state in removable:
@@ -1986,7 +2035,7 @@ class DrbdManageServer(object):
                 node = self._nodes.get(node_name)
                 if node is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        [ NODE_NAME, node_name ])
+                                 [ NODE_NAME, node_name ])
                 else:
                     yield node
 
@@ -2003,8 +2052,10 @@ class DrbdManageServer(object):
                 selected_nodes = props_filter(selected_nodes, filter_props)
 
             for node in selected_nodes:
-                node_entry = [ node.get_name(),
-                    node.get_properties(req_props) ]
+                node_entry = [
+                    node.get_name(),
+                    node.get_properties(req_props)
+                ]
                 node_list.append(node_entry)
                 add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, node_list
@@ -2027,7 +2078,7 @@ class DrbdManageServer(object):
                 res = self._resources.get(res_name)
                 if res is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        [ RES_NAME, res_name ])
+                                 [ RES_NAME, res_name ])
                 else:
                     yield res
 
@@ -2044,8 +2095,10 @@ class DrbdManageServer(object):
                 selected_res = props_filter(selected_res, filter_props)
 
             for res in selected_res:
-                res_entry = [ res.get_name(),
-                    res.get_properties(req_props) ]
+                res_entry = [
+                    res.get_name(),
+                    res.get_properties(req_props)
+                ]
                 res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
@@ -2068,7 +2121,7 @@ class DrbdManageServer(object):
                 res = self._resources.get(res_name)
                 if res is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        [ RES_NAME, res_name ])
+                                 [ RES_NAME, res_name ])
                 else:
                     yield res
 
@@ -2089,8 +2142,10 @@ class DrbdManageServer(object):
                 for vol in res.iterate_volumes():
                     vol_entry = [ vol.get_id(), vol.get_properties(None) ]
                     vol_list.append(vol_entry)
-                res_entry = [ res.get_name(),
-                    res.get_properties(req_props), vol_list ]
+                res_entry = [
+                    res.get_name(),
+                    res.get_properties(req_props), vol_list
+                ]
                 res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
@@ -2123,7 +2178,7 @@ class DrbdManageServer(object):
                     node = self._nodes.get(node_name)
                     if node is None:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                            [ NODE_NAME, node_name ])
+                                     [ NODE_NAME, node_name ])
                     else:
                         selected_nodes[node.get_name()] = node
             else:
@@ -2135,7 +2190,7 @@ class DrbdManageServer(object):
                     res = self._resources.get(res_name)
                     if res is None:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                            [ RES_NAME, res_name ])
+                                     [ RES_NAME, res_name ])
                     else:
                         selected_res[res.get_name()] = res
             else:
@@ -2248,7 +2303,8 @@ class DrbdManageServer(object):
                                 vol_state.get_id(),
                                 0, DrbdSnapshotVolumeState.FLAG_DEPLOY,
                                 None, None,
-                                self.get_serial, None, None)
+                                self.get_serial, None, None
+                            )
                             snaps_assg.add_snaps_vol_state(snaps_vol_state)
                 # Set the snapshot assignment to deploy
                 snaps_assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
@@ -2423,8 +2479,10 @@ class DrbdManageServer(object):
         except Exception as exc:
             # DEBUG
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logging.error("cannot open control volume, unhandled exception: %s"
-              % str(exc))
+            logging.error(
+                "cannot open control volume, unhandled exception: %s"
+                % str(exc)
+            )
             logging.debug("Stack trace:\n%s" % str(exc_tb))
             persist.close()
         return ret_persist
@@ -2450,8 +2508,11 @@ class DrbdManageServer(object):
                 ret_persist = persist
         except Exception as exc:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logging.error("cannot open the control volume for modification, "
-                "unhandled exception: %s" % str(exc))
+            logging.error(
+                "cannot open the control volume for modification, "
+                "unhandled exception: %s"
+                % str(exc)
+            )
             logging.debug("Stack trace:\n%s" % str(exc_tb))
             persist.close()
         return ret_persist
@@ -2496,7 +2557,7 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                        RES_NAME, res_name)
+                                 RES_NAME, res_name)
             else:
                 for assg in node.iterate_assignments():
                     if self.export_assignment_conf(assg) != 0:
@@ -2533,9 +2594,11 @@ class DrbdManageServer(object):
             writer    = DrbdAdmConf()
             writer.write(assg_conf, assignment, False)
         except IOError as ioerr:
-            logging.error("cannot write to configuration file '%s', error "
-              "returned by the OS is: %s"
-              % (file_path, ioerr.strerror))
+            logging.error(
+                "cannot write to configuration file '%s', error "
+                "returned by the OS is: %s"
+                % (file_path, ioerr.strerror)
+            )
             fn_rc = 1
         finally:
             if assg_conf is not None:
@@ -2560,8 +2623,11 @@ class DrbdManageServer(object):
         try:
             os.unlink(file_path)
         except OSError as oserr:
-            logging.error("cannot remove configuration file '%s', "
-              "error returned by the OS is: %s" % (file_path, oserr.strerror))
+            logging.error(
+                "cannot remove configuration file '%s', "
+                "error returned by the OS is: %s"
+                % (file_path, oserr.strerror)
+            )
             fn_rc = 1
         return fn_rc
 
@@ -2626,8 +2692,8 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
 
             # clear the configuration
-            self._nodes     = dict()
-            self._resources = dict()
+            self._nodes     = {}
+            self._resources = {}
 
             if persist is not None:
                 sub_rc = self._create_node(True, name, props, bdev, port)
@@ -2707,7 +2773,8 @@ class DrbdManageServer(object):
         try:
             drbdctrl_res = open(
                 build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
-                    "r")
+                "r"
+            )
             fields = conffile.read_drbdctrl_params(drbdctrl_res)
         except (IOError, OSError):
             pass
@@ -2748,19 +2815,19 @@ class DrbdManageServer(object):
             return [("Error: Generation of the join command failed")]
 
 
-    def TQ_get_path(self, res_name, vol_id="0"):
+    def TQ_get_path(self, res_name, vol_id_arg="0"):
         """ Get path of device node.
             res_name is needed, vol_id is optional. """
         # TODO: can this be per-node specific?
-        res = self._resources.get(res_name)
+        resource = self._resources.get(res_name)
         # TODO: throw exceptions?
-        if not res:
+        if resource is None:
             return ["Resource not found"]
-        vol_id_n = int(vol_id)
-        vol = res._volumes.get(vol_id_n)
-        if not vol:
-            return ["Vol_id invalid"]
-        return [vol.get_path()]
+        vol_id = int(vol_id_arg)
+        volume = resource._volumes.get(vol_id)
+        if volume is None:
+            return ["Invalid volume id"]
+        return [volume.get_path()]
 
 
     def TQ_export_conf(self, node_name, res_name):
@@ -2787,7 +2854,7 @@ class DrbdManageServer(object):
             if node is None:
                 response = ["Error: Node %s not found" % (node_name)]
             else:
-                response = ["Error: Resource %s not found" %(res_name)]
+                response = ["Error: Resource %s not found" % (res_name)]
         return response
 
 
@@ -2805,8 +2872,13 @@ class DrbdManageServer(object):
         try:
             if len(command) < 1:
                 add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
-                return fn_rc, ["Error: empty argument list sent "
-                    "to the drbdmanage server"]
+                return (
+                    fn_rc,
+                    [
+                        "Error: empty argument list sent to the "
+                        "drbdmanage server"
+                    ]
+                )
 
             func_name = "TQ_" + command.pop(0)
             text_query_func = getattr(self, func_name)
@@ -2836,8 +2908,13 @@ class DrbdManageServer(object):
             # FIXME: useful error messages required here
             logging.error("text_query() command failed: %s" % str(exc))
             add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
-            return fn_rc, ["Error: Text query command failed "
-                "on the drbdmanage server"]
+            return (
+                fn_rc,
+                [
+                    "Error: Text query command failed on the "
+                    "drbdmanage server"
+                ]
+            )
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc, result_text
@@ -2874,7 +2951,9 @@ class DrbdManageServer(object):
                 # Try to open an existing configuration file
                 try:
                     drbdctrl_res = open(
-                        build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "r")
+                        build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
+                        "r"
+                    )
                 except (IOError, OSError):
                     # if the drbdctrl.res file cannot be opened, assume
                     # that it does not exist and create a new one
@@ -2917,18 +2996,17 @@ class DrbdManageServer(object):
             try:
                 # use defaults for anything that is still unset
                 if port is None:
-                    port         = str(DRBDCTRL_DEFAULT_PORT)
+                    port = str(DRBDCTRL_DEFAULT_PORT)
                 if bdev is None:
-                    bdev         = ("/dev/"
-                        + self.get_conf_value(KEY_DRBDCTRL_VG)
-                        + "/" + DRBDCTRL_RES_NAME)
+                    bdev = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
+                            "/" + DRBDCTRL_RES_NAME)
                 if secret is None:
                     secret = generate_secret()
 
                 drbdctrl_res = open(
                     build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w")
                 conffile.write_drbdctrl(drbdctrl_res, self._nodes,
-                    bdev, port, secret)
+                                        bdev, port, secret)
                 drbdctrl_res.close()
                 fn_rc = 0
             except (IOError, OSError):
@@ -3278,8 +3356,10 @@ class DrbdManageServer(object):
                         if volume is not None:
                             props = volume.get_props()
                         else:
-                            sys.stderr.write("Resource '%s' has no volume %d\n"
-                                % (resname, vol_id))
+                            sys.stderr.write(
+                                "Resource '%s' has no volume %d\n"
+                                % (resname, vol_id)
+                            )
                     except ValueError:
                         sys.stderr.write("Invalid volume id '%s'\n" % (vol_id))
                 else:
@@ -3313,8 +3393,8 @@ class DrbdManageServer(object):
                                     props = vol_state.get_props()
                                 else:
                                     sys.stderr.write(
-                                        ("Assignment '%s/%s' has no state for "
-                                         + "volume %d\n")
+                                        "Assignment '%s/%s' has no state for "
+                                        "volume %d\n"
                                         % (node.get_name(),
                                            resource.get_name(),
                                            vol_id)
@@ -3625,10 +3705,12 @@ class DrbdManageServer(object):
         """
         Convert a string argument to a standard log level
         """
-        for name in self.DM_LOGLEVELS.iterkeys():
-            if val.upper() == name:
-                return self.DM_LOGLEVELS[name]
-        raise SyntaxException
+        loglevel = None
+        try:
+            loglevel = self.DM_LOGLEVELS[val.upper()]
+        except KeyError:
+            raise SyntaxException
+        return loglevel
 
 
     def _debug_keyval_split(self, keyval):
@@ -3691,7 +3773,7 @@ class DrbdManageServer(object):
                     if nr_item >= min_nr and nr_item <= MinorNr.MINOR_NR_MAX:
                         minor_list.append(nr_item)
             minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
-              minor_list)
+                                       minor_list)
             if minor_nr == -1:
                 raise ValueError
         except ValueError:
@@ -3743,8 +3825,7 @@ class DrbdManageServer(object):
                 id_item = assg.get_node_id()
                 if id_item >= 0 and id_item <= int(max_node_id):
                     id_list.append(id_item)
-            node_id = get_free_number(0, int(max_node_id),
-                id_list)
+            node_id = get_free_number(0, int(max_node_id), id_list)
         except ValueError:
             node_id = -1
         return node_id
@@ -3793,18 +3874,22 @@ class DrbdManageServer(object):
 
     @staticmethod
     def catch_internal_error(exc):
-        # http://stackoverflow.com/questions/5736080/sys-exc-info1-type-and-format-in-python-2-71
+        # http://stackoverflow.com/questions/5736080/
+        # sys-exc-info1-type-and-format-in-python-2-71
+        #
+        # (obviously, you have to remove the newline from the link above)
         expl = "Internal error (error traceback failed)"
         args = {}
         try:
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            k = (traceback.format_exception_only(exc_type, exc_obj))[0]
+            exc_text = (traceback.format_exception_only(exc_type, exc_obj))[0]
             tb = traceback.extract_tb(exc_tb, 3)
             # Everything passed as string, to make dbus happy
             args =  {
                 "file1": tb[0][0],
                 "line1": str(tb[0][1]),
-                'exc': k.strip() }
+                'exc':   exc_text.strip()
+            }
             expl = "Internal error: In %(file1)s@%(line1)s: %(exc)s"
             if len(tb) > 1:
                 args["file2"] = tb[1][0]
@@ -3812,8 +3897,8 @@ class DrbdManageServer(object):
                 expl += "; called from %(file2)s@%(line2)s"
             logging.critical(expl % args)
             logging.debug("--- start stack trace")
-            for l in traceback.format_tb(exc_tb):
-                logging.debug(l)
+            for tb_entry in traceback.format_tb(exc_tb):
+                logging.debug(tb_entry)
             logging.debug("--- end stack trace")
         except Exception:
             pass
@@ -3832,7 +3917,7 @@ Tracing - may be used for debugging
 def traceit(frame, event, arg):
     if event == "line":
         lineno = frame.f_lineno
-        print frame.f_code.co_filename, ":", "line", lineno
+        print(frame.f_code.co_filename, ":", "line", lineno)
     return traceit
 
 """
