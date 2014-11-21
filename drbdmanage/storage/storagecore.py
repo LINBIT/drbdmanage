@@ -170,11 +170,7 @@ class MinorNr(object):
     MINOR_NR_MAX = 0xfffff
 
     MINOR_NR_AUTO     = -1
-    # FIXME: MINOR_NR_AUTODRBD will probably never be useful for anything.
-    #        Reserved for automatic minor number allocation by the kernel
-    #        module; should possibly be removed.
-    MINOR_NR_AUTODRBD = -2
-    MINOR_NR_ERROR    = -3
+    MINOR_NR_ERROR    = -2
 
     def __init__(self, minor):
         self._minor = MinorNr.minor_check(minor)
@@ -186,7 +182,7 @@ class MinorNr(object):
 
     @classmethod
     def minor_check(cls, minor):
-        if minor != cls.MINOR_NR_AUTO and minor != cls.MINOR_NR_AUTODRBD:
+        if minor != cls.MINOR_NR_AUTO:
             if minor < 0 or minor > cls.MINOR_NR_MAX:
                 raise InvalidMinorNrException
         return minor
