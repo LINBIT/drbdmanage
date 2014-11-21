@@ -652,9 +652,6 @@ class DrbdManageServer(object):
             node = self._nodes.get(name)
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
-            # FIXME: where does that come from? This function is supposed
-            #        to return a node or no node, but not something else
-            return DM_DEBUG
         return node
 
 
