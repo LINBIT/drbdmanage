@@ -251,6 +251,38 @@ class DrbdManageServer(object):
             drbd_event        whenever data becomes readable on the pipe
             restart_events    when the pipe needs to be reopened
         """
+        # Stop an existing subprocess before spawning a new one
+        self.uninit_events()
+
+        # Initialize a new events subprocess
+        evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
+                              self.EVT_UTIL)
+        self._proc_evt = subprocess.Popen(
+            [self.EVT_UTIL, "events2", "all"], 0,
+            evt_util, stdout=subprocess.PIPE,
+            close_fds=True
+        )
+        self._evt_file = self._proc_evt.stdout
+        fcntl.fcntl(self._evt_file.fileno(),
+                    fcntl.F_SETFL,
+                    fcntl.F_GETFL | os.O_NONBLOCK)
+        self._reader = NioLineReader(self._evt_file)
+        # detect readable data on the pipe
+        self._evt_in_h = gobject.io_add_watch(
+            self._evt_file.fileno(),
+            gobject.IO_IN, self.drbd_event
+        )
+        # detect broken pipe
+        self._evt_hup_h = gobject.io_add_watch(
+            self._evt_file.fileno(),
+            gobject.IO_HUP, self.restart_events
+        )
+
+
+    def uninit_events(self):
+        """
+        Stops "drbdsetup events" processing and the associated child process
+        """
         # Unregister the input handler
         if self._evt_in_h is not None:
             gobject.source_remove(self._evt_in_h)
@@ -328,30 +360,6 @@ class DrbdManageServer(object):
                 self._proc_evt = None
         except (OSError, IOError):
             pass
-
-        # Initialize a new events subprocess
-        evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
-                              self.EVT_UTIL)
-        self._proc_evt = subprocess.Popen(
-            [self.EVT_UTIL, "events2", "all"], 0,
-            evt_util, stdout=subprocess.PIPE,
-            close_fds=True
-        )
-        self._evt_file = self._proc_evt.stdout
-        fcntl.fcntl(self._evt_file.fileno(),
-                    fcntl.F_SETFL,
-                    fcntl.F_GETFL | os.O_NONBLOCK)
-        self._reader = NioLineReader(self._evt_file)
-        # detect readable data on the pipe
-        self._evt_in_h = gobject.io_add_watch(
-            self._evt_file.fileno(),
-            gobject.IO_IN, self.drbd_event
-        )
-        # detect broken pipe
-        self._evt_hup_h = gobject.io_add_watch(
-            self._evt_file.fileno(),
-            gobject.IO_HUP, self.restart_events
-        )
 
 
     def restart_events(self, evt_fd, condition):
@@ -3841,9 +3849,17 @@ class DrbdManageServer(object):
         """
         logging.info("server shutdown (requested by function call)")
         logging.info("shutting down the control volume")
-        self._drbd_mgr.down_drbdctrl()
+        try:
+            self._drbd_mgr.down_drbdctrl()
+        except:
+            pass
+        logging.info("shutting down DRBD events processing")
+        # Shutdown events processing and the associated child process
+        try:
+            self.uninit_events()
+        except:
+            pass
         logging.info("server shutdown complete, exiting")
-        # FIXME: Maybe the drbdsetup child process should be terminated first?
         exit(0)
 
 
