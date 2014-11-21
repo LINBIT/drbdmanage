@@ -20,6 +20,7 @@
 
 import sys
 import os
+import signal
 import time
 import gobject
 import subprocess
@@ -91,6 +92,11 @@ class DrbdManageServer(object):
     EVT_ROLE_SECONDARY = "Secondary"
 
     EVT_REPL_SYNCTARGET = "SyncTarget"
+
+    # Sleep times (in seconds) for various stages of the
+    # events subprocess termination loop
+    EVT_TERM_SLEEP_SHORT = 0.5
+    EVT_TERM_SLEEP_LONG  = 2
 
     LOGGING_FORMAT = "drbdmanaged[%(process)d]: %(levelname)-10s %(message)s"
 
@@ -245,7 +251,85 @@ class DrbdManageServer(object):
             drbd_event        whenever data becomes readable on the pipe
             restart_events    when the pipe needs to be reopened
         """
-        # FIXME: maybe any existing subprocess should be killed first?
+        # Unregister the input handler
+        if self._evt_in_h is not None:
+            gobject.source_remove(self._evt_in_h)
+        self._evt_in_h = None
+
+        # Unregister the hangup handler
+        if self._evt_hup_h is not None:
+            gobject.source_remove(self._evt_hup_h)
+        self._evt_hup_h = None
+
+        # If there is an existing events subprocess, attempt to terminate it
+        # first. Subprocess termination is attempted in multiple stages:
+        # 1. Attempt to close drbdmanage's receiver pipe, so the subprocess
+        #    should notice that and exit, then give the subprocess a short
+        #    period of time to exit
+        # 2. If the subprocess is still there, send SIGTERM and give the
+        #    subprocess another short period of time to exit
+        # 3. ... wait a bit longer
+        # 4. send SIGKILL and wait a short period of time for the subprocess
+        #    to be killed
+        # 5. ... wait a bit longer
+        # 6. If the subprocess has ended, its remaining zombie process slot
+        #    will be cleaned up, otherwise, drbdmanage stops polling for the
+        #    subprocess at that point, because it is unclear whether the
+        #    process will ever end. If it does, it will probably remain in the
+        #    OS's process table as a zombie process.
+        # The multiple stages are there to make subprocess termination as
+        # reliable as possible, but as fast as reasonably possible at the same
+        # time. Commonly, the subprocess should have exited after stage 1
+        # or stage 2. Stage 6 should not be reached during normal operation.
+        try:
+            if self._proc_evt is not None:
+                term_stage_end = 7
+                term_stage     = 1
+                while term_stage < term_stage_end:
+                    if term_stage == 1:
+                        # Stage 1: Close drbdmanage's receiver pipe
+                        #          (that's the subprocess' stdout pipe)
+                        stdout_pipe = self._proc_evt.stdout
+                        if stdout_pipe is not None:
+                            stdout_pipe.close()
+                            time.sleep(self.EVT_TERM_SLEEP_SHORT)
+                    elif term_stage >= 2:
+                        # Check whether the process is still running
+                        self._proc_evt.poll()
+                        if self._proc_evt.returncode is None:
+                            if term_stage == 2:
+                                # Stage 2: Send SIGTERM and wait
+                                self._term_events(self._proc_evt,
+                                                  signal.SIGTERM)
+                                time.sleep(self.EVT_TERM_SLEEP_SHORT)
+                            elif term_stage == 3:
+                                # Stage 3: wait longer
+                                time.sleep(self.EVT_TERM_SLEEP_LONG)
+                            elif term_stage == 4:
+                                # Stage 4: send SIGKILL and wait
+                                self._term_events(self._proc_evt,
+                                                  signal.SIGKILL)
+                                time.sleep(self.EVT_TERM_SLEEP_SHORT)
+                            elif term_stage == 5:
+                                # Stage 5: wait longer
+                                time.sleep(self.EVT_TERM_SLEEP_LONG)
+                            # Stage 6: no-op; runs through the poll() to
+                            #          clean up the zombie process if the
+                            #          OS killed the subprocess
+                        else:
+                            # If the process is not running anymore,
+                            # leave the termination loop
+                            term_stage = term_stage_end
+                    # Enter the next stage
+                    if term_stage < term_stage_end:
+                        term_stage += 1
+                # Forget the process handle; the variable will be reused
+                # for a newly created events subprocess
+                self._proc_evt = None
+        except (OSError, IOError):
+            pass
+
+        # Initialize a new events subprocess
         evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
                               self.EVT_UTIL)
         self._proc_evt = subprocess.Popen(
@@ -278,8 +362,6 @@ class DrbdManageServer(object):
         # unregister any existing event handlers for the events log
         log_error = True
         logging.error("drbdsetup events tracing has failed, restarting")
-        if self._evt_in_h is not None:
-            gobject.source_remove(self._evt_in_h)
 
         retry = True
         while retry:
@@ -385,6 +467,14 @@ class DrbdManageServer(object):
             # Ignore lines with missing fields (line_data keys)
             pass
         return changed
+
+
+    def _term_events(self, proc_evt, signal):
+        """
+        Sends signals to a subprocess
+        """
+        if proc_evt.pid is not None:
+            os.kill(proc_evt.pid, signal)
 
 
     def init_logging(self):
@@ -3065,6 +3155,14 @@ class DrbdManageServer(object):
                             # override the hash check, but do not poke
                             # the cluster
                             self._drbd_mgr.run(True, False)
+                            fn_rc = 0
+                    except AttributeError:
+                        pass
+                elif command == "restart":
+                    try:
+                        item = args.next_arg()
+                        if item == "events":
+                            self.restart_events(None, None)
                             fn_rc = 0
                     except AttributeError:
                         pass
