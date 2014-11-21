@@ -2001,7 +2001,7 @@ class DrbdManageServer(object):
                     size_sum = 0
                     for assignment in inst_node.iterate_assignments():
                         size_sum += assignment.get_gross_size_kiB_correction(
-                            peers
+                            max_peers
                         )
                     poolfree -= size_sum
                     # If something is seriously wrong with the storage sizes,
