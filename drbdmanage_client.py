@@ -2354,7 +2354,7 @@ class DrbdManage(object):
         columns = term_width / col_width if term_width >= col_width else 1
 
         items = 0
-        for cmd_name in self.COMMANDS:
+        for cmd_name in sorted(self.COMMANDS):
 
             # ignore shortcut aliases (one and two characters) for now
             if len(cmd_name) > 2:
