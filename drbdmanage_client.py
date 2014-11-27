@@ -40,7 +40,7 @@ from drbdmanage.consts import (
     DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
-    FLAG_DISCARD, FLAG_CONNECT
+    FLAG_DISCARD, FLAG_CONNECT, KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
 )
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
@@ -1893,7 +1893,8 @@ class DrbdManage(object):
         flags    = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
 
-        drbdctrl_vg = self._get_drbdctrl_vg()
+        server_conf = self.load_server_conf()
+        drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         try:
             params["address"] = default_ip();
@@ -1947,7 +1948,7 @@ class DrbdManage(object):
                     "Confirm:\n"
                 )
             if quiet:
-                drbdctrl_blockdev = self._create_drbdctrl("0", drbdctrl_vg)
+                drbdctrl_blockdev = self._create_drbdctrl("0", server_conf)
                 self._ext_command(
                     ["drbdsetup", "primary", DRBDCTRL_RES_NAME, "--force"]
                 )
@@ -1998,7 +1999,8 @@ class DrbdManage(object):
         flags    = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
 
-        drbdctrl_vg = self._get_drbdctrl_vg()
+        server_conf = self.load_server_conf()
+        drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         try:
             parse_rc = CommandParser().parse(
@@ -2053,7 +2055,7 @@ class DrbdManage(object):
                 secret    = params["secret"]
 
                 drbdctrl_blockdev = self._create_drbdctrl(
-                    l_node_id, drbdctrl_vg
+                    l_node_id, server_conf
                 )
 
                 umh_f = None
@@ -2157,7 +2159,7 @@ class DrbdManage(object):
         return fn_rc
 
 
-    def _init_join_cleanup(self, drbdctrl_vg):
+    def _init_join_cleanup(self, drbdctrl_vg, conf_path):
         """
         Cleanup before init / join operations
 
@@ -2174,6 +2176,12 @@ class DrbdManage(object):
         )
 
         # Delete any existing configuration file
+        try:
+            [os.unlink(os.path.join(conf_path, f))
+                       for f in os.listdir(conf_path) if f.endswith(".res")]
+        except OSError:
+            pass
+
         try:
             os.unlink(build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE))
         except OSError:
@@ -2267,13 +2275,16 @@ class DrbdManage(object):
         return proc_rc
 
 
-    def _create_drbdctrl(self, node_id, drbdctrl_vg):
+    def _create_drbdctrl(self, node_id, server_conf):
+        drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
+        conf_path   = self._get_conf_path(server_conf)
+
         drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME)
 
         # ========================================
         # Cleanup
         # ========================================
-        self._init_join_cleanup(drbdctrl_vg)
+        self._init_join_cleanup(drbdctrl_vg, conf_path)
 
         # ========================================
         # Join an existing drbdmanage cluster
@@ -2314,15 +2325,7 @@ class DrbdManage(object):
         return drbdctrl_blockdev
 
 
-    def _get_drbdctrl_vg(self):
-        # ========================================
-        # Load the configuration
-        # (WITHOUT default values; only values
-        #  from the configuration file will
-        #  be loaded)
-        # ========================================
-        server_conf = self.load_server_conf()
-
+    def _get_drbdctrl_vg(self, server_conf):
         # ========================================
         # Set up the path to the drbdctrl LV
         # ========================================
@@ -2333,6 +2336,16 @@ class DrbdManage(object):
         else:
             drbdctrl_vg = DEFAULT_VG
         return drbdctrl_vg
+
+
+    def _get_conf_path(self, server_conf):
+        if server_conf is not None:
+            conf_path = map_val_or_dflt(
+                server_conf, KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
+            )
+        else:
+            conf_path = DEFAULT_DRBD_CONFPATH
+        return conf_path
 
 
     def print_sub_commands(self):
