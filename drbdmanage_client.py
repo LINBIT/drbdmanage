@@ -1893,6 +1893,8 @@ class DrbdManage(object):
         flags    = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
 
+        drbdctrl_vg = self._get_drbdctrl_vg()
+
         try:
             params["address"] = default_ip();
 
@@ -1945,71 +1947,7 @@ class DrbdManage(object):
                     "Confirm:\n"
                 )
             if quiet:
-                # ========================================
-                # Load the configuration
-                # (WITHOUT default values; only values
-                #  from the configuration file will
-                #  be loaded)
-                # ========================================
-                server_conf = self.load_server_conf()
-
-                # ========================================
-                # Set up the path to the drbdctrl LV
-                # ========================================
-                if server_conf is not None:
-                    drbdctrl_vg = map_val_or_dflt(
-                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
-                    )
-                else:
-                    drbdctrl_vg = DEFAULT_VG
-                drbdctrl_blockdev = (
-                    "/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME
-                )
-
-                # ========================================
-                # Cleanup
-                # ========================================
-                self._init_join_cleanup(drbdctrl_vg)
-
-                # ========================================
-                # Initialize a new drbdmanage cluster
-                # ========================================
-
-                # Create the .drbdctrl LV
-                self._ext_command(
-                    [
-                        "lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m",
-                        drbdctrl_vg
-                    ]
-                )
-
-                # Create meta-data
-                self._ext_command(
-                    [
-                        "drbdmeta", "--force", "0", "v09", drbdctrl_blockdev,
-                        "internal", "create-md", "31"
-                    ]
-                )
-
-                # Configure the .drbdctrl resource
-                self._ext_command(
-                    ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, "0"]
-                )
-                self._ext_command(
-                    ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
-                )
-                self._ext_command(
-                    [
-                        "drbdmeta", "0", "v09",
-                        drbdctrl_blockdev, "internal", "apply-al"
-                    ]
-                )
-                self._ext_command(
-                    [
-                        "drbdsetup", "attach", "0", drbdctrl_blockdev,
-                        drbdctrl_blockdev, "internal"
-                    ]
-                )
+                drbdctrl_blockdev = self._create_drbdctrl("0", drbdctrl_vg)
                 self._ext_command(
                     ["drbdsetup", "primary", DRBDCTRL_RES_NAME, "--force"]
                 )
@@ -2060,6 +1998,8 @@ class DrbdManage(object):
         flags    = { "-q" : False }
         flagsalias = { "--quiet" : "-q" }
 
+        drbdctrl_vg = self._get_drbdctrl_vg()
+
         try:
             parse_rc = CommandParser().parse(
                 args, order, params, opt, optalias, flags, flagsalias
@@ -2105,53 +2045,6 @@ class DrbdManage(object):
                     "Confirm:\n"
                 )
             if quiet:
-                # ========================================
-                # Load the configuration
-                # (WITHOUT default values; only values
-                #  from the configuration file will
-                #  be loaded)
-                # ========================================
-                server_conf = self.load_server_conf()
-
-                # ========================================
-                # Set up the path to the drbdctrl LV
-                # ========================================
-                if server_conf is not None:
-                    drbdctrl_vg = map_val_or_dflt(
-                        server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
-                    )
-                else:
-                    drbdctrl_vg = DEFAULT_VG
-                drbdctrl_blockdev = (
-                    "/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME
-                )
-
-                # ========================================
-                # Cleanup
-                # ========================================
-                self._init_join_cleanup(drbdctrl_vg)
-
-                # ========================================
-                # Join an existing drbdmanage cluster
-                # ========================================
-
-                # Create the .drbdctrl LV
-                self._ext_command(
-                    [
-                        "lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m",
-                        drbdctrl_vg
-                    ]
-                )
-
-                # Create meta-data
-                self._ext_command(
-                    [
-                        "drbdmeta", "--force", "0", "v09",
-                        drbdctrl_blockdev, "internal",
-                        "create-md", "31"
-                    ]
-                )
-
                 l_addr    = params["local_ip"]
                 p_addr    = params["peer_ip"]
                 p_name    = params["peer_name"]
@@ -2159,24 +2052,8 @@ class DrbdManage(object):
                 p_node_id = params["peer_node_id"]
                 secret    = params["secret"]
 
-                # Configure the .drbdctrl resource
-                self._ext_command(
-                    ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, l_node_id]
-                )
-                self._ext_command(
-                    ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
-                )
-                self._ext_command(
-                    [
-                        "drbdmeta", "0", "v09",
-                        drbdctrl_blockdev, "internal", "apply-al"
-                    ]
-                )
-                self._ext_command(
-                    [
-                        "drbdsetup", "attach", "0",
-                        drbdctrl_blockdev, drbdctrl_blockdev, "internal"
-                    ]
+                drbdctrl_blockdev = self._create_drbdctrl(
+                    l_node_id, drbdctrl_vg
                 )
 
                 umh_f = None
@@ -2388,6 +2265,74 @@ class DrbdManage(object):
                 )
             raise AbortException
         return proc_rc
+
+
+    def _create_drbdctrl(self, node_id, drbdctrl_vg):
+        drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME)
+
+        # ========================================
+        # Cleanup
+        # ========================================
+        self._init_join_cleanup(drbdctrl_vg)
+
+        # ========================================
+        # Join an existing drbdmanage cluster
+        # ========================================
+
+        # Create the .drbdctrl LV
+        self._ext_command(
+            ["lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m", drbdctrl_vg]
+        )
+
+        # Create meta-data
+        self._ext_command(
+            [
+                "drbdmeta", "--force", "0", "v09", drbdctrl_blockdev,
+                "internal", "create-md", "31"
+            ]
+        )
+
+        # Configure the .drbdctrl resource
+        self._ext_command(
+            ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, node_id]
+        )
+        self._ext_command(
+            ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
+        )
+        self._ext_command(
+            [
+                "drbdmeta", "0", "v09",
+                drbdctrl_blockdev, "internal", "apply-al"
+            ]
+        )
+        self._ext_command(
+            [
+                "drbdsetup", "attach", "0",
+                drbdctrl_blockdev, drbdctrl_blockdev, "internal"
+            ]
+        )
+        return drbdctrl_blockdev
+
+
+    def _get_drbdctrl_vg(self):
+        # ========================================
+        # Load the configuration
+        # (WITHOUT default values; only values
+        #  from the configuration file will
+        #  be loaded)
+        # ========================================
+        server_conf = self.load_server_conf()
+
+        # ========================================
+        # Set up the path to the drbdctrl LV
+        # ========================================
+        if server_conf is not None:
+            drbdctrl_vg = map_val_or_dflt(
+                server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
+            )
+        else:
+            drbdctrl_vg = DEFAULT_VG
+        return drbdctrl_vg
 
 
     def print_sub_commands(self):
