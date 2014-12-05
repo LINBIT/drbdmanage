@@ -56,7 +56,7 @@ from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.exceptions import dm_exc_text
-from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST
+from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST, DM_ENOENT
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
@@ -2138,13 +2138,17 @@ class DrbdManage(object):
                 # Startup the drbdmanage server and update the local .drbdctrl
                 # resource configuration file
                 self.dbus_init()
-                # server_rc = self._server.update_res()
                 server_rc = self._server.join_node(
                     drbdctrl_blockdev, port, secret
                 )
-                #server_rc = self._server.debug_console(dbus.String(
-                #    "gen drbdctrl " + secret + " " + port + " " + bdev
-                #))
+                for rc_entry in server_rc:
+                    (err_code, err_msg, err_args) = rc_entry
+                    if err_code == DM_ENOENT:
+                        sys.stderr.write(
+                            "JOIN ERROR: This node has no node entry in the "
+                            "drbdmanage configuration\n"
+                        )
+                        raise AbortException
                 fn_rc = self._list_rc_entries(server_rc)
             else:
                 fn_rc = 0

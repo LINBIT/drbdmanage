@@ -2825,6 +2825,7 @@ class DrbdManageServer(object):
         try:
             # TODO: there should probably be library functions for evaluating
             #       return code lists
+            conf_drbdctrl = self._configure_drbdctrl
             fn_rc = self.load_conf()
             load_ok = False
             for rc_entry in fn_rc:
@@ -2833,14 +2834,19 @@ class DrbdManageServer(object):
                 else:
                     load_ok = False
                     break
+            del fn_rc[:]
             if load_ok:
-                if (self._configure_drbdctrl(True, secret, bdev, port) == 0):
-                    self._drbd_mgr.adjust_drbdctrl()
+                check_node = self._nodes.get(self._instance_node_name)
+                if check_node is not None:
+                    if (conf_drbdctrl(True, secret, bdev, port) == 0):
+                        self._drbd_mgr.adjust_drbdctrl()
+                    else:
+                        # delete the success entry from load_conf() from
+                        # the list and append the control volume error code
+                        add_rc_entry(fn_rc, DM_ECTRLVOL,
+                                     dm_exc_text(DM_ECTRLVOL))
                 else:
-                    # delete the success entry from load_conf() from the list
-                    # and append the control volume error code
-                    del fn_rc[:]
-                    add_rc_entry(fn_rc, DM_ECTRLVOL, dm_exc_text(DM_ECTRLVOL))
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
