@@ -2071,6 +2071,10 @@ class Assignment(GenericDrbdObject):
             self.get_props().new_serial()
 
 
+    def has_volume_states(self):
+        return (True if len(self._vol_states) > 0 else False)
+
+
     def update_volume_states(self, serial):
         update_assg = False
         # create volume states for new volumes in the resource
@@ -2119,6 +2123,10 @@ class Assignment(GenericDrbdObject):
             self.get_props().new_serial()
         except KeyError:
             pass
+
+
+    def has_snapshots(self):
+        return (True if len(self._snaps_assgs) > 0 else False)
 
 
     def remove(self):

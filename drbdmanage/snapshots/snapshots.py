@@ -71,7 +71,7 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         return self._assignments.get(nodename)
 
 
-    def iterate_snaps_assg(self):
+    def iterate_snaps_assgs(self):
         return self._assignments.itervalues()
 
 

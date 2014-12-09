@@ -2027,25 +2027,53 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         try:
-            removable = []
+            S_FLAG_DEPLOY  = DrbdSnapshotAssignment.FLAG_DEPLOY
+            VS_FLAG_DEPLOY = DrbdVolumeState.FLAG_DEPLOY
+            A_FLAG_DEPLOY  = Assignment.FLAG_DEPLOY
+
+            for node in self._nodes.itervalues():
+                for assg in node.iterate_assignments():
+                    removable = []
+                    # delete snapshots that have been undeployed
+                    for snaps_assg in assg.iterate_snaps_assgs():
+                        sa_cstate = snaps_assg.get_cstate()
+                        sa_tstate = snaps_assg.get_tstate()
+                        if ((sa_cstate & S_FLAG_DEPLOY) == 0 and
+                            (sa_tstate & S_FLAG_DEPLOY) == 0):
+                                removable.append(snaps_assg)
+                    for snaps_assg in removable:
+                        assg.remove_snaps_assg(snaps_assg.get_name())
+                    # delete volume states of volumes that have been undeployed
+                    removable = []
+                    for vol_state in assg.iterate_volume_states():
+                        vol_cstate = vol_state.get_cstate()
+                        vol_tstate = vol_state.get_tstate()
+                        if ((vol_cstate & VS_FLAG_DEPLOY == 0) and
+                            (vol_tstate & VS_FLAG_DEPLOY == 0)):
+                                removable.append(vol_state)
+                    for vol_state in removable:
+                        assg.remove_volume_state(vol_state.get_id())
 
             # delete assignments that have been undeployed
+            removable = []
             for node in self._nodes.itervalues():
-                for assignment in node.iterate_assignments():
-                    tstate = assignment.get_tstate()
-                    cstate = assignment.get_cstate()
-                    if ((cstate & Assignment.FLAG_DEPLOY) == 0 and
-                        (tstate & Assignment.FLAG_DEPLOY) == 0):
-                            removable.append(assignment)
-            for assignment in removable:
-                assignment.remove()
+                for assg in node.iterate_assignments():
+                    tstate = assg.get_tstate()
+                    cstate = assg.get_cstate()
+                    if ((cstate & A_FLAG_DEPLOY) == 0 and
+                        (tstate & A_FLAG_DEPLOY) == 0):
+                            if ((not assg.has_snapshots()) and
+                                (not assg.has_volume_states())):
+                                    removable.append(assg)
+            for assg in removable:
+                assg.remove()
 
             # delete nodes that are marked for removal and that do not
             # have assignments anymore
             removable = []
             for node in self._nodes.itervalues():
-                nodestate = node.get_state()
-                if (nodestate & DrbdNode.FLAG_REMOVE) != 0:
+                node_state = node.get_state()
+                if (node_state & DrbdNode.FLAG_REMOVE) != 0:
                     if not node.has_assignments():
                         removable.append(node)
             for node in removable:
@@ -2063,44 +2091,6 @@ class DrbdManageServer(object):
                     )
                 self._cluster_nodes_update()
 
-            # delete volume assignments that are marked for removal
-            # and that have been undeployed
-            for resource in self._resources.itervalues():
-                for assg in resource.iterate_assignments():
-                    removable = []
-                    for vol_state in assg.iterate_volume_states():
-                        vol_cstate = vol_state.get_cstate()
-                        vol_tstate = vol_state.get_tstate()
-                        if ((vol_cstate & DrbdVolumeState.FLAG_DEPLOY == 0) and
-                            (vol_tstate & DrbdVolumeState.FLAG_DEPLOY == 0)):
-                                removable.append(vol_state)
-                    for vol_state in removable:
-                        assg.remove_volume_state(vol_state.get_id())
-
-            # delete volumes that are marked for removal and that are not
-            # deployed on any node
-            for resource in self._resources.itervalues():
-                volumes = {}
-                # collect volumes marked for removal
-                for volume in resource.iterate_volumes():
-                    if (volume.get_state() & DrbdVolume.FLAG_REMOVE) != 0:
-                        volumes[volume.get_id()] = volume
-                for assg in resource.iterate_assignments():
-                    removable = []
-                    for vol_state in assg.iterate_volume_states():
-                        volume = volumes.get(vol_state.get_id())
-                        if volume is not None:
-                            if ((vol_state.get_cstate() &
-                                DrbdVolumeState.FLAG_DEPLOY) != 0):
-                                    # delete the volume from the removal list
-                                    del volumes[vol_state.get_id()]
-                            else:
-                                removable.append(vol_state)
-                        for vol_state in removable:
-                            assg.remove_volume_state(vol_state.get_id())
-                for vol_id in volumes.iterkeys():
-                    resource.remove_volume(vol_id)
-
             # delete resources that are marked for removal and that do not
             # have assignments any more
             removable = []
@@ -2111,6 +2101,25 @@ class DrbdManageServer(object):
                         removable.append(resource)
             for resource in removable:
                 del self._resources[resource.get_name()]
+
+            # delete volumes that are marked for removal and that are not
+            # deployed on any node
+            for resource in self._resources.itervalues():
+                removable = []
+                # collect volumes marked for removal
+                for volume in resource.iterate_volumes():
+                    if (volume.get_state() & DrbdVolume.FLAG_REMOVE) != 0:
+                        has_vol_state = False
+                        for assg in resource.iterate_assignments():
+                            vol_state = assg.get_volume_state(volume.get_id())
+                            if vol_state is not None:
+                                has_vol_state = True
+                                break
+                        if not has_vol_state:
+                            removable.append(volume)
+                for volume in removable:
+                    resource.remove_volume(volume.get_id())
+
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             return DM_DEBUG
@@ -2251,7 +2260,7 @@ class DrbdManageServer(object):
 
 
     def list_assignments(self, node_names, res_names, serial,
-        filter_props, req_props):
+                         filter_props, req_props):
         """
         Generates a list of assignment views suitable for serialized transfer
 
@@ -2327,6 +2336,9 @@ class DrbdManageServer(object):
     def create_snapshot(self, res_name, snaps_name, node_names, props):
         """
         Create a snapshot of a resource's volumes on a number of nodes
+
+        Creates a snapshot registration and snapshot assignments for the
+        specified nodes
         """
         # Work in progress...
         #
@@ -2430,7 +2442,7 @@ class DrbdManageServer(object):
 
 
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
-        filter_props, req_props):
+                                  filter_props, req_props):
         """
         List the available snapshots of a resource on specific nodes
         """
@@ -3413,7 +3425,7 @@ class DrbdManageServer(object):
                 snapshot = resource.get_snapshot(snapsname)
                 if snapshot is not None:
                     self._debug_section_begin(title)
-                    for snaps_assg in snapshot.iterate_snaps_assg():
+                    for snaps_assg in snapshot.iterate_snaps_assgs():
                         self._debug_dump_snapshot_assignment(snaps_assg)
                     self._debug_section_end(title)
                     fn_rc = 0
@@ -3425,7 +3437,7 @@ class DrbdManageServer(object):
             self._debug_section_begin(title)
             for resource in self._resources.itervalues():
                 for snapshot in resource.iterate_snapshots():
-                    for snaps_assg in snapshot.iterate_snaps_assg():
+                    for snaps_assg in snapshot.iterate_snaps_assgs():
                         self._debug_dump_snapshot_assignment(snaps_assg)
             self._debug_section_end(title)
             fn_rc = 0
