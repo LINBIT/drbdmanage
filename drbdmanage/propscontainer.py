@@ -104,17 +104,17 @@ class PropsContainer(object):
         self.new_serial()
 
 
-    def del_prop(self, key):
+    def remove_prop(self, key):
         """
-        Deletes a property from the dictionary
+        Removes a property from the dictionary
         """
         del self._props[str(key)]
         self.new_serial()
 
 
-    def del_selected_props(self, keys):
+    def remove_selected_props(self, keys):
         """
-        Deletes multiple properties from the dictionary
+        Removes multiple properties from the dictionary
         """
         for key in keys:
             try:

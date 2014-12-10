@@ -1420,7 +1420,7 @@ class DrbdManageServer(object):
         #       2) there are too few nodes that have a known poolfree size
         #          to determine whether there is any free space
         free_space = 0
-        total_space = reduce(lambda x, y: x+y, 
+        total_space = reduce(lambda x, y: x+y,
                              map(lambda n: max(0, n.get_poolsize()),
                                  self._nodes.values()),
                              0)
@@ -2464,7 +2464,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def delete_snapshot_assignment(self, res_name, snaps_name, node_name):
+    def remove_snapshot_assignment(self, res_name, snaps_name, node_name):
         """
         Discard a resource's snapshot on a specific node
         """
@@ -2473,7 +2473,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def delete_snapshot(self, res_name, snaps_name):
+    def remove_snapshot(self, res_name, snaps_name):
         """
         Discard all instances of a resource's snapshot
         """
@@ -3150,7 +3150,7 @@ class DrbdManageServer(object):
                     try:
                         subcommand = args.next_arg()
                         if subcommand == "n":
-                            fn_rc == self._debug_set_node(args)
+                            fn_rc = self._debug_set_node(args)
                         elif subcommand == "r":
                             fn_rc = self._debug_set_resource(args)
                         elif subcommand == "v":

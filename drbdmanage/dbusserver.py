@@ -425,11 +425,11 @@ class DBusServer(dbus.service.Object):
         in_signature="sss",
         out_signature="a(isa(ss))"
     )
-    def delete_snapshot_assignment(self, res_name, snaps_name, node_name):
+    def remove_snapshot_assignment(self, res_name, snaps_name, node_name):
         """
-        D-Bus interface for DrbdManageServer.delete_snapshot_assignment(...)
+        D-Bus interface for DrbdManageServer.remove_snapshot_assignment(...)
         """
-        return self._server.delete_snapshot_assignment(
+        return self._server.remove_snapshot_assignment(
             res_name, snaps_name, node_name
         )
 
@@ -439,11 +439,11 @@ class DBusServer(dbus.service.Object):
         in_signature="ss",
         out_signature="a(isa(ss))"
     )
-    def delete_snapshot(self, res_name, snaps_name):
+    def remove_snapshot(self, res_name, snaps_name):
         """
-        D-Bus interface for DrbdManageServer.delete_snapshot(...)
+        D-Bus interface for DrbdManageServer.remove_snapshot(...)
         """
-        return self._server.delete_snapshot(res_name, snaps_name)
+        return self._server.remove_snapshot(res_name, snaps_name)
 
 
     @dbus.service.method(
