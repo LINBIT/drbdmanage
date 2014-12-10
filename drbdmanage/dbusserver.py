@@ -263,7 +263,7 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="i",
-        out_signature="a(isa(ss))" "x"
+        out_signature="a(isa(ss))" "xx"
     )
     def cluster_free_query(self, redundancy):
         """

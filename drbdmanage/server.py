@@ -1420,6 +1420,10 @@ class DrbdManageServer(object):
         #       2) there are too few nodes that have a known poolfree size
         #          to determine whether there is any free space
         free_space = 0
+        total_space = reduce(lambda x, y: x+y, 
+                             map(lambda n: max(0, n.get_poolsize()),
+                                 self._nodes.values()),
+                             0)
         try:
             if redundancy >= 1:
                 if redundancy <= len(self._nodes):
@@ -1463,7 +1467,7 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-        return fn_rc, free_space
+        return fn_rc, free_space, total_space
 
 
     def auto_deploy(self, res_name, count, delta, site_clients):
