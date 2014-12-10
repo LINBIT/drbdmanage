@@ -1954,12 +1954,9 @@ class DrbdManage(object):
                 )
                 init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
 
-                # FIXME: return codes broken atm because of new API, turn
-                #        this back on after it has been changed to the
-                #        new api
-                #if init_rc != 0:
+                if init_rc != 0:
                     # an error message is printed by _drbdctrl_init()
-                #    raise AbortException
+                    raise AbortException
                 self._ext_command(
                     ["drbdsetup", "secondary", DRBDCTRL_RES_NAME]
                 )
