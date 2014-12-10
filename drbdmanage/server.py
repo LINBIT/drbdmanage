@@ -3183,6 +3183,21 @@ class DrbdManageServer(object):
                             # the cluster
                             self._drbd_mgr.run(True, False)
                             fn_rc = 0
+                        elif item == "initial_up":
+                            self._drbd_mgr.initial_up()
+                            fn_rc = 0
+                        elif item == "adjust_drbdctrl":
+                            self._drbd_mgr.adjust_drbdctrl()
+                            fn_rc = 0
+                        elif item == "down_drbdctrl":
+                            self._drbd_mgr.down_drbdctrl()
+                            fn_rc = 0
+                        elif item == "init_events":
+                            self.init_events()
+                            fn_rc = 0
+                        elif item == "uninit_events":
+                            self.uninit_events()
+                            fn_rc = 0
                     except AttributeError:
                         pass
                 elif command == "restart":
