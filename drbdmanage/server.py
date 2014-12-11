@@ -2244,27 +2244,30 @@ class DrbdManageServer(object):
                     yield res
 
         try:
-            res_list = []
+            selected_res = self._resources.itervalues()
             if res_names is not None and len(res_names) > 0:
                 selected_res = resource_filter(res_names)
-            else:
-                selected_res = self._resources.itervalues()
             if serial > 0:
                 selected_res = serial_filter(serial, selected_res)
 
-            if filter_props is not None and len(filter_props) > 0:
-                selected_res = props_filter(selected_res, filter_props)
-
+            res_list = []
             for res in selected_res:
+                selected_vol = res.iterate_volumes()
+                if filter_props is not None and len(filter_props) > 0:
+                    selected_vol = props_filter(
+                        selected_vol, filter_props
+                    )
+
                 vol_list = []
-                for vol in res.iterate_volumes():
+                for vol in selected_vol:
                     vol_entry = [ vol.get_id(), vol.get_properties(None) ]
                     vol_list.append(vol_entry)
-                res_entry = [
-                    res.get_name(),
-                    res.get_properties(req_props), vol_list
-                ]
-                res_list.append(res_entry)
+                if len(vol_list) > 0:
+                    res_entry = [
+                        res.get_name(),
+                        res.get_properties(req_props), vol_list
+                    ]
+                    res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
         except Exception as exc:
