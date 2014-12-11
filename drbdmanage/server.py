@@ -2038,7 +2038,7 @@ class DrbdManageServer(object):
             for node in self._nodes.itervalues():
                 for assg in node.iterate_assignments():
                     removable = []
-                    # delete snapshots that have been undeployed
+                    # delete snapshot assignments that have been undeployed
                     for snaps_assg in assg.iterate_snaps_assgs():
                         sa_cstate = snaps_assg.get_cstate()
                         sa_tstate = snaps_assg.get_tstate()
@@ -2046,7 +2046,7 @@ class DrbdManageServer(object):
                             (sa_tstate & S_FLAG_DEPLOY) == 0):
                                 removable.append(snaps_assg)
                     for snaps_assg in removable:
-                        assg.remove_snaps_assg(snaps_assg.get_name())
+                        snaps_assg.remove()
                     # delete volume states of volumes that have been undeployed
                     removable = []
                     for vol_state in assg.iterate_volume_states():
@@ -2057,6 +2057,16 @@ class DrbdManageServer(object):
                                 removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
+
+            # remove snapshot registrations for non-existent snapshots
+            # (those that do not have snapshot assignments anymore)
+            removable = []
+            for resource in self._resources.itervalues():
+                for snapshot in resource.iterate_snapshots():
+                    if not snapshot.has_snaps_assgs():
+                        removable.append(snapshot)
+            for snapshot in removable:
+                snapshot.remove()
 
             # delete assignments that have been undeployed
             removable = []
@@ -2391,18 +2401,23 @@ class DrbdManageServer(object):
                 raise AbortException
 
             # Register a new snapshot of the selected resource
-            snapshot = DrbdSnapshot(snaps_name, resource,
-                self.get_serial, None, None)
+            snapshot = DrbdSnapshot(
+                snaps_name, resource,
+                self.get_serial, None, None
+            )
+            resource.add_snapshot(snapshot)
             # Merge only auxiliary properties into the
             # Snapshot's properties container
             aux_props = aux_props_selector(props)
             snapshot.get_props().merge_gen(aux_props)
-            resource.add_snapshot(snapshot)
             # Register the snapshot assignments
             for node in node_list:
                 assignment = node.get_assignment(res_name)
-                snaps_assg = DrbdSnapshotAssignment(snapshot, assignment,
-                    self.get_serial, None, None)
+                snaps_assg = DrbdSnapshotAssignment(
+                    snapshot, assignment,
+                    0, DrbdSnapshotAssignment.FLAG_DEPLOY,
+                    self.get_serial, None, None
+                )
                 # Create snapshot volume state objects
                 for vol_state in assignment.iterate_volume_states():
                     cstate = vol_state.get_cstate()
@@ -2419,10 +2434,10 @@ class DrbdManageServer(object):
                             snaps_assg.add_snaps_vol_state(snaps_vol_state)
                 # Set the snapshot assignment to deploy
                 snaps_assg.set_tstate_flags(DrbdSnapshotAssignment.FLAG_DEPLOY)
+                # register the snapshot assignment
                 snapshot.add_snaps_assg(snaps_assg)
                 assignment.add_snaps_assg(snaps_assg)
             self.save_conf_data(persist)
-            self.end_modify_conf(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except AbortException:
@@ -2464,21 +2479,79 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def remove_snapshot_assignment(self, res_name, snaps_name, node_name):
+    def remove_snapshot_assignment(self, res_name, snaps_name, node_name,
+                                   force):
         """
         Discard a resource's snapshot on a specific node
         """
-        fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        fn_rc   = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+
+            try:
+                resource = self._resources[res_name]
+                node     = self._nodes[node_name]
+                snapshot = resource.get_snapshot(snaps_name)
+                if snapshot is None:
+                    raise KeyError
+                snaps_assg = snapshot.get_snaps_assg(node.get_name())
+                if snaps_assg is None:
+                    raise KeyError
+                if (not force) and snaps_assg.is_deployed():
+                    snaps_assg.undeploy()
+                else:
+                    snaps_assg.remove()
+            except KeyError:
+                add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            self.cleanup()
+            self.save_conf_data(persist)
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
-    def remove_snapshot(self, res_name, snaps_name):
+    def remove_snapshot(self, res_name, snaps_name, force):
         """
         Discard all instances of a resource's snapshot
         """
-        fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        fn_rc   = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+
+            try:
+                resource = self._resources[res_name]
+                snapshot = resource.get_snapshot(snaps_name)
+                if snapshot is None:
+                    raise KeyError
+                if (not force) and snapshot.is_deployed():
+                    for snaps_assg in snapshot.iterate_snaps_assgs():
+                        snaps_assg.undeploy()
+                else:
+                    snapshot.remove()
+            except KeyError:
+                add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            self.cleanup()
+            self.save_conf_data(persist)
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
@@ -3676,6 +3749,8 @@ class DrbdManageServer(object):
             sys.stderr.write(
                 "  '- BD:%s\n" % (vol_bdev_path)
             )
+        for snaps_assg in assg.iterate_snaps_assgs():
+            self._debug_dump_snapshot_assignment(snaps_assg)
 
 
     def _debug_dump_snapshot(self, snapshot):
@@ -3691,17 +3766,18 @@ class DrbdManageServer(object):
         snapshot = snaps_assg.get_snapshot()
         node     = assg.get_node()
         resource = assg.get_resource()
+        self._debug_dump_snapshot(snapshot)
         sys.stderr.write(
-            "  R/ID:%-18s S/ID:%-18s N/ID:%-18s\n"
-            % (resource.get_name(), snapshot.get_name(), node.get_name())
+            "  '- N/ID: %s\n"
+            % (node.get_name())
         )
         sys.stderr.write(
-            "  '- S/C:0x%.16x S/T:0x%.16x\n"
+            "     '- S/C:0x%.16x S/T:0x%.16x\n"
             % (snaps_assg.get_cstate(), snaps_assg.get_tstate())
         )
         for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
             sys.stderr.write(
-                "  * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
+                "     * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
                 % (snaps_vol_state.get_id(), snaps_vol_state.get_cstate(),
                    snaps_vol_state.get_tstate())
             )

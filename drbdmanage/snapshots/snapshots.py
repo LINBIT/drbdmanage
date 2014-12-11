@@ -75,9 +75,35 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         return self._assignments.itervalues()
 
 
-    def remove_snaps_assg(self, nodename):
-        del self._assignments[nodename]
-        self.get_props().new_serial()
+    def has_snaps_assgs(self):
+        return (True if len(self._assignments) > 0 else False)
+
+
+    def remove_snaps_assg(self, snaps_assg):
+        assignment = snaps_assg.get_assignment()
+        node = assignment.get_node()
+        try:
+            del self._assignments[node.get_name()]
+            self.get_props().new_serial()
+        except KeyError:
+            pass
+
+
+    def is_deployed(self):
+        deployed = False
+        for snaps_assg in self._assignments.itervalues():
+            if snaps_assg.is_deployed():
+                deployed = True
+        return deployed
+
+
+    def remove(self):
+        removable = []
+        for snaps_assg in self._assignments.itervalues():
+            removable.append(snaps_assg)
+        for snaps_assg in removable:
+            snaps_assg.remove()
+        self._resource.remove_snapshot(self)
 
 
 class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
@@ -85,7 +111,6 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     _snapshot         = None
     _assignment       = None
     _snaps_vol_states = None
-    _node             = None
     _cstate           = 0
     _tstate           = 0
 
@@ -95,13 +120,15 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, snapshot, assignment,
+    def __init__(self, snapshot, assignment, cstate, tstate,
                  get_serial_fn, init_serial, init_props):
         super(DrbdSnapshotAssignment, self).__init__(
             get_serial_fn, init_serial, init_props
         )
         self._snapshot         = snapshot
         self._assignment       = assignment
+        self._cstate           = cstate
+        self._tstate           = tstate
         self._snaps_vol_states = {}
 
 
@@ -136,6 +163,23 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     def get_assignment(self):
         return self._assignment
+
+
+    def remove(self):
+        self._assignment.remove_snaps_assg(self)
+        self._snapshot.remove_snaps_assg(self)
+
+
+    def is_deployed(self):
+        return (self._cstate & self.FLAG_DEPLOY) != 0
+
+
+    def undeploy(self):
+        for snaps_vol_state in self._snaps_vol_states.itervalues():
+            snaps_vol_state.undeploy()
+        if self._tstate != 0:
+            self._tstate = 0
+            self.get_props().new_serial()
 
 
     def set_cstate(self, cstate):
@@ -228,6 +272,16 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
 
     def get_id(self):
         return self._vol_id
+
+
+    def is_deployed(self):
+        return (self._cstate & self.FLAG_DEPLOY) != 0
+
+
+    def undeploy(self):
+        if self._tstate != 0:
+            self._tstate = 0
+            self.get_props().new_serial()
 
 
     def set_cstate(self, cstate):

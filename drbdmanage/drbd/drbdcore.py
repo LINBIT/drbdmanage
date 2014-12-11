@@ -1135,8 +1135,11 @@ class DrbdResource(GenericDrbdObject):
 
     def remove_assignment(self, assignment):
         node = assignment.get_node()
-        del self._assignments[node.get_name()]
-        self.get_props().new_serial()
+        try:
+            del self._assignments[node.get_name()]
+            self.get_props().new_serial()
+        except KeyError:
+            pass
 
 
     def init_add_snapshot(self, snapshot):
@@ -1157,8 +1160,11 @@ class DrbdResource(GenericDrbdObject):
 
 
     def remove_snapshot(self, snapshot):
-        del self._snapshots[snapshot.get_name()]
-        self.get_props().new_serial()
+        try:
+            del self._snapshots[snapshot.get_name()]
+            self.get_props().new_serial()
+        except KeyError:
+            pass
 
 
     def iterate_assignments(self):
@@ -1214,8 +1220,11 @@ class DrbdResource(GenericDrbdObject):
     def remove_volume(self, vol_id):
         volume = self._volumes.get(vol_id)
         if volume is not None:
-            del self._volumes[volume.get_id()]
-            self.get_props().new_serial()
+            try:
+                del self._volumes[volume.get_id()]
+                self.get_props().new_serial()
+            except KeyError:
+                pass
 
 
     def iterate_volumes(self):
@@ -1600,8 +1609,11 @@ class DrbdNode(GenericDrbdObject):
 
     def remove_assignment(self, assignment):
         resource = assignment.get_resource()
-        del self._assignments[resource.get_name()]
-        self.get_props().new_serial()
+        try:
+            del self._assignments[resource.get_name()]
+            self.get_props().new_serial()
+        except KeyError:
+            pass
 
 
     def has_assignments(self):
@@ -2101,7 +2113,8 @@ class Assignment(GenericDrbdObject):
 
 
     def add_snaps_assg(self, snaps_assg):
-        self._snaps_assgs[snaps_assg.get_snapshot().get_name()] = snaps_assg
+        snapshot = snaps_assg.get_snapshot()
+        self._snaps_assgs[snapshot.get_name()] = snaps_assg
         self.get_props().new_serial()
 
 
@@ -2117,9 +2130,10 @@ class Assignment(GenericDrbdObject):
         return self._snaps_assgs.get(name)
 
 
-    def remove_snaps_assg(self, name):
+    def remove_snaps_assg(self, snaps_assg):
         try:
-            del self._snaps_assgs[name]
+            snapshot = snaps_assg.get_snapshot()
+            del self._snaps_assgs[snapshot.get_name()]
             self.get_props().new_serial()
         except KeyError:
             pass
@@ -2130,6 +2144,11 @@ class Assignment(GenericDrbdObject):
 
 
     def remove(self):
+        removable = []
+        for snaps_assg in self._snaps_assgs.itervalues():
+            removable.append(snaps_assg)
+        for snaps_assg in removable:
+            snaps_assg.remove()
         self._node.remove_assignment(self)
         self._resource.remove_assignment(self)
 

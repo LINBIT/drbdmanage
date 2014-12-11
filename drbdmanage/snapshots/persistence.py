@@ -103,6 +103,7 @@ class DrbdSnapshotAssignmentPersistence(GenericPersistence):
 
             snaps_assignment = snaps.DrbdSnapshotAssignment(
                 snapshot, assignment,
+                properties["_cstate"], properties["_tstate"],
                 get_serial_fn, None, init_props
             )
 
@@ -110,7 +111,8 @@ class DrbdSnapshotAssignmentPersistence(GenericPersistence):
             vol_states = properties["vol_states"]
             for vol_state in vol_states.itervalues():
                 snaps_vol_state = DrbdSnapshotVolumeStatePersistence.load(
-                    vol_state, get_serial_fn)
+                    vol_state, get_serial_fn
+                )
                 snaps_assignment.init_add_snaps_vol_state(snaps_vol_state)
         except Exception as exc:
             raise exc
