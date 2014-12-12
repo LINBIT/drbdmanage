@@ -1983,6 +1983,65 @@ class DrbdManage(object):
         return fn_rc
 
 
+    def cmd_uninit(self, args):
+        fn_rc = 1
+        # Command parser configuration
+        order    = []
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { "-q" : False, "-s" : False }
+        flagsalias = { "--quiet" : "-q", "--shutdown" : "-s" }
+        try:
+            parse_rc = CommandParser().parse(
+                args, order, params, opt, optalias, flags, flagsalias
+            )
+            if parse_rc != 0:
+                raise SyntaxException
+
+            quiet    = flags["-q"]
+            shutdown = flags["-s"]
+
+            if not quiet:
+                quiet = self.user_confirm(
+                    "You are going to remove the drbdmanage server from "
+                    "this node.\n"
+                    "CAUTION! Note that:\n"
+                    "  * All temporary configuration files for resources "
+                    "managed by drbdmanage\n"
+                    "    will be removed\n"
+                    "  * Any remaining resources managed by this "
+                    "drbdmanage installation\n"
+                    "    that still exist on this system will no longer be "
+                    "managed by drbdmanage\n"
+                    "\n"
+                    "Confirm:\n"
+                )
+            if quiet:
+                if shutdown:
+                    try:
+                        self.dbus_init()
+                        self._server.shutdown()
+                    except dbus.exceptions.DBusException:
+                        # The server does not answer after a shutdown,
+                        # or it might not have been running in the first place,
+                        # both is not considered an error here
+                        pass
+                try:
+                    server_conf = self.load_server_conf()
+                    drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
+                    conf_path   = self._get_conf_path(server_conf)
+                    self._init_join_cleanup(drbdctrl_vg, conf_path)
+                    fn_rc = 0
+                except:
+                    fn_rc = 1
+            else:
+                fn_rc = 0
+        except SyntaxException:
+            self.syntax_uninit()
+        return fn_rc
+
+
     def cmd_join(self, args):
         """
         Joins an existing drbdmanage cluster
@@ -2383,6 +2442,13 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: init [ -q | --quiet ] device\n")
 
 
+    def syntax_uninit(self):
+        sys.stderr.write("Syntax: uninit [ -q | --quiet ] [ -s | --shutdown } "
+                         " device\n"
+                         "  -s | --shutdown   Attempt to shutdown the "
+                         "drbdmanage server first\n")
+
+
     def cmd_exit(self, args):
         exit(0)
 
@@ -2714,10 +2780,11 @@ class DrbdManage(object):
         "ping"              : cmd_ping,
         "startup"           : cmd_startup,
         "shutdown"          : cmd_shutdown,
-        "initcv"            : cmd_initcv,
         "exit"              : cmd_exit,
         "usage"             : cmd_usage,
         "init"              : cmd_init,
+        "initcv"            : cmd_initcv,
+        "uninit"            : cmd_uninit,
         "join"              : cmd_join,
         "howto-join"        : cmd_howto_join,
         "query-conf"        : cmd_query_conf
