@@ -410,14 +410,16 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="sss",
+        in_signature="sssa(ss)a(ia(ss))",
         out_signature="a(isa(ss))"
     )
-    def restore_snapshot(self, res_name, snaps_name, node_name):
+    def restore_snapshot(self, res_name, snaps_res_name, snaps_name,
+                         res_props, vols_props):
         """
         D-Bus interface for DrbdManageServer.restore_snapshot(...)
         """
-        return self._server.restore_snapshot(res_name, snaps_name, node_name)
+        return self._server.restore_snapshot(self, res_name, snaps_res_name,
+                                             snaps_name, res_props, vols_props)
 
 
     @dbus.service.method(

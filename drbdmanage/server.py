@@ -54,7 +54,7 @@ from drbdmanage.exceptions import (
 from drbdmanage.exceptions import (
     InvalidMinorNrException, InvalidNameException, PersistenceException,
     PluginException, SyntaxException, VolSizeRangeException, AbortException,
-    dm_exc_text
+    DebugException, dm_exc_text
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
@@ -925,50 +925,16 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                resource = self._resources.get(res_name)
+                resource = self._create_resource(res_name, props, fn_rc)
                 if resource is not None:
-                    add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST),
-                                 [ RES_NAME, resource.get_name() ])
-                else:
-                    port = RES_PORT_NR_AUTO
-                    secret = generate_secret()
-                    if secret is not None:
-                        try:
-                            port = int(props[RES_PORT])
-                        except KeyError:
-                            pass
-                        if port == RES_PORT_NR_AUTO:
-                            port = self.get_free_port_nr()
-                        if port < 1 or port > 65535:
-                            add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
-                                         [ RES_PORT, str(port) ])
-                        else:
-                            resource = DrbdResource(
-                                res_name,
-                                port, secret, 0, None,
-                                self.get_serial, None, None
-                            )
-                            # Merge only auxiliary properties into the
-                            # DrbdResource's properties container
-                            aux_props = aux_props_selector(props)
-                            resource.get_props().merge_gen(aux_props)
-                            self._resources[resource.get_name()] = resource
-                            self.save_conf_data(persist)
-                            add_rc_entry(fn_rc, DM_SUCCESS,
-                                         dm_exc_text(DM_SUCCESS))
-                    else:
-                        add_rc_entry(fn_rc, DM_ESECRETG,
-                                     dm_exc_text(DM_ESECRETG))
+                    self._resources[resource.get_name()] = resource
+                    self.save_conf_data(persist)
+                    add_rc_entry(fn_rc, DM_SUCCESS,
+                                 dm_exc_text(DM_SUCCESS))
             else:
                 raise PersistenceException
-        except ValueError:
-            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL),
-                [ RES_PORT, port ])
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except InvalidNameException:
-            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME),
-                [ RES_NAME, res_name ])
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -976,6 +942,53 @@ class DrbdManageServer(object):
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
+
+
+    def _create_resource(self, res_name, props, fn_rc):
+        errors   = False
+        resource = None
+        try:
+            resource = self._resources.get(res_name)
+            if resource is not None:
+                add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST),
+                             [ RES_NAME, resource.get_name() ])
+            else:
+                port = RES_PORT_NR_AUTO
+                secret = generate_secret()
+                if secret is not None:
+                    try:
+                        port = int(props[RES_PORT])
+                    except KeyError:
+                        pass
+                    if port == RES_PORT_NR_AUTO:
+                        port = self.get_free_port_nr()
+                    if port < 1 or port > 65535:
+                        add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
+                                     [ RES_PORT, str(port) ])
+                    else:
+                        resource = DrbdResource(
+                            res_name,
+                            port, secret, 0, None,
+                            self.get_serial, None, None
+                        )
+                        # Merge only auxiliary properties into the
+                        # DrbdResource's properties container
+                        aux_props = aux_props_selector(props)
+                        resource.get_props().merge_gen(aux_props)
+                else:
+                    add_rc_entry(fn_rc, DM_ESECRETG,
+                                 dm_exc_text(DM_ESECRETG))
+        except ValueError:
+            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL),
+                         [ RES_PORT, port ])
+        except InvalidNameException:
+            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME),
+                         [ RES_NAME, res_name ])
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+            # Discard the resource if something went awry unexpectedly
+            resource = None
+        return resource
 
 
     def modify_resource(self, res_name, serial, props):
@@ -2428,8 +2441,9 @@ class DrbdManageServer(object):
                     # Snapshot volumes that are currently deployed
                     if ((cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
                         (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                            volume = vol_state.get_volume()
                             snaps_vol_state = DrbdSnapshotVolumeState(
-                                vol_state.get_id(),
+                                vol_state.get_id(), volume.get_size_kiB(),
                                 0, DrbdSnapshotVolumeState.FLAG_DEPLOY,
                                 None, None,
                                 self.get_serial, None, None
@@ -2473,12 +2487,116 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def restore_snapshot(self, res_name, snaps_name, node_name):
+    def restore_snapshot(self, res_name, snaps_res_name, snaps_name,
+                         res_props, vols_props):
         """
         Restore a snapshot
         """
         fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        persist  = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._create_resource(
+                    res_name, dict(res_props), fn_rc
+                )
+                if resource is not None:
+                    snaps_res = self._resources[snaps_res_name]
+                    snapshot = snaps_res.get_snapshot(snaps_name)
+                    for snaps_assg in snapshot.iterate_assignments():
+                        # Build the new resource's volume list from the
+                        # first snapshot assignment's volume list
+                        # FIXME: check whether the snapshot assignment was
+                        #        actually ever deployed
+                        # FIXME: abort if none of the assignments has ever
+                        #        been deployed, because then there is no
+                        #        snapshot that could be restored
+                        vols_props_map = dict(vols_props)
+                        for sv_state in snaps_assg.iterate_snaps_vol_states():
+                            vol_id = sv_state.get_id()
+                            v_props = vols_props_map.get(vol_id)
+                            # Get a minor number for each volume
+                            minor = MinorNr.MINOR_NR_AUTO
+                            if v_props is not None:
+                                try:
+                                    minor = int(v_props[VOL_MINOR])
+                                except KeyError:
+                                    pass
+                                except ValueError:
+                                    raise InvalidMinorNrException
+                            if minor == MinorNr.MINOR_NR_AUTO:
+                                minor = self.get_free_minor_nr()
+                            if minor == MinorNr.MINOR_NR_ERROR:
+                                raise InvalidMinorNrException
+                            volume = DrbdVolume(
+                                vol_id, sv_state.get_size_kiB(),
+                                MinorNr(minor), 0, self.get_serial, None, None
+                            )
+                            if v_props is not None:
+                                # Merge only auxiliary properties into the
+                                # DrbdVolume's properties container
+                                aux_props = aux_props_selector(v_props)
+                                volume.get_props().merge_gen(aux_props)
+                            resource.add_volume(volume)
+                        # Break out of the loop after processing all
+                        # snapshot volume states of the first
+                        # snapshot assignment
+                        # FIXME: corner case: this does not cover the case
+                        #        where different snapshot assignments do
+                        #        not have the same volumes
+                        break
+                    # FIXME: If the following assignment fails (although,
+                    #        actually, it should never fail), saving the
+                    #        resource definition should probably be rolled back
+                    self._resources[resource.get_name()] = resource
+                    # Assign the newly created resource to each node that
+                    # the snapshot resource was assigned to
+                    # (unless that assignment is currently
+                    #  being undeployed)
+                    # -----
+                    # FIXME: DrbdManage normally selects the first assignment
+                    # that is being deployed as the one that will become the
+                    # SyncSource, but in this case, this behavior may select
+                    # a node that was deployed with empty volumes and should
+                    # be a SyncTarget, syncing from one of the nodes that
+                    # has snapshot data instead of an empty volume.
+                    for assg in resource.iterate_assignments():
+                        assg_tstate_mask = (
+                            Assignment.FLAG_DEPLOY |
+                            Assignment.FLAG_DISKLESS
+                        )
+                        tstate = (assg.get_tstate() & assg_tstate_mask)
+                        if (tstate & Assignment.FLAG_DEPLOY) != 0:
+                            node = assg.get_node()
+                            cstate = 0
+                            assign_rc = self._assign(
+                                node, resource, cstate, tstate
+                            )
+                            if assign_rc != DM_SUCCESS:
+                                # Should not be reached, cause the only
+                                # error would be 'node not found', but
+                                # it should be there, since it should
+                                # be a reference to one of the nodes
+                                # in the server's node list;
+                                # therefore, reaching this statement
+                                # indicates an implementation error
+                                raise DebugException
+                    self.save_conf_data(persist)
+                    add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except KeyError:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except InvalidMinorNrException:
+            add_rc_entry(fn_rc, DM_EMINOR, dm_exc_text(DM_EMINOR))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 

@@ -20,7 +20,9 @@
 
 import logging
 import drbdmanage.consts as consts
+import drbdmanage.exceptions as exc
 import drbdmanage.drbd.drbdcommon as drbdcommon
+import drbdmanage.storage.storagecommon as storagecommon
 
 
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
@@ -223,7 +225,8 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
             self.get_props().new_serial()
 
 
-class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
+class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
+                              storagecommon.GenericStorage):
 
     _vol_id      = None
     _bd_path     = None
@@ -237,10 +240,16 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject):
     CSTATE_MASK = FLAG_DEPLOY
 
 
-    def __init__(self, vol_id, cstate, tstate, blockdevice, bd_path,
+    def __init__(self, vol_id, size_kiB, cstate, tstate,
+                 blockdevice, bd_path,
                  get_serial_fn, init_serial, init_props):
         super(DrbdSnapshotVolumeState , self).__init__(
             get_serial_fn, init_serial, init_props
+        )
+        if not size_kiB > 0:
+            raise exc.VolSizeRangeException
+        storagecommon.GenericStorage.__init__(
+            self, size_kiB
         )
         self._vol_id = vol_id
         if blockdevice is not None and bd_path is not None:

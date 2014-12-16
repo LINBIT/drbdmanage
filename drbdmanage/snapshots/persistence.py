@@ -125,7 +125,7 @@ class DrbdSnapshotVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdSnapshotVolumeState objects
     """
 
-    SERIALIZABLE = ["_vol_id", "_bd_path", "_blockdevice",
+    SERIALIZABLE = ["_vol_id", "_size_kiB", "_bd_path", "_blockdevice",
                     "_cstate", "_tstate"]
 
 
@@ -146,7 +146,7 @@ class DrbdSnapshotVolumeStatePersistence(GenericPersistence):
     def load(cls, properties, get_serial_fn):
         init_props = properties.get("props")
         snaps_vol_state = snaps.DrbdSnapshotVolumeState(
-            properties["_vol_id"],
+            properties["_vol_id"], long(properties["_size_kiB"]),
             properties["_cstate"], properties["_tstate"],
             properties.get("_blockdevice"), properties.get("_bd_path"),
             get_serial_fn, None, init_props

@@ -234,3 +234,13 @@ class AbortException(Exception):
 
     def __init__(self):
         super(AbortException, self).__init__()
+
+
+class DebugException(Exception):
+
+    """
+    Raised to indicate an implementation error
+    """
+
+    def __init__(self):
+        super(DebugException, self).__init__()
