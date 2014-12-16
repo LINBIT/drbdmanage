@@ -2503,86 +2503,94 @@ class DrbdManageServer(object):
                 if resource is not None:
                     snaps_res = self._resources[snaps_res_name]
                     snapshot = snaps_res.get_snapshot(snaps_name)
-                    for snaps_assg in snapshot.iterate_assignments():
-                        # Build the new resource's volume list from the
-                        # first snapshot assignment's volume list
-                        # FIXME: check whether the snapshot assignment was
-                        #        actually ever deployed
-                        # FIXME: abort if none of the assignments has ever
-                        #        been deployed, because then there is no
-                        #        snapshot that could be restored
-                        vols_props_map = dict(vols_props)
-                        for sv_state in snaps_assg.iterate_snaps_vol_states():
-                            vol_id = sv_state.get_id()
-                            v_props = vols_props_map.get(vol_id)
-                            # Get a minor number for each volume
-                            minor = MinorNr.MINOR_NR_AUTO
-                            if v_props is not None:
-                                try:
-                                    minor = int(v_props[VOL_MINOR])
-                                except KeyError:
-                                    pass
-                                except ValueError:
+                    if snapshot is not None:
+                        for snaps_assg in snapshot.iterate_snaps_assgs():
+                            # Build the new resource's volume list from the
+                            # first snapshot assignment's volume list
+                            # FIXME: check whether the snapshot assignment was
+                            #        actually ever deployed
+                            # FIXME: abort if none of the assignments has ever
+                            #        been deployed, because then there is no
+                            #        snapshot that could be restored
+                            vols_props_map = dict(vols_props)
+                            sv_iter =  snaps_assg.iterate_snaps_vol_states()
+                            for sv_state in sv_iter:
+                                vol_id = sv_state.get_id()
+                                v_props = vols_props_map.get(vol_id)
+                                # Get a minor number for each volume
+                                minor = MinorNr.MINOR_NR_AUTO
+                                if v_props is not None:
+                                    try:
+                                        minor = int(v_props[VOL_MINOR])
+                                    except KeyError:
+                                        pass
+                                    except ValueError:
+                                        raise InvalidMinorNrException
+                                if minor == MinorNr.MINOR_NR_AUTO:
+                                    minor = self.get_free_minor_nr()
+                                if minor == MinorNr.MINOR_NR_ERROR:
                                     raise InvalidMinorNrException
-                            if minor == MinorNr.MINOR_NR_AUTO:
-                                minor = self.get_free_minor_nr()
-                            if minor == MinorNr.MINOR_NR_ERROR:
-                                raise InvalidMinorNrException
-                            volume = DrbdVolume(
-                                vol_id, sv_state.get_size_kiB(),
-                                MinorNr(minor), 0, self.get_serial, None, None
+                                volume = DrbdVolume(
+                                    vol_id, sv_state.get_size_kiB(),
+                                    MinorNr(minor), 0, self.get_serial,
+                                    None, None
+                                )
+                                if v_props is not None:
+                                    # Merge only auxiliary properties into the
+                                    # DrbdVolume's properties container
+                                    aux_props = aux_props_selector(v_props)
+                                    volume.get_props().merge_gen(aux_props)
+                                resource.add_volume(volume)
+                            # Break out of the loop after processing all
+                            # snapshot volume states of the first
+                            # snapshot assignment
+                            # FIXME: corner case: this does not cover the case
+                            #        where different snapshot assignments do
+                            #        not have the same volumes
+                            break
+                        # FIXME: If the following assignment fails (although,
+                        #        actually, it should never fail), saving the
+                        #        resource definition should probably be
+                        #        rolled back
+                        self._resources[resource.get_name()] = resource
+                        # Assign the newly created resource to each node that
+                        # the snapshot resource was assigned to
+                        # (unless that assignment is currently
+                        #  being undeployed)
+                        # -----
+                        # FIXME: DrbdManage normally selects the first
+                        # assignment that is being deployed as the one that
+                        # will become the SyncSource, but in this case, this
+                        # behavior may select a node that was deployed with
+                        # empty volumes and should be a SyncTarget, syncing
+                        # from one of the nodes that has snapshot data instead
+                        # of an empty volume.
+                        for assg in snaps_res.iterate_assignments():
+                            assg_tstate_mask = (
+                                Assignment.FLAG_DEPLOY |
+                                Assignment.FLAG_DISKLESS
                             )
-                            if v_props is not None:
-                                # Merge only auxiliary properties into the
-                                # DrbdVolume's properties container
-                                aux_props = aux_props_selector(v_props)
-                                volume.get_props().merge_gen(aux_props)
-                            resource.add_volume(volume)
-                        # Break out of the loop after processing all
-                        # snapshot volume states of the first
-                        # snapshot assignment
-                        # FIXME: corner case: this does not cover the case
-                        #        where different snapshot assignments do
-                        #        not have the same volumes
-                        break
-                    # FIXME: If the following assignment fails (although,
-                    #        actually, it should never fail), saving the
-                    #        resource definition should probably be rolled back
-                    self._resources[resource.get_name()] = resource
-                    # Assign the newly created resource to each node that
-                    # the snapshot resource was assigned to
-                    # (unless that assignment is currently
-                    #  being undeployed)
-                    # -----
-                    # FIXME: DrbdManage normally selects the first assignment
-                    # that is being deployed as the one that will become the
-                    # SyncSource, but in this case, this behavior may select
-                    # a node that was deployed with empty volumes and should
-                    # be a SyncTarget, syncing from one of the nodes that
-                    # has snapshot data instead of an empty volume.
-                    for assg in resource.iterate_assignments():
-                        assg_tstate_mask = (
-                            Assignment.FLAG_DEPLOY |
-                            Assignment.FLAG_DISKLESS
-                        )
-                        tstate = (assg.get_tstate() & assg_tstate_mask)
-                        if (tstate & Assignment.FLAG_DEPLOY) != 0:
-                            node = assg.get_node()
-                            cstate = 0
-                            assign_rc = self._assign(
-                                node, resource, cstate, tstate
-                            )
-                            if assign_rc != DM_SUCCESS:
-                                # Should not be reached, cause the only
-                                # error would be 'node not found', but
-                                # it should be there, since it should
-                                # be a reference to one of the nodes
-                                # in the server's node list;
-                                # therefore, reaching this statement
-                                # indicates an implementation error
-                                raise DebugException
-                    self.save_conf_data(persist)
-                    add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+                            tstate = (assg.get_tstate() & assg_tstate_mask)
+                            if (tstate & Assignment.FLAG_DEPLOY) != 0:
+                                node = assg.get_node()
+                                cstate = 0
+                                tstate |= Assignment.FLAG_CONNECT
+                                assign_rc = self._assign(
+                                    node, resource, cstate, tstate
+                                )
+                                if assign_rc != DM_SUCCESS:
+                                    # Should not be reached, cause the only
+                                    # error would be 'node not found', but
+                                    # it should be there, since it should
+                                    # be a reference to one of the nodes
+                                    # in the server's node list;
+                                    # therefore, reaching this statement
+                                    # indicates an implementation error
+                                    raise DebugException
+                        self._drbd_mgr.perform_changes()
+                        self.save_conf_data(persist)
+                    else:
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
         except PersistenceException:

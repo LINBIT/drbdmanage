@@ -1012,7 +1012,8 @@ class DrbdManager(object):
                     if peer_assg != assignment:
                         pa_cstate = peer_assg.get_cstate()
                         pa_tstate = peer_assg.get_tstate()
-                        if ((pa_cstate & Assignment.FLAG_DEPLOY != 0 or
+                        if ((pa_cstate & Assignment.FLAG_DISKLESS) != 0 and
+                            ((pa_cstate & Assignment.FLAG_DEPLOY) != 0 or
                             (pa_tstate & Assignment.FLAG_OVERWRITE) != 0)):
                                 primary = False
                                 break

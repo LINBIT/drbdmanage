@@ -418,7 +418,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.restore_snapshot(...)
         """
-        return self._server.restore_snapshot(self, res_name, snaps_res_name,
+        return self._server.restore_snapshot(res_name, snaps_res_name,
                                              snaps_name, res_props, vols_props)
 
 
