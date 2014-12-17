@@ -3774,13 +3774,13 @@ class DrbdManageServer(object):
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
-                try:
-                    props_val = props.get_prop(prop_key)
+                props_val = props.get_prop(prop_key)
+                if props_val is not None:
                     self._debug_section_begin(title)
                     sys.stderr.write(props_format % (prop_key, props_val))
                     self._debug_section_end(title)
                     fn_rc = 0
-                except KeyError:
+                else:
                     sys.stderr.write("Property '%s' not found\n" % prop_key)
         return fn_rc
 

@@ -47,7 +47,7 @@ class PropsContainer(object):
         """
         Retrieves a property from the dictionary
         """
-        return str(self._props[str(key)])
+        return str(self._props.get(str(key)))
 
 
     def get_selected_props(self, keys):
@@ -108,7 +108,10 @@ class PropsContainer(object):
         """
         Removes a property from the dictionary
         """
-        del self._props[str(key)]
+        try:
+            del self._props[str(key)]
+        except KeyError:
+            pass
         self.new_serial()
 
 
