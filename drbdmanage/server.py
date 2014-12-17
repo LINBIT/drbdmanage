@@ -2550,8 +2550,46 @@ class DrbdManageServer(object):
         List the available snapshots of a resource
         """
         fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
-        return fn_rc
+        def resource_filter(res_names):
+            for res_name in res_names:
+                res = self._resources.get(res_name)
+                if res is None:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                                 [ RES_NAME, res_name ])
+                else:
+                    yield res
+
+        try:
+            selected_res = self._resources.itervalues()
+            if res_names is not None and len(res_names) > 0:
+                selected_res = resource_filter(res_names)
+            #if serial > 0:
+            #    selected_res = serial_filter(serial, selected_res)
+
+            res_list = []
+            for res in selected_res:
+                selected_sn = res.iterate_snapshots()
+                if filter_props is not None and len(filter_props) > 0:
+                    selected_sn = props_filter(
+                        selected_sn, filter_props
+                    )
+
+                sn_list = []
+                for sn in selected_sn:
+                    sn_entry = [ sn.get_name(), sn.get_properties(req_props) ] # TODO: was get_id()
+                    sn_list.append(sn_entry)
+                if len(sn_list) > 0:
+                    res_entry = [
+                        res.get_name(),
+                        res.get_properties(req_props), sn_list
+                    ]
+                    res_list.append(res_entry)
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc, res_list
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+
+        return fn_rc, None
 
 
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
