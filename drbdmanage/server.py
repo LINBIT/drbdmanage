@@ -2335,6 +2335,7 @@ class DrbdManageServer(object):
             selected_res = self._resources.itervalues()
             if res_names is not None and len(res_names) > 0:
                 selected_res = resource_filter(res_names)
+            # TODO: serial filter on vols? or serial bubbled "up", so on res as a perf opt?
             if serial > 0:
                 selected_res = serial_filter(serial, selected_res)
 
@@ -2345,10 +2346,12 @@ class DrbdManageServer(object):
                     selected_vol = props_filter(
                         selected_vol, filter_props
                     )
+                if serial > 0:
+                    selected_vol = serial_filter(serial, selected_vol)
 
                 vol_list = []
                 for vol in selected_vol:
-                    vol_entry = [ vol.get_id(), vol.get_properties(None) ]
+                    vol_entry = [ vol.get_id(), vol.get_properties(req_props) ]
                     vol_list.append(vol_entry)
                 if len(vol_list) > 0:
                     res_entry = [
@@ -2576,12 +2579,12 @@ class DrbdManageServer(object):
 
                 sn_list = []
                 for sn in selected_sn:
-                    sn_entry = [ sn.get_name(), sn.get_properties(req_props) ] # TODO: was get_id()
+                    sn_entry = [ sn.get_name(), dict() ] # TODO: was get_id() # TODO: sn.get_properties(req_props) 
                     sn_list.append(sn_entry)
                 if len(sn_list) > 0:
                     res_entry = [
                         res.get_name(),
-                        res.get_properties(req_props), sn_list
+			sn_list
                     ]
                     res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
