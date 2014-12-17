@@ -2091,7 +2091,7 @@ class DrbdManageServer(object):
                         (tstate & A_FLAG_DEPLOY) == 0):
                             if ((not assg.has_snapshots()) and
                                 (not assg.has_volume_states())):
-                                    removable.append(assg)
+                                removable.append(assg)
             for assg in removable:
                 assg.remove()
 

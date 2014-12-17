@@ -443,21 +443,24 @@ class DrbdAdmConf(object):
                     stream.write("    }\n")
             # end resource/nodes
 
-            # begin resource/connection
-            stream.write(
-                "    connection-mesh {\n"
-                "        hosts"
-            )
-            for node in nodes:
-                stream.write(" %s" % (node.get_name()))
-            stream.write(";\n")
-            stream.write(
-                "        net {\n"
-                "            protocol C;\n"
-                "        }\n"
-            )
-            stream.write("    }\n")
-            # end resource/connection
+            # If any hosts are left in the configuration, generate the
+            # connection mesh section
+            if len(nodes) > 0:
+                # begin resource/connection
+                stream.write(
+                    "    connection-mesh {\n"
+                    "        hosts"
+                )
+                for node in nodes:
+                    stream.write(" %s" % (node.get_name()))
+                stream.write(";\n")
+                stream.write(
+                    "        net {\n"
+                    "            protocol C;\n"
+                    "        }\n"
+                )
+                stream.write("    }\n")
+                # end resource/connection
 
             stream.write("}\n")
             # end resource

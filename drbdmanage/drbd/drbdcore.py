@@ -426,15 +426,18 @@ class DrbdManager(object):
         node = self._server.get_instance_node()
         if node is not None:
             for assg in node.iterate_assignments():
-                if assg.is_deployed():
-                    try:
-                        self._up_resource(assg)
-                    except Exception as exc:
-                        logging.debug(
-                            "failed to start resource '%s', "
-                            "unhandled exception: %s"
-                            % (assg.get_resource().get_name(), str(exc))
-                        )
+                cstate = assg.get_cstate()
+                tstate = assg.get_tstate()
+                if ((cstate & Assignment.FLAG_DEPLOY) != 0 and
+                    (tstate & Assignment.FLAG_DEPLOY) != 0):
+                        try:
+                            self._up_resource(assg)
+                        except Exception as exc:
+                            logging.debug(
+                                "failed to start resource '%s', "
+                                "unhandled exception: %s"
+                                % (assg.get_resource().get_name(), str(exc))
+                            )
 
 
     def _up_resource(self, assignment):
@@ -814,19 +817,34 @@ class DrbdManager(object):
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
+        # If the assignment is diskless (a DRBD client),
+        # immediately mark all volumes as undeployed
+        cstate = assignment.get_cstate()
+        if (cstate & Assignment.FLAG_DISKLESS) != 0:
+            for vol_state in assignment.iterate_volume_states():
+                vol_state.set_cstate(0)
+                vol_state.set_tstate(0)
+
         ud_errors = False
         # No actions are required for empty assignments
         if not assignment.is_empty():
             # call drbdadm to stop the DRBD on top of the blockdevice
             drbd_proc = self._drbdadm.down(resource.get_name())
             if drbd_proc is not None:
-                self._resconf.write(drbd_proc.stdin, assignment, True)
+                local_node = self._server.get_instance_node()
+                nodes = [ local_node ]
+                vol_state_list = []
+                for vol_state in assignment.iterate_volume_states():
+                    vol_state_list.append(vol_state)
+                node_vol_states = { local_node.get_name(): vol_state_list }
+                self._resconf.write_excerpt(
+                    drbd_proc.stdin, assignment, nodes, node_vol_states
+                )
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
 
                 if fn_rc == 0:
-                    # undeploy all volumes
-                    cstate = assignment.get_cstate()
+                    # undeploy all non-diskless volumes
                     if (cstate & Assignment.FLAG_DISKLESS) == 0:
                         for vol_state in assignment.iterate_volume_states():
                             stor_rc = bd_mgr.remove_blockdevice(
@@ -837,11 +855,6 @@ class DrbdManager(object):
                                 vol_state.set_tstate(0)
                             else:
                                 ud_errors = True
-                    else:
-                        # if the assignment is diskless...
-                        for vol_state in assignment.iterate_volume_states():
-                            vol_state.set_cstate(0)
-                            vol_state.set_tstate(0)
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 ud_errors = True
