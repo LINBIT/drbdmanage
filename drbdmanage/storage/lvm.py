@@ -20,6 +20,7 @@
 
 import os
 import sys
+import time
 import json
 import errno
 import logging
@@ -59,6 +60,12 @@ class LVM(object):
 
     # LV exists error code
     LVM_EEXIST   = 5
+
+    # Delay (in seconds) for lvcreate/lvremove retries
+    RETRY_DELAY = 1
+
+    # Maximum number of retries
+    MAX_RETRIES = 2
 
     CONF_DEFAULTS = {
       KEY_DEV_PATH : "/dev",
@@ -125,7 +132,7 @@ class LVM(object):
         lv_name = self._lv_name(name, vol_id)
         try:
             tries = 0
-            while tries < 2:
+            while tries < LVM.MAX_RETRIES:
                 fn_rc = self._create_lv(lv_name, size)
                 if fn_rc == 0:
                     blockdev = drbdmanage.storage.storagecore.BlockDevice(
@@ -159,13 +166,18 @@ class LVM(object):
         @return: standard return code (see drbdmanage.exceptions)
         """
         fn_rc = DM_ESTORAGE
-        try:
-            stor_rc = self._remove_lv(blockdevice.get_name())
-            if stor_rc == 0:
-                del self._lvs[blockdevice.get_name()]
-                fn_rc = DM_SUCCESS
-        except KeyError:
-            return DM_ENOENT
+        tries = 0
+        while tries < LVM.MAX_RETRIES:
+            try:
+                stor_rc = self._remove_lv(blockdevice.get_name())
+                if stor_rc == 0:
+                    del self._lvs[blockdevice.get_name()]
+                    fn_rc = DM_SUCCESS
+                    break
+            except KeyError:
+                fn_rc = DM_ENOENT
+                break
+            tries += 1
         self.save_state()
         return fn_rc
 
@@ -287,6 +299,8 @@ class LVM(object):
             env=self._subproc_env(), close_fds=True
         )
         fn_rc = lvm_proc.wait()
+        if fn_rc != 0:
+            time.sleep(LVM.RETRY_DELAY)
         return fn_rc
 
 
