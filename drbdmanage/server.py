@@ -2457,6 +2457,8 @@ class DrbdManageServer(object):
             self.save_conf_data(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except InvalidNameException:
+            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME))
         except AbortException:
             pass
         except Exception as exc:
