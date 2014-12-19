@@ -999,7 +999,7 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc, free_space = (
+            server_rc, free_space, total_space = (
                 self._server.cluster_free_query(dbus.Int32(redundancy))
             )
 
@@ -1007,12 +1007,13 @@ class DrbdManage(object):
             if successful:
                 machine_readable = flags["-m"]
                 if machine_readable:
-                    sys.stdout.write("%lu\n" % (free_space))
+                    sys.stdout.write("%lu,%lu\n" % (free_space, total_space))
                 else:
                     sys.stdout.write(
                         "The maximum size for a %dx redundant "
-                        "volume is %lu kB\n"
-                        % (redundancy, free_space)
+                        "volume is %lu kiB\n"
+                        "(Aggregate cluster storage size: %lu kiB)\n"
+                        % (redundancy, free_space, total_space)
                     )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
