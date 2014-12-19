@@ -1958,6 +1958,34 @@ class DrbdManageServer(object):
         return fn_rc
 
 
+    def update_pool_check(self):
+        """
+        Checks storage pool data and if necessary, updates the data
+        """
+        fn_rc = []
+        try:
+            inst_node = self.get_instance_node()
+            if inst_node is not None:
+                (stor_rc, poolsize, poolfree) = (
+                    self._bd_mgr.update_pool(inst_node)
+                )
+                if stor_rc == DM_SUCCESS:
+                    poolfree = self._pool_free_correction(inst_node, poolfree)
+                    if (inst_node.get_poolsize() != poolsize or
+                        inst_node.get_poolfree() != poolfree):
+                            fn_rc = self.update_pool([ inst_node.get_name() ])
+                else:
+                    add_rc_entry(fn_rc, DM_ESTORAGE, dm_exc_text(DM_ESTORAGE))
+            else:
+                add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+            add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+
     def update_pool(self, node_names):
         """
         Updates information about the current node's storage pool
@@ -1993,8 +2021,7 @@ class DrbdManageServer(object):
 
     def update_pool_data(self):
         """
-        Updates information about the current node's storage pool
-        free space
+        Updates information about the current node's storage pools
 
         @return: standard return code defined in drbdmanage.exceptions
         """
@@ -2006,26 +2033,7 @@ class DrbdManageServer(object):
                     self._bd_mgr.update_pool(inst_node)
                 )
                 if stor_rc == DM_SUCCESS:
-                    max_peers = self.DEFAULT_MAX_PEERS
-                    try:
-                        max_peers = int(
-                            self.get_conf_value(self.KEY_MAX_PEERS)
-                        )
-                    except ValueError:
-                        # Unparseable configuration value;
-                        # no-op: keep default value
-                        pass
-                    size_sum = 0
-                    for assignment in inst_node.iterate_assignments():
-                        size_sum += assignment.get_gross_size_kiB_correction(
-                            max_peers
-                        )
-                    poolfree -= size_sum
-                    # If something is seriously wrong with the storage sizes,
-                    # (e.g. more storage required for deploying all resources
-                    #  than there is available), the pool is considered full
-                    if poolfree < 0:
-                        poolfree = 0
+                    poolfree = self._pool_free_correction(inst_node, poolfree)
                     inst_node.set_pool(poolsize, poolfree)
                 fn_rc = DM_SUCCESS
             else:
@@ -2034,6 +2042,33 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
             fn_rc = DM_DEBUG
         return fn_rc
+
+
+    def _pool_free_correction(self, node, poolfree_in):
+        """
+        Predicts remaining free storage space
+        """
+        max_peers = self.DEFAULT_MAX_PEERS
+        try:
+            max_peers = int(
+                self.get_conf_value(self.KEY_MAX_PEERS)
+            )
+        except ValueError:
+            # Unparseable configuration value;
+            # no-op: keep default value
+            pass
+        size_sum = 0
+        for assignment in node.iterate_assignments():
+            size_sum += assignment.get_gross_size_kiB_correction(
+                max_peers
+            )
+        poolfree_out = poolfree_in - size_sum
+        # If something is seriously wrong with the storage sizes,
+        # (e.g. more storage required for deploying all resources
+        #  than there is available), the pool is considered full
+        if poolfree_out < 0:
+            poolfree_out = 0
+        return poolfree_out
 
 
     def cleanup(self):

@@ -298,6 +298,18 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))"
+    )
+    def update_pool_check(self):
+        """
+        D-Bus interface for DrbdManageServer.update_pool_check()
+        """
+        return self._server.update_pool_check()
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="as",
         out_signature="a(isa(ss))"
     )
