@@ -274,6 +274,7 @@ class DrbdResourceView(GenericView):
         except KeyError:
             raise IncompatibleDataException
         self.props = properties
+        self._machine_readable = machine_readable
 
 
     @classmethod
