@@ -201,8 +201,11 @@ class DrbdNodeView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
          consts.FLAG_UPD_POOL,   None,   None],
         [consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
-         consts.FLAG_UPDATE,     None,   None]
-
+         consts.FLAG_UPDATE,     None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL,
+         consts.FLAG_DRBDCTRL,   None ,  None],
+        [consts.TSTATE_PREFIX + consts.FLAG_STORAGE,
+         consts.FLAG_STORAGE,    None,   None]
     ]
 
     # Human readable texts for target state flags
@@ -212,7 +215,11 @@ class DrbdNodeView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL,
          "p",     "-",    "?"],
         [consts.TSTATE_PREFIX + consts.FLAG_UPDATE,
-         "u",     "-",    "?"]
+         "u",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL,
+         "C",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_STORAGE,
+         "S",     "-",    "?"]
     ]
 
 

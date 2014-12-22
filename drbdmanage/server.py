@@ -38,7 +38,7 @@ from drbdmanage.consts import (
     DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader, CmdLineReader, MetaData
 from drbdmanage.utils import (
@@ -817,13 +817,30 @@ class DrbdManageServer(object):
                         addrfam = DrbdNode.AF_IPV6
                 except KeyError:
                     pass
+                # Default state for new nodes:
+                # Node has a control volume and local storage
+                node_state = DrbdNode.FLAG_DRBDCTRL | DrbdNode.FLAG_STORAGE
+                try:
+                    node_drbdctrl = props[FLAG_DRBDCTRL]
+                    if node_drbdctrl == BOOL_FALSE:
+                        node_state = ((node_state | DrbdNode.FLAG_DRBDCTRL) ^
+                                      DrbdNode.FLAG_DRBDCTRL)
+                except KeyError:
+                    pass
+                try:
+                    node_storage = props[FLAG_STORAGE]
+                    if node_storage == BOOL_FALSE:
+                        node_state = ((node_state | DrbdNode.FLAG_STORAGE) ^
+                                      DrbdNode.FLAG_STORAGE)
+                except KeyError:
+                    pass
                 try:
                     if addr is not None and addrfam is not None:
                         node_id = self.get_free_drbdctrl_node_id()
                         if node_id != -1:
                             node = DrbdNode(
                                 node_name, addr, addrfam, node_id,
-                                0, -1, -1,
+                                node_state, -1, -1,
                                 self.get_serial, None, None
                             )
                             # Merge only auxiliary properties into the
@@ -3361,7 +3378,14 @@ class DrbdManageServer(object):
 
                 drbdctrl_res = open(
                     build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w")
-                conffile.write_drbdctrl(drbdctrl_res, self._nodes,
+                # Collect all nodes that have a drbdmanage control volume
+                drbdctrl_nodes = {}
+                for node in self._nodes.itervalues():
+                    node_state = node.get_state()
+                    if (node_state & DrbdNode.FLAG_DRBDCTRL) != 0:
+                        drbdctrl_nodes[node.get_name()] = node
+                # Generate the drbdmanage control volume configuration file
+                conffile.write_drbdctrl(drbdctrl_res, drbdctrl_nodes,
                                         bdev, port, secret)
                 drbdctrl_res.close()
                 fn_rc = 0

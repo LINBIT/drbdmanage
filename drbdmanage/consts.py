@@ -68,6 +68,8 @@ FLAG_REMOVE         = "remove"
 # nodes:
 FLAG_UPD_POOL       = "upd_pool"
 FLAG_UPDATE         = "update"
+FLAG_DRBDCTRL       = "drbdctrl"
+FLAG_STORAGE        = "storage"
 
 # assignments, volume states:
 FLAG_DEPLOY         = "deploy"
