@@ -40,12 +40,14 @@ from drbdmanage.consts import (
     DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
-    FLAG_DISCARD, FLAG_CONNECT, KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
+    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
+    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
 )
 from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import (
-    get_terminal_size, build_path, bool_to_string, map_val_or_dflt
+    get_terminal_size, build_path, bool_to_string, map_val_or_dflt,
+    bool_to_string
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -243,7 +245,7 @@ class DrbdManage(object):
         params     = {}
         opt        = { "-a" : None }
         optalias   = { "--address-family" : "a" }
-        flags      = { "-q" : False }
+        flags      = { "-q" : False, "-c" : False, "-s" : False }
         flagsalias = { "--quiet" : "-q" }
         parse_rc = CommandParser().parse(
             args, order, params, opt, optalias, flags, flagsalias
@@ -254,10 +256,16 @@ class DrbdManage(object):
             af   = opt["-a"]
             if af is None:
                 af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+            flag_storage  = not flags["-s"]
+            flag_drbdctrl = not flags["-c"]
 
             props = dbus.Dictionary(signature="ss")
             props[NODE_ADDR] = ip
             props[NODE_AF]   = af
+            if not flag_drbdctrl:
+                props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
+            if not flag_storage:
+                props[FLAG_STORAGE]  = bool_to_string(flag_storage)
 
             self.dbus_init()
             server_rc = self._server.create_node(name, props)
@@ -272,7 +280,7 @@ class DrbdManage(object):
                 # like an error message
                 if joinc_text.startswith("Error:"):
                     sys.stderr.write(joinc_text + "\n")
-                else:
+                elif flag_drbdctrl:
                     try:
                         sshc = ["ssh", "-oBatchMode=yes", "-oConnectTimeout=2",
                                 "root@" + ip]
