@@ -734,8 +734,10 @@ class DrbdManageServer(object):
         inst_node = self.get_instance_node()
         for peer_node in self._nodes.itervalues():
             if peer_node != inst_node:
-                peer_node.set_state(peer_node.get_state() |
-                                    DrbdNode.FLAG_UPDATE)
+                state = peer_node.get_state()
+                if (state & DrbdNode.FLAG_DRBDCTRL) != 0:
+                    peer_node.set_state(peer_node.get_state() |
+                                        DrbdNode.FLAG_UPDATE)
 
 
     def poke(self):
