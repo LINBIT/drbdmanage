@@ -3095,34 +3095,57 @@ class DrbdManageServer(object):
         """
         Server part of integrating a node into an existing drbdmanage cluster
         """
-        fn_rc = []
+        fn_rc   = []
+        persist = None
         try:
-            # TODO: there should probably be library functions for evaluating
-            #       return code lists
-            conf_drbdctrl = self._configure_drbdctrl
-            fn_rc = self.load_conf()
-            load_ok = False
-            for rc_entry in fn_rc:
-                if rc_entry[0] == DM_SUCCESS:
-                    load_ok = True
-                else:
-                    load_ok = False
-                    break
-            del fn_rc[:]
-            if load_ok:
-                check_node = self._nodes.get(self._instance_node_name)
-                if check_node is not None:
-                    if (conf_drbdctrl(True, secret, bdev, port) == 0):
-                        self._drbd_mgr.adjust_drbdctrl()
+            persist = self.begin_modify_conf()
+
+            if persist is not None:
+                # TODO: there should probably be library functions for evaluating
+                #       return code lists
+                conf_drbdctrl = self._configure_drbdctrl
+                fn_rc = self.load_conf()
+                load_ok = False
+                for rc_entry in fn_rc:
+                    if rc_entry[0] == DM_SUCCESS:
+                        load_ok = True
                     else:
-                        # delete the success entry from load_conf() from
-                        # the list and append the control volume error code
-                        add_rc_entry(fn_rc, DM_ECTRLVOL,
-                                     dm_exc_text(DM_ECTRLVOL))
-                else:
-                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                        load_ok = False
+                        break
+                # empty the return codes list
+                del fn_rc[:]
+
+                if load_ok:
+                    check_node = self._nodes.get(self._instance_node_name)
+                    if check_node is not None:
+                        if (conf_drbdctrl(True, secret, bdev, port) == 0):
+                            # Establish connections to the other
+                            # drbdmanage nodes
+                            self._drbd_mgr.adjust_drbdctrl()
+                            # Clear the update flag on the joining node
+                            state = check_node.get_state()
+                            state = ((state | DrbdNode.FLAG_UPDATE) ^
+                                     DrbdNode.FLAG_UPDATE)
+                            check_node.set_state(state)
+                            # Attempt to update the node's storage pool data
+                            # If it fails now, it will run again later anyway,
+                            # therefore the return code is ignored
+                            self.update_pool_data()
+                            # Save changes
+                            self.save_conf_data(persist)
+                        else:
+                            add_rc_entry(fn_rc, DM_ECTRLVOL,
+                                         dm_exc_text(DM_ECTRLVOL))
+                    else:
+                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
