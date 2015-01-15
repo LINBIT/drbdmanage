@@ -112,6 +112,9 @@ class DrbdManageServer(object):
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
 
+    KEY_DEBUG_OUT_FILE = "debug-out-file"
+    KEY_LOGLEVEL       = "loglevel"
+
     DEFAULT_MAX_NODE_ID  =   31
     DEFAULT_MAX_PEERS    =    7
     DEFAULT_MIN_MINOR_NR =  100
@@ -130,7 +133,9 @@ class DrbdManageServer(object):
         KEY_DRBDADM_PATH   : "/usr/sbin",
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
         KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
-        KEY_DRBDCTRL_VG    : DEFAULT_VG
+        KEY_DRBDCTRL_VG    : DEFAULT_VG,
+        KEY_DEBUG_OUT_FILE : "/dev/stderr",
+        KEY_LOGLEVEL       : "INFO"
     }
 
     # BlockDevice manager
@@ -170,6 +175,8 @@ class DrbdManageServer(object):
       "DEBUG"    : logging.DEBUG
     }
 
+    _debug_out = sys.stderr
+
     # Global drbdmanage cluster configuration
     _cluster_conf         = {}
     _cluster_conf[SERIAL] = 1
@@ -205,6 +212,8 @@ class DrbdManageServer(object):
         self._resources = {}
         # load the server configuration file
         self.load_server_conf()
+        # reset the loglevel to that specified in the configuration file
+        self.set_loglevel()
         # ensure that the PATH environment variable is set up
         extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
         self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
@@ -495,6 +504,18 @@ class DrbdManageServer(object):
         syslog_h.setFormatter(syslog_f)
         self._root_logger.addHandler(syslog_h)
         self._root_logger.setLevel(logging.INFO)
+
+
+    def set_loglevel(self):
+        """
+        Adjust the loglevel to the one specified in the server's configuration
+        """
+        try:
+            loglevel_conf = str.upper(self._conf[self.KEY_LOGLEVEL])
+            loglevel_id   = self.DM_LOGLEVELS[loglevel_conf]
+            self._root_logger.setLevel(loglevel_id)
+        except KeyError:
+            pass
 
 
     def load_server_conf(self):
@@ -3039,6 +3060,7 @@ class DrbdManageServer(object):
         fn_rc = []
         try:
             self.load_server_conf()
+            self.set_loglevel()
             fn_rc = self.load_conf()
             self._drbd_mgr.reconfigure()
             self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
@@ -3458,6 +3480,8 @@ class DrbdManageServer(object):
                                 loglevel = self._debug_parse_loglevel(val)
                                 self._root_logger.setLevel(loglevel)
                                 fn_rc = 0
+                            elif key == "dbgout":
+                                fn_rc = self._debug_set_debug_out(val)
                     except AttributeError:
                         fn_rc = 1
                 elif command == "run":
@@ -3504,6 +3528,9 @@ class DrbdManageServer(object):
                             fn_rc = 0
                         elif item == "stderr":
                             sys.stderr.write("(test stderr)\n")
+                            fn_rc = 0
+                        elif item == "dbgout":
+                            self._debug_out.write("(test dbgout)\n")
                             fn_rc = 0
                     except AttributeError:
                         pass
@@ -3552,9 +3579,11 @@ class DrbdManageServer(object):
                         subcommand = args.next_arg()
                         if subcommand == "hash":
                             if self._conf_hash is None:
-                                sys.stderr.write("unset/invalid\n")
+                                self._debug_out.write("unset/invalid\n")
                             else:
-                                sys.stderr.write("%s\n" % (self._conf_hash))
+                                self._debug_out.write(
+                                    "%s\n" % (self._conf_hash)
+                                )
                             fn_rc = 0
                     except AttributeError:
                         pass
@@ -3564,7 +3593,8 @@ class DrbdManageServer(object):
                         exit_code     = int(exit_code_str)
                         exit_msg = ("server shutdown (debug command): exit %d"
                                     % (exit_code))
-                        sys.stderr.write(exit_msg + "\n")
+                        self._debug_out.write(exit_msg + "\n")
+                        self._debug_out.flush()
                         logging.debug(exit_msg)
                         exit(exit_code)
                     except (ValueError, AttributeError):
@@ -3574,6 +3604,11 @@ class DrbdManageServer(object):
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             fn_rc = DM_DEBUG
+        finally:
+            try:
+                self._debug_out.flush()
+            except (IOError, OSError, AttributeError):
+                pass
         return fn_rc
 
 
@@ -3607,7 +3642,7 @@ class DrbdManageServer(object):
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
-                sys.stderr.write("Node '%s' not found\n" % (nodename))
+                self._debug_out.write("Node '%s' not found\n" % (nodename))
         else:
             self._debug_section_begin(title)
             for node in self._nodes.itervalues():
@@ -3629,7 +3664,7 @@ class DrbdManageServer(object):
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         else:
             self._debug_section_begin(title)
             for resource in self._resources.itervalues():
@@ -3651,7 +3686,7 @@ class DrbdManageServer(object):
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         else:
             self._debug_section_begin(title)
             for resource in self._resources.itervalues():
@@ -3676,7 +3711,9 @@ class DrbdManageServer(object):
                     self._debug_section_end(title)
                     fn_rc = 0
                 else:
-                    sys.stderr.write("Node '%s' not found\n" % (nodename))
+                    self._debug_out.write(
+                        "Node '%s' not found\n" % (nodename)
+                    )
             else:
                 resource = self._resources.get(objname)
                 if resource is not None:
@@ -3686,7 +3723,9 @@ class DrbdManageServer(object):
                     self._debug_section_end(title)
                     fn_rc = 0
                 else:
-                    sys.stderr.write("Resource '%s' not found\n" % (objname))
+                    self._debug_out.write(
+                        "Resource '%s' not found\n" % (objname)
+                    )
         else:
             self._debug_section_begin(title)
             for node in self._nodes.itervalues():
@@ -3710,7 +3749,7 @@ class DrbdManageServer(object):
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         else:
             self._debug_section_begin(title)
             for resource in self._resources.itervalues():
@@ -3737,9 +3776,11 @@ class DrbdManageServer(object):
                     self._debug_section_end(title)
                     fn_rc = 0
                 else:
-                    sys.stderr.write("Snapshot '%s' not found\n" % (snapsname))
+                    self._debug_out.write(
+                        "Snapshot '%s' not found\n" % (snapsname)
+                    )
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         else:
             self._debug_section_begin(title)
             for resource in self._resources.itervalues():
@@ -3764,13 +3805,13 @@ class DrbdManageServer(object):
             if node is not None:
                 props = node.get_props()
             else:
-                sys.stderr.write("Node '%s' not found\n" % (obj_name))
+                self._debug_out.write("Node '%s' not found\n" % (obj_name))
         elif obj_class == "r":
             resource = self._resources.get(obj_name)
             if resource is not None:
                 props = resource.get_props()
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (obj_name))
+                self._debug_out.write("Resource '%s' not found\n" % (obj_name))
         elif obj_class == "v":
             split_idx = obj_name.find("/")
             if split_idx != -1:
@@ -3784,20 +3825,26 @@ class DrbdManageServer(object):
                         if volume is not None:
                             props = volume.get_props()
                         else:
-                            sys.stderr.write(
+                            self._debug_out.write(
                                 "Resource '%s' has no volume %d\n"
                                 % (resname, vol_id)
                             )
                     except ValueError:
-                        sys.stderr.write("Invalid volume id '%s'\n" % (vol_id))
+                        self._debug_out.write(
+                            "Invalid volume id '%s'\n" % (vol_id)
+                        )
                 else:
-                    sys.stderr.write("Resource '%s' not found\n" % (resname))
+                    self._debug_out.write(
+                        "Resource '%s' not found\n" % (resname)
+                    )
             else:
                 resource = self._resources.get(obj_name)
                 if resource is not None:
                     props = resource.get_props()
                 else:
-                    sys.stderr.write("Resource '%s' not found\n" % (obj_name))
+                    self._debug_out.write(
+                        "Resource '%s' not found\n" % (obj_name)
+                    )
         elif obj_class == "a":
             split_idx = obj_name.find("/")
             if split_idx != -1:
@@ -3820,7 +3867,7 @@ class DrbdManageServer(object):
                                 if vol_state is not None:
                                     props = vol_state.get_props()
                                 else:
-                                    sys.stderr.write(
+                                    self._debug_out.write(
                                         "Assignment '%s/%s' has no state for "
                                         "volume %d\n"
                                         % (node.get_name(),
@@ -3828,46 +3875,48 @@ class DrbdManageServer(object):
                                            vol_id)
                                     )
                             except ValueError:
-                                sys.stderr.write(
+                                self._debug_out.write(
                                     "Invalid volume id '%s'\n"
                                     % (vol_nr)
                                 )
                         else:
                             props = assg.get_props()
                     else:
-                        sys.stderr.write(
+                        self._debug_out.write(
                             "Assignment '%s/%s' not found\n"
                             % (node.get_name(), resource.get_name())
                         )
                 else:
                     if resource is None:
-                        sys.stderr.write(
+                        self._debug_out.write(
                             "Resource '%s' not found\n"
                             % (resname)
                         )
                     if node is None:
-                        sys.stderr.write(
+                        self._debug_out.write(
                             "Node '%s' not found\n"
                             % (nodename)
                         )
         else:
-            sys.stderr.write("Unknown object class '%s'\n" % (obj_class))
+            self._debug_out.write("Unknown object class '%s'\n" % (obj_class))
         if props is not None:
             if prop_key is None:
                 self._debug_section_begin(title)
                 for (prop_key, props_val) in props.iteritems():
-                    sys.stderr.write(props_format % (prop_key, props_val))
+                    self._debug_out.write(props_format % (prop_key, props_val))
                 self._debug_section_end(title)
                 fn_rc = 0
             else:
                 props_val = props.get_prop(prop_key)
                 if props_val is not None:
                     self._debug_section_begin(title)
-                    sys.stderr.write(props_format % (prop_key, props_val))
+                    self._debug_out.write(props_format % (prop_key, props_val))
                     self._debug_section_end(title)
                     fn_rc = 0
                 else:
-                    sys.stderr.write("Property '%s' not found\n" % prop_key)
+                    self._debug_out.write(
+                        "Property '%s' not found\n" % prop_key
+                    )
         return fn_rc
 
 
@@ -3896,21 +3945,21 @@ class DrbdManageServer(object):
             try:
                 val = conf[key]
                 if val is not None:
-                    sys.stderr.write(keyval_format % (key, val))
+                    self._debug_out.write(keyval_format % (key, val))
                 else:
-                    sys.stderr.write(val_unset_format % (key))
+                    self._debug_out.write(val_unset_format % (key))
             except KeyError:
-                sys.stderr.write(key_unset_format % (key))
+                self._debug_out.write(key_unset_format % (key))
         else:
             for (key, val) in conf.iteritems():
                 if val is not None:
-                    sys.stderr.write(keyval_format % (key, val))
+                    self._debug_out.write(keyval_format % (key, val))
                 else:
-                    sys.stderr.write(val_unset_format % (key))
+                    self._debug_out.write(val_unset_format % (key))
 
 
     def _debug_dump_node(self, node):
-        sys.stderr.write(
+        self._debug_out.write(
             "  ID:%-18s AF:%-2u ADDR:%-16s S:0x%.16x\n"
             % (node.get_name(), node.get_addrfam(),
                node.get_addr(), node.get_state())
@@ -3918,7 +3967,7 @@ class DrbdManageServer(object):
 
 
     def _debug_dump_resource(self, resource):
-        sys.stderr.write(
+        self._debug_out.write(
             "  ID:%-18s P:%.5u S:0x%.16x\n"
             % (resource.get_name(), int(resource.get_port()),
                resource.get_state())
@@ -3926,13 +3975,13 @@ class DrbdManageServer(object):
 
 
     def _debug_dump_volumes(self, resource):
-        sys.stderr.write(
+        self._debug_out.write(
             "  R/ID:%-18s\n"
             % (resource.get_name())
         )
         for volume in resource.iterate_volumes():
             vol_size_kiB = volume.get_size_kiB()
-            sys.stderr.write(
+            self._debug_out.write(
                 "  * V/ID:%.5u M:%.7u SIZE:%.13u S:0x%.16x\n"
                 % (volume.get_id(), volume.get_minor().get_value(),
                    vol_size_kiB, volume.get_state())
@@ -3942,11 +3991,11 @@ class DrbdManageServer(object):
     def _debug_dump_assignment(self, assg):
         node     = assg.get_node()
         resource = assg.get_resource()
-        sys.stderr.write(
+        self._debug_out.write(
             "  N/ID:%-18s R/ID:%-18s\n"
             % (node.get_name(), resource.get_name())
         )
-        sys.stderr.write(
+        self._debug_out.write(
             "  '- S/C:0x%.16x S/T:0x%.16x\n"
             % (assg.get_cstate(),
                assg.get_tstate())
@@ -3955,13 +4004,13 @@ class DrbdManageServer(object):
             vol_bdev_path = vol_state.get_bd_path()
             if vol_bdev_path is None:
                 vol_bdev_path = "(unset)"
-            sys.stderr.write(
+            self._debug_out.write(
                 "  * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
                 % (vol_state.get_id(),
                    vol_state.get_cstate(),
                    vol_state.get_tstate())
             )
-            sys.stderr.write(
+            self._debug_out.write(
                 "  '- BD:%s\n" % (vol_bdev_path)
             )
         for snaps_assg in assg.iterate_snaps_assgs():
@@ -3970,7 +4019,7 @@ class DrbdManageServer(object):
 
     def _debug_dump_snapshot(self, snapshot):
         resource = snapshot.get_resource()
-        sys.stderr.write(
+        self._debug_out.write(
             "  R/ID:%-18s S/ID:%-18s\n"
             % (resource.get_name(), snapshot.get_name())
         )
@@ -3982,16 +4031,16 @@ class DrbdManageServer(object):
         node     = assg.get_node()
         resource = assg.get_resource()
         self._debug_dump_snapshot(snapshot)
-        sys.stderr.write(
+        self._debug_out.write(
             "  '- N/ID: %s\n"
             % (node.get_name())
         )
-        sys.stderr.write(
+        self._debug_out.write(
             "     '- S/C:0x%.16x S/T:0x%.16x\n"
             % (snaps_assg.get_cstate(), snaps_assg.get_tstate())
         )
         for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
-            sys.stderr.write(
+            self._debug_out.write(
                 "     * V/ID:%.5u S/C:0x%.16x S/T:0x%.16x\n"
                 % (snaps_vol_state.get_id(), snaps_vol_state.get_cstate(),
                    snaps_vol_state.get_tstate())
@@ -4014,7 +4063,7 @@ class DrbdManageServer(object):
                     except ValueError:
                         pass
             else:
-                sys.stderr.write("Node '%s' not found\n" % (nodename))
+                self._debug_out.write("Node '%s' not found\n" % (nodename))
         return fn_rc
 
 
@@ -4034,7 +4083,7 @@ class DrbdManageServer(object):
                     except ValueError:
                         pass
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         return fn_rc
 
 
@@ -4060,14 +4109,14 @@ class DrbdManageServer(object):
                             volume.set_state(state_update)
                             fn_rc = 0
                     else:
-                        sys.stderr.write(
+                        self._debug_out.write(
                             "Invalid volume index %u for resource '%s'\n"
                             % (vol_id, resource.get_name())
                         )
                 except ValueError:
                     pass
             else:
-                sys.stderr.write("Resource '%s' not found\n" % (resname))
+                self._debug_out.write("Resource '%s' not found\n" % (resname))
         return fn_rc
 
 
@@ -4099,15 +4148,15 @@ class DrbdManageServer(object):
                     except ValueError:
                         pass
                 else:
-                    sys.stderr.write(
+                    self._debug_out.write(
                         "Resource '%s' is not assigned to node '%s'\n"
                         % (resource.get_name(), node.get_name())
                     )
             else:
                 if node is None:
-                    sys.stderr.write("Node '%s' not found\n" % (nodename))
+                    self._debug_out.write("Node '%s' not found\n" % (nodename))
                 if resource is None:
-                    sys.stderr.write("Resource '%s' not found\n" % (resname))
+                    self._debug_out.write("Resource '%s' not found\n" % (resname))
         return fn_rc
 
 
@@ -4144,6 +4193,46 @@ class DrbdManageServer(object):
         return loglevel
 
 
+    def _debug_set_debug_out(self, val):
+        """
+        Connects the debug output channel to an output stream
+        """
+        fn_rc = 1
+        try:
+            if (self._debug_out is not sys.stdout and
+                self._debug_out is not sys.stderr):
+                    try:
+                        self._debug_out.close()
+                    except (IOError, OSError, AttributeError):
+                        pass
+            if val == "stdout":
+                self._debug_out = sys.stdout
+                fn_rc = 0
+            elif val == "stderr":
+                self._debug_out = sys.stderr
+                fn_rc = 0
+            elif val == "file":
+                self._debug_out = None
+                out_file = self.get_conf_value(self.KEY_DEBUG_OUT_FILE)
+                if out_file is not None:
+                    self._debug_out = open(out_file, "a+")
+                    fn_rc = 0
+                else:
+                    logging.error(
+                        "The configuration entry '%s' is missing, "
+                        "debug output redirected to stderr\n"
+                        % (self.KEY_DEBUG_OUT_FILE)
+                    )
+            else:
+                raise SyntaxException
+        except (IOError, OSError):
+            pass
+        finally:
+            if self._debug_out is None:
+                self._debug_out = sys.stderr
+        return fn_rc
+
+
     def _debug_keyval_split(self, keyval):
         split_idx = keyval.find("=")
         key = keyval[:split_idx].lower()
@@ -4168,7 +4257,7 @@ class DrbdManageServer(object):
         # the magic '53' remaining characters here)
         repeat = 53 - title_len if title_len <= 53 else 0
         section_ruler += ("=" * repeat) + "\n"
-        sys.stderr.write(section_ruler)
+        self._debug_out.write(section_ruler)
 
 
     def shutdown(self):
