@@ -801,14 +801,6 @@ class DrbdManager(object):
         return fn_rc
 
 
-    # FIXME: fails to undeploy, because undeploying the last volume
-    # gets an error from drbdadm, and then does not remove the
-    # blockdevice, but this function removes the entire assignment
-    # anyway.
-    # Should first perform drbdadm down, then remove the blockdevices,
-    # and only if everything worked as intended, remove the assignment;
-    # otherwise, single volumes may be removed after their blockdevice
-    # has been undeployed successfully
     def _undeploy_assignment(self, assignment):
         """
         Undeploys all volumes of a resource, then reset the assignment's state
@@ -816,14 +808,6 @@ class DrbdManager(object):
         """
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
-
-        # If the assignment is diskless (a DRBD client),
-        # immediately mark all volumes as undeployed
-        cstate = assignment.get_cstate()
-        if (cstate & Assignment.FLAG_DISKLESS) != 0:
-            for vol_state in assignment.iterate_volume_states():
-                vol_state.set_cstate(0)
-                vol_state.set_tstate(0)
 
         ud_errors = False
         # No actions are required for empty assignments
@@ -844,8 +828,15 @@ class DrbdManager(object):
                 fn_rc = drbd_proc.wait()
 
                 if fn_rc == 0:
-                    # undeploy all non-diskless volumes
-                    if (cstate & Assignment.FLAG_DISKLESS) == 0:
+                    # if the assignment was diskless, mark all
+                    # volumes as undeployed
+                    cstate = assignment.get_cstate()
+                    if (cstate & Assignment.FLAG_DISKLESS) != 0:
+                        for vol_state in assignment.iterate_volume_states():
+                            vol_state.set_cstate(0)
+                            vol_state.set_tstate(0)
+                    else:
+                        # undeploy all non-diskless volumes
                         for vol_state in assignment.iterate_volume_states():
                             stor_rc = bd_mgr.remove_blockdevice(
                                 resource.get_name(), vol_state.get_id()
