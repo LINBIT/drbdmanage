@@ -1407,6 +1407,9 @@ class DrbdManage(object):
             )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
+        # sort the node list by node name
+        node_list.sort(key=lambda node_entry: node_entry[0])
+
         for node_entry in node_list:
             try:
                 node_name, properties = node_entry
@@ -1558,6 +1561,9 @@ class DrbdManage(object):
                 )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
 
+        # sort the resource list by resource name
+        res_list.sort(key=lambda res_entry: res_entry[0])
+
         for res_entry in res_list:
             try:
                 if list_volumes:
@@ -1577,6 +1583,8 @@ class DrbdManage(object):
                            color(COLOR_NONE))
                     )
                 if list_volumes:
+                    # sort volume list by volume id
+                    vol_list.sort(key=lambda vol_entry: vol_entry[0])
                     for vol_entry in vol_list:
                         vol_id, vol_properties = vol_entry
                         vol_view = DrbdVolumeView(vol_properties,
@@ -1682,6 +1690,9 @@ class DrbdManage(object):
                    color(COLOR_NONE))
             )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+
+        # Sort the assignment list by node name, then by resource name
+        assg_list.sort(key=lambda assg_entry: (assg_entry[0], assg_entry[1]))
 
         prev_node = ""
         for assg_entry in assg_list:
