@@ -47,7 +47,10 @@ class PropsContainer(object):
         """
         Retrieves a property from the dictionary
         """
-        return str(self._props.get(str(key)))
+        val = self._props.get(str(key))
+        if val is not None:
+            val = str(val)
+        return val
 
 
     def get_selected_props(self, keys):
