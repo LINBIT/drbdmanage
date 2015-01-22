@@ -74,7 +74,7 @@ class DrbdManageServer(object):
     drbdmanage server - main class
     """
 
-    DM_VERSION = "0.20"
+    DM_VERSION = "0.21"
 
     EVT_UTIL = "drbdsetup"
 
