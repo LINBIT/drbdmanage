@@ -146,7 +146,7 @@ class LVMThinPool(object):
         return blockdev
 
 
-    def create_snapshot(self, name, vol_id, blockdevice):
+    def create_snapshot(self, name, vol_id, source_blockdev):
         """
         Allocates a block device as a snapshot of an existing block device
 
@@ -159,7 +159,47 @@ class LVMThinPool(object):
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
         """
-        raise NotImplementedError
+        blockdev  = None
+        lv_name   = source_blockdev.get_name()
+        pool_name = None
+        pool      = None
+        try:
+            pool_name = self._pool_lookup[lv_name]
+            pool      = self._pools[pool_name]
+        except KeyError:
+            logging.error(
+                "LVM plugin: Snapshot block device creation failed, "
+                "cannot find the associated thinpool"
+            )
+        try:
+            if pool is not None:
+                snaps_base_name = self._volume_name(name, vol_id)
+                snaps_suffix    = pool.extract_pool_name_suffix()
+                snaps_name      = snaps_base_name + snaps_suffix
+
+                # Attempt to create the snapshot
+                created = self._create_snapshot_lv(snaps_name, lv_name)
+                if created:
+                    size = source_blockdev.get_size_kiB()
+                    blockdev = drbdmanage.storage.storagecore.BlockDevice(
+                        snaps_name,
+                        size,
+                        utils.build_path(
+                            self._conf[self.KEY_DEV_PATH],
+                            self._conf[self.KEY_VG_NAME]
+                        ) + "/" + snaps_name
+                    )
+                    pool.add_volume(snaps_name)
+                    self._volumes[snaps_name] = blockdev
+                    self._pool_lookup[snaps_name] = pool_name
+                    self.save_state()
+        except Exception as exc:
+            logging.error(
+                "LVM plugin: Block device creation failed, "
+                "unhandled exception: %s"
+                % str(exc)
+            )
+        return blockdev
 
 
     def remove_snapshot(self, blockdevice):
@@ -170,7 +210,7 @@ class LVMThinPool(object):
         @type    blockdevice: BlockDevice object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        raise NotImplementedError
+        return self.remove_blockdevice(blockdevice)
 
 
     def remove_blockdevice(self, blockdevice):
@@ -536,6 +576,41 @@ class LVMThinPool(object):
         return created
 
 
+    def _create_snapshot_lv(self, snaps_name, lv_name):
+        """
+        Creates an LVM snapshot LV of an existing LV
+        """
+        # lvcreate -s drbdpool/<volname> -n <snapshotname>
+        created = False
+
+        # Prepare the path for LVM's 'lvcreate' utility
+        lvcreate = utils.build_path(
+            self._conf[self.KEY_LVM_PATH],
+            self.LVCREATE
+        )
+
+        # Create the thin pool for the volume
+        logging.debug(
+            "LVMThinPool: exec: %s -s %s/%s -n %s"
+            % (lvcreate, self._conf[self.KEY_VG_NAME], lv_name, snaps_name)
+        )
+        lvm_proc = subprocess.Popen(
+            [
+                lvcreate,
+                "-s", self._conf[self.KEY_VG_NAME] + "/" + lv_name,
+                "-n", snaps_name
+            ],
+            0, lvcreate,
+            env=self._subproc_env(),
+            close_fds=True
+        )
+        create_rc = lvm_proc.wait()
+        if create_rc == 0:
+            created = True
+
+        return created
+
+
     def _remove_lv(self, name):
         """
         Removes an LVM logical volume
@@ -672,6 +747,7 @@ class ThinPool(storagecommon.GenericStorage):
         """
         return False if len(self._volumes) > 0 else True
 
+
     @classmethod
     def generate_pool_name(cls, name, vol_id):
         pool_name = (
@@ -679,6 +755,14 @@ class ThinPool(storagecommon.GenericStorage):
             % (name, vol_id, long(time.strftime("%Y%m%d%H%M%S")))
         )
         return pool_name
+
+
+    def extract_pool_name_suffix(self):
+        index  = self._name.rfind("_")
+        suffix = ""
+        if index != -1:
+            suffix = self._name[index:]
+        return suffix
 
 
 class ThinPoolPersistence(persistence.GenericPersistence):
