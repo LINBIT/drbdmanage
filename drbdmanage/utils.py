@@ -436,6 +436,9 @@ class ArgvReader(object):
         """
         self._idx = 1
 
+    def rest(self):
+	return self._argv[self._idx:]
+
 
 class CmdLineReader(object):
     """
