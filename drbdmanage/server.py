@@ -3250,6 +3250,48 @@ class DrbdManageServer(object):
         return [volume.get_path()]
 
 
+    def TQ_export_conf_split_up(self, node_name, res_name):
+        """
+        Export the configuration file for a DRBD resource on a specified node,
+        with some values split out into a dictionary.
+        """
+        response = []
+        values   = {}
+        node     = self._nodes.get(node_name)
+        resource = self._resources.get(res_name)
+        if not resource:
+            response = ["Error: Resource not found"]
+
+        values['secret'] = resource.get_secret()
+        # should use a write-template function instead
+        # MUST NOT SAVE WRONG VALUE
+        resource.set_secret("%(shared-secret)s")
+
+        if node is not None and resource is not None:
+            assignment = node.get_assignment(res_name)
+            if assignment is not None:
+                conf_buffer = StringIO.StringIO()
+                writer = DrbdAdmConf()
+                writer.write(conf_buffer, assignment, False)
+                val_list = list(reduce(lambda x, y: x + y, values.items()))
+                response = [conf_buffer.getvalue()] + val_list
+                conf_buffer.close()
+            else:
+                response = [
+                    "Error: Resource %s is not assigned to node %s"
+                    % (res_name, node_name)
+                ]
+        else:
+            if node is None:
+                response = ["Error: Node %s not found" % (node_name)]
+            else:
+                response = ["Error: Resource %s not found" % (res_name)]
+
+        # is that needed, or will local data be removed anyway?
+        self.load_conf()
+        return response
+
+
     def TQ_export_conf(self, node_name, res_name):
         """
         Export the configuration file for a DRBD resource on a specified node
