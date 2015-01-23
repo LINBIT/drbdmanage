@@ -3257,6 +3257,8 @@ class DrbdManageServer(object):
         response = []
         node     = self._nodes.get(node_name)
         resource = self._resources.get(res_name)
+        if not resource:
+            response = ["Error: Resource not found"]
         if node is not None and resource is not None:
             assignment = node.get_assignment(res_name)
             if assignment is not None:
