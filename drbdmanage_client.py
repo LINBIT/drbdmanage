@@ -2437,7 +2437,7 @@ class DrbdManage(object):
         for cmd_name in sorted(self.COMMANDS):
 
             # ignore shortcut aliases (one and two characters) for now
-            if len(cmd_name) > 2:
+            if len(cmd_name) > 2 and cmd_name[0] != '_':
                 items += 1
                 if items % columns != 0:
                     sys.stdout.write("  ")
