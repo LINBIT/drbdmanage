@@ -29,6 +29,8 @@ import sys
 import os
 import errno
 import dbus
+import json
+import re
 import subprocess
 import time
 import traceback
@@ -1806,10 +1808,45 @@ class DrbdManage(object):
             self.syntax_howto_join()
         return fn_rc
 
-
     def syntax_howto_join(self):
         sys.stderr.write("Syntax: howto-join <node>\n")
 
+    def cmd_lowlevel_debug(self, args):
+	cmd = args.next_arg()
+	if not cmd:
+		return self.syntax_lowlevel_debug()
+
+	# "EXPR if THEN else ELSE" evaluates _both_ THEN and ELSE...
+	# which doesn't work here, because json.loads() can raise an exception.
+	params = map(lambda s: (s.lstrip()[0] in '[{') and json.loads(s) or s, args.rest())
+
+	self.dbus_init()
+        fn = getattr(self._server, cmd)
+	if not fn:
+		raise "No such function"
+
+	try:
+		res = fn(*params)
+		print json.dumps(res,
+				sort_keys=True,
+				indent=4,
+				separators=(',', ': '))
+	except dbus.DBusException as e:
+		if e._dbus_error_name == 'org.freedesktop.DBus.Python.TypeError':
+			msg = re.sub(r'.*\n(TypeError:)', '\\1',
+					e.message,
+					flags=re.DOTALL + re.MULTILINE)
+			sys.stderr.write(msg)
+			return 1
+		else:
+			raise
+	except:
+		raise
+
+	return 0
+
+    def syntax_lowlevel_debug(self):
+        sys.stderr.write("Syntax: _debug_ <cmd> [input args as JSON]\n")
 
     def cmd_query_conf(self, args):
         """
@@ -2807,6 +2844,7 @@ class DrbdManage(object):
         "uninit"            : cmd_uninit,
         "join"              : cmd_join,
         "howto-join"        : cmd_howto_join,
+        "_debug_"           : cmd_lowlevel_debug,
         "query-conf"        : cmd_query_conf
       }
 
