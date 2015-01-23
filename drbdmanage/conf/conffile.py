@@ -269,6 +269,8 @@ class DrbdAdmConf(object):
         pass
 
 
+# TODO: only have a single writer that returns a template and a dict of substitutions,
+# and use that in all the functions below.
     def write(self, stream, assignment, undeployed_flag):
         try:
             resource = assignment.get_resource()
