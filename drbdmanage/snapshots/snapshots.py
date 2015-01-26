@@ -90,14 +90,6 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         except KeyError:
             pass
 
-    # TODO: move to parent class?
-    def filter_match(self, filter_props):
-        match = False
-        if filter_props is None or len(filter_props) == 0:
-            match = True
-        else:
-            match = self.properties_match(filter_props)
-        return match
 
     # TODO: The special properties are not implemented here;
     #       there may not be a need to match those, too, cause
