@@ -2115,6 +2115,13 @@ class DrbdManage(object):
         server_conf = self.load_server_conf()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
+        time_set   = False
+        begin_time = 0
+        end_time   = 0
+
+        # DRBD usermode helper file, usermode helper setting
+        umh_f = None
+        umh   = None
         try:
             parse_rc = CommandParser().parse(
                 args, order, params, opt, optalias, flags, flagsalias
@@ -2171,8 +2178,8 @@ class DrbdManage(object):
                     l_node_id, server_conf
                 )
 
-                umh_f = None
-                umh   = None
+                begin_time = time.time()
+                # change the usermode helper temporarily
                 try:
                     umh_f = open(self.UMHELPER_FILE, "r")
                     umh = umh_f.read(8192)
@@ -2220,40 +2227,14 @@ class DrbdManage(object):
                     ]
                 )
 
-                # FIXME: wait here -- otherwise, restoring the user mode
-                #        helper will probably race with establishing the
-                #        network connection
-                time.sleep(self.UMHELPER_WAIT_TIME)
-
-                umh_f = None
-                if umh is not None:
-                    try:
-                        umh_f = open(self.UMHELPER_FILE, "w")
-                        umh_f.write(umh)
-                    except (IOError, OSError) as err:
-                        exc_type, exc_obj, exc_tb = sys.exc_info()
-                        exc_lines = traceback.format_exception_only(
-                            exc_type, exc_obj
-                        )
-                        exc_text = exc_lines[0]
-                        sys.stderr.write(
-                            "Warning: Resetting the usermode helper failed:\n"
-                            "%s"
-                            % (exc_text)
-                        )
-                    finally:
-                        if umh_f is not None:
-                            try:
-                                umh_f.close()
-                            except (IOError, OSError):
-                                pass
-
                 # Startup the drbdmanage server and update the local .drbdctrl
                 # resource configuration file
                 self.dbus_init()
                 server_rc = self._server.join_node(
                     drbdctrl_blockdev, port, secret
                 )
+                end_time = time.time()
+                time_set = True
                 for rc_entry in server_rc:
                     (err_code, err_msg, err_args) = rc_entry
                     if err_code == DM_ENOENT:
@@ -2273,6 +2254,47 @@ class DrbdManage(object):
                 "Syntax: local_ip local_node_id peer_ip peer_name "
                 "peer_node_id secret\n"
             )
+        finally:
+            # undo the temporary change of the usermode helper
+            # FIXME: wait here -- otherwise, restoring the user mode
+            #        helper will probably race with establishing the
+            #        network connection
+            delay_time = self.UMHELPER_WAIT_TIME
+            if time_set:
+                if begin_time >= 0 and end_time >= 0:
+                    diff_time = end_time - begin_time
+                    if not diff_time < 0:
+                        if diff_time <= self.UMHELPER_WAIT_TIME:
+                            # set the remaining delay time
+                            delay_time = self.UMHELPER_WAIT_TIME - diff_time
+                        else:
+                            delay_time = 0
+
+            if delay_time > 0:
+                time.sleep(delay_time)
+
+            umh_f = None
+            if umh is not None:
+                try:
+                    umh_f = open(self.UMHELPER_FILE, "w")
+                    umh_f.write(umh)
+                except (IOError, OSError) as err:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    exc_lines = traceback.format_exception_only(
+                        exc_type, exc_obj
+                    )
+                    exc_text = exc_lines[0]
+                    sys.stderr.write(
+                        "Warning: Resetting the usermode helper failed:\n"
+                        "%s"
+                        % (exc_text)
+                    )
+                finally:
+                    if umh_f is not None:
+                        try:
+                            umh_f.close()
+                        except (IOError, OSError):
+                            pass
         return fn_rc
 
 
