@@ -3307,7 +3307,7 @@ class DrbdManageServer(object):
         if not resource:
             response = ["Error: Resource not found"]
 
-        values['secret'] = resource.get_secret()
+        values['shared-secret'] = resource.get_secret()
         # should use a write-template function instead
         # MUST NOT SAVE WRONG VALUE
         resource.set_secret("%(shared-secret)s")
