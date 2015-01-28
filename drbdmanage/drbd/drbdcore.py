@@ -1454,6 +1454,8 @@ class DrbdNode(GenericDrbdObject):
     AF_IPV4_LABEL = "ipv4"
     AF_IPV6_LABEL = "ipv6"
 
+    NODE_ID_NONE = -1
+
     _name     = None
     _addr     = None
     _addrfam  = None

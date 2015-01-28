@@ -842,25 +842,30 @@ class DrbdManageServer(object):
                     pass
                 # Default state for new nodes:
                 # Node has a control volume and local storage
-                node_state = DrbdNode.FLAG_DRBDCTRL | DrbdNode.FLAG_STORAGE
+                node_drbdctrl = True
                 try:
-                    node_drbdctrl = props[FLAG_DRBDCTRL]
-                    if node_drbdctrl == BOOL_FALSE:
-                        node_state = ((node_state | DrbdNode.FLAG_DRBDCTRL) ^
-                                      DrbdNode.FLAG_DRBDCTRL)
-                except KeyError:
+                    node_drbdctrl = string_to_bool(props[FLAG_DRBDCTRL])
+                except (KeyError, ValueError):
                     pass
+                node_storage = True
                 try:
-                    node_storage = props[FLAG_STORAGE]
-                    if node_storage == BOOL_FALSE:
-                        node_state = ((node_state | DrbdNode.FLAG_STORAGE) ^
-                                      DrbdNode.FLAG_STORAGE)
-                except KeyError:
+                    node_storage = string_to_bool(props[FLAG_STORAGE])
+                except (KeyError, ValueError):
                     pass
+                node_state = 0
+                if node_drbdctrl:
+                    node_state |= DrbdNode.FLAG_DRBDCTRL
+                if node_storage:
+                    node_state |= DrbdNode.FLAG_STORAGE
                 try:
                     if addr is not None and addrfam is not None:
-                        node_id = self.get_free_drbdctrl_node_id()
-                        if node_id != -1:
+                        node = None
+                        node_id = DrbdNode.NODE_ID_NONE
+                        if node_drbdctrl:
+                            node_id = self.get_free_drbdctrl_node_id()
+                        if ((node_id != DrbdNode.NODE_ID_NONE) or
+                            (not node_drbdctrl)):
+                            # Initialize the node object
                             node = DrbdNode(
                                 node_name, addr, addrfam, node_id,
                                 node_state, -1, -1,
@@ -883,6 +888,8 @@ class DrbdManageServer(object):
                             else:
                                 fn_rc = DM_ECTRLVOL
                         else:
+                            # Attempted to create a node with a control volume,
+                            # but could not assign a node id
                             fn_rc = DM_ENODEID
                     else:
                         fn_rc = DM_EINVAL
@@ -1414,7 +1421,7 @@ class DrbdManageServer(object):
         try:
             serial = self.get_serial()
             node_id = self.get_free_node_id(resource)
-            if node_id == -1:
+            if node_id == DrbdNode.NODE_ID_NONE:
                 # no free node ids
                 fn_rc = DM_ENODEID
             else:
@@ -4049,9 +4056,9 @@ class DrbdManageServer(object):
 
     def _debug_dump_node(self, node):
         self._debug_out.write(
-            "  ID:%-18s AF:%-2u ADDR:%-16s S:0x%.16x\n"
-            % (node.get_name(), node.get_addrfam(),
-               node.get_addr(), node.get_state())
+            "  ID:%-18s NID:%2d AF:%-2u ADDR:%-16s S:0x%.16x\n"
+            % (node.get_name(), node.get_node_id(),
+               node.get_addrfam(), node.get_addr(), node.get_state())
         )
 
 
@@ -4408,19 +4415,16 @@ class DrbdManageServer(object):
 
         @return: next free network port number; or -1 on error
         """
-        try:
-            min_nr    = int(self._conf[self.KEY_MIN_PORT_NR])
-            max_nr    = int(self._conf[self.KEY_MAX_PORT_NR])
+        min_nr    = int(self._conf[self.KEY_MIN_PORT_NR])
+        max_nr    = int(self._conf[self.KEY_MAX_PORT_NR])
 
-            port_list = []
-            for resource in self._resources.itervalues():
-                nr_item = resource.get_port()
-                if nr_item >= min_nr and nr_item <= max_nr:
-                    port_list.append(nr_item)
-            port = get_free_number(min_nr, max_nr, port_list)
-            if port == -1:
-                raise ValueError
-        except ValueError:
+        port_list = []
+        for resource in self._resources.itervalues():
+            nr_item = resource.get_port()
+            if nr_item >= min_nr and nr_item <= max_nr:
+                port_list.append(nr_item)
+        port = get_free_number(min_nr, max_nr, port_list)
+        if port == -1:
             port = RES_PORT_NR_ERROR
         return port
 
@@ -4433,18 +4437,17 @@ class DrbdManageServer(object):
         and are allocated per resource (the node IDs of the same nodes can
         differ from one assigned resource to another)
 
-        @return: next free node id number; or -1 on error
+        @return: next free node id number; or DrbdNode.NODE_ID_NONE on error
         """
-        try:
-            max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
-            id_list = []
-            for assg in resource.iterate_assignments():
-                id_item = assg.get_node_id()
-                if id_item >= 0 and id_item <= int(max_node_id):
-                    id_list.append(id_item)
-            node_id = get_free_number(0, int(max_node_id), id_list)
-        except ValueError:
-            node_id = -1
+        max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
+        id_list = []
+        for assg in resource.iterate_assignments():
+            id_item = assg.get_node_id()
+            if id_item >= 0 and id_item <= int(max_node_id):
+                id_list.append(id_item)
+        node_id = get_free_number(0, int(max_node_id), id_list)
+        if node_id == -1:
+            node_id = DrbdNode.NODE_ID_NONE
         return node_id
 
 
@@ -4456,19 +4459,18 @@ class DrbdManageServer(object):
         and are allocated per resource (the node IDs of the same nodes can
         differ from one assigned resource to another)
 
-        @return: next free node id number; or -1 on error
+        @return: next free node id number; or DrbdNode.NODE_ID_NONE on error
         """
-        try:
-            max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
+        max_node_id = int(self._conf[self.KEY_MAX_NODE_ID])
 
-            id_list = []
-            for node in self._nodes.itervalues():
-                id_item = node.get_node_id()
-                if id_item >= 0 and id_item <= max_node_id:
-                    id_list.append(id_item)
-            node_id = get_free_number(0, max_node_id, id_list)
-        except ValueError:
-            node_id = -1
+        id_list = []
+        for node in self._nodes.itervalues():
+            id_item = node.get_node_id()
+            if id_item >= 0 and id_item <= max_node_id:
+                id_list.append(id_item)
+        node_id = get_free_number(0, max_node_id, id_list)
+        if node_id == -1:
+            node_id = DrbdNode.NODE_ID_NONE
         return node_id
 
 
