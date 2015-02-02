@@ -30,12 +30,15 @@ import drbdmanage.storage.persistence as storpers
 
 from drbdmanage.consts import DEFAULT_VG
 from drbdmanage.exceptions import PersistenceException
-from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS
+from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS, DM_DEBUG
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import build_path
 from drbdmanage.conf.conffile import ConfFile
 
+# from drbdmanage.storage.storagecore import StoragePlugin
 
+
+#class LVM(drbdmanage.storage.storagecore.StoragePlugin):
 class LVM(object):
 
     """
@@ -78,6 +81,7 @@ class LVM(object):
 
 
     def __init__(self):
+        super(LVM, self).__init__()
         try:
             self._lvs   = {}
             conf_loaded = None
@@ -182,7 +186,15 @@ class LVM(object):
         return fn_rc
 
 
-    def get_blockdevice(self, name, vol_id):
+    def create_snapshot(self, name, vol_id, src_bd_name):
+        raise NotImplementedError
+
+
+    def remove_snapshot(self, blockdev):
+        raise NotImplementedError
+
+
+    def get_blockdevice(self, bd_name):
         """
         Retrieves a registered BlockDevice object
 
@@ -194,7 +206,7 @@ class LVM(object):
         """
         blockdev = None
         try:
-            blockdev = self._lvs[self._lv_name(name, vol_id)]
+            blockdev = self._lvs[bd_name]
         except KeyError:
             pass
         return blockdev

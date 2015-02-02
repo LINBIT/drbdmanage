@@ -21,13 +21,12 @@
 
 import logging
 import drbdmanage.utils
-import drbdmanage.storage.lvm
 
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.exceptions import (
     InvalidMajorNrException, InvalidMinorNrException
 )
-from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE
+from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_DEBUG
 
 
 class BlockDevice(GenericStorage):
@@ -74,6 +73,11 @@ class BlockDeviceManager(object):
             )
 
 
+    def get_blockdevice(self, bd_name):
+        blockdev = self._plugin.get_blockdevice(bd_name)
+        return blockdev
+
+
     def create_blockdevice(self, name, vol_id, size):
         blockdev = self._plugin.create_blockdevice(name, vol_id, size)
         if blockdev is not None:
@@ -87,46 +91,87 @@ class BlockDeviceManager(object):
         return blockdev
 
 
-    def remove_blockdevice(self, name, vol_id):
+    def remove_blockdevice(self, bd_name):
         fn_rc = DM_ESTORAGE
-        blockdev = self._plugin.get_blockdevice(name, vol_id)
+        blockdev = self._plugin.get_blockdevice(bd_name)
         if blockdev is not None:
             fn_rc = self._plugin.remove_blockdevice(blockdev)
             logging.debug(
                 "BlockDeviceManager: remove '%s': blockdev=%s, rc=%d"
-                % (name, blockdev, fn_rc)
+                % (bd_name, blockdev, fn_rc)
             )
         else:
             logging.debug(
                 "BlockDeviceManager: remove '%s': has no storage block device"
-                % (name)
+                % (bd_name)
             )
             fn_rc = DM_ENOENT
         return fn_rc
 
 
-    def up_blockdevice(self, name, vol_id):
-        blockdev = self._plugin.get_blockdevice(name, vol_id)
+    def up_blockdevice(self, bd_name):
+        blockdev = self._plugin.get_blockdevice(bd_name)
         if blockdev is not None:
             return self._plugin.up_blockdevice(blockdev)
         else:
             logging.debug(
                 "BlockDeviceManager: up '%s': has no storage block device"
-                % (name)
+                % (bd_name)
             )
         return DM_ENOENT
 
 
-    def down_blockdevice(self, name, vol_id):
-        blockdev = self._plugin.get_blockdevice(name, vol_id)
+    def down_blockdevice(self, bd_name):
+        blockdev = self._plugin.get_blockdevice(bd_name)
         if blockdev is not None:
             return self._plugin.down_blockdevice(blockdev)
         else:
             logging.debug(
                 "BlockDeviceManager: down '%s': has no storage block device"
-                % (name)
+                % (bd_name)
             )
         return DM_ENOENT
+
+
+    def create_snapshot(self, name, vol_id, src_bd_name):
+        successful = False
+        blockdev   = None
+        src_blockdev = self._plugin.get_blockdevice(src_bd_name)
+        if src_blockdev is not None:
+            blockdev = self._plugin.create_snapshot(name, vol_id, src_blockdev)
+            if blockdev is not None:
+                successful = True
+        else:
+            logging.debug(
+                "BlockDeviceManager: create snapshot '%s' volume #%u: "
+                "source block device %s not found"
+                % (name, vol_id, src_bd_name)
+            )
+        status_text = "successful" if successful else "failed"
+        logging.debug(
+            "BlockDeviceManager: create snapshot '%s': volume #%u, %s"
+            % (name, vol_id, status_text)
+        )
+        return blockdev
+
+
+    def remove_snapshot(self, bd_name):
+        successful = False
+        fn_rc = DM_DEBUG
+        rm_blockdev = self._plugin.get_blockdevice(bd_name)
+        if rm_blockdev is not None:
+            fn_rc = self._plugin.remove_blockdevice(rm_blockdev)
+        else:
+            logging.debug(
+                "BlockDeviceManager: remove snapshot: volume '%s' not found"
+                % (bd_name)
+            )
+        status_text = "successful" if successful else "failed"
+        logging.debug(
+            "BlockDeviceManager: remove snapshot blockdev=%s, rc=%d, %s"
+            % (bd_name, fn_rc, status_text)
+        )
+        return fn_rc
 
 
     def update_pool(self, drbdnode):
@@ -252,7 +297,7 @@ class StoragePlugin(object):
         pass
 
 
-    def get_blockdevice(self, name, vol_id):
+    def get_blockdevice(self, bd_name):
         """
         Retrieves a registered BlockDevice object
 

@@ -34,8 +34,10 @@ import json
 import subprocess
 import time
 
+from drbdmanage.storage.storagecore import StoragePlugin
 
-class LVMThinPool(object):
+
+class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
 
     """
     LVM thinpool-LV backing store plugin for the drbdmanage server
@@ -82,6 +84,7 @@ class LVMThinPool(object):
 
 
     def __init__(self):
+        super(LVMThinPool, self).__init__()
         self._volumes = {}
         self._pools   = {}
 
@@ -90,7 +93,7 @@ class LVMThinPool(object):
         self.reconfigure()
 
 
-    def get_blockdevice(self, name, vol_id):
+    def get_blockdevice(self, bd_name):
         """
         Retrieves a registered BlockDevice object
 
@@ -100,7 +103,7 @@ class LVMThinPool(object):
         @return: the specified block device; None on error
         @rtype:  BlockDevice object
         """
-        blockdev = self._volumes.get(self._volume_name(name, vol_id))
+        blockdev = self._volumes.get(bd_name)
         return blockdev
 
 
@@ -154,8 +157,8 @@ class LVMThinPool(object):
         @type    name: str
         @param   vol_id: volume id
         @type    vol_id: int
-        @param   blockdevice: the existing block device to snapshot
-        @type    blockdevice: BlockDevice object
+        @param   source_blockdev: the existing block device to snapshot
+        @type    source_blockdev: BlockDevice object
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
         """

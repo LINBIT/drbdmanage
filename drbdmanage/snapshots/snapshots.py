@@ -210,12 +210,35 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
             self.get_props().new_serial()
 
 
+    def requires_deploy(self):
+        """
+        Returns True if the snapshot needs to be deployed, False otherwise
+        """
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._cstate & self.FLAG_DEPLOY == 0))
+
+
+    def requires_undeploy(self):
+        """
+        Returns True if the assignment needs to be undeployed, False otherwise
+        """
+        return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._tstate & self.FLAG_DEPLOY == 0))
+
+
     def get_cstate(self):
         return self._cstate
 
 
     def get_tstate(self):
         return self._tstate
+
+
+    def set_cstate_flags(self, flags):
+        saved_cstate = self._cstate
+        self._cstate = (self._cstate | flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def clear_cstate_flags(self, flags):
@@ -242,11 +265,11 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
                               storagecommon.GenericStorage):
 
-    _vol_id      = None
-    _bd_path     = None
-    _blockdevice = None
-    _cstate      = 0
-    _tstate      = 0
+    _vol_id  = None
+    _bd_path = None
+    _bd_name = None
+    _cstate  = 0
+    _tstate  = 0
 
     FLAG_DEPLOY = 1
 
@@ -255,7 +278,7 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
 
 
     def __init__(self, vol_id, size_kiB, cstate, tstate,
-                 blockdevice, bd_path,
+                 bd_name, bd_path,
                  get_serial_fn, init_serial, init_props):
         super(DrbdSnapshotVolumeState , self).__init__(
             get_serial_fn, init_serial, init_props
@@ -266,9 +289,9 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
             self, size_kiB
         )
         self._vol_id = vol_id
-        if blockdevice is not None and bd_path is not None:
-            self._blockdevice = blockdevice
-            self._bd_path     = bd_path
+        if bd_name is not None and bd_path is not None:
+            self._bd_name = bd_name
+            self._bd_path = bd_path
 
         checked_cstate = None
         if cstate is not None:
@@ -307,6 +330,21 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
             self.get_props().new_serial()
 
 
+    def get_bd_name(self):
+        return self._bd_name
+
+
+    def get_bd_path(self):
+        return self._bd_path
+
+
+    def set_bd(self, bd_name, bd_path):
+        if bd_name != self._bd_name or bd_path != self._bd_path:
+            self._bd_name = bd_name
+            self._bd_path = bd_path
+            self.get_props().new_serial()
+
+
     def set_cstate(self, cstate):
         if cstate != self._cstate:
             self._cstate = cstate & self.CSTATE_MASK
@@ -319,12 +357,29 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
             self.get_props().new_serial()
 
 
+    def requires_deploy(self):
+        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
+                (self._cstate & self.FLAG_DEPLOY == 0))
+
+
+    def requires_undeploy(self):
+        return ((self._tstate & self.FLAG_DEPLOY == 0) and
+                (self._cstate & self.FLAG_DEPLOY != 0))
+
+
     def get_cstate(self):
         return self._cstate
 
 
     def get_tstate(self):
         return self._tstate
+
+
+    def set_cstate_flags(self, flags):
+        saved_cstate = self._cstate
+        self._cstate = (self._cstate | flags) & self.CSTATE_MASK
+        if saved_cstate != self._cstate:
+            self.get_props().new_serial()
 
 
     def clear_cstate_flags(self, flags):

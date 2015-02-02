@@ -924,7 +924,7 @@ class DrbdVolumeStatePersistence(GenericPersistence):
     Serializes/deserializes DrbdVolumeState objects
     """
 
-    SERIALIZABLE = ["_bd_path", "_blockdevice", "_cstate", "_tstate"]
+    SERIALIZABLE = ["_bd_path", "_bd_name", "_cstate", "_tstate"]
 
 
     def __init__(self, vol_state):
@@ -951,7 +951,7 @@ class DrbdVolumeStatePersistence(GenericPersistence):
             vol_state   = DrbdVolumeState(
                 volume,
                 properties["_cstate"], properties["_tstate"],
-                properties.get("_blockdevice"), properties.get("_bd_path"),
+                properties.get("_bd_name"), properties.get("_bd_path"),
                 get_serial_fn, None, init_props
             )
         except Exception as exc:

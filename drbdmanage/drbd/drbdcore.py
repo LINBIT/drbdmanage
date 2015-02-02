@@ -23,7 +23,7 @@ import logging
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
 import drbdmanage.drbd.commands
-import drbdmanage.snapshots.snapshots
+import drbdmanage.snapshots.snapshots as snapshots
 import drbdmanage.propscontainer as propscon
 import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
@@ -215,11 +215,20 @@ class DrbdManager(object):
             node.set_state(node_state ^ DrbdNode.FLAG_UPDATE)
 
         """
-        Check all assignments for changes
+        Check all assignments and snapshots for changes
         """
         for assg in node.iterate_assignments():
+            # Assignment changes
             (set_state_changed, set_pool_changed) = (
                 self._assignment_actions(assg)
+            )
+            if set_state_changed:
+                state_changed = True
+            if set_pool_changed:
+                pool_changed = True
+            # Snapshot changes
+            (set_state_changed, set_pool_changed) = (
+                self._snapshot_actions(assg)
             )
             if set_state_changed:
                 state_changed = True
@@ -398,6 +407,80 @@ class DrbdManager(object):
         return (pool_changed, failed_actions)
 
 
+    def _snapshot_actions(self, assg):
+        # TODO: do not attempt to snapshot resources that are not deployed
+        state_changed  = False
+        failed_actions = False
+        pool_changed   = False
+        for snaps_assg in assg.iterate_snaps_assgs():
+            if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
+                logging.debug(
+                    "snapshot %s/%s cstate(%x)->tstate(%x)"
+                    % (snaps_assg.get_snapshot().get_resource().get_name(),
+                       snaps_assg.get_snapshot().get_name(),
+                       snaps_assg.get_cstate(), snaps_assg.get_tstate())
+                )
+                state_changed = True
+                pool_changed  = True
+                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                    (set_pool_changed, set_failed_actions) =(
+                        self._snaps_volume_actions(snaps_assg, snaps_vol_state)
+                    )
+                    if set_failed_actions:
+                        failed_actions = True
+                if not failed_actions:
+                    snaps_assg.set_cstate_flags(
+                        snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                    )
+        return (state_changed, pool_changed)
+
+
+    def _snaps_volume_actions(self, snaps_assg, snaps_vol_state):
+        pool_changed   = False
+        failed_actions = False
+        blockdev       = None
+        assg           = snaps_assg.get_assignment()
+        snaps          = snaps_assg.get_snapshot()
+        resource       = snaps.get_resource()
+        if snaps_vol_state.requires_deploy():
+            logging.debug(
+                "snapshot volume %s/%s #%d cstate(%x)->tstate(%x)"
+                % (resource.get_name(), snaps.get_name(),
+                   snaps_vol_state.get_id(),
+                   snaps_vol_state.get_cstate(), snaps_vol_state.get_tstate())
+            )
+            bd_mgr = self._server.get_bd_mgr()
+            snaps_name   = snaps.get_name()
+            snaps_vol_id = snaps_vol_state.get_id()
+            src_vol_state = assg.get_volume_state(snaps_vol_id)
+            if src_vol_state is not None:
+                src_bd_name = src_vol_state.get_bd_name()
+                blockdev = bd_mgr.create_snapshot(
+                    snaps_name, snaps_vol_id, src_bd_name
+                )
+                if blockdev is not None:
+                    snaps_vol_state.set_bd(
+                        blockdev.get_name(), blockdev.get_path()
+                    )
+                    snaps_vol_state.set_cstate_flags(
+                        snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
+                    )
+                else:
+                    logging.error(
+                        "Failed to create snapshot %s #%u of source volume %s"
+                         % (snaps_name, snaps_vol_id, src_bd_name)
+                    )
+                    failed_actions = True
+            else:
+                logging.error(
+                    "Snapshot %s/%s references non-existent volume id %d of "
+                    "its source resource"
+                    % (resource.get_name(), snaps.get_name(), snaps_vol_id)
+                )
+                failed_actions = True
+        return (pool_changed, failed_actions)
+
+
     def adjust_drbdctrl(self):
         # call drbdadm to bring up the control volume
         drbd_proc = self._drbdadm.ext_conf_adjust(consts.DRBDCTRL_RES_NAME)
@@ -525,7 +608,7 @@ class DrbdManager(object):
             )
 
             if blockdev is not None:
-                vol_state.set_blockdevice(
+                vol_state.set_bd(
                     blockdev.get_name(),
                     blockdev.get_path()
                 )
@@ -727,10 +810,7 @@ class DrbdManager(object):
             fn_rc = -1
             tstate = assignment.get_tstate()
             if (tstate & Assignment.FLAG_DISKLESS) == 0:
-                fn_rc = bd_mgr.remove_blockdevice(
-                    resource.get_name(),
-                    vol_state.get_id()
-                )
+                fn_rc = bd_mgr.remove_blockdevice(vol_state.get_bd_name())
             if fn_rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS) != 0:
                 fn_rc = 0
                 vol_state.set_cstate(0)
@@ -839,7 +919,7 @@ class DrbdManager(object):
                         # undeploy all non-diskless volumes
                         for vol_state in assignment.iterate_volume_states():
                             stor_rc = bd_mgr.remove_blockdevice(
-                                resource.get_name(), vol_state.get_id()
+                                vol_state.get_bd_name()
                             )
                             if stor_rc == DM_SUCCESS:
                                 vol_state.set_cstate(0)
@@ -1720,11 +1800,11 @@ class DrbdVolumeState(GenericDrbdObject):
     objects.
     """
 
-    _volume      = None
-    _bd_path     = None
-    _blockdevice = None
-    _cstate      = 0
-    _tstate      = 0
+    _volume  = None
+    _bd_path = None
+    _bd_name = None
+    _cstate  = 0
+    _tstate  = 0
 
     # Reference to the server's get_serial() function
     _get_serial = None
@@ -1742,16 +1822,16 @@ class DrbdVolumeState(GenericDrbdObject):
     # non-existent flags
     TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
 
-    def __init__(self, volume, cstate, tstate, blockdevice, bd_path,
+    def __init__(self, volume, cstate, tstate, bd_name, bd_path,
                  get_serial_fn, init_serial, init_props):
         super(DrbdVolumeState, self).__init__(
             get_serial_fn, init_serial, init_props
         )
-        self._volume       = volume
+        self._volume = volume
 
-        if blockdevice is not None and bd_path is not None:
-            self._blockdevice = blockdevice
-            self._bd_path     = bd_path
+        if bd_name is not None and bd_path is not None:
+            self._bd_name = bd_name
+            self._bd_path = bd_path
 
         checked_cstate = None
         if cstate is not None:
@@ -1790,14 +1870,14 @@ class DrbdVolumeState(GenericDrbdObject):
         return self._bd_path
 
 
-    def get_blockdevice(self):
-        return self._blockdevice
+    def get_bd_name(self):
+        return self._bd_name
 
 
-    def set_blockdevice(self, blockdevice, bd_path):
-        if blockdevice != self._blockdevice or bd_path != self._bd_path:
-            self._blockdevice = blockdevice
-            self._bd_path     = bd_path
+    def set_bd(self, bd_name, bd_path):
+        if bd_name != self._bd_name or bd_path != self._bd_path:
+            self._bd_name = bd_name
+            self._bd_path = bd_path
             self.get_props().new_serial()
 
 
