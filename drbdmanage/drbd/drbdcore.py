@@ -422,67 +422,144 @@ class DrbdManager(object):
                        snaps_assg.get_snapshot().get_name(),
                        snaps_assg.get_cstate(), snaps_assg.get_tstate())
                 )
+            if snaps_assg.requires_deploy():
                 state_changed = True
-                pool_changed  = True
                 for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
-                    (set_pool_changed, set_failed_actions) =(
-                        self._snaps_volume_actions(snaps_assg, snaps_vol_state)
+                    (set_pool_changed, set_failed_actions) = (
+                        self._snaps_deploy_volume(snaps_assg, snaps_vol_state)
                     )
-                    if set_failed_actions:
-                        failed_actions = True
                     if set_pool_changed:
                         pool_changed = True
+                    if set_failed_actions:
+                        failed_actions = True
                 if not failed_actions:
                     snaps_assg.set_cstate_flags(
                         snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
                     )
+            elif snaps_assg.requires_undeploy():
+                state_changed = True
+                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                    (set_pool_changed, set_failed_actions) = (
+                        self._snaps_undeploy_volume(
+                            snaps_assg, snaps_vol_state
+                        )
+                    )
+                    if set_pool_changed:
+                        pool_changed = True
+                    if set_failed_actions:
+                        failed_actions = True
+                if not failed_actions:
+                    snaps_assg.set_cstate(0)
+                    snaps_assg.set_tstate(0)
+            else:
+                vol_cstate = snaps_vol_state.get_cstate()
+                vol_tstate = snaps_vol_state.get_tstate()
+                if vol_tstate != vol_cstate:
+                    logging.debug(
+                    "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
+                    % (snaps_assg.get_snapshot().get_resource().get_name(),
+                       snaps_assg.get_snapshot().get_name(),
+                       snaps_vol_state.get_id(),
+                       vol_cstate, vol_tstate)
+                    )
+                    (set_pool_changed, set_failed_actions) = (
+                        self._snaps_volume_actions(snaps_assg, snaps_vol_state)
+                    )
+                    if set_pool_changed:
+                        pool_changed = True
+                    if set_failed_actions:
+                        failed_actions = True
         return (state_changed, pool_changed)
 
 
     def _snaps_volume_actions(self, snaps_assg, snaps_vol_state):
         pool_changed   = False
         failed_actions = False
-        blockdev       = None
-        assg           = snaps_assg.get_assignment()
         snaps          = snaps_assg.get_snapshot()
         resource       = snaps.get_resource()
         if snaps_vol_state.requires_deploy():
+            # Deploy snapshots
             logging.debug(
                 "snapshot volume %s/%s #%d cstate(%x)->tstate(%x)"
                 % (resource.get_name(), snaps.get_name(),
                    snaps_vol_state.get_id(),
                    snaps_vol_state.get_cstate(), snaps_vol_state.get_tstate())
             )
-            bd_mgr = self._server.get_bd_mgr()
-            snaps_name   = snaps.get_name()
-            snaps_vol_id = snaps_vol_state.get_id()
-            src_vol_state = assg.get_volume_state(snaps_vol_id)
-            if src_vol_state is not None:
-                src_bd_name = src_vol_state.get_bd_name()
-                pool_changed = True
-                blockdev = bd_mgr.create_snapshot(
-                    snaps_name, snaps_vol_id, src_bd_name
+            pool_changed, failed_actions = (
+                self._snaps_deploy_volume(snaps_assg, snaps_vol_state)
+            )
+        elif snaps_vol_state.requires_undeploy():
+            # Undeploy snapshots
+            pool_changed, failed_actions = (
+                self._snaps_undeploy_volume(snaps_assg, snaps_vol_state)
+            )
+        return (pool_changed, failed_actions)
+
+
+    def _snaps_deploy_volume(self, snaps_assg, snaps_vol_state):
+        pool_changed   = False
+        failed_actions = False
+        blockdev       = None
+        assg           = snaps_assg.get_assignment()
+        snaps          = snaps_assg.get_snapshot()
+        resource       = snaps.get_resource()
+        bd_mgr = self._server.get_bd_mgr()
+        snaps_name   = snaps.get_name()
+        snaps_vol_id = snaps_vol_state.get_id()
+        src_vol_state = assg.get_volume_state(snaps_vol_id)
+        if src_vol_state is not None:
+            src_bd_name = src_vol_state.get_bd_name()
+            pool_changed = True
+            blockdev = bd_mgr.create_snapshot(
+                snaps_name, snaps_vol_id, src_bd_name
+            )
+            if blockdev is not None:
+                snaps_vol_state.set_bd(
+                    blockdev.get_name(), blockdev.get_path()
                 )
-                if blockdev is not None:
-                    snaps_vol_state.set_bd(
-                        blockdev.get_name(), blockdev.get_path()
-                    )
-                    snaps_vol_state.set_cstate_flags(
-                        snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
-                    )
-                else:
-                    logging.error(
-                        "Failed to create snapshot %s #%u of source volume %s"
-                         % (snaps_name, snaps_vol_id, src_bd_name)
-                    )
-                    failed_actions = True
+                snaps_vol_state.set_cstate_flags(
+                    snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
+                )
             else:
                 logging.error(
-                    "Snapshot %s/%s references non-existent volume id %d of "
-                    "its source resource"
-                    % (resource.get_name(), snaps.get_name(), snaps_vol_id)
+                    "Failed to create snapshot %s #%u of source volume %s"
+                     % (snaps_name, snaps_vol_id, src_bd_name)
                 )
                 failed_actions = True
+        else:
+            logging.error(
+                "Snapshot %s/%s references non-existent volume id %d of "
+                "its source resource"
+                % (resource.get_name(), snaps.get_name(), snaps_vol_id)
+            )
+            failed_actions = True
+        return (pool_changed, failed_actions)
+
+
+    def _snaps_undeploy_volume(self, snaps_assg, snaps_vol_state):
+        pool_changed   = False
+        failed_actions = False
+        snaps          = snaps_assg.get_snapshot()
+        snaps_name     = snaps.get_name()
+        snaps_vol_id   = snaps_vol_state.get_id()
+
+        bd_name = snaps_vol_state.get_bd_name()
+        if bd_name is not None:
+            pool_changed = True
+            bd_mgr = self._server.get_bd_mgr()
+            fn_rc = bd_mgr.remove_snapshot(
+                bd_name
+            )
+        if fn_rc == DM_SUCCESS or bd_name is None:
+            snaps_vol_state.set_bd(None, None)
+            snaps_vol_state.set_cstate(0)
+            snaps_vol_state.set_tstate(0)
+        else:
+            logging.error(
+                "Failed to remove snapshot %s #%u block device '%s'"
+                 % (snaps_name, snaps_vol_id, bd_name)
+            )
+            failed_actions = True
         return (pool_changed, failed_actions)
 
 
