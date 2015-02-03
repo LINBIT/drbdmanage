@@ -22,9 +22,7 @@ import sys
 import logging
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
-import drbdmanage.drbd.commands
 import drbdmanage.snapshots.snapshots as snapshots
-import drbdmanage.propscontainer as propscon
 import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
 
@@ -35,8 +33,7 @@ WARNING!
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.drbd.drbdcommon import GenericDrbdObject
 from drbdmanage.exceptions import (
-    IncompatibleDataException, InvalidAddrFamException, InvalidNameException,
-    VolSizeRangeException, PersistenceException
+    InvalidAddrFamException, VolSizeRangeException, PersistenceException
 )
 from drbdmanage.exceptions import DM_SUCCESS
 from drbdmanage.utils import MetaData
