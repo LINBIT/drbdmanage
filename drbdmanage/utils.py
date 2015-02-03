@@ -74,7 +74,7 @@ def get_free_number(min_nr, max_nr, nr_list):
     @return: first free number within min..max; or -1 on error
     """
     free_nr = -1
-    if min_nr <= max_nr:
+    if min_nr >= 0 and min_nr <= max_nr:
         items = len(nr_list)
         if items == 0:
             free_nr = min_nr
@@ -82,16 +82,15 @@ def get_free_number(min_nr, max_nr, nr_list):
             nr_list.sort()
             idx = 0
             last_nr = min_nr - 1
-            while free_nr == -1:
+            while free_nr == -1 and idx < items:
                 current_nr = nr_list[idx]
                 if current_nr - last_nr > 1:
                     free_nr = last_nr + 1
                 else:
                     idx += 1
-                    if not idx < items:
-                        if current_nr < max_nr:
-                            free_nr = current_nr + 1
                     last_nr = current_nr
+            if free_nr == -1 and last_nr < max_nr:
+                free_nr = last_nr + 1
     return free_nr
 
 
