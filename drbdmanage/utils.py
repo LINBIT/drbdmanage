@@ -202,7 +202,10 @@ def add_rc_entry(fn_rc, err_code, err_msg, *args):
     Used by the drbdmanage server
     """
     if type(args) is dict:
-        args = [(key, val) for key, val in args.iteritems()]
+        # Note: this seemingly superfluous intermediate step is basically
+        #       something like a type cast that fixes a PyLint warning
+        args_dict = dict(args)
+        args = [(key, val) for key, val in args_dict.iteritems()]
     rc_entry = [ err_code, err_msg, args ]
     fn_rc.append(rc_entry)
 
@@ -230,7 +233,7 @@ def get_terminal_size():
     def ioctl_GWINSZ(term_fd):
         term_dim = None
         try:
-            import fcntl, termios, struct, os
+            import fcntl, termios, struct
             term_dim = struct.unpack(
                 'hh',
                 fcntl.ioctl(term_fd, termios.TIOCGWINSZ, '1234')
@@ -283,12 +286,12 @@ def generate_secret():
     return secret
 
 
-def map_val_or_dflt(map, key, dflt):
+def map_val_or_dflt(map_obj, key, dflt):
     """
     Returns a map value if its key exists, otherwise return a default value
     """
     try:
-        return map[key]
+        return map_obj[key]
     except KeyError:
         return dflt
 
