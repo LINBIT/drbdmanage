@@ -363,6 +363,8 @@ class DrbdManager(object):
                         if fn_rc != 0:
                             failed_actions = True
 
+                    # TODO: Check whether all volumes are actually diskless
+                    #       (e.g., bd_name/bd_path == NULL)
                     if (assg.get_tstate() & Assignment.FLAG_DISKLESS) != 0:
                         assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
@@ -428,6 +430,8 @@ class DrbdManager(object):
                     )
                     if set_failed_actions:
                         failed_actions = True
+                    if set_pool_changed:
+                        pool_changed = True
                 if not failed_actions:
                     snaps_assg.set_cstate_flags(
                         snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
@@ -455,6 +459,7 @@ class DrbdManager(object):
             src_vol_state = assg.get_volume_state(snaps_vol_id)
             if src_vol_state is not None:
                 src_bd_name = src_vol_state.get_bd_name()
+                pool_changed = True
                 blockdev = bd_mgr.create_snapshot(
                     snaps_name, snaps_vol_id, src_bd_name
                 )
@@ -555,7 +560,7 @@ class DrbdManager(object):
         Brings down DRBD resources
         """
         # Currently unused; bd_mgr might stop the backend volume in the future
-        bd_mgr   = self._server.get_bd_mgr()
+        # bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
         logging.info("stopping resource '%s'" % (resource.get_name()))
@@ -765,7 +770,7 @@ class DrbdManager(object):
                         # If there are any deployed volumes left in the
                         # configuration for this node, remember to update the
                         # configuration file, otherwise, do not keep (delete)
-                        # any locallly existing configuration file for this
+                        # any locally existing configuration file for this
                         # assignment
                         if peer_assg is assignment:
                             keep_conf = True
@@ -808,11 +813,12 @@ class DrbdManager(object):
 
         if fn_rc == 0:
             fn_rc = -1
-            tstate = assignment.get_tstate()
-            if (tstate & Assignment.FLAG_DISKLESS) == 0:
-                fn_rc = bd_mgr.remove_blockdevice(vol_state.get_bd_name())
-            if fn_rc == DM_SUCCESS or (tstate & Assignment.FLAG_DISKLESS) != 0:
+            bd_name = vol_state.get_bd_name()
+            if bd_name is not None:
+                fn_rc = bd_mgr.remove_blockdevice(bd_name)
+            if fn_rc == DM_SUCCESS or bd_name is None:
                 fn_rc = 0
+                vol_state.set_bd(None, None)
                 vol_state.set_cstate(0)
                 vol_state.set_tstate(0)
                 if not keep_conf:
@@ -918,14 +924,15 @@ class DrbdManager(object):
                     else:
                         # undeploy all non-diskless volumes
                         for vol_state in assignment.iterate_volume_states():
-                            stor_rc = bd_mgr.remove_blockdevice(
-                                vol_state.get_bd_name()
-                            )
-                            if stor_rc == DM_SUCCESS:
-                                vol_state.set_cstate(0)
-                                vol_state.set_tstate(0)
-                            else:
-                                ud_errors = True
+                            bd_name = vol_state.get_bd_name()
+                            if bd_name is not None:
+                                stor_rc = bd_mgr.remove_blockdevice(bd_name)
+                                if stor_rc == DM_SUCCESS:
+                                    vol_state.set_bd(None, None)
+                                    vol_state.set_cstate(0)
+                                    vol_state.set_tstate(0)
+                                else:
+                                    ud_errors = True
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 ud_errors = True
