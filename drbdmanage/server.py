@@ -232,10 +232,11 @@ class DrbdManageServer(object):
         # update storage pool information if it is unknown
         inst_node = self.get_instance_node()
         if inst_node is not None:
-            poolsize = inst_node.get_poolsize()
-            poolfree = inst_node.get_poolfree()
-            if poolsize == -1 or poolfree == -1:
-                self.update_pool([])
+            if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                poolsize = inst_node.get_poolsize()
+                poolfree = inst_node.get_poolfree()
+                if poolsize == -1 or poolfree == -1:
+                    self.update_pool([])
 
 
     def run(self):
@@ -1425,8 +1426,10 @@ class DrbdManageServer(object):
                 # no free node ids
                 fn_rc = DM_ENODEID
             else:
-                # The block device is set upon allocation of the backend
-                # storage area on the target node
+                # If that node does not have its own storage,
+                # deploy a DRBD client (diskless)
+                if (node.get_state() & DrbdNode.FLAG_STORAGE) == 0:
+                    tstate = tstate | Assignment.FLAG_DISKLESS
                 assignment = Assignment(node, resource, node_id,
                                         cstate, tstate, 0, None,
                                         self.get_serial, None, None)
@@ -1493,9 +1496,10 @@ class DrbdManageServer(object):
                     # that node is known
                     selected = []
                     for node in self._nodes.itervalues():
-                        poolfree = node.get_poolfree()
-                        if poolfree != -1:
-                            selected.append(node)
+                        if (node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                            poolfree = node.get_poolfree()
+                            if poolfree != -1:
+                                selected.append(node)
 
                     # Sort by free space
                     selected = sorted(
@@ -1558,7 +1562,8 @@ class DrbdManageServer(object):
                 add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
             else:
                 deployer = plugin_import(
-                  self.get_conf_value(self.KEY_DEPLOYER_NAME))
+                    self.get_conf_value(self.KEY_DEPLOYER_NAME)
+                )
                 if deployer is None:
                     raise PluginException
 
@@ -1628,7 +1633,12 @@ class DrbdManageServer(object):
                         #   - resource is deployed already
                         #   - resource is being deployed
                         #   - resource is being undeployed
-                        if (resource.get_assignment(node.get_name()) is None):
+                        #   - node does not have its own storage
+                        #     (diskless/client assignments only)
+                        if ((node.get_state() & DrbdNode.FLAG_STORAGE) != 0 or
+                            resource.get_assignment(node.get_name()) is None):
+                            # Node has its own storage, but the resource is not
+                            # deployed on it; add it to the list of candidates
                             undeployed[node.get_name()] = node
                     """
                     Call the deployer plugin to select nodes for deploying
@@ -1678,9 +1688,11 @@ class DrbdManageServer(object):
                         deployed = {}
                         for assg in resource.iterate_assignments():
                             if ((assg.get_tstate() &
-                                Assignment.FLAG_DEPLOY != 0) and
+                                Assignment.FLAG_DEPLOY) != 0 and
                                 (assg.get_cstate() &
-                                Assignment.FLAG_DEPLOY != 0)):
+                                Assignment.FLAG_DEPLOY) != 0 and
+                                (assg.get_tstate() &
+                                Assignment.FLAG_DISKLESS) == 0):
                                     node = assg.get_node()
                                     deployed[node.get_name()] = node
                         """
@@ -2015,16 +2027,21 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                (stor_rc, poolsize, poolfree) = (
-                    self._bd_mgr.update_pool(inst_node)
-                )
-                if stor_rc == DM_SUCCESS:
-                    poolfree = self._pool_free_correction(inst_node, poolfree)
-                    if (inst_node.get_poolsize() != poolsize or
-                        inst_node.get_poolfree() != poolfree):
-                            fn_rc = self.update_pool([ inst_node.get_name() ])
-                else:
-                    add_rc_entry(fn_rc, DM_ESTORAGE, dm_exc_text(DM_ESTORAGE))
+                if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                    (stor_rc, poolsize, poolfree) = (
+                        self._bd_mgr.update_pool(inst_node)
+                    )
+                    if stor_rc == DM_SUCCESS:
+                        poolfree = self._pool_free_correction(
+                            inst_node, poolfree
+                        )
+                        if (inst_node.get_poolsize() != poolsize or
+                            inst_node.get_poolfree() != poolfree):
+                                fn_rc = self.update_pool(
+                                    [ inst_node.get_name() ]
+                                )
+                    else:
+                        add_rc_entry(fn_rc, DM_ESTORAGE, dm_exc_text(DM_ESTORAGE))
             else:
                 add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except Exception as exc:
@@ -2078,13 +2095,16 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                (stor_rc, poolsize, poolfree) = (
-                    self._bd_mgr.update_pool(inst_node)
-                )
-                if stor_rc == DM_SUCCESS:
-                    poolfree = self._pool_free_correction(inst_node, poolfree)
-                    inst_node.set_pool(poolsize, poolfree)
-                fn_rc = DM_SUCCESS
+                if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                    (stor_rc, poolsize, poolfree) = (
+                        self._bd_mgr.update_pool(inst_node)
+                    )
+                    if stor_rc == DM_SUCCESS:
+                        poolfree = self._pool_free_correction(
+                            inst_node, poolfree
+                        )
+                        inst_node.set_pool(poolsize, poolfree)
+                    fn_rc = DM_SUCCESS
             else:
                 fn_rc = DM_ENOENT
         except Exception as exc:
