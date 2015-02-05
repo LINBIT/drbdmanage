@@ -913,11 +913,11 @@ class Selector(object):
     _keys = None
 
 
-    def __init__(self, keys):
-        if keys is not None:
-            self._keys = keys
+    def __init__(self, keys_list):
+        if keys_list is not None:
+            self._keys = { key: None for key in keys_list }
         else:
-            self._keys = []
+            self._keys = {}
 
 
     def all_selector(self, key):
@@ -931,9 +931,7 @@ class Selector(object):
         """
         Returns true for keys that appear in the Selector's list of keys
         """
-        if key is not None and key in self._keys:
-            return True
-        return False
+        return (True if key is not None and key in self._keys else False)
 
 
 def _aux_prop_name(key):
