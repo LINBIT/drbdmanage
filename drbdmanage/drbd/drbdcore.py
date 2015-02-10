@@ -443,11 +443,9 @@ class DrbdManager(object):
                         )
                 else:
                     logging.info(
-                        "Cannot create snapshot %s/%s #%u, "
+                        "Cannot create snapshot %s/%s, "
                         "source assignment is not deployed"
-                        % (snaps_name,
-                           snaps_assg.get_snapshot().get_name(),
-                           snaps_vol_state.get_id())
+                        % (snaps_name, snaps_assg.get_snapshot().get_name())
                     )
                     failed_actions = True
             elif snaps_assg.requires_undeploy():
@@ -466,23 +464,26 @@ class DrbdManager(object):
                     snaps_assg.set_cstate(0)
                     snaps_assg.set_tstate(0)
             else:
-                vol_cstate = snaps_vol_state.get_cstate()
-                vol_tstate = snaps_vol_state.get_tstate()
-                if vol_tstate != vol_cstate:
-                    logging.debug(
-                        "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
-                        % (snaps_name,
-                           snaps_assg.get_snapshot().get_name(),
-                           snaps_vol_state.get_id(),
-                           vol_cstate, vol_tstate)
-                    )
-                    (set_pool_changed, set_failed_actions) = (
-                        self._snaps_volume_actions(snaps_assg, snaps_vol_state)
-                    )
-                    if set_pool_changed:
-                        pool_changed = True
-                    if set_failed_actions:
-                        failed_actions = True
+                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                    vol_cstate = snaps_vol_state.get_cstate()
+                    vol_tstate = snaps_vol_state.get_tstate()
+                    if vol_tstate != vol_cstate:
+                        logging.debug(
+                            "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
+                            % (snaps_name,
+                               snaps_assg.get_snapshot().get_name(),
+                               snaps_vol_state.get_id(),
+                               vol_cstate, vol_tstate)
+                        )
+                        (set_pool_changed, set_failed_actions) = (
+                            self._snaps_volume_actions(
+                                snaps_assg, snaps_vol_state
+                            )
+                        )
+                        if set_pool_changed:
+                            pool_changed = True
+                        if set_failed_actions:
+                            failed_actions = True
         return (state_changed, pool_changed)
 
 
