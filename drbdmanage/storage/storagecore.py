@@ -156,7 +156,6 @@ class BlockDeviceManager(object):
 
 
     def remove_snapshot(self, bd_name):
-        successful = False
         fn_rc = DM_DEBUG
         rm_blockdev = self._plugin.get_blockdevice(bd_name)
         if rm_blockdev is not None:
@@ -166,7 +165,7 @@ class BlockDeviceManager(object):
                 "BlockDeviceManager: remove snapshot: volume '%s' not found"
                 % (bd_name)
             )
-        status_text = "successful" if successful else "failed"
+        status_text = "successful" if fn_rc == 0 else "failed"
         logging.debug(
             "BlockDeviceManager: remove snapshot blockdev=%s, rc=%d, %s"
             % (bd_name, fn_rc, status_text)
