@@ -407,11 +407,12 @@ class DrbdManager(object):
 
 
     def _snapshot_actions(self, assg):
-        # TODO: do not attempt to snapshot resources that are not deployed
         state_changed  = False
         failed_actions = False
         pool_changed   = False
+        # Operate only on deployed assignments
         for snaps_assg in assg.iterate_snaps_assgs():
+            snaps_name = snaps_assg.get_snapshot().get_resource().get_name()
             if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
                 logging.debug(
                     "snapshot %s/%s cstate(%x)->tstate(%x)"
@@ -420,19 +421,35 @@ class DrbdManager(object):
                        snaps_assg.get_cstate(), snaps_assg.get_tstate())
                 )
             if snaps_assg.requires_deploy():
-                state_changed = True
-                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
-                    (set_pool_changed, set_failed_actions) = (
-                        self._snaps_deploy_volume(snaps_assg, snaps_vol_state)
+                assg_cstate    = assg.get_cstate()
+                assg_tstate    = assg.get_tstate()
+                if ((assg_cstate & Assignment.FLAG_DEPLOY) != 0 or
+                    (assg_tstate & Assignment.FLAG_DEPLOY) != 0):
+                    state_changed   = True
+                    snaps_assg_iter = snaps_assg.iterate_snaps_vol_states()
+                    for snaps_vol_state in snaps_assg_iter:
+                        (set_pool_changed, set_failed_actions) = (
+                            self._snaps_deploy_volume(
+                                snaps_assg, snaps_vol_state
+                            )
+                        )
+                        if set_pool_changed:
+                            pool_changed = True
+                        if set_failed_actions:
+                            failed_actions = True
+                    if not failed_actions:
+                        snaps_assg.set_cstate_flags(
+                            snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                        )
+                else:
+                    logging.info(
+                        "Cannot create snapshot %s/%s #%u, "
+                        "source assignment is not deployed"
+                        % (snaps_name,
+                           snaps_assg.get_snapshot().get_name(),
+                           snaps_vol_state.get_id())
                     )
-                    if set_pool_changed:
-                        pool_changed = True
-                    if set_failed_actions:
-                        failed_actions = True
-                if not failed_actions:
-                    snaps_assg.set_cstate_flags(
-                        snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
-                    )
+                    failed_actions = True
             elif snaps_assg.requires_undeploy():
                 state_changed = True
                 for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
@@ -453,11 +470,11 @@ class DrbdManager(object):
                 vol_tstate = snaps_vol_state.get_tstate()
                 if vol_tstate != vol_cstate:
                     logging.debug(
-                    "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
-                    % (snaps_assg.get_snapshot().get_resource().get_name(),
-                       snaps_assg.get_snapshot().get_name(),
-                       snaps_vol_state.get_id(),
-                       vol_cstate, vol_tstate)
+                        "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
+                        % (snaps_name,
+                           snaps_assg.get_snapshot().get_name(),
+                           snaps_vol_state.get_id(),
+                           vol_cstate, vol_tstate)
                     )
                     (set_pool_changed, set_failed_actions) = (
                         self._snaps_volume_actions(snaps_assg, snaps_vol_state)
@@ -474,14 +491,15 @@ class DrbdManager(object):
         failed_actions = False
         snaps          = snaps_assg.get_snapshot()
         resource       = snaps.get_resource()
+        logging.debug(
+            "_snaps_volume_actions(): snapshot volume %s/%s #%d "
+            "cstate(%x)->tstate(%x)"
+            % (resource.get_name(), snaps.get_name(),
+               snaps_vol_state.get_id(),
+               snaps_vol_state.get_cstate(), snaps_vol_state.get_tstate())
+        )
         if snaps_vol_state.requires_deploy():
             # Deploy snapshots
-            logging.debug(
-                "snapshot volume %s/%s #%d cstate(%x)->tstate(%x)"
-                % (resource.get_name(), snaps.get_name(),
-                   snaps_vol_state.get_id(),
-                   snaps_vol_state.get_cstate(), snaps_vol_state.get_tstate())
-            )
             pool_changed, failed_actions = (
                 self._snaps_deploy_volume(snaps_assg, snaps_vol_state)
             )
@@ -505,22 +523,37 @@ class DrbdManager(object):
         snaps_vol_id = snaps_vol_state.get_id()
         src_vol_state = assg.get_volume_state(snaps_vol_id)
         if src_vol_state is not None:
-            src_bd_name = src_vol_state.get_bd_name()
-            pool_changed = True
-            blockdev = bd_mgr.create_snapshot(
-                snaps_name, snaps_vol_id, src_bd_name
-            )
-            if blockdev is not None:
-                snaps_vol_state.set_bd(
-                    blockdev.get_name(), blockdev.get_path()
+            src_cstate = src_vol_state.get_cstate()
+            src_tstate = src_vol_state.get_tstate()
+            # Operate only on deployed volumes
+            if ((src_cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
+                (src_tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                # Create the snapshot
+                src_bd_name = src_vol_state.get_bd_name()
+                pool_changed = True
+                blockdev = bd_mgr.create_snapshot(
+                    snaps_name, snaps_vol_id, src_bd_name
                 )
-                snaps_vol_state.set_cstate_flags(
-                    snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
-                )
+                if blockdev is not None:
+                    snaps_vol_state.set_bd(
+                        blockdev.get_name(), blockdev.get_path()
+                    )
+                    snaps_vol_state.set_cstate_flags(
+                        snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
+                    )
+                else:
+                    logging.error(
+                        "Failed to create snapshot %s/%s #%u "
+                        "of source volume %s"
+                         % (resource.get_name(), snaps_name, snaps_vol_id,
+                            src_bd_name)
+                    )
+                    failed_actions = True
             else:
                 logging.error(
-                    "Failed to create snapshot %s #%u of source volume %s"
-                     % (snaps_name, snaps_vol_id, src_bd_name)
+                    "Cannot create snapshot %s/%s #%u, "
+                    "source volume is not deployed"
+                     % (resource.get_name(), snaps_name, snaps_vol_id)
                 )
                 failed_actions = True
         else:
