@@ -247,8 +247,13 @@ class DrbdManage(object):
         params     = {}
         opt        = { "-a" : None }
         optalias   = { "--address-family" : "a" }
-        flags      = { "-q" : False, "-c" : False, "-s" : False }
-        flagsalias = { "--quiet" : "-q" }
+        flags      = { "-q" : False, "-c" : False, "-s" : False, "-j" : False }
+        flagsalias = {
+            "--quiet" : "-q",
+            "--no-control-volume" : "-c",
+            "--no-storage" : "-s",
+            "--no-autojoin" : "-j"
+        }
         parse_rc = CommandParser().parse(
             args, order, params, opt, optalias, flags, flagsalias
         )
@@ -260,6 +265,7 @@ class DrbdManage(object):
                 af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
             flag_storage  = not flags["-s"]
             flag_drbdctrl = not flags["-c"]
+            flag_autojoin = not flags["-j"]
 
             props = dbus.Dictionary(signature="ss")
             props[NODE_ADDR] = ip
@@ -283,21 +289,27 @@ class DrbdManage(object):
                 if joinc_text.startswith("Error:"):
                     sys.stderr.write(joinc_text + "\n")
                 elif flag_drbdctrl:
-                    try:
-                        sshc = ["ssh", "-oBatchMode=yes", "-oConnectTimeout=2",
-                                "root@" + ip]
-                        if subprocess.call(sshc + ["true"]) == 0:
-                            sys.stdout.write("\nExecuting join command on "
-                                             "%s using ssh.\n" % (name))
-                            ssh_joinc = (sshc + joinc +
-                                         ([ "-q" ] if flags["-q"] else []))
-                            subprocess.check_call(ssh_joinc)
-                        else:
-                            sys.stdout.write("\nJoin command for node %s:\n"
-                                             "%s\n" % (name, joinc_text))
-                    except subprocess.CalledProcessError:
-                        sys.stderr.write("Error: Attempt to execute the " +
-                                         "join command remotely failed\n")
+                    join_performed = False
+                    if flag_autojoin:
+                        try:
+                            sshc = ["ssh", "-oBatchMode=yes",
+                                    "-oConnectTimeout=2", "root@" + ip]
+                            if subprocess.call(sshc + ["true"]) == 0:
+                                sys.stdout.write(
+                                    "\nExecuting join command on "
+                                    "%s using ssh.\n" % (name)
+                                )
+                                ssh_joinc = sshc + joinc
+                                if flags["-q"]:
+                                    ssh_joinc.append("-q")
+                                subprocess.check_call(ssh_joinc)
+                                join_performed = True
+                        except subprocess.CalledProcessError:
+                            sys.stderr.write("Error: Attempt to execute the "
+                                             "join command remotely failed\n")
+                    if not join_performed:
+                        sys.stdout.write("\nJoin command for node %s:\n"
+                                         "%s\n" % (name, joinc_text))
 
             fn_rc = self._list_rc_entries(server_rc)
 
