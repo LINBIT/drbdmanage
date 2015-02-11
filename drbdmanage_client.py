@@ -2127,6 +2127,8 @@ class DrbdManage(object):
         server_conf = self.load_server_conf()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
+        # Initialization of the usermode helper restore delay
+        delay_flag = False
         time_set   = False
         begin_time = 0
         end_time   = 0
@@ -2179,12 +2181,14 @@ class DrbdManage(object):
                     "Confirm:\n"
                 )
             if quiet:
-                l_addr    = params["local_ip"]
-                p_addr    = params["peer_ip"]
-                p_name    = params["peer_name"]
-                l_node_id = params["local_node_id"]
-                p_node_id = params["peer_node_id"]
-                secret    = params["secret"]
+                # Enable the usermode helper restore delay
+                delay_flag = True
+                l_addr     = params["local_ip"]
+                p_addr     = params["peer_ip"]
+                p_name     = params["peer_name"]
+                l_node_id  = params["local_node_id"]
+                p_node_id  = params["peer_node_id"]
+                secret     = params["secret"]
 
                 drbdctrl_blockdev = self._create_drbdctrl(
                     l_node_id, server_conf
@@ -2259,6 +2263,8 @@ class DrbdManage(object):
             else:
                 fn_rc = 0
         except AbortException:
+            # Disable the usermode helper restore delay
+            delay_flag = False
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback(drbdctrl_vg)
         except SyntaxException:
@@ -2267,24 +2273,26 @@ class DrbdManage(object):
                 "peer_node_id secret\n"
             )
         finally:
-            # undo the temporary change of the usermode helper
-            # FIXME: wait here -- otherwise, restoring the user mode
-            #        helper will probably race with establishing the
-            #        network connection
-            delay_time = self.UMHELPER_WAIT_TIME
-            if time_set:
-                if begin_time >= 0 and end_time >= 0:
-                    diff_time = end_time - begin_time
-                    if not diff_time < 0:
-                        if diff_time <= self.UMHELPER_WAIT_TIME:
-                            # set the remaining delay time
-                            delay_time = self.UMHELPER_WAIT_TIME - diff_time
-                        else:
-                            delay_time = 0
+            if delay_flag:
+                # undo the temporary change of the usermode helper
+                # FIXME: wait here -- otherwise, restoring the user mode
+                #        helper will probably race with establishing the
+                #        network connection
+                delay_time = self.UMHELPER_WAIT_TIME
+                if time_set:
+                    if begin_time >= 0 and end_time >= 0:
+                        diff_time = end_time - begin_time
+                        if not diff_time < 0:
+                            if diff_time <= self.UMHELPER_WAIT_TIME:
+                                # set the remaining delay time
+                                delay_time = self.UMHELPER_WAIT_TIME - diff_time
+                            else:
+                                delay_time = 0
 
-            if delay_time > 0:
-                time.sleep(delay_time)
+                if delay_time > 0:
+                    time.sleep(delay_time)
 
+            # Restore the usermode helper
             umh_f = None
             if umh is not None:
                 try:
