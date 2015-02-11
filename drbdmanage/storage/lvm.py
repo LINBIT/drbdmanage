@@ -32,7 +32,7 @@ from drbdmanage.consts import DEFAULT_VG
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS, DM_DEBUG
 from drbdmanage.utils import DataHash
-from drbdmanage.utils import build_path
+from drbdmanage.utils import (build_path, read_lines)
 from drbdmanage.conf.conffile import ConfFile
 
 # from drbdmanage.storage.storagecore import StoragePlugin
@@ -362,8 +362,7 @@ class LVM(object):
             stored_hash = None
             in_file = open(self.LVM_SAVEFILE, "r")
             offset = 0
-            line = in_file.readline()
-            while len(line) > 0:
+            for line in read_lines(in_file):
                 if line.startswith("sig:"):
                     stored_hash = line[4:]
                     if stored_hash.endswith("\n"):
@@ -371,7 +370,6 @@ class LVM(object):
                     break
                 else:
                     offset = in_file.tell()
-                line = in_file.readline()
             in_file.seek(0)
             if offset != 0:
                 load_data = in_file.read(offset)

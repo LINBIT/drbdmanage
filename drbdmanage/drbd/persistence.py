@@ -32,6 +32,7 @@ import drbdmanage.snapshots.persistence as snapspers
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import map_val_or_dflt
+from drbdmanage.utils import read_lines
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import (
@@ -641,8 +642,7 @@ class PersistenceImpl(object):
         """
         read = False
         json_blk = None
-        cfgline = stream.readline()
-        while len(cfgline) > 0:
+        for cfgline in read_lines(stream):
             if cfgline == "{\n":
                 read = True
             if read:
@@ -651,7 +651,6 @@ class PersistenceImpl(object):
                 json_blk += cfgline
             if cfgline == "}\n":
                 break
-            cfgline = stream.readline()
         return json_blk
 
 

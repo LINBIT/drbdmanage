@@ -49,7 +49,7 @@ from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import (
     get_terminal_size, build_path, bool_to_string, map_val_or_dflt,
-    bool_to_string
+    read_lines, bool_to_string
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,

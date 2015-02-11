@@ -19,6 +19,7 @@
 """
 
 import logging
+import drbdmanage.utils as dmutils
 
 from drbdmanage.exceptions import InvalidMinorNrException
 
@@ -60,11 +61,7 @@ class ConfFile(object):
         val  = None
         conf = {}
 
-        while True:
-            line = in_file.readline()
-            if not len(line) > 0:
-                break
-
+        for line in dmutils.read_lines(in_file):
             if line.endswith("\n"):
                 line = line[:len(line) - 1]
 
@@ -484,10 +481,7 @@ class DrbdAdmConf(object):
             ["address",         DrbdAdmConf.KEY_ADDRESS]
         ]
         fields   = {}
-        while True:
-            confline = stream.readline()
-            if len(confline) == 0:
-                break
+        for confline in dmutils.read_lines(stream):
             for keypair in params:
                 p_name = keypair[0]
                 confline = confline.lstrip()

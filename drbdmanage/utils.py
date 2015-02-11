@@ -315,6 +315,29 @@ def string_to_bool(text):
     raise ValueError
 
 
+def read_lines(in_file):
+    """
+    Generator that yields the content of a file line-by-line
+
+    This generator enables you to replace a loop like this:
+    while True:
+        line = in_file.readline()
+        if not len(line) > 0:
+            break
+        <... code ...>
+    with the simpler variant:
+    for line in read_lines(in_file):
+        <... code ...>
+    """
+    lines_available = True
+    while lines_available:
+        line = in_file.readline()
+        if len(line) > 0:
+            yield line
+        else:
+            lines_available = False
+
+
 class DataHash(object):
 
     """
