@@ -38,6 +38,8 @@ VOL_MINOR           = "minor"
 VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
 
+SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
+
 NODE_NAME_MAXLEN    = 32
 RES_NAME_MAXLEN     = 48    # Enough for a UUID string plus prefix
 SNAPS_NAME_MAXLEN   = 48

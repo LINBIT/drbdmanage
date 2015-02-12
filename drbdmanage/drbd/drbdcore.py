@@ -37,7 +37,7 @@ from drbdmanage.exceptions import (
 )
 from drbdmanage.exceptions import DM_SUCCESS
 from drbdmanage.utils import MetaData
-from drbdmanage.utils import Selector, bool_to_string
+from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset
 
 
 class DrbdManager(object):
@@ -1189,35 +1189,53 @@ class DrbdManager(object):
         after deployment (primary --force).
 
         Decision rules:
-        DO NOT switch to the primary role,
-        * if there are other nodes that have the resource deployed already;
-          instead, replicate the data from those other nodes, even if the
-          resource is marked for undeployment on those other nodes
-        * if there is another node that has the overwrite flag set
-          on this resource
-        * if this assignment has the discard flag set
-        DO switch to the primary role,
-        * if this assignment is the first one to deploy the resource on a node
+        NEVER switch to the primary role,
+        * if this assignment has the discard flag set and
+          the overwrite flag unset
+        ALWAYS switch to the primary role,
         * if this assignment has the overwrite flag set
-          (overrides the discard flag, too, although it should not be
-          possible to set both at the same time, anyway)
+        OTHERWISE, switch to the primary role according to the
+        truth table below.
+        Key:
+            L: this (local) assignment is restoring a snapshot
+            P: the peer's  assignment is restoring a snapshot
+            D: the peer's assignment is already deployed
+            Values: 1: true, 0: false
+            L P D   Role
+            0 0 0   primary
+            0 0 1   secondary
+            0 1 0   secondary
+            0 1 1   secondary
+            1 0 0   primary
+            1 0 1   primary
+            1 1 0   primary
+            1 1 1   secondary
         """
-        primary = True
         tstate = assignment.get_tstate()
-        resource = assignment.get_resource()
-        if (tstate & Assignment.FLAG_OVERWRITE) == 0:
-            if (tstate & Assignment.FLAG_DISCARD) == 0:
-                for peer_assg in resource.iterate_assignments():
-                    if peer_assg != assignment:
-                        pa_cstate = peer_assg.get_cstate()
-                        pa_tstate = peer_assg.get_tstate()
-                        if ((pa_cstate & Assignment.FLAG_DISKLESS) == 0 and
-                            ((pa_cstate & Assignment.FLAG_DEPLOY) != 0 or
-                            (pa_tstate & Assignment.FLAG_OVERWRITE) != 0)):
-                                primary = False
-                                break
-            else:
-                primary = False
+        force_primary = is_set(tstate, Assignment.FLAG_OVERWRITE)
+        discard = is_set(tstate, Assignment.FLAG_DISCARD)
+        primary = (False if discard and not force_primary else True)
+        if primary and not force_primary:
+            resource = assignment.get_resource()
+            local_restore = assignment.is_snapshot_restore()
+            for peer_assg in resource.iterate_assignments():
+                if peer_assg != assignment:
+                    pa_cstate = peer_assg.get_cstate()
+                    pa_tstate = peer_assg.get_tstate()
+                    if is_unset(pa_cstate, Assignment.FLAG_DISKLESS):
+                        pa_deployed = is_set(pa_cstate, Assignment.FLAG_DEPLOY)
+                        pa_restore = peer_assg.is_snapshot_restore()
+                        # See the truth table in the function
+                        # description comment to figure out which
+                        # cases this condition is supposed to handle
+                        # (all the secondary role cases)
+                        if (is_set(pa_tstate, Assignment.FLAG_OVERWRITE) or
+                            (not local_restore and
+                            (pa_restore or pa_deployed)) or
+                            (local_restore and pa_restore and pa_deployed)):
+                            # Do not assume the primary role
+                            primary = False
+                            break
         return primary
 
 
@@ -2065,6 +2083,11 @@ class DrbdVolumeState(GenericDrbdObject):
             self.get_props().new_serial()
 
 
+    def is_snapshot_restore(self):
+        src_bd_name = self.get_props().get_prop(consts.SNAPS_SRC_BLOCKDEV)
+        return (True if src_bd_name is not None else False)
+
+
     def set_cstate_flags(self, flags):
         saved_cstate = self._cstate
         self._cstate = (self._cstate | flags) & self.CSTATE_MASK
@@ -2446,6 +2469,18 @@ class Assignment(GenericDrbdObject):
                         volume.get_size_kiB(), peers
                     )
         return size_sum
+
+
+    def is_snapshot_restore(self):
+        """
+        Returns True if any DrbdVolumeState is a snapshot restore, else False
+        """
+        result = False
+        for vol_state in self._vol_states.itervalues():
+            if vol_state.is_snapshot_restore():
+                result = True
+                break
+        return result
 
 
     def get_cstate(self):
