@@ -338,6 +338,39 @@ def read_lines(in_file):
             lines_available = False
 
 
+def is_any_set(state, flags):
+    """
+    Returns True if any of the flags are set in the state value, else False
+    """
+    return (True if (state & flags) != 0 else False)
+
+
+def is_any_unset(state, flags):
+    """
+    Returns True if any of the flags are NOT set in the state value, else False
+    """
+    return (True if (state & flags) != flags else False)
+
+
+def is_all_set(state, flags):
+    """
+    Returns True if all of the flags are set in the state value, else False
+    """
+    return (True if (state & flags) == flags else False)
+
+
+def is_all_unset(state, flags):
+    """
+    Returns True if all of the flags are unset in the state value, else False
+    """
+    return (True if (state & flags) == 0 else False)
+
+
+# Function name aliases
+is_set   = is_all_set
+is_unset = is_all_unset
+
+
 class DataHash(object):
 
     """
