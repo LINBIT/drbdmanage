@@ -38,7 +38,8 @@ from drbdmanage.consts import (
     DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
+    SNAPS_SRC_BLOCKDEV
 )
 from drbdmanage.utils import NioLineReader, CmdLineReader, MetaData
 from drbdmanage.utils import (
@@ -2741,6 +2742,9 @@ class DrbdManageServer(object):
                                     # therefore, reaching this statement
                                     # indicates an implementation error
                                     raise DebugException
+                        # Set the snapshot source volumes on those nodes
+                        # that have a snapshot
+                        self._set_snapshot_sources(resource, snapshot)
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
                     else:
@@ -2845,6 +2849,38 @@ class DrbdManageServer(object):
         fn_rc = []
         add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
+
+
+    def _set_snapshot_sources(self, dest_res, snapshot):
+        """
+        Sets the source volumes for creation of a resource from a snapshot
+
+        When a resource is created from a snapshot, set the snapshot
+        source volume on the DrbdVolumeState object if a snapshot
+        is available on the respective node
+        """
+        snaps_name = snapshot.get_name()
+        source_res = snapshot.get_resource()
+        for dest_assg in dest_res.iterate_assignments():
+            node = dest_assg.get_node()
+            source_assg = source_res.get_assignment(node.get_name())
+            if source_assg is not None:
+                source_snaps_assg = source_assg.get_snaps_assg(snaps_name)
+                if source_snaps_assg is not None:
+                    for dest_vol_state in dest_assg.iterate_volume_states():
+                        dest_vol_id = dest_vol_state.get_id()
+                        src_vol_state = (
+                            source_snaps_assg.get_snaps_vol_state(dest_vol_id)
+                        )
+                        if src_vol_state is not None:
+                            src_bd_name = src_vol_state.get_bd_name()
+                            if src_bd_name is not None:
+                                # Set the snapshot source volume property
+                                # on the destination volume
+                                dest_vol_props = dest_vol_state.get_props()
+                                dest_vol_props.set_prop(
+                                    SNAPS_SRC_BLOCKDEV, src_bd_name
+                                )
 
 
     def save_conf(self):
