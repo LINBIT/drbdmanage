@@ -44,7 +44,7 @@ from drbdmanage.utils import NioLineReader, CmdLineReader, MetaData
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number, plugin_import,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
-    split_main_aux_props, aux_props_selector
+    split_main_aux_props, aux_props_selector, is_set, is_unset
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
@@ -232,7 +232,7 @@ class DrbdManageServer(object):
         # update storage pool information if it is unknown
         inst_node = self.get_instance_node()
         if inst_node is not None:
-            if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+            if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
                 poolsize = inst_node.get_poolsize()
                 poolfree = inst_node.get_poolfree()
                 if poolsize == -1 or poolfree == -1:
@@ -757,9 +757,8 @@ class DrbdManageServer(object):
         for peer_node in self._nodes.itervalues():
             if peer_node != inst_node:
                 state = peer_node.get_state()
-                if (state & DrbdNode.FLAG_DRBDCTRL) != 0:
-                    peer_node.set_state(peer_node.get_state() |
-                                        DrbdNode.FLAG_UPDATE)
+                if is_set(state, DrbdNode.FLAG_DRBDCTRL):
+                    peer_node.set_state(state | DrbdNode.FLAG_UPDATE)
 
 
     def poke(self):
@@ -1428,14 +1427,14 @@ class DrbdManageServer(object):
             else:
                 # If that node does not have its own storage,
                 # deploy a DRBD client (diskless)
-                if (node.get_state() & DrbdNode.FLAG_STORAGE) == 0:
+                if is_unset(node.get_state(), DrbdNode.FLAG_STORAGE):
                     tstate = tstate | Assignment.FLAG_DISKLESS
                 assignment = Assignment(node, resource, node_id,
                                         cstate, tstate, 0, None,
                                         self.get_serial, None, None)
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
-                    if tstate & Assignment.FLAG_DISKLESS == 0:
+                    if is_unset(tstate, Assignment.FLAG_DISKLESS):
                         vol_state.attach()
                 node.add_assignment(assignment)
                 resource.add_assignment(assignment)
@@ -1496,7 +1495,7 @@ class DrbdManageServer(object):
                     # that node is known
                     selected = []
                     for node in self._nodes.itervalues():
-                        if (node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                        if is_set(node.get_state(), DrbdNode.FLAG_STORAGE):
                             poolfree = node.get_poolfree()
                             if poolfree != -1:
                                 selected.append(node)
@@ -1635,7 +1634,7 @@ class DrbdManageServer(object):
                         #   - resource is being undeployed
                         #   - node does not have its own storage
                         #     (diskless/client assignments only)
-                        if ((node.get_state() & DrbdNode.FLAG_STORAGE) != 0 or
+                        if (is_set(node.get_state(), DrbdNode.FLAG_STORAGE) or
                             resource.get_assignment(node.get_name()) is None):
                             # Node has its own storage, but the resource is not
                             # deployed on it; add it to the list of candidates
@@ -1673,10 +1672,10 @@ class DrbdManageServer(object):
                     # yet, undeploy those first
                     if ctr > final_count:
                         for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate() &
-                                Assignment.FLAG_DEPLOY != 0) and
-                                (assg.get_cstate() &
-                                Assignment.FLAG_DEPLOY == 0)):
+                            if (is_set(assg.get_tstate(),
+                                Assignment.FLAG_DEPLOY) and
+                                is_unset(assg.get_cstate(),
+                                Assignment.FLAG_DEPLOY)):
                                     assg.undeploy()
                                     ctr -= 1
                             if not ctr > final_count:
@@ -1687,12 +1686,18 @@ class DrbdManageServer(object):
                         # Collect nodes where the resource is deployed
                         deployed = {}
                         for assg in resource.iterate_assignments():
-                            if ((assg.get_tstate() &
-                                Assignment.FLAG_DEPLOY) != 0 and
-                                (assg.get_cstate() &
-                                Assignment.FLAG_DEPLOY) != 0 and
-                                (assg.get_tstate() &
-                                Assignment.FLAG_DISKLESS) == 0):
+                            if (is_set(
+                                    assg.get_tstate(),
+                                    Assignment.FLAG_DEPLOY
+                                ) and
+                                is_set(
+                                    assg.get_cstate(),
+                                    Assignment.FLAG_DEPLOY
+                                ) and
+                                is_unset(
+                                    assg.get_tstate(),
+                                    Assignment.FLAG_DISKLESS
+                                )):
                                     node = assg.get_node()
                                     deployed[node.get_name()] = node
                         """
@@ -1788,7 +1793,7 @@ class DrbdManageServer(object):
                 )
             else:
                 tstate = assg.get_tstate()
-                if (tstate & Assignment.FLAG_DEPLOY) == 0:
+                if is_unset(tstate, Assignment.FLAG_DEPLOY):
                     assg.deploy_client()
 
 
@@ -1814,13 +1819,13 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     else:
                         # OVERWRITE overrides DISCARD
-                        if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
+                        if is_set(tstate_set_mask, Assignment.FLAG_OVERWRITE):
                             tstate_clear_mask |= Assignment.FLAG_DISCARD
                             tstate_set_mask = (
                                 (tstate_set_mask | Assignment.FLAG_DISCARD) ^
                                 Assignment.FLAG_DISCARD
                             )
-                        elif (tstate_set_mask & Assignment.FLAG_DISCARD) != 0:
+                        elif is_set(tstate_set_mask, Assignment.FLAG_DISCARD):
                             tstate_clear_mask |= Assignment.FLAG_OVERWRITE
                         assg.clear_cstate_flags(cstate_clear_mask)
                         assg.set_cstate_flags(cstate_set_mask)
@@ -1828,7 +1833,7 @@ class DrbdManageServer(object):
                         assg.set_tstate_flags(tstate_set_mask)
                         # Upon setting the OVERWRITE flag on this assignment,
                         # clear it on all other assignments
-                        if (tstate_set_mask & Assignment.FLAG_OVERWRITE) != 0:
+                        if is_set(tstate_set_mask, Assignment.FLAG_OVERWRITE):
                             resource = assg.get_resource()
                             for peer_assg in resource.iterate_assignments():
                                 if peer_assg != assg:
@@ -2027,7 +2032,7 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
                     (stor_rc, poolsize, poolfree) = (
                         self._bd_mgr.update_pool(inst_node)
                     )
@@ -2095,7 +2100,7 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                if (inst_node.get_state() & DrbdNode.FLAG_STORAGE) != 0:
+                if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
                     (stor_rc, poolsize, poolfree) = (
                         self._bd_mgr.update_pool(inst_node)
                     )
@@ -2159,8 +2164,8 @@ class DrbdManageServer(object):
                     for snaps_assg in assg.iterate_snaps_assgs():
                         sa_cstate = snaps_assg.get_cstate()
                         sa_tstate = snaps_assg.get_tstate()
-                        if ((sa_cstate & S_FLAG_DEPLOY) == 0 and
-                            (sa_tstate & S_FLAG_DEPLOY) == 0):
+                        if (is_unset(sa_cstate, S_FLAG_DEPLOY) and
+                            is_unset(sa_tstate, S_FLAG_DEPLOY)):
                                 removable.append(snaps_assg)
                     for snaps_assg in removable:
                         snaps_assg.remove()
@@ -2169,8 +2174,8 @@ class DrbdManageServer(object):
                     for vol_state in assg.iterate_volume_states():
                         vol_cstate = vol_state.get_cstate()
                         vol_tstate = vol_state.get_tstate()
-                        if ((vol_cstate & VS_FLAG_DEPLOY == 0) and
-                            (vol_tstate & VS_FLAG_DEPLOY == 0)):
+                        if (is_unset(vol_cstate, VS_FLAG_DEPLOY) and
+                            is_unset(vol_tstate, VS_FLAG_DEPLOY)):
                                 removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
@@ -2191,8 +2196,8 @@ class DrbdManageServer(object):
                 for assg in node.iterate_assignments():
                     tstate = assg.get_tstate()
                     cstate = assg.get_cstate()
-                    if ((cstate & A_FLAG_DEPLOY) == 0 and
-                        (tstate & A_FLAG_DEPLOY) == 0):
+                    if (is_unset(cstate, A_FLAG_DEPLOY) and
+                        is_unset(tstate, A_FLAG_DEPLOY)):
                             if ((not assg.has_snapshots()) and
                                 (not assg.has_volume_states())):
                                 removable.append(assg)
@@ -2204,7 +2209,7 @@ class DrbdManageServer(object):
             removable = []
             for node in self._nodes.itervalues():
                 node_state = node.get_state()
-                if (node_state & DrbdNode.FLAG_REMOVE) != 0:
+                if is_set(node_state, DrbdNode.FLAG_REMOVE):
                     if not node.has_assignments():
                         removable.append(node)
             for node in removable:
@@ -2227,7 +2232,7 @@ class DrbdManageServer(object):
             removable = []
             for resource in self._resources.itervalues():
                 res_state = resource.get_state()
-                if (res_state & DrbdResource.FLAG_REMOVE) != 0:
+                if is_set(res_state, DrbdResource.FLAG_REMOVE):
                     if not resource.has_assignments():
                         removable.append(resource)
             for resource in removable:
@@ -2239,7 +2244,7 @@ class DrbdManageServer(object):
                 removable = []
                 # collect volumes marked for removal
                 for volume in resource.iterate_volumes():
-                    if (volume.get_state() & DrbdVolume.FLAG_REMOVE) != 0:
+                    if is_set(volume.get_state(), DrbdVolume.FLAG_REMOVE):
                         has_vol_state = False
                         for assg in resource.iterate_assignments():
                             vol_state = assg.get_volume_state(volume.get_id())
@@ -2546,8 +2551,8 @@ class DrbdManageServer(object):
                     cstate = vol_state.get_cstate()
                     tstate = vol_state.get_tstate()
                     # Snapshot volumes that are currently deployed
-                    if ((cstate & DrbdVolumeState.FLAG_DEPLOY) != 0 and
-                        (tstate & DrbdVolumeState.FLAG_DEPLOY) != 0):
+                    if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) and
+                        is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
                             volume = vol_state.get_volume()
                             snaps_vol_state = DrbdSnapshotVolumeState(
                                 vol_state.get_id(), volume.get_size_kiB(),
@@ -2720,7 +2725,7 @@ class DrbdManageServer(object):
                                 Assignment.FLAG_DISKLESS
                             )
                             tstate = (assg.get_tstate() & assg_tstate_mask)
-                            if (tstate & Assignment.FLAG_DEPLOY) != 0:
+                            if is_set(tstate, Assignment.FLAG_DEPLOY):
                                 node = assg.get_node()
                                 cstate = 0
                                 tstate |= Assignment.FLAG_CONNECT
@@ -3545,7 +3550,7 @@ class DrbdManageServer(object):
                 drbdctrl_nodes = {}
                 for node in self._nodes.itervalues():
                     node_state = node.get_state()
-                    if (node_state & DrbdNode.FLAG_DRBDCTRL) != 0:
+                    if is_set(node_state, DrbdNode.FLAG_DRBDCTRL):
                         drbdctrl_nodes[node.get_name()] = node
                 # Generate the drbdmanage control volume configuration file
                 conffile.write_drbdctrl(drbdctrl_res, drbdctrl_nodes,

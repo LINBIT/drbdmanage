@@ -23,6 +23,7 @@ import drbdmanage.consts as consts
 import drbdmanage.exceptions as exc
 import drbdmanage.drbd.drbdcommon as drbdcommon
 import drbdmanage.storage.storagecommon as storagecommon
+import drbdmanage.utils as dmutils
 
 
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
@@ -187,7 +188,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
 
     def is_deployed(self):
-        return (self._cstate & self.FLAG_DEPLOY) != 0
+        return dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
 
 
     def undeploy(self):
@@ -214,16 +215,16 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         """
         Returns True if the snapshot needs to be deployed, False otherwise
         """
-        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
-                (self._cstate & self.FLAG_DEPLOY == 0))
+        return (dmutils.is_set(self._tstate, self.FLAG_DEPLOY) and
+                dmutils.is_unset(self._cstate, self.FLAG_DEPLOY))
 
 
     def requires_undeploy(self):
         """
         Returns True if the assignment needs to be undeployed, False otherwise
         """
-        return ((self._cstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
-                (self._tstate & self.FLAG_DEPLOY == 0))
+        return (dmutils.is_set(self._cstate, self.FLAG_DEPLOY) and
+                dmutils.is_unset(self._tstate, self.FLAG_DEPLOY))
 
 
     def get_cstate(self):
@@ -321,7 +322,7 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
 
 
     def is_deployed(self):
-        return (self._cstate & self.FLAG_DEPLOY) != 0
+        return dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
 
 
     def undeploy(self):
@@ -358,13 +359,13 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
 
 
     def requires_deploy(self):
-        return ((self._tstate & self.FLAG_DEPLOY == self.FLAG_DEPLOY) and
-                (self._cstate & self.FLAG_DEPLOY == 0))
+        return (dmutils.is_set(self._tstate, self.FLAG_DEPLOY) and
+                dmutils.is_unset(self._cstate, self.FLAG_DEPLOY))
 
 
     def requires_undeploy(self):
-        return ((self._tstate & self.FLAG_DEPLOY == 0) and
-                (self._cstate & self.FLAG_DEPLOY != 0))
+        return (dmutils.is_unset(self._tstate, self.FLAG_DEPLOY) and
+                dmutils.is_set(self._cstate, self.FLAG_DEPLOY))
 
 
     def get_cstate(self):
