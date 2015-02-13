@@ -1190,10 +1190,13 @@ class DrbdManager(object):
 
         Decision rules:
         NEVER switch to the primary role,
-        * if this assignment has the discard flag set and
+        * if this assignment's discard flag is set and
           the overwrite flag unset
+        * if the peer assignment's overwrite flag set, its diskless flag is
+          unset, and this assignment's overwrite flag is unset
         ALWAYS switch to the primary role,
-        * if this assignment has the overwrite flag set
+        * if this assignment's overwrite flag is set
+        * if the peer assignment's diskless flag is set
         OTHERWISE, switch to the primary role according to the
         truth table below.
         Key:
