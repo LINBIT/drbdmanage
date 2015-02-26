@@ -384,7 +384,7 @@ class DrbdManager(object):
         else:
             if vol_state.requires_deploy():
                 pool_changed = True
-                fn_rc = self._deploy_volume(assg, vol_state)
+                fn_rc = self._deploy_volume_actions(assg, vol_state)
                 assg.set_rc(fn_rc)
                 if fn_rc != 0:
                     failed_actions = True
@@ -677,6 +677,243 @@ class DrbdManager(object):
         drbd_proc = self._drbdadm.down(resource.get_name())
         if drbd_proc is not None:
             self._resconf.write(drbd_proc.stdin, assignment, False)
+            drbd_proc.stdin.close()
+            fn_rc = drbd_proc.wait()
+        else:
+            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+        return fn_rc
+
+
+    def _deploy_volume_actions(self, assignment, vol_state):
+        """
+        Deploys a volumes or restores a snapshot
+        """
+        diskless = is_set(assignment.get_tstate(), Assignment.FLAG_DISKLESS)
+        blockdev = None
+        resource = assignment.get_resource()
+
+        failed_actions = False
+
+        max_peers = self._server.DEFAULT_MAX_PEERS
+        try:
+            max_peers = int(
+                self._server.get_conf_value(
+                    self._server.KEY_MAX_PEERS
+                )
+            )
+        except ValueError:
+            pass
+
+
+        # Default to error
+        fn_rc = -1
+
+        # ============================================================
+        # Block device / backing storage creation
+        # ============================================================
+        # Decide whether to deploy a new empty blockdevice or
+        # deploy a copy of an existing snapshot
+        # (snapshot restore)
+        props = vol_state.get_props()
+        src_bd_name = props.get_prop(consts.SNAPS_SRC_BLOCKDEV)
+        if src_bd_name is not None:
+            # restore snapshot
+            fn_rc, blockdev = self._deploy_volume_from_snapshot(
+                assignment, vol_state, src_bd_name
+            )
+        else:
+            fn_rc, blockdev = self._deploy_volume_blockdev(
+                assignment, vol_state, max_peers
+            )
+
+        if fn_rc != 0 or blockdev is None:
+            failed_actions = True
+
+        # Continue if none of the previous steps failed
+        if not failed_actions:
+            # update configuration file, so drbdadm before-resync-target
+            # can work properly
+            self._server.export_assignment_conf(assignment)
+
+            # ============================================================
+            # Prepare datastructures for writing DRBD configuration files
+            # ============================================================
+
+            # add all the (peer) nodes that have or will have this
+            # resource deployed
+            nodes = []
+            for peer_assg in resource.iterate_assignments():
+                if is_set(peer_assg.get_tstate(), Assignment.FLAG_DEPLOY):
+                    nodes.append(peer_assg.get_node())
+
+            local_node       = assignment.get_node()
+            local_vol_states = []
+            vol_states       = {}
+            deploy_flag      = DrbdVolumeState.FLAG_DEPLOY
+            assg_res         = assignment.get_resource()
+
+            # LOCAL NODE
+            # - add the current volume no matter what
+            #   its current state or target state is, so drbdadm
+            #   can see it in the configuration and operate on it
+            # - add those other volumes that are already deployed
+            local_vol_states.append(vol_state)
+            for vstate in assignment.iterate_volume_states():
+                if ((is_set(vstate.get_tstate(), deploy_flag) and
+                    is_set(vstate.get_cstate(), deploy_flag))):
+                        # do not add the same volume state object
+                        # twice; the volume state for the current
+                        # volume has already been added
+                        if vstate is not vol_state:
+                            local_vol_states.append(vstate)
+            vol_states[local_node.get_name()] = local_vol_states
+
+            # OTHER NODES
+            # - pretend that all volumes that the local node has are also
+            #   on all other nodes
+            for assg_node in nodes:
+                peer_assg = assg_node.get_assignment(assg_res.get_name())
+                # prevent adding the local node twice
+                if peer_assg is not assignment:
+                    assg_vol_states = []
+                    for local_vstate in local_vol_states:
+                        peer_vstate = peer_assg.get_volume_state(
+                            local_vstate.get_id()
+                        )
+                        if peer_vstate is not None:
+                            assg_vol_states.append(peer_vstate)
+                        else:
+                            # The volume state list should be the same for
+                            # all assignments; if it is not, log an error
+                            logging.error(
+                                "Volume state list mismatch between multiple "
+                                "assignments for resource %s"
+                                % (assg_res.get_name())
+                            )
+                    vol_states[assg_node.get_name()] = assg_vol_states
+
+            # ============================================================
+            # Meta-data creation
+            # ============================================================
+            # Meta data creation for assignments that have local storage
+            if (not failed_actions) and (not diskless) and src_bd_name is None:
+                fn_rc = self._deploy_volume_metadata(
+                    assignment, vol_state, max_peers, nodes, vol_states
+                )
+
+            # ============================================================
+            # DRBD initialization
+            # ============================================================
+            # FIXME: this does not need to run if metadata
+            #        creation failed
+            # Adjust the DRBD resource to configure the volume
+            drbd_proc = self._drbdadm.adjust(resource.get_name())
+            if drbd_proc is not None:
+                self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+                                            nodes, vol_states)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
+                    if diskless:
+                        # Successful "drbdadm adjust" is sufficient for a
+                        # diskless client to become deployed
+                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                        fn_rc = 0
+                    else:
+                        # FIXME: if the blockdevice is missing or meta-data
+                        #        creation failed, "drbdadm adjust" should have
+                        #        failed, too, but it would probably be better
+                        #        to check those cases explicitly
+                        vol_state.set_cstate_flags(
+                            DrbdVolumeState.FLAG_ATTACH |
+                            DrbdVolumeState.FLAG_DEPLOY
+                        )
+                        fn_rc = 0
+                    # "drbdadm adjust" implicitly connects the resource
+                    assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+        return fn_rc
+
+
+    def _deploy_volume_blockdev(self, assignment, vol_state, max_peers):
+        """
+        Creates a new empty block device for a new volume
+        """
+        fn_rc    = -1
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        volume   = resource.get_volume(vol_state.get_id())
+
+        net_size   = volume.get_size_kiB()
+        gross_size = MetaData.get_gross_data_kiB(net_size, max_peers)
+        blockdev = bd_mgr.create_blockdevice(
+            resource.get_name(),
+            volume.get_id(),
+            gross_size
+        )
+
+        if blockdev is not None:
+            vol_state.set_bd(
+                blockdev.get_name(),
+                blockdev.get_path()
+            )
+            # FIXME: If meta-data creation fails later, drbdmanage
+            #        will not retry it, because it seems that the
+            #        resource is deployed already. However, if the
+            #        volume is not marked as deployed here, then
+            #        if meta-data creation fails and the volume is
+            #        left in an undeployed state, drbdmanage would
+            #        forget to remove the backend blockdevice upon
+            #        undeploying a partly-deployed resource.
+            #        This must be redesigned with additional flags
+            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+            fn_rc = 0
+
+        return fn_rc, blockdev
+
+
+    def _deploy_volume_from_snapshot(self, assignment, vol_state, src_bd_name):
+        """
+        Creates a new blockdevice from a snapshot
+        """
+        fn_rc    = -1
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+
+        blockdev = bd_mgr.create_snapshot(
+            resource.get_name(),
+            vol_state.get_id(),
+            src_bd_name
+        )
+        if blockdev is not None:
+            vol_state.set_bd(
+                blockdev.get_name(),
+                blockdev.get_path()
+            )
+            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+            fn_rc = 0
+
+        return fn_rc, blockdev
+
+
+    def _deploy_volume_metadata(self, assignment, vol_state, max_peers,
+                                nodes, vol_states):
+        """
+        Creates DRBD metadata on a volume
+        """
+        fn_rc    = -1
+        resource = assignment.get_resource()
+
+        # Initialize DRBD metadata
+        drbd_proc = self._drbdadm.create_md(
+            resource.get_name(), vol_state.get_id(), max_peers
+        )
+        if drbd_proc is not None:
+            self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+                                        nodes, vol_states)
             drbd_proc.stdin.close()
             fn_rc = drbd_proc.wait()
         else:
