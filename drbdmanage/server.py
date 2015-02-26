@@ -1335,7 +1335,8 @@ class DrbdManageServer(object):
                                     else 0)
                             )
                             assign_rc = (
-                                self._assign(node, resource, cstate, tstate)
+                                self._assign(node, resource, cstate, tstate,
+                                             DrbdNode.NODE_ID_NONE)
                             )
                             if assign_rc == DM_SUCCESS:
                                 assignment = node.get_assignment(
@@ -1412,7 +1413,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def _assign(self, node, resource, cstate, tstate):
+    def _assign(self, node, resource, cstate, tstate, node_id):
         """
         Implementation - see assign()
 
@@ -1421,15 +1422,22 @@ class DrbdManageServer(object):
         fn_rc = DM_DEBUG
         try:
             serial = self.get_serial()
-            node_id = self.get_free_node_id(resource)
+
+            # If no node id is selected for this assignment, then attempt
+            # to find a free one
+            if node_id == DrbdNode.NODE_ID_NONE:
+                node_id = self.get_free_node_id(resource)
+
             if node_id == DrbdNode.NODE_ID_NONE:
                 # no free node ids
                 fn_rc = DM_ENODEID
             else:
+
                 # If that node does not have its own storage,
                 # deploy a DRBD client (diskless)
                 if is_unset(node.get_state(), DrbdNode.FLAG_STORAGE):
                     tstate = tstate | Assignment.FLAG_DISKLESS
+
                 assignment = Assignment(node, resource, node_id,
                                         cstate, tstate, 0, None,
                                         self.get_serial, None, None)
@@ -1439,9 +1447,13 @@ class DrbdManageServer(object):
                         vol_state.attach()
                 node.add_assignment(assignment)
                 resource.add_assignment(assignment)
+
+                # Flag all existing assignments for an update of the
+                # assignment's network connections
                 for assignment in resource.iterate_assignments():
                     if assignment.is_deployed():
                         assignment.update_connections()
+
                 fn_rc = DM_SUCCESS
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -1656,7 +1668,8 @@ class DrbdManageServer(object):
                                 node, resource,
                                 0,
                                 Assignment.FLAG_DEPLOY |
-                                Assignment.FLAG_CONNECT
+                                Assignment.FLAG_CONNECT,
+                                DrbdNode.NODE_ID_NONE
                             )
                         self._drbd_mgr.perform_changes()
                         self.save_conf_data(persist)
@@ -1790,7 +1803,8 @@ class DrbdManageServer(object):
                     node, resource,
                     0,
                     Assignment.FLAG_DEPLOY | Assignment.FLAG_CONNECT |
-                    Assignment.FLAG_DISKLESS
+                    Assignment.FLAG_DISKLESS,
+                    DrbdNode.NODE_ID_NONE
                 )
             else:
                 tstate = assg.get_tstate()
@@ -2712,14 +2726,6 @@ class DrbdManageServer(object):
                         # the snapshot resource was assigned to
                         # (unless that assignment is currently
                         #  being undeployed)
-                        # -----
-                        # FIXME: DrbdManage normally selects the first
-                        # assignment that is being deployed as the one that
-                        # will become the SyncSource, but in this case, this
-                        # behavior may select a node that was deployed with
-                        # empty volumes and should be a SyncTarget, syncing
-                        # from one of the nodes that has snapshot data instead
-                        # of an empty volume.
                         for assg in snaps_res.iterate_assignments():
                             assg_tstate_mask = (
                                 Assignment.FLAG_DEPLOY |
@@ -2731,7 +2737,8 @@ class DrbdManageServer(object):
                                 cstate = 0
                                 tstate |= Assignment.FLAG_CONNECT
                                 assign_rc = self._assign(
-                                    node, resource, cstate, tstate
+                                    node, resource, cstate, tstate,
+                                    assg.get_node_id()
                                 )
                                 if assign_rc != DM_SUCCESS:
                                     # Should not be reached, cause the only
