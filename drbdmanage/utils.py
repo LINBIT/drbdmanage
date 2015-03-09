@@ -970,10 +970,10 @@ class Selector(object):
 
 
     def __init__(self, keys_list):
+        self._keys = {}
         if keys_list is not None:
-            self._keys = { key: None for key in keys_list }
-        else:
-            self._keys = {}
+            for key in keys_list:
+                self._keys[key] = None
 
 
     def all_selector(self, key):
