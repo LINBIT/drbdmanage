@@ -1647,7 +1647,7 @@ class DrbdManageServer(object):
                         #   - resource is being undeployed
                         #   - node does not have its own storage
                         #     (diskless/client assignments only)
-                        if (is_set(node.get_state(), DrbdNode.FLAG_STORAGE) or
+                        if (is_set(node.get_state(), DrbdNode.FLAG_STORAGE) and
                             resource.get_assignment(node.get_name()) is None):
                             # Node has its own storage, but the resource is not
                             # deployed on it; add it to the list of candidates
@@ -1696,16 +1696,13 @@ class DrbdManageServer(object):
                                 break
                     if ctr > final_count:
                         # Undeploy from nodes that have the
-                        # resource deployed
+                        # resource deployed, or should have the resource
+                        # deployed (target state)
                         # Collect nodes where the resource is deployed
                         deployed = {}
                         for assg in resource.iterate_assignments():
                             if (is_set(
                                     assg.get_tstate(),
-                                    Assignment.FLAG_DEPLOY
-                                ) and
-                                is_set(
-                                    assg.get_cstate(),
                                     Assignment.FLAG_DEPLOY
                                 ) and
                                 is_unset(
