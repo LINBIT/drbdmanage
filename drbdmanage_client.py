@@ -283,6 +283,8 @@ class DrbdManage(object):
                 server_rc, joinc = self._server.text_query(["joinc", name])
                 joinc_text = str(" ".join(joinc))
 
+                fn_rc = self._list_rc_entries(server_rc)
+
                 # Text queries do not return error codes, so check whether the
                 # string returned by the server looks like a join command or
                 # like an error message
@@ -310,9 +312,6 @@ class DrbdManage(object):
                     if not join_performed:
                         sys.stdout.write("\nJoin command for node %s:\n"
                                          "%s\n" % (name, joinc_text))
-
-            fn_rc = self._list_rc_entries(server_rc)
-
         else:
             self.syntax_new_node()
         return fn_rc
