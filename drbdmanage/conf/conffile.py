@@ -327,10 +327,13 @@ class DrbdAdmConf(object):
                                     "        volume %d {\n"
                                     "            device minor %d;\n"
                                     "            disk %s;\n"
+                                    "            disk {"
+                                    "                size %dk;"
+                                    "            }"
                                     "            meta-disk internal;\n"
                                     "        }\n"
                                     % (volume.get_id(), minor.get_value(),
-                                       bd_path)
+                                       bd_path, volume.get_size_kiB())
                                 )
                         stream.write("    }\n")
             # end resource/nodes
@@ -433,10 +436,13 @@ class DrbdAdmConf(object):
                             "        volume %d {\n"
                             "            device minor %d;\n"
                             "            disk %s;\n"
+                            "            disk {"
+                            "                size %dk;"
+                            "            }"
                             "            meta-disk internal;\n"
                             "        }\n"
                             % (volume.get_id(), minor.get_value(),
-                               bd_path)
+                               bd_path, volume.get_size_kiB())
                         )
                     # end resource/nodes/volumes
                     stream.write("    }\n")
