@@ -37,6 +37,7 @@ VOL_ID              = "vol_id"
 VOL_MINOR           = "minor"
 VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
+SNAPS_NAME          = "snaps_name"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 

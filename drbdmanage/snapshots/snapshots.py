@@ -25,7 +25,6 @@ import drbdmanage.drbd.drbdcommon as drbdcommon
 import drbdmanage.storage.storagecommon as storagecommon
 import drbdmanage.utils as dmutils
 
-
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
@@ -123,6 +122,23 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         self._resource.remove_snapshot(self)
 
 
+    def get_properties(self, req_props):
+        properties = {}
+
+        selector = dmutils.Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.SNAPS_NAME):
+            properties[consts.SNAPS_NAME] = self._name
+        if selected(consts.RES_NAME):
+            properties[consts.RES_NAME] = self._resource.get_name()
+
+        return properties
+
+
 class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
     _snapshot         = None
@@ -188,7 +204,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
 
 
     def is_deployed(self):
-        return dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
+        return (self._cstate, self.FLAG_DEPLOY)
 
 
     def undeploy(self):
@@ -215,7 +231,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         """
         Returns True if the snapshot needs to be deployed, False otherwise
         """
-        return (dmutils.is_set(self._tstate, self.FLAG_DEPLOY) and
+        return ((self._tstate, self.FLAG_DEPLOY) and
                 dmutils.is_unset(self._cstate, self.FLAG_DEPLOY))
 
 
@@ -223,7 +239,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         """
         Returns True if the assignment needs to be undeployed, False otherwise
         """
-        return (dmutils.is_set(self._cstate, self.FLAG_DEPLOY) and
+        return ((self._cstate, self.FLAG_DEPLOY) and
                 dmutils.is_unset(self._tstate, self.FLAG_DEPLOY))
 
 
@@ -261,6 +277,45 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
         if saved_tstate != self._tstate:
             self.get_props().new_serial()
+
+
+    def get_properties(self, req_props):
+        properties = {}
+
+        selector = dmutils.Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.NODE_NAME):
+            properties[consts.NODE_NAME] = (
+                self._assignment.get_node().get_name()
+            )
+        if selected(consts.RES_NAME):
+            properties[consts.RES_NAME]  = (
+                self._assignment.get_resource().get_name()
+            )
+        if selected(consts.SNAPS_NAME):
+            properties[consts.SNAPS_NAME]  = self._snapshot.get_name()
+
+        # target state flags
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                dmutils.bool_to_string(
+                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                )
+            )
+
+        # current state flags
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                dmutils.bool_to_string(
+                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                )
+            )
+
+        return properties
 
 
 class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
@@ -402,3 +457,38 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
         self._tstate = ((self._tstate | flags) ^ flags) & self.TSTATE_MASK
         if saved_tstate != self._tstate:
             self.get_props().new_serial()
+
+
+    def get_properties(self, req_props):
+        properties = {}
+
+        selector = dmutils.Selector(req_props)
+        if req_props is not None and len(req_props) > 0:
+            selected = selector.list_selector
+        else:
+            selected = selector.all_selector
+
+        if selected(consts.VOL_ID):
+            properties[consts.VOL_ID] = str(self._vol_id)
+        if selected(consts.VOL_BDEV):
+            properties[consts.VOL_BDEV] = (
+                "" if self._bd_path is None else str(self._bd_path)
+            )
+
+        # target state flags
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                dmutils.bool_to_string(
+                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                )
+            )
+
+        # current state flags
+        if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
+            properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
+                dmutils.bool_to_string(
+                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                )
+            )
+
+        return properties

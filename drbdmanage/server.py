@@ -2594,11 +2594,13 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def list_snapshots(self, res_names, snaps_names, filter_props, req_props):
+    def list_snapshots(self, res_names, snaps_names, serial,
+                       filter_props, req_props):
         """
         List the available snapshots of a resource
         """
         fn_rc = []
+        res_list = None
         def resource_filter(res_names):
             for res_name in res_names:
                 res = self._resources.get(res_name)
@@ -2607,6 +2609,12 @@ class DrbdManageServer(object):
                                  [ RES_NAME, res_name ])
                 else:
                     yield res
+
+        def snaps_filter(resource, snaps_names):
+            for name in snaps_names:
+                snaps = resource.get_snapshot(name)
+                if snaps is not None:
+                    yield snaps
 
         try:
             selected_res = self._resources.itervalues()
@@ -2617,7 +2625,10 @@ class DrbdManageServer(object):
 
             res_list = []
             for res in selected_res:
-                selected_sn = res.iterate_snapshots()
+                if snaps_names is not None and len(snaps_names) > 0:
+                    selected_sn = snaps_filter(res, snaps_names)
+                else:
+                    selected_sn = res.iterate_snapshots()
                 if filter_props is not None and len(filter_props) > 0:
                     selected_sn = props_filter(
                         selected_sn, filter_props
@@ -2627,7 +2638,7 @@ class DrbdManageServer(object):
                 for sn in selected_sn:
                      # TODO: was get_id()
                      # TODO: sn.get_properties(req_props)
-                    sn_entry = [ sn.get_name(), dict() ]
+                    sn_entry = [ sn.get_name(), sn.get_properties(req_props) ]
                     sn_list.append(sn_entry)
                 if len(sn_list) > 0:
                     res_entry = [
@@ -2636,21 +2647,82 @@ class DrbdManageServer(object):
                     ]
                     res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-            return fn_rc, res_list
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
-
-        return fn_rc, None
+        return fn_rc, res_list
 
 
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
-                                  filter_props, req_props):
+                                  serial, filter_props, req_props):
         """
         List the available snapshots of a resource on specific nodes
         """
         fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
-        return fn_rc
+        assg_list = None
+
+        # TODO: should this function report nonexistent resource/node names
+        #       in the query filter?
+
+        # TODO: filter_props are not implemented yet
+
+        def res_filter(res_names):
+            for name in res_names:
+                res = self._resources.get(name)
+                if res is not None:
+                    yield res
+
+        def snaps_filter(resource, snaps_names):
+            for name in snaps_names:
+                snaps = resource.get_snapshot(name)
+                if snaps is not None:
+                    yield snaps
+
+        try:
+            if res_names is not None and len(res_names) > 0:
+                selected_res = res_filter(res_names)
+            else:
+                selected_res = self._resources.itervalues()
+
+            assg_list = []
+            for res in selected_res:
+                if snaps_names is not None and len(snaps_names) > 0:
+                    selected_snaps = snaps_filter(res, snaps_names)
+                else:
+                    selected_snaps = res.iterate_snapshots()
+
+                for snaps in selected_snaps:
+                    snaps_assg_list = []
+                    if node_names is not None and len(node_names) > 0:
+                        name_map = {}
+                        for name in node_names:
+                            name_map[name] = None
+                        for snaps_assg in snaps.iterate_snaps_assgs():
+                            assg = snaps_assg.get_assignment()
+                            node_name = assg.get_node().get_name()
+                            if name_map.get(node_name) is not None:
+                                snaps_entry = [
+                                    node_name,
+                                    snaps_assg.get_properties(req_props)
+                                ]
+                                snaps_assg_list.append(snaps_entry)
+                    else:
+                        for snaps_assg in snaps.iterate_snaps_assgs():
+                            assg = snaps_assg.get_assignment()
+                            node_name = assg.get_node().get_name()
+                            snaps_entry = [
+                                node_name,
+                                snaps_assg.get_properties(req_props)
+                            ]
+                            snaps_assg_list.append(snaps_entry)
+                    if len(snaps_assg_list) > 0:
+                        snaps_list_entry = [
+                            res.get_name(), snaps.get_name(),
+                            snaps_assg_list
+                        ]
+                        assg_list.append(snaps_list_entry)
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        return fn_rc, assg_list
 
 
     def restore_snapshot(self, res_name, snaps_res_name, snaps_name,

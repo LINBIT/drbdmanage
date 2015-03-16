@@ -393,30 +393,32 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="asasa{ss}as",
+        in_signature="asasta{ss}as",
         out_signature="a(isa(ss))" "a(sa(sa{ss}))"
     )
-    def list_snapshots(self, res_names, snaps_names, filter_props, req_props):
+    def list_snapshots(self, res_names, snaps_names, serial,
+                       filter_props, req_props):
         """
         D-Bus interface for DrbdManageServer.list_snapshots(...)
         """
         return self._server.list_snapshots(
-            res_names, snaps_names, dict(filter_props), req_props
+            res_names, snaps_names, serial, dict(filter_props), req_props
         )
 
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="asasasa{ss}as",
+        in_signature="asasasta{ss}as",
         out_signature="a(isa(ss))" "a(ssa(sa{ss}))"
     )
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
-                                  filter_props, req_props):
+                                  serial, filter_props, req_props):
         """
         D-Bus interface for DrbdManageServer.list_snapshot_assignments(...)
         """
         return self._server.list_snapshot_assignments(
-            res_names, snaps_names, node_names, dict(filter_props), req_props
+            res_names, snaps_names, node_names, serial,
+            dict(filter_props), req_props
         )
 
 
