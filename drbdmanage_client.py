@@ -70,6 +70,7 @@ from drbdmanage.drbd.views import DrbdNodeView
 from drbdmanage.drbd.views import DrbdResourceView
 from drbdmanage.drbd.views import DrbdVolumeView
 from drbdmanage.drbd.views import DrbdVolumeStateView
+from drbdmanage.snapshots.views import DrbdSnapshotAssignmentView
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.defaultip import default_ip
 
@@ -1647,6 +1648,172 @@ class DrbdManage(object):
         sys.stderr.write("Syntax: resources [ --machine-readable | -m ]\n")
 
 
+    def cmd_list_snapshots(self, args):
+        color = self.color
+        # Command parser configuration
+        order    = []
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { "-m" : False }
+        flagsalias = { "--machine-readable" : "-m" }
+        parse_rc = CommandParser().parse(
+            args, order, params, opt, optalias, flags, flagsalias
+        )
+        if parse_rc != 0:
+            self.syntax_list_snapshots()
+            return 1
+
+        self.dbus_init()
+
+        machine_readable = flags["-m"]
+
+        server_rc, res_list = self._server.list_snapshots(
+            dbus.Array([], signature="s"),
+            dbus.Array([], signature="s"),
+            0,
+            dbus.Dictionary({}, signature="ss"),
+            dbus.Array([], signature="s")
+        )
+
+        if (not machine_readable) and (res_list is None
+            or len(res_list) == 0):
+                sys.stdout.write("Snapshot list is empty\n")
+                return 0
+
+        if not machine_readable:
+            sys.stdout.write(
+                "%s%s%s\n"
+                % (color(COLOR_DARKGREEN), "Resource", color(COLOR_NONE))
+            )
+            sys.stdout.write(
+                "  %s* %s%s%s\n"
+                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                   "Snapshot", color(COLOR_NONE))
+            )
+            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+
+        # sort the list by resource name
+        res_list.sort(key=lambda res_entry: res_entry[0])
+
+        for res_entry in res_list:
+            res_name, snaps_list = res_entry
+            # sort the list by snapshot name
+            if not machine_readable:
+                sys.stdout.write(
+                    "%s%s%s\n"
+                    % (color(COLOR_DARKGREEN), res_name, color(COLOR_NONE))
+                )
+            snaps_list.sort(key=lambda snaps_entry: snaps_entry[0])
+            for snaps_entry in snaps_list:
+                snaps_name, snaps_props = snaps_entry
+                if machine_readable:
+                    sys.stdout.write("%s,%s\n" % (res_name, snaps_name))
+                else:
+                    sys.stdout.write(
+                        "  %s* %s%s%s\n"
+                        % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                           snaps_name, color(COLOR_NONE))
+                    )
+        return 0
+
+
+    def syntax_list_snapshots(self):
+        sys.stderr.write("Syntax: snapshots [ --machine-readable | -m ]\n")
+
+
+    def cmd_list_snapshot_assignments(self, args):
+        color = self.color
+        # Command parser configuration
+        order    = []
+        params   = {}
+        opt      = {}
+        optalias = {}
+        flags    = { "-m" : False }
+        flagsalias = { "--machine-readable" : "-m" }
+        parse_rc = CommandParser().parse(
+            args, order, params, opt, optalias, flags, flagsalias
+        )
+        if parse_rc != 0:
+            self.syntax_list_snapshot_assignments()
+            return 1
+
+        self.dbus_init()
+
+        machine_readable = flags["-m"]
+
+        server_rc, assg_list = self._server.list_snapshot_assignments(
+            dbus.Array([], signature="s"),
+            dbus.Array([], signature="s"),
+            dbus.Array([], signature="s"),
+            0,
+            dbus.Dictionary({}, signature="ss"),
+            dbus.Array([], signature="s")
+        )
+
+        if (not machine_readable) and (assg_list is None
+            or len(assg_list) == 0):
+                sys.stdout.write("Snapshot assignment list is empty\n")
+                return 0
+
+        if not machine_readable:
+            sys.stdout.write(
+                "%s%-*s %s%s%s\n"
+                % (color(COLOR_DARKGREEN), DrbdResourceView.get_name_maxlen(),
+                   "Resource",
+                   color(COLOR_DARKPINK), "Snapshot", color(COLOR_NONE))
+            )
+            sys.stdout.write(
+                "  %s* %s%-*s %s%s%s\n"
+                % (color(COLOR_BROWN), color(COLOR_TEAL),
+                   DrbdNodeView.get_name_maxlen(), "Node",
+                   color(COLOR_RED), "state", color(COLOR_NONE))
+            )
+            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+
+        # sort the list by resource name
+        assg_list.sort(key=lambda res_entry: res_entry[0])
+
+        for assg_list_entry in assg_list:
+            res_name, snaps_name, snaps_assg_list = assg_list_entry
+            if not machine_readable:
+                sys.stdout.write(
+                    "%s%-*s %s%s%s\n"
+                    % (color(COLOR_DARKGREEN),
+                       DrbdResourceView.get_name_maxlen(), res_name,
+                       color(COLOR_DARKPINK), snaps_name,
+                       color(COLOR_NONE))
+                )
+            # sort the assignment entries by node name
+            snaps_assg_list.sort(key=lambda list_entry: list_entry[0])
+            for snaps_assg_entry in snaps_assg_list:
+                node_name, snaps_assg_props = snaps_assg_entry
+                snaps_assg = DrbdSnapshotAssignmentView(
+                    snaps_assg_props, machine_readable
+                )
+
+                if machine_readable:
+                    sys.stdout.write(
+                        "%s,%s,%s,%s,%s\n"
+                        % (res_name, snaps_name, node_name,
+                           snaps_assg.get_cstate(), snaps_assg.get_tstate())
+                    )
+                else:
+                    sys.stdout.write(
+                        "  %s* %s%-*s %s%s -> %s%s\n"
+                        % (color(COLOR_BROWN), color(COLOR_DARKPINK),
+                           DrbdNodeView.get_name_maxlen(), node_name,
+                           color(COLOR_RED),
+                           snaps_assg.get_cstate(), snaps_assg.get_tstate(),
+                           color(COLOR_NONE))
+                    )
+        return 0
+
+
+    def syntax_list_snapshot_assignments(self):
+        sys.stderr.write("Syntax: snapshots [ --machine-readable | -m ]\n")
+
+
     def cmd_list_assignments(self, args):
         color = self.color
         # Command parser configuration
@@ -2830,6 +2997,8 @@ class DrbdManage(object):
         "v"                 : cmd_list_volumes,
         "nodes"             : cmd_list_nodes,
         "n"                 : cmd_list_nodes,
+        "snapshots"         : cmd_list_snapshots,
+        "s"                 : cmd_list_snapshots,
         "poke"              : cmd_poke,
         "p"                 : cmd_poke,
         "new-node"          : cmd_new_node,
@@ -2886,7 +3055,9 @@ class DrbdManage(object):
         "join"              : cmd_join,
         "howto-join"        : cmd_howto_join,
         "_debug_"           : cmd_lowlevel_debug,
-        "query-conf"        : cmd_query_conf
+        "query-conf"        : cmd_query_conf,
+        "sa"                : cmd_list_snapshot_assignments,
+        "snapshot-assignments" : cmd_list_snapshot_assignments
       }
 
 
