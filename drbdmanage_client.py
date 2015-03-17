@@ -1330,6 +1330,159 @@ class DrbdManage(object):
         )
 
 
+    def cmd_new_snapshot(self, args):
+        fn_rc    = 1
+        # Command parser configuration
+        order      = ["res_name", "snaps_name"]
+        params     = {}
+        opt        = {}
+        optalias   = {}
+        flags      = {}
+        flagsalias = {}
+        node_list  = []
+        try:
+            parse_rc = CommandParser().parse_further(
+                args, order, params, opt, optalias, flags, flagsalias,
+                node_list
+            )
+            if parse_rc != 0:
+                raise SyntaxException
+            res_name   = params["res_name"]
+            snaps_name = params["snaps_name"]
+
+            props = dbus.Dictionary(signature="ss")
+
+            self.dbus_init()
+            server_rc = self._server.create_snapshot(
+                dbus.String(res_name), dbus.String(snaps_name),
+                dbus.Array(node_list, signature="s"), props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_new_snapshot()
+        return fn_rc
+
+
+    def cmd_remove_snapshot(self, args):
+        fn_rc    = 1
+        # Command parser configuration
+        order      = ["res_name", "snaps_name"]
+        params     = {}
+        opt        = {}
+        optalias   = {}
+        flags      = {"-f": False}
+        flagsalias = {"--force": "-f"}
+        try:
+            parse_rc = CommandParser().parse(
+                args, order, params, opt, optalias, flags, flagsalias
+            )
+            if parse_rc != 0:
+                raise SyntaxException
+            res_name   = params["res_name"]
+            snaps_name = params["snaps_name"]
+            force      = flags["-f"]
+
+            self.dbus_init()
+            server_rc = self._server.remove_snapshot(
+                dbus.String(res_name), dbus.String(snaps_name), force
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_remove_snapshot()
+        return fn_rc
+
+
+    def cmd_remove_snapshot_assignment(self, args):
+        fn_rc    = 1
+        # Command parser configuration
+        order      = ["res_name", "snaps_name", "node_name"]
+        params     = {}
+        opt        = {}
+        optalias   = {}
+        flags      = {"-f": False}
+        flagsalias = {"--force": "-f"}
+        try:
+            parse_rc = CommandParser().parse(
+                args, order, params, opt, optalias, flags, flagsalias
+            )
+            if parse_rc != 0:
+                raise SyntaxException
+            res_name   = params["res_name"]
+            snaps_name = params["snaps_name"]
+            node_name  = params["node_name"]
+            force      = flags["-f"]
+
+            self.dbus_init()
+            server_rc = self._server.remove_snapshot_assignment(
+                dbus.String(res_name), dbus.String(snaps_name),
+                dbus.String(node_name), force
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_remove_snapshot_assignment()
+        return fn_rc
+
+
+    def cmd_restore_snapshot(self, args):
+        fn_rc    = 1
+        # Command parser configuration
+        order      = ["res_name", "snaps_res_name", "snaps_name"]
+        params     = {}
+        opt        = {}
+        optalias   = {}
+        flags      = {}
+        flagsalias = {}
+        try:
+            parse_rc = CommandParser().parse(
+                args, order, params, opt, optalias, flags, flagsalias
+            )
+            if parse_rc != 0:
+                raise SyntaxException
+            res_name       = params["res_name"]
+            snaps_res_name = params["snaps_res_name"]
+            snaps_name     = params["snaps_name"]
+
+            res_props  = dbus.Dictionary(signature="ss")
+            vols_props = dbus.Dictionary(signature="ss")
+
+            self.dbus_init()
+            server_rc = self._server.restore_snapshot(
+                dbus.String(res_name), dbus.String(snaps_res_name),
+                dbus.String(snaps_name), res_props, vols_props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.syntax_restore_snapshot()
+        return fn_rc
+
+
+    def syntax_new_snapshot(self):
+        sys.stderr.write(
+            "Syntax: new-snapshot <resource> "
+            "<new-snapshot-name> <node> [ node ... ]\n"
+        )
+
+
+    def syntax_remove_snapshot(self):
+        sys.stderr.write(
+            "Syntax: remove-snapshot <resource> <snapshot>\n"
+        )
+
+
+    def syntax_remove_snapshot_assignment(self):
+        sys.stderr.write(
+            "Syntax: remove-snapshot-assignment <resource> "
+            "<snapshot> <node>\n"
+        )
+
+
+    def syntax_restore_snapshot(self):
+        sys.stderr.write(
+            "Syntax: restore-snapshot <new-resource-name> "
+            "<snapshot-resource> <snapshot>\n"
+        )
+
+
     def syntax(self):
         sys.stderr.write("Syntax: drbdmanage [ options ] command\n")
         sys.stderr.write(
@@ -1986,8 +2139,10 @@ class DrbdManage(object):
             self.syntax_howto_join()
         return fn_rc
 
+
     def syntax_howto_join(self):
         sys.stderr.write("Syntax: howto-join <node>\n")
+
 
     def cmd_lowlevel_debug(self, args):
 	cmd = args.next_arg()
@@ -2023,8 +2178,10 @@ class DrbdManage(object):
 
 	return 0
 
+
     def syntax_lowlevel_debug(self):
         sys.stderr.write("Syntax: _debug_ <cmd> [input args as JSON]\n")
+
 
     def cmd_query_conf(self, args):
         """
@@ -3056,8 +3213,23 @@ class DrbdManage(object):
         "howto-join"        : cmd_howto_join,
         "_debug_"           : cmd_lowlevel_debug,
         "query-conf"        : cmd_query_conf,
-        "sa"                : cmd_list_snapshot_assignments,
-        "snapshot-assignments" : cmd_list_snapshot_assignments
+        "create-snapshot"   : cmd_new_snapshot,
+        "cs"                : cmd_new_snapshot,
+        "new-snapshot"      : cmd_new_snapshot,
+        "ns"                : cmd_new_snapshot,
+        "add-snapshot"      : cmd_new_snapshot,
+        "as"                : cmd_new_snapshot,
+        "remove-snapshot"   : cmd_remove_snapshot,
+        "delete-snapshot"   : cmd_remove_snapshot,
+        "ds"                : cmd_remove_snapshot,
+        "restore-snapshot"  : cmd_restore_snapshot,
+        "rs"                : cmd_restore_snapshot,
+        "snapshot-assignments"      : cmd_list_snapshot_assignments,
+        "sa"                        : cmd_list_snapshot_assignments,
+        "remove-snapshot-assignment": cmd_remove_snapshot_assignment,
+        "rsa"                       : cmd_remove_snapshot_assignment,
+        "delete-snapshot-assignment": cmd_remove_snapshot_assignment,
+        "dsa"                       : cmd_remove_snapshot_assignment
       }
 
 
