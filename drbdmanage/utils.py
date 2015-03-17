@@ -603,6 +603,26 @@ class CommandParser(object):
 
     def parse(self, args, order, params, opt, optalias, flags, flagsalias):
         """
+        Parse a fixed number of command line arguments
+
+        See description of _parse_impl
+        """
+        return self._parse_impl(args, order, params,
+                                opt, optalias, flags, flagsalias, None)
+
+
+    def parse_further(self, args, order, params,
+                      opt, optalias, flags, flagsalias, further_args):
+        """
+        Parse a command line with a variable number of additional arguments
+        """
+        return self._parse_impl(args, order, params,
+                                opt, optalias, flags, flagsalias, further_args)
+
+
+    def _parse_impl(self, args, order, params,
+                    opt, optalias, flags, flagsalias, further_args):
+        """
         Parse command line arguments
 
         This functions parses the command line for the positional arguments
@@ -614,10 +634,13 @@ class CommandParser(object):
         in the opt dict.
         optalias and flagsalias contain alias names for the respective opt and
         flags entries.
-        @param   args: list that receives positional arguments
-        @type    args: list
+        @param   args: command line input
+        @type    args: class implementing next_arg()
+                 such as CmdLineReader or ArgvReader
         @param   order: list of positional argument names
         @type    order: list
+        @param   params: receives positional arguments
+        @type    params: dict
         @param   opt: optional argument names
         @type    opt: dict
         @param   flags: optional flags names
@@ -628,6 +651,9 @@ class CommandParser(object):
         @param   flagsalias: alias names for optional flags
                  key=alias, value=flags key
         @type    flagsalias: dict
+        @param   further_args: receives any further arguments entered
+                 unless it points to None
+        @type    further_args: list or None
         @return: 0 on success, 1 on error
         @rtype:  int
         """
@@ -668,16 +694,20 @@ class CommandParser(object):
                     params[order[ctr]] = arg
                     ctr += 1
                 else:
-                    sys.stderr.write(
-                        "Error: Unexpected extra argument '%s'\n" % (arg)
-                    )
-                    fn_rc = 1
-                    break
+                    if further_args is None:
+                        sys.stderr.write(
+                            "Error: Unexpected extra argument '%s'\n" % (arg)
+                        )
+                        fn_rc = 1
+                        break
+                    else:
+                        further_args.append(arg)
             arg = args.next_arg()
         for val in params.itervalues():
             if val == None:
                 sys.stderr.write("Error: Incomplete command line\n")
                 fn_rc = 1
+                break
         return fn_rc
 
 
