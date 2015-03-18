@@ -68,6 +68,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
     # LVM executable names
     LVCREATE = "lvcreate"
     LVREMOVE = "lvremove"
+    LVCHANGE = "lvchange"
     VGS      = "vgs"
 
     # Plugin configuration
@@ -139,6 +140,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
                 self._volumes[lv_name] = blockdev
                 self._pools[pool_name] = pool
                 self._pool_lookup[lv_name] = pool_name
+                self.up_blockdevice(blockdev)
                 self.save_state()
         except Exception as exc:
             logging.error(
@@ -195,6 +197,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
                     pool.add_volume(snaps_name)
                     self._volumes[snaps_name] = blockdev
                     self._pool_lookup[snaps_name] = pool_name
+                    self.up_blockdevice(blockdev)
                     self.save_state()
         except Exception as exc:
             logging.error(
@@ -262,7 +265,72 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
-        pass
+        fn_rc = dmexc.DM_ESTORAGE
+        # lvchange -ay -kn -K drbdpool/<name>
+
+        # Prepare the path for LVM's 'lvchange' utility
+        lvchange = utils.build_path(
+            self._conf[self.KEY_LVM_PATH],
+            self.LVCHANGE
+        )
+
+        lv_name = blockdevice.get_name()
+
+        pool_name = None
+        try:
+            pool_name = self._pool_lookup[lv_name]
+            pool      = self._pools[pool_name]
+        except KeyError:
+            pass
+
+        lvm_proc = None
+        try:
+            # Modify pool state
+            logging.debug(
+                "LVMThinPool: exec: %s %s %s/%s"
+                % (lvchange, "-ay -kn -K", self._conf[self.KEY_VG_NAME],
+                   pool_name)
+            )
+            lvm_proc = subprocess.Popen(
+                [
+                    lvchange,
+                    "-ay", "-kn", "-K", self._conf[self.KEY_VG_NAME] + "/" +
+                    pool_name
+                ],
+                0, lvchange,
+                env=self._subproc_env(),
+                close_fds=True
+            )
+            chg_pool_rc = lvm_proc.wait()
+
+            # Modify volume state
+            logging.debug(
+                "LVMThinPool: exec: %s %s %s/%s"
+                % (lvchange, "-ay -kn -K", self._conf[self.KEY_VG_NAME],
+                   lv_name)
+            )
+            lvm_proc = subprocess.Popen(
+                [
+                    lvchange,
+                    "-ay", "-kn", "-K", self._conf[self.KEY_VG_NAME] + "/" +
+                    lv_name
+                ],
+                0, lvchange,
+                env=self._subproc_env(),
+                close_fds=True
+            )
+            chg_lv_rc = lvm_proc.wait()
+
+            if chg_pool_rc == 0 and chg_lv_rc == 0:
+                fn_rc = dmexc.DM_SUCCESS
+        finally:
+            if lvm_proc is not None:
+                try:
+                    lvm_proc.stdout.close()
+                except Exception:
+                    pass
+                lvm_proc.wait()
+        return fn_rc
 
 
     def down_blockdevice(self, blockdevice):
@@ -272,7 +340,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
-        pass
+        return dmexc.DM_SUCCESS
 
 
     def update_pool(self, drbdnode):
@@ -465,7 +533,6 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
         # Save the thin pools to the state map
         pools_con = {}
         for thin_pool in self._pools.itervalues():
-            pool_name   = thin_pool.get_name()
             p_thin_pool = ThinPoolPersistence(thin_pool)
             p_thin_pool.save(pools_con)
         state_con["pools"] = pools_con

@@ -641,6 +641,7 @@ class DrbdManager(object):
         Brings up DRBD resources
         """
         resource = assignment.get_resource()
+        res_name = resource.get_name()
 
         if assignment.is_empty():
             logging.info(
@@ -649,7 +650,19 @@ class DrbdManager(object):
             )
             fn_rc = 0
         else:
-            logging.info("starting resource '%s'" % resource.get_name())
+            logging.info("starting resource '%s'" % res_name)
+
+            bd_mgr = self._server.get_bd_mgr()
+            for vol_state in assignment.iterate_volume_states():
+                bd_name = vol_state.get_bd_name()
+                if bd_name is not None:
+                    fn_rc = bd_mgr.up_blockdevice(bd_name)
+                    if fn_rc != DM_SUCCESS:
+                        logging.warning(
+                            "resource '%s': attempt to start the backend "
+                            "blockdevice '%s' failed"
+                            % (res_name, bd_name)
+                        )
 
             # call drbdadm to bring up the resource
             drbd_proc = self._drbdadm.adjust(resource.get_name())
@@ -889,10 +902,10 @@ class DrbdManager(object):
             src_bd_name
         )
         if blockdev is not None:
-            vol_state.set_bd(
-                blockdev.get_name(),
-                blockdev.get_path()
-            )
+            bd_name = blockdev.get_name()
+            bd_path = blockdev.get_path()
+            vol_state.set_bd(bd_name, bd_path)
+            bd_mgr.up_blockdevice(bd_name)
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
             fn_rc = 0
 
