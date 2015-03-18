@@ -54,15 +54,19 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
 
 
     # Configuration keys
-    KEY_DEV_PATH  = "dev-path"
-    KEY_VG_NAME   = "volume-group"
-    KEY_LVM_PATH  = "lvm-path"
+    KEY_DEV_PATH   = "dev-path"
+    KEY_VG_NAME    = "volume-group"
+    KEY_LVM_PATH   = "lvm-path"
+    KEY_POOL_RATIO = "pool-ratio"
+
+    DEFAULT_POOL_RATIO = 135
 
     # Plugin configuration defaults
     CONF_DEFAULTS = {
-        KEY_DEV_PATH : "/dev",
-        KEY_VG_NAME  : consts.DEFAULT_VG,
-        KEY_LVM_PATH : "/sbin"
+        KEY_DEV_PATH  : "/dev",
+        KEY_VG_NAME   : consts.DEFAULT_VG,
+        KEY_LVM_PATH  : "/sbin",
+        KEY_POOL_RATIO: str(DEFAULT_POOL_RATIO)
     }
 
     # LVM executable names
@@ -602,15 +606,26 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
             self.LVCREATE
         )
 
+        pool_ratio = self.DEFAULT_POOL_RATIO
+        try:
+            pool_ratio = float(self._conf[self.KEY_POOL_RATIO])
+            # Fall back to the default if the size_ratio really does not
+            # make any sense
+            if pool_ratio <= 0:
+                pool_ratio = DEFAULT_POOL_RATIO
+        except ValueError:
+            pass
+        pool_size = long(size * (pool_ratio / 100))
+
         # Create the thin pool for the volume
         logging.debug(
             "LVMThinPool: exec: %s -L %sk -T %s/%s"
-            % (lvcreate, str(size), self._conf[self.KEY_VG_NAME], pool_name)
+            % (lvcreate, str(pool_size), self._conf[self.KEY_VG_NAME], pool_name)
         )
         lvm_proc = subprocess.Popen(
             [
                 lvcreate,
-                "-L", str(size) + "k",
+                "-L", str(pool_size) + "k",
                 "-T", self._conf[self.KEY_VG_NAME] + "/" + pool_name
             ],
             0, lvcreate,
