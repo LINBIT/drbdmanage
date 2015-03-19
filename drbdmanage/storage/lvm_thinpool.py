@@ -641,7 +641,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
             # Fall back to the default if the size_ratio really does not
             # make any sense
             if pool_ratio <= 0:
-                pool_ratio = DEFAULT_POOL_RATIO
+                pool_ratio = self.DEFAULT_POOL_RATIO
         except ValueError:
             pass
         pool_size = long(size * (pool_ratio / 100))
