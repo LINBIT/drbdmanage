@@ -73,6 +73,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
     LVCREATE = "lvcreate"
     LVREMOVE = "lvremove"
     LVCHANGE = "lvchange"
+    VGCHANGE = "vgchange"
     VGS      = "vgs"
 
     # Plugin configuration
@@ -277,35 +278,63 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
             self._conf[self.KEY_LVM_PATH],
             self.LVCHANGE
         )
+        vgchange = utils.build_path(
+            self._conf[self.KEY_LVM_PATH],
+            self.VGCHANGE
+        )
 
         lv_name = blockdevice.get_name()
 
         pool_name = None
         try:
             pool_name = self._pool_lookup[lv_name]
-            pool      = self._pools[pool_name]
         except KeyError:
             pass
 
         lvm_proc = None
+        chg_vg_rc   = -1
+        chg_pool_rc = -1
+        chg_lv_rc   = -1
         try:
-            # Modify pool state
             logging.debug(
-                "LVMThinPool: exec: %s %s %s/%s"
-                % (lvchange, "-ay -kn -K", self._conf[self.KEY_VG_NAME],
-                   pool_name)
+                "LVMThinPool: attempting to auto-activating all "
+                "volumes in VG %s"
+                % (self._conf[self.KEY_VG_NAME])
             )
             lvm_proc = subprocess.Popen(
                 [
-                    lvchange,
-                    "-ay", "-kn", "-K", self._conf[self.KEY_VG_NAME] + "/" +
-                    pool_name
+                    vgchange,
+                    "-ay", self._conf[self.KEY_VG_NAME]
                 ],
-                0, lvchange,
+                0, vgchange,
                 env=self._subproc_env(),
                 close_fds=True
             )
-            chg_pool_rc = lvm_proc.wait()
+            chg_vg_rc = lvm_proc.wait()
+
+            if pool_name is not None:
+                # Modify pool state
+                logging.debug(
+                    "LVMThinPool: exec: %s %s %s/%s"
+                    % (lvchange, "-ay -kn -K", self._conf[self.KEY_VG_NAME],
+                       pool_name)
+                )
+                lvm_proc = subprocess.Popen(
+                    [
+                        lvchange,
+                        "-ay", "-kn", "-K", self._conf[self.KEY_VG_NAME] +
+                        "/" + pool_name
+                    ],
+                    0, lvchange,
+                    env=self._subproc_env(),
+                    close_fds=True
+                )
+                chg_pool_rc = lvm_proc.wait()
+            else:
+                logging.debug(
+                    "LVMThinPool: cannot find thin pool for volume '%s'"
+                    % (lv_name)
+                )
 
             # Modify volume state
             logging.debug(
@@ -325,7 +354,7 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
             )
             chg_lv_rc = lvm_proc.wait()
 
-            if chg_pool_rc == 0 and chg_lv_rc == 0:
+            if chg_vg_rc == 0 and chg_pool_rc == 0 and chg_lv_rc == 0:
                 fn_rc = dmexc.DM_SUCCESS
         finally:
             if lvm_proc is not None:
