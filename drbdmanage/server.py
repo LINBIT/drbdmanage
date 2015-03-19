@@ -2524,6 +2524,13 @@ class DrbdManageServer(object):
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                     raise AbortException
+            if not len(node_list) > 0:
+                instance_node = self._nodes.get(self._instance_node_name)
+                if instance_node is not None:
+                    node_list.append(instance_node)
+                else:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                    raise AbortException
 
             # Ensure that the specified resource exists
             resource = self._resources.get(res_name)
