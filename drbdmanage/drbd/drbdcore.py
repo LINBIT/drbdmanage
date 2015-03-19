@@ -412,6 +412,7 @@ class DrbdManager(object):
         pool_changed   = False
         # Operate only on deployed assignments
         for snaps_assg in assg.iterate_snaps_assgs():
+            assg_tstate = assg.get_tstate()
             snaps_name = snaps_assg.get_snapshot().get_resource().get_name()
             if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
                 logging.debug(
@@ -448,7 +449,8 @@ class DrbdManager(object):
                         % (snaps_name, snaps_assg.get_snapshot().get_name())
                     )
                     failed_actions = True
-            elif snaps_assg.requires_undeploy():
+            elif (snaps_assg.requires_undeploy() or
+                  is_unset(assg_tstate, Assignment.FLAG_DEPLOY)):
                 state_changed = True
                 for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
                     (set_pool_changed, set_failed_actions) = (

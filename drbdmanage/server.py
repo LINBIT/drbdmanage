@@ -2171,13 +2171,15 @@ class DrbdManageServer(object):
 
             for node in self._nodes.itervalues():
                 for assg in node.iterate_assignments():
+                    assg_tstate = assg.get_tstate()
                     removable = []
                     # delete snapshot assignments that have been undeployed
                     for snaps_assg in assg.iterate_snaps_assgs():
                         sa_cstate = snaps_assg.get_cstate()
                         sa_tstate = snaps_assg.get_tstate()
                         if (is_unset(sa_cstate, S_FLAG_DEPLOY) and
-                            is_unset(sa_tstate, S_FLAG_DEPLOY)):
+                            (is_unset(sa_tstate, S_FLAG_DEPLOY) or
+                             is_unset(assg_tstate, A_FLAG_DEPLOY))):
                                 removable.append(snaps_assg)
                     for snaps_assg in removable:
                         snaps_assg.remove()
@@ -2187,7 +2189,8 @@ class DrbdManageServer(object):
                         vol_cstate = vol_state.get_cstate()
                         vol_tstate = vol_state.get_tstate()
                         if (is_unset(vol_cstate, VS_FLAG_DEPLOY) and
-                            is_unset(vol_tstate, VS_FLAG_DEPLOY)):
+                            (is_unset(vol_tstate, VS_FLAG_DEPLOY) or
+                             is_unset(assg_tstate, A_FLAG_DEPLOY))):
                                 removable.append(vol_state)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
@@ -2578,6 +2581,7 @@ class DrbdManageServer(object):
                 # register the snapshot assignment
                 snapshot.add_snaps_assg(snaps_assg)
                 assignment.add_snaps_assg(snaps_assg)
+            self._drbd_mgr.perform_changes()
             self.save_conf_data(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
@@ -2867,6 +2871,7 @@ class DrbdManageServer(object):
                     snaps_assg.undeploy()
                 else:
                     snaps_assg.remove()
+                self._drbd_mgr.perform_changes()
             except KeyError:
                 add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             self.cleanup()
@@ -2903,6 +2908,7 @@ class DrbdManageServer(object):
                         snaps_assg.undeploy()
                 else:
                     snapshot.remove()
+                self._drbd_mgr.perform_changes()
             except KeyError:
                 add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             self.cleanup()
