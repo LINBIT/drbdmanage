@@ -1172,7 +1172,11 @@ class DrbdManageServer(object):
                     except ValueError:
                         raise InvalidMinorNrException
                     if minor == MinorNr.MINOR_NR_AUTO:
-                        minor = self.get_free_minor_nr()
+                        occupied_minor_nrs = self.get_occupied_minor_nrs()
+                        if occupied_minor_nrs is not None:
+                            minor = self.get_free_minor_nr(occupied_minor_nrs)
+                        else:
+                            raise InvalidMinorNrException
                     if minor == MinorNr.MINOR_NR_ERROR:
                         raise InvalidMinorNrException
                     vol_id = self.get_free_volume_id(resource)
@@ -2753,6 +2757,7 @@ class DrbdManageServer(object):
                     snaps_res = self._resources[snaps_res_name]
                     snapshot = snaps_res.get_snapshot(snaps_name)
                     if snapshot is not None:
+                        occupied_minor_nrs = self.get_occupied_minor_nrs()
                         for snaps_assg in snapshot.iterate_snaps_assgs():
                             # Build the new resource's volume list from the
                             # first snapshot assignment's volume list
@@ -2776,7 +2781,11 @@ class DrbdManageServer(object):
                                     except ValueError:
                                         raise InvalidMinorNrException
                                 if minor == MinorNr.MINOR_NR_AUTO:
-                                    minor = self.get_free_minor_nr()
+                                    if occupied_minor_nrs is None:
+                                        raise InvalidMinorNrException
+                                    minor = self.get_free_minor_nr(
+                                        occupied_minor_nrs
+                                    )
                                 if minor == MinorNr.MINOR_NR_ERROR:
                                     raise InvalidMinorNrException
                                 volume = DrbdVolume(
@@ -2784,6 +2793,7 @@ class DrbdManageServer(object):
                                     MinorNr(minor), 0, self.get_serial,
                                     None, None
                                 )
+                                occupied_minor_nrs.append(minor)
                                 if v_props is not None:
                                     # Merge only auxiliary properties into the
                                     # DrbdVolume's properties container
@@ -4526,7 +4536,27 @@ class DrbdManageServer(object):
         exit(0)
 
 
-    def get_free_minor_nr(self):
+    def get_occupied_minor_nrs(self):
+        """
+        Retrieves a list of occupied (in-use) minor numbers
+
+        @return list of minor numbers that are currently in use
+        """
+        minor_list = []
+        try:
+            min_nr = int(self._conf[self.KEY_MIN_MINOR_NR])
+            for resource in self._resources.itervalues():
+                for vol in resource.iterate_volumes():
+                    minor_obj = vol.get_minor()
+                    nr_item = minor_obj.get_value()
+                    if nr_item >= min_nr and nr_item <= MinorNr.MINOR_NR_MAX:
+                        minor_list.append(nr_item)
+        except ValueError:
+            minor_list = None
+        return minor_list
+
+
+    def get_free_minor_nr(self, minor_list):
         """
         Retrieves a free (unused) minor number
 
@@ -4539,13 +4569,6 @@ class DrbdManageServer(object):
         """
         try:
             min_nr = int(self._conf[self.KEY_MIN_MINOR_NR])
-            minor_list = []
-            for resource in self._resources.itervalues():
-                for vol in resource.iterate_volumes():
-                    minor_obj = vol.get_minor()
-                    nr_item = minor_obj.get_value()
-                    if nr_item >= min_nr and nr_item <= MinorNr.MINOR_NR_MAX:
-                        minor_list.append(nr_item)
             minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
                                        minor_list)
             if minor_nr == -1:
