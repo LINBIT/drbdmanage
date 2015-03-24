@@ -2149,9 +2149,20 @@ class DrbdManage(object):
 	if not cmd:
 		return self.syntax_lowlevel_debug()
 
-	# "EXPR if THEN else ELSE" evaluates _both_ THEN and ELSE...
-	# which doesn't work here, because json.loads() can raise an exception.
-	params = map(lambda s: (s.lstrip()[0] in '[{') and json.loads(s) or s, args.rest())
+	params = []
+	for s in args.rest():
+		# Empty instances need to have the type annotated manually.
+		st = s.strip()
+		if not st:
+			params.append( '' )
+		elif st == "[]":
+			params.append( dbus.Array([], signature="s"))
+		elif st == "{}":
+			params.append( dbus.Dictionary({}, signature="ss"))
+		elif st[0] in "[{":
+			params.append( json.loads(st) )
+		else:
+			params.append( st )
 
 	self.dbus_init()
         fn = getattr(self._server, cmd)
