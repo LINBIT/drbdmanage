@@ -36,6 +36,7 @@ import time
 import traceback
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
+import drbdmanage.argparse as argparse
 
 from drbdmanage.consts import (
     SERVER_CONFFILE, KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
@@ -45,11 +46,9 @@ from drbdmanage.consts import (
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
 )
-from drbdmanage.utils import ArgvReader, CmdLineReader, CommandParser
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import (
-    get_terminal_size, build_path, bool_to_string, map_val_or_dflt,
-    read_lines, bool_to_string
+    build_path, bool_to_string, map_val_or_dflt
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -62,9 +61,7 @@ from drbdmanage.exceptions import SyntaxException
 from drbdmanage.exceptions import dm_exc_text
 from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST, DM_ENOENT
 from drbdmanage.dbusserver import DBusServer
-from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.drbdcore import Assignment
-from drbdmanage.drbd.drbdcore import DrbdResource
 from drbdmanage.drbd.views import AssignmentView
 from drbdmanage.drbd.views import DrbdNodeView
 from drbdmanage.drbd.views import DrbdResourceView
@@ -82,19 +79,18 @@ class DrbdManage(object):
     """
 
     _server = None
-    _interactive = False
-    _noerr       = False
-    _colors      = True
+    _noerr = False
+    _colors = True
+    _all_commands = None
 
     VIEW_SEPARATOR_LEN = 78
 
-    UMHELPER_FILE      = "/sys/module/drbd/parameters/usermode_helper"
-    UMHELPER_OVERRIDE  = "/bin/true"
+    UMHELPER_FILE = "/sys/module/drbd/parameters/usermode_helper"
+    UMHELPER_OVERRIDE = "/bin/true"
     UMHELPER_WAIT_TIME = 5.0
 
     def __init__(self):
         pass
-
 
     def dbus_init(self):
         try:
@@ -114,346 +110,606 @@ class DrbdManage(object):
             sys.stderr.write("%s\n" % (str(exc)))
             exit(1)
 
+    def setup_parser(self):
+        parser = argparse.ArgumentParser()
+        subp = parser.add_subparsers(title='subcommands',
+                                     description='valid subcommands',
+                                     help='Use the list command to print a '
+                                     'nicer looking overview about all valid '
+                                     'commands')
+
+        # interactive mode
+        parser_ia = subp.add_parser('interactive',
+                                    description='Start interactive mode')
+        parser_ia.set_defaults(func=self.cmd_interactive)
+
+        # help
+        p_help = subp.add_parser('help',
+                                 description='Print help for a command')
+        p_help.add_argument('command')
+        p_help.set_defaults(func=self.cmd_help)
+
+        # list
+        p_list = subp.add_parser('list', aliases=['commands'],
+                                 description='List available commands')
+        p_list.set_defaults(func=self.cmd_list)
+
+        # exit
+        p_exit = subp.add_parser('exit', aliases=['quit'],
+                                 description='Only useful in interacive mode')
+        p_exit.set_defaults(func=self.cmd_exit)
+
+        # poke
+        p_poke = subp.add_parser('poke')
+        p_poke.set_defaults(func=self.cmd_poke)
+
+        # new-node
+        p_new_node = subp.add_parser('new-node',
+                                     description='Names must match the output '
+                                     'of "uname -n"',
+                                     aliases=['nn', 'add-node', 'an'])
+        p_new_node.add_argument('-a', '--address-family', metavar="FAMILY",
+                                default='ipv4', choices=['ipv4', 'ipv6'],
+                                help='FAMILY: "ipv4" (default) or "ipv6"')
+        p_new_node.add_argument('-q', '--quiet', action="store_true")
+        p_new_node.add_argument('-c', '--no-control-volume',
+                                action="store_true")
+        p_new_node.add_argument('-s', '--no-storage', action="store_true")
+        p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
+        p_new_node.add_argument('name', help='Name of the new node')
+        p_new_node.add_argument('ip', help='IP address of the new node')
+        p_new_node.set_defaults(func=self.cmd_new_node)
+
+        # remove-node
+        p_rm_node = subp.add_parser('remove-node',
+                                    description='Remove node',
+                                    aliases=['rn', 'delete-node', 'dn'])
+        p_rm_node.add_argument('-q', '--quiet', action="store_true")
+        p_rm_node.add_argument('-f', '--force', action="store_true")
+        p_rm_node.add_argument('name', help='Name of the new node')
+        p_rm_node.set_defaults(func=self.cmd_remove_node)
+
+        def port_type(p):
+            p = int(p)
+            if p < 1 or p > 65535:
+                raise argparse.ArgumentTypeError('Port range: [1, 65535]')
+            return p
+        # new-resource
+        p_new_res = subp.add_parser('new-resource',
+                                    description='Add a new resource',
+                                    aliases=['nr', 'add-resource', 'ar'])
+        p_new_res.add_argument('-p', '--port', type=port_type)
+        p_new_res.add_argument('name', help='Name of the new resource')
+        p_new_res.set_defaults(func=self.cmd_new_resource)
+
+        # modify-resource
+        p_mod_res = subp.add_parser('modify-resource',
+                                    description='Modify a resource')
+        p_mod_res.add_argument('-p', '--port', type=port_type)
+        p_mod_res.add_argument('name', help='Name of the resource to modify')
+        p_mod_res.set_defaults(func=self.cmd_modify_resource)
+
+        # remove-resource
+        p_rm_res = subp.add_parser('remove-resource',
+                                   description='Remove node',
+                                   aliases=['rr', 'delete-resource', 'dr'])
+        p_rm_res.add_argument('-q', '--quiet', action="store_true")
+        p_rm_res.add_argument('-f', '--force', action="store_true")
+        p_rm_res.add_argument('name', help='Name of the resource to delete')
+        p_rm_res.set_defaults(func=self.cmd_remove_resource)
+
+        # new-volume
+        p_new_vol = subp.add_parser('new-volume',
+                                    description='Add a new volume',
+                                    aliases=['nv', 'add-volume', 'av'])
+        p_new_vol.add_argument('-u', '--unit', default='GiB',
+                               choices=['kB', 'MB', 'GB', 'TB', 'PB', 'kiB',
+                                        'MiB', 'GiB'], help='Default: "GiB"')
+        p_new_vol.add_argument('-m', '--minor', type=int)
+        p_new_vol.add_argument('-d', '--deploy', type=int)
+        p_new_vol.add_argument('name', help='Name of the new resource')
+        p_new_vol.add_argument('size', help='Size of the new resource',
+                               type=int)
+        p_new_vol.set_defaults(func=self.cmd_new_volume)
+
+        # remove-volume
+        p_mod_res = subp.add_parser('remove-volume',
+                                    description='Remove volume',
+                                    aliases=['rv', 'delete-volume', 'dv'])
+        p_mod_res.add_argument('-q', '--quiet', action="store_true")
+        p_mod_res.add_argument('-f', '--force', action="store_true")
+        p_mod_res.add_argument('name', help='Name of the volume to delete')
+        p_mod_res.add_argument('id', type=int)
+        p_mod_res.set_defaults(func=self.cmd_remove_volume)
+
+        # connect
+        p_conn = subp.add_parser('connect', description='Connect')
+        p_conn.add_argument('node')
+        p_conn.add_argument('resource')
+        p_conn.set_defaults(func=self.cmd_connect)
+
+        # reconnect
+        p_reconn = subp.add_parser('reconnect', description='Reonnect')
+        p_reconn.add_argument('node')
+        p_reconn.add_argument('resource')
+        p_reconn.set_defaults(func=self.cmd_reconnect)
+
+        # disconnect
+        p_disconn = subp.add_parser('disconnect', description='Disconnect')
+        p_disconn.add_argument('node')
+        p_disconn.add_argument('resource')
+        p_disconn.set_defaults(func=self.cmd_disconnect)
+
+        # flags
+        p_flags = subp.add_parser('flags', description='Set flags')
+        p_flags.add_argument('node', help='Name of the node')
+        p_flags.add_argument('resource', help='Name of the resource')
+        p_flags.add_argument('--reconnect', choices=[0, 1], type=int)
+        p_flags.add_argument('--updcon', choices=[0, 1], type=int)
+        p_flags.add_argument('--overwrite', choices=[0, 1], type=int)
+        p_flags.add_argument('--discard', choices=[0, 1], type=int)
+        p_flags.set_defaults(func=self.cmd_flags)
+
+        # attach
+        p_attach = subp.add_parser('attach', description='Attach')
+        p_attach.add_argument('node')
+        p_attach.add_argument('resource')
+        p_attach.add_argument('id', type=int)
+        p_attach.set_defaults(func=self.cmd_attach_detach, fname='attach')
+        # detach
+        p_detach = subp.add_parser('detach', description='Detach')
+        p_detach.add_argument('node')
+        p_detach.add_argument('resource')
+        p_detach.add_argument('id', type=int)
+        p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
+
+        # assign
+        p_assign = subp.add_parser('assign', description='Assign')
+        p_assign.add_argument('--client', action="store_true")
+        p_assign.add_argument('--overwrite', action="store_true")
+        p_assign.add_argument('--discard', action="store_true")
+        p_assign.add_argument('node')
+        p_assign.add_argument('resource')
+        p_assign.set_defaults(func=self.cmd_assign)
+
+        # free space
+        def redundancy_type(r):
+            r = int(r)
+            if r < 1:
+                raise argparse.ArgumentTypeError('Minimum redundancy is 1')
+            return r
+        p_fspace = subp.add_parser('free-space',
+                                   description='Queries the maximum size of a '
+                                   'volume that could be deployed with the '
+                                   'specified level of redundancy')
+        p_fspace.add_argument('-m', '--machine-readable', action="store_true")
+        p_fspace.add_argument('redundancy', type=redundancy_type,
+                              help='Redundancy level (>=1)')
+        p_fspace.set_defaults(func=self.cmd_free_space)
+
+        # deploy
+        p_deploy = subp.add_parser('deploy', description='Deploy a resource')
+        p_deploy.add_argument('resource')
+        p_deploy.add_argument('-i', '--increase', action="store_true",
+                              help='Increase the redundancy count relative to '
+                              'the currently set value by a number of '
+                              '<redundancy_count>')
+        p_deploy.add_argument('-d', '--decrease', action="store_true",
+                              help='Decrease the redundancy count relative to '
+                              'the currently set value by a number of '
+                              '<redundancy_count>')
+        p_deploy.add_argument('redundancy_count', type=redundancy_type,
+                              help='The redundancy count specifies the number '
+                              'of nodes to which the resource should be '
+                              'deployed. It must be at least 1 and at most '
+                              'the number of nodes in the cluster')
+        p_deploy.set_defaults(func=self.cmd_deploy)
+
+        # undeploy
+        p_undeploy = subp.add_parser('undeploy',
+                                     description='Undeploy a resource')
+        p_undeploy.add_argument('-q', '--quiet', action="store_true")
+        p_undeploy.add_argument('-f', '--force', action="store_true")
+        p_undeploy.add_argument('resource')
+        p_undeploy.set_defaults(func=self.cmd_undeploy)
+
+        # update-pool
+        p_upool = subp.add_parser('update-pool',
+                                  description='Update a pool')
+        p_upool.set_defaults(func=self.cmd_update_pool)
+
+        # reconfigure
+        p_reconfigure = subp.add_parser('reconfigure',
+                                        description='Reconfigure')
+        p_reconfigure.set_defaults(func=self.cmd_reconfigure)
+
+        # save
+        p_save = subp.add_parser('save',
+                                 description='Save')
+        p_save.set_defaults(func=self.cmd_save)
+
+        # load
+        p_save = subp.add_parser('load',
+                                 description='Load')
+        p_save.set_defaults(func=self.cmd_load)
+
+        # unassign
+        p_unassign = subp.add_parser('unassign',
+                                     description='Unassign a resource from a '
+                                     'node')
+        p_unassign.add_argument('-q', '--quiet', action="store_true")
+        p_unassign.add_argument('-f', '--force', action="store_true")
+        p_unassign.add_argument('node')
+        p_unassign.add_argument('resource')
+        p_unassign.set_defaults(func=self.cmd_unassign)
+
+        # new-snapshot
+        p_nsnap = subp.add_parser('new-snapshot',
+                                  aliases=['ns', 'create-snapshot', 'cs',
+                                           'add-snapshot', 'as'],
+                                  description='Create LVM snapshot')
+        p_nsnap.add_argument('resource', help='Name of the resource')
+        p_nsnap.add_argument('snapshot', help='Name of the snapshot')
+        p_nsnap.add_argument('nodes', help='List of nodes', nargs='+')
+        p_nsnap.set_defaults(func=self.cmd_new_snapshot)
+
+        # remove-snapshot
+        p_rmsnap = subp.add_parser('remove-snapshot',
+                                   aliases=['delete-snapshot', 'ds'],
+                                   description='Remove LVM snapshot')
+        p_rmsnap.add_argument('-f', '--force', action="store_true")
+        p_rmsnap.add_argument('resource', help='Name of the resource')
+        p_rmsnap.add_argument('snapshot', help='Name of the snapshot')
+        p_rmsnap.set_defaults(func=self.cmd_remove_snapshot)
+
+        # remove-snapshot-assignment
+        p_rmsnapas = subp.add_parser('remove-snapshot-assignment',
+                                     aliases=['rsa',
+                                              'delete-snapshot-assignment',
+                                              'dsa'],
+                                     description='Remove snapshot assignment')
+        p_rmsnapas.add_argument('-f', '--force', action="store_true")
+        p_rmsnapas.add_argument('resource', help='Name of the resource')
+        p_rmsnapas.add_argument('snapshot', help='Name of the snapshot')
+        p_rmsnapas.add_argument('node', help='Name of the node')
+        p_rmsnapas.set_defaults(func=self.cmd_remove_snapshot_assignment)
+
+        # restore-snapshot
+        p_restsnap = subp.add_parser('restore-snapshot',
+                                     aliases=['rs'],
+                                     description='Restore snapshot')
+        p_restsnap.add_argument('resource', help='Name of the new resource')
+        p_restsnap.add_argument('snapshot_resource',
+                                help='Name of the snapshot resource')
+        p_restsnap.add_argument('snapshot', help='Name of the snapshot')
+        p_restsnap.set_defaults(func=self.cmd_restore_snapshot)
+
+        # shutdown
+        p_shutdown = subp.add_parser('shutdown',
+                                     description='Shutdown')
+        p_shutdown.add_argument('-q', '--quiet', action="store_true")
+        p_shutdown.set_defaults(func=self.cmd_shutdown)
+
+        # nodes
+        p_lnodes = subp.add_parser('nodes', aliases=['n'],
+                                   description='List nodes')
+        p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
+        p_lnodes.set_defaults(func=self.cmd_list_nodes)
+
+        # resources
+        p_lreses = subp.add_parser('resources', aliases=['r'],
+                                   description='List resources')
+        p_lreses.add_argument('-m', '--machine-readable', action="store_true")
+        p_lreses.set_defaults(func=self.cmd_list_resources)
+
+        # volumes
+        p_lvols = subp.add_parser('volumes', aliases=['v'],
+                                  description='List volumes')
+        p_lvols.add_argument('-m', '--machine-readable', action="store_true")
+        p_lvols.set_defaults(func=self.cmd_list_volumes)
+
+        # snapshots
+        p_lsnaps = subp.add_parser('snapshots', aliases=['s'],
+                                   description='List snapshots')
+        p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
+
+        # snapshot-assignments
+        p_lsnapas = subp.add_parser('snapshot-assignments', aliases=['sa'],
+                                    description='List snapshot assignments')
+        p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
+
+        # assignments
+        p_assignments = subp.add_parser('assignments', aliases=['a'],
+                                        description='List assignments')
+        p_assignments.add_argument('-m', '--machine-readable',
+                                   action="store_true")
+        p_assignments.set_defaults(func=self.cmd_list_assignments)
+
+        # export
+        p_export = subp.add_parser('export',
+                                   description='Export config')
+        p_export.add_argument('resource', help='Name of the resource')
+        p_export.set_defaults(func=self.cmd_export_conf)
+
+        # howto-join
+        p_howtojoin = subp.add_parser('howto-join')
+        p_howtojoin.add_argument('node', help='Name of the node to join')
+        p_howtojoin.set_defaults(func=self.cmd_howto_join)
+
+        # query-conf
+        p_queryconf = subp.add_parser('query-conf')
+        p_queryconf.add_argument('node', help='Name of the node')
+        p_queryconf.add_argument('resource', help='Name of the resource')
+        p_queryconf.set_defaults(func=self.cmd_query_conf)
+
+        # ping
+        p_ping = subp.add_parser('ping')
+        p_ping.set_defaults(func=self.cmd_ping)
+
+        # startup
+        p_startup = subp.add_parser('startup')
+        p_startup.set_defaults(func=self.cmd_startup)
+
+        # init
+        p_init = subp.add_parser('init')
+        p_init.add_argument('-a', '--address-family', metavar="FAMILY",
+                            default='ipv4', choices=['ipv4', 'ipv6'],
+                            help='FAMILY: "ipv4" (default) or "ipv6"')
+        p_init.add_argument('-p', '--port', type=port_type,
+                            default=DRBDCTRL_DEFAULT_PORT)
+        p_init.add_argument('-q', '--quiet', action="store_true")
+        p_init.add_argument('ip', nargs='?', default=default_ip())
+        p_init.set_defaults(func=self.cmd_init)
+
+        # uninit
+        p_uninit = subp.add_parser('uninit')
+        p_uninit.add_argument('-q', '--quiet', action="store_true")
+        p_uninit.add_argument('-s', '--shutdown', action="store_true")
+        p_uninit.set_defaults(func=self.cmd_uninit)
+
+        # join
+        p_join = subp.add_parser('join')
+        p_join.add_argument('-a', '--address-family', metavar="FAMILY",
+                            default='ipv4', choices=['ipv4', 'ipv6'],
+                            help='FAMILY: "ipv4" (default) or "ipv6"')
+        p_join.add_argument('-p', '--port', type=port_type,
+                            default=DRBDCTRL_DEFAULT_PORT)
+        p_join.add_argument('-q', '--quiet', action="store_true")
+        p_join.add_argument('local_ip')
+        p_join.add_argument('local_node_id')
+        p_join.add_argument('peer_ip')
+        p_join.add_argument('peer_name')
+        p_join.add_argument('peer_node_id')
+        p_join.add_argument('secret')
+        p_join.set_defaults(func=self.cmd_join)
+
+        # initcv
+        p_join = subp.add_parser('initcv')
+        p_join.add_argument('-q', '--quiet', action="store_true")
+        p_join.add_argument('dev')
+        p_join.set_defaults(func=self.cmd_initcv)
+
+        # debug
+        p_debug = subp.add_parser('debug')
+        p_debug.add_argument('cmd')
+        p_debug.set_defaults(func=self.cmd_debug)
+
+        return parser
+
+    def parse(self, parser, pargs):
+        args = parser.parse_args(pargs)
+        args.func(parser, args)
+
+    def parser_cmds(self, parser):
+        # AFAIK there is no other way to get the subcommands out of argparse.
+        # This avoids at least to manually keep track of subcommands
+
+        cmds = dict()
+        subparsers_actions = [
+            action for action in parser._actions if isinstance(action,
+                                                               argparse._SubParsersAction)]
+        for subparsers_action in subparsers_actions:
+            for choice, subparser in subparsers_action.choices.items():
+                parser_hash = subparser.__hash__
+                if parser_hash not in cmds:
+                    cmds[parser_hash] = list()
+                cmds[parser_hash].append(choice)
+
+        # sort subcommands and their aliases,
+        # subcommand dictates sortorder, not its alias
+        cmds_sorted = [sorted(cmd, key=len, reverse=True) for cmd in
+                       cmds.values()]
+
+        # sort subcommands themselves
+        cmds_sorted.sort(lambda a, b: cmp(a[0], b[0]))
+        return cmds_sorted
+
+    def cmd_list(self, parser, args):
+        print 'Use "help <command>" to get help for a specific command.\n'
+        print 'Available commands:'
+        # import pprint
+        # pp = pprint.PrettyPrinter()
+        # pp.pprint(self._all_commands)
+        for cmd in self._all_commands:
+            print '-', cmd[0],
+            if len(cmd) > 1:
+                print "(%s)" % (', '.join(cmd[1:])),
+            print
+
+    def cmd_interactive(self, parser, args):
+        all_cmds = [i for sl in self._all_commands for i in sl]
+
+        # helper function
+        def unknown(cmd):
+            print '\n' + 'Command "%s" not known!' % (cmd)
+            self.cmd_list(parser, args)
+
+        devnull = open(os.devnull, "w")
+        stderr = sys.stderr
+
+        # helper function
+        def parsecatch(parser, cmds, stoprec=False):
+            sys.stderr = devnull
+            try:
+                self.parse(parser, cmds)
+            except SystemExit:  # raised by argparse
+                if stoprec:
+                    return
+
+                cmd = cmds[0]
+                if cmd == "exit":
+                    sys.exit(0)
+                elif cmd == "help":
+                    if len(cmds) == 1:
+                        self.cmd_list(parser, args)
+                        return
+                    else:
+                        cmd = " ".join(cmds[1:])
+                        if cmd not in all_cmds:
+                            unknown(cmd)
+                elif cmd in all_cmds:
+                    sys.stderr = stderr
+                    print '\n' + 'Wrong synopsis. Use the command as follows:'
+                    parsecatch(parser, ["help", cmd], stoprec=True)
+                else:
+                    unknown(cmd)
+
+        # main part of interactive mode:
+
+        # try to load readline
+        # if loaded, raw_input makes use of it
+        try:
+            import readline
+        except:
+            pass
+
+        self.cmd_list(parser, args)
+        while True:
+            try:
+                p = COLOR_DARKGREEN + '>' + COLOR_NONE if self._colors else '>'
+                print '\n' + p,
+                cmds = raw_input().strip()
+
+                cmds = [cmd.strip() for cmd in cmds.split()]
+                if not cmds:
+                    self.cmd_list(parser, args)
+                else:
+                    parsecatch(parser, cmds)
+            except (EOFError, KeyboardInterrupt):  # raised by ctrl-d, ctrl-c
+                print  # additional newline, makes shell prompt happy
+                return
+
+    def cmd_help(self, parser, args):
+        self.parse(parser, [args.command, "-h"])
+
+    def cmd_exit(self, _, __):
+        exit(0)
 
     def run(self):
-        color = self.color
-        fn_rc = 1
-        cl_cmd = False
-        try:
-            args = ArgvReader(sys.argv)
-            script = False
-            while True:
-                arg = args.peek_arg()
-                if arg is None:
-                    break
-                if not arg.startswith("-"):
-                    # begin of drbdmanage command
-                    cl_cmd = True
-                    fn_rc = self.exec_cmd(args, False)
-                    if fn_rc != 0:
-                        sys.stderr.write(
-                            "  %sOperation failed%s\n"
-                            % (color(COLOR_RED), color(COLOR_NONE))
-                        )
-                    break
-                else:
-                    if arg == "-i" or arg == "--interactive":
-                        self._interactive = True
-                    elif arg == "-s" or arg == "--stdin":
-                        script = True
-                        self._colors = False
-                    elif arg == "--no-error-stop":
-                        self._noerr = True
-                    elif arg == "--no-colors":
-                        self._colors = False
-                    elif arg == "-D":
-                        args.next()
-                        exit(self.cmd_debug(args))
-                    else:
-                        sys.stderr.write(
-                            "Error: Invalid option '%s'\n"
-                            % (arg)
-                        )
-                        exit(1)
-                args.next()
-            if self._interactive and script:
-                sys.stderr.write(
-                    "Error: Interactive mode "
-                    "(--interactive, -i) and stdin mode (--stdin, -s)\n"
-                    "       are mutually exclusive options\n"
-                )
-                exit(1)
-            if self._interactive or script:
-                fn_rc = self.cli()
-            else:
-                if not cl_cmd:
-                    # neither interactive nor script mode and no command
-                    # in the argument list
-                    self.syntax()
-        except dbus.exceptions.DBusException as exc:
-            sys.stderr.write(
-                "Error: The DBus connection to the drbdmanaged "
-                "process failed.\n"
-            )
-            sys.stderr.write(
-                "The DBus subsystem returned the following "
-                "error description:\n"
-            )
-            sys.stderr.write(str(exc) + "\n")
-        exit(fn_rc)
+        parser = self.setup_parser()
+        self._all_commands = self.parser_cmds(parser)
+        self.parse(parser, sys.argv[1:])
 
-
-    def cli(self):
-        color = self.color
-        while True:
-            if self._interactive:
-                sys.stdout.write("drbdmanage> ")
-                sys.stdout.flush()
-            cmdline = sys.stdin.readline()
-            if len(cmdline) == 0:
-                # end of file
-                if self._interactive:
-                    sys.stdout.write("\n")
-                break
-            # ignore remarks lines
-            if not cmdline.startswith("#"):
-                if cmdline.endswith("\n"):
-                    cmdline = cmdline[:len(cmdline) - 1]
-                args = CmdLineReader(cmdline)
-                arg = args.peek_arg()
-                # ignore empty lines
-                if arg is not None:
-                    fn_rc = self.exec_cmd(args, True)
-                    if fn_rc != 0 and self._interactive:
-                        sys.stderr.write(
-                            "  %sOperation failed%s\n"
-                            % (color(COLOR_RED), color(COLOR_NONE))
-                        )
-                    if (fn_rc != 0 and
-                        not self._interactive and
-                        not self._noerr):
-                            return fn_rc
-        return 0
-
-
-    def exec_cmd(self, args, interactive):
-        fn_rc = 1
-        arg = args.next_arg()
-        if arg is None:
-            fn_rc = 0
-        else:
-            cmd_func = self.COMMANDS.get(arg)
-            if cmd_func is not None:
-                fn_rc = cmd_func(self, args)
-            else:
-                # writing nonsense on the command line is considered an error
-                sys.stderr.write("Error: unknown command '" + arg + "'\n")
-                sys.stdout.write("Note: Valid commands are:\n")
-                self.print_sub_commands()
-        return fn_rc
-
-
-    def cmd_poke(self, args):
+    def cmd_poke(self, parser, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.poke()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-
-    def cmd_new_node(self, args):
+    def cmd_new_node(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order      = [ "name", "ip" ]
-        params     = {}
-        opt        = { "-a" : None }
-        optalias   = { "--address-family" : "a" }
-        flags      = { "-q" : False, "-c" : False, "-s" : False, "-j" : False }
-        flagsalias = {
-            "--quiet" : "-q",
-            "--no-control-volume" : "-c",
-            "--no-storage" : "-s",
-            "--no-autojoin" : "-j"
-        }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc == 0:
-            name = params["name"]
-            ip   = params["ip"]
-            af   = opt["-a"]
-            if af is None:
-                af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
-            flag_storage  = not flags["-s"]
-            flag_drbdctrl = not flags["-c"]
-            flag_autojoin = not flags["-j"]
+        name = args.name
+        ip = args.ip
+        af = args.address_family
+        if af is None:
+            af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
+        flag_storage = not args.no_storage
+        flag_drbdctrl = not args.no_control_volume
+        flag_autojoin = not args.no_autojoin
 
-            props = dbus.Dictionary(signature="ss")
-            props[NODE_ADDR] = ip
-            props[NODE_AF]   = af
-            if not flag_drbdctrl:
-                props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
-            if not flag_storage:
-                props[FLAG_STORAGE]  = bool_to_string(flag_storage)
+        props = dbus.Dictionary(signature="ss")
+        props[NODE_ADDR] = ip
+        props[NODE_AF] = af
+        if not flag_drbdctrl:
+            props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
+        if not flag_storage:
+            props[FLAG_STORAGE] = bool_to_string(flag_storage)
 
-            self.dbus_init()
-            server_rc = self._server.create_node(name, props)
+        self.dbus_init()
+        server_rc = self._server.create_node(name, props)
+        fn_rc = self._list_rc_entries(server_rc)
+
+        if fn_rc == 0:
+            server_rc, joinc = self._server.text_query(["joinc", name])
+            joinc_text = str(" ".join(joinc))
+
             fn_rc = self._list_rc_entries(server_rc)
 
-            if fn_rc == 0:
-                server_rc, joinc = self._server.text_query(["joinc", name])
-                joinc_text = str(" ".join(joinc))
-
-                fn_rc = self._list_rc_entries(server_rc)
-
-                # Text queries do not return error codes, so check whether the
-                # string returned by the server looks like a join command or
-                # like an error message
-                if joinc_text.startswith("Error:"):
-                    sys.stderr.write(joinc_text + "\n")
-                elif flag_drbdctrl:
-                    join_performed = False
-                    if flag_autojoin:
-                        try:
-                            sshc = ["ssh", "-oBatchMode=yes",
-                                    "-oConnectTimeout=2", "root@" + ip]
-                            if subprocess.call(sshc + ["true"]) == 0:
-                                sys.stdout.write(
-                                    "\nExecuting join command on "
-                                    "%s using ssh.\n" % (name)
-                                )
-                                ssh_joinc = sshc + joinc
-                                if flags["-q"]:
-                                    ssh_joinc.append("-q")
-                                subprocess.check_call(ssh_joinc)
-                                join_performed = True
-                        except subprocess.CalledProcessError:
-                            sys.stderr.write("Error: Attempt to execute the "
-                                             "join command remotely failed\n")
-                    if not join_performed:
-                        sys.stdout.write("\nJoin command for node %s:\n"
-                                         "%s\n" % (name, joinc_text))
-        else:
-            self.syntax_new_node()
-        return fn_rc
-
-
-    def syntax_new_node(self):
-        sys.stderr.write("Syntax: new-node [ options ] <name> <ip>\n")
-        sys.stderr.write("  Options:\n")
-        sys.stderr.write("    --address-family | -a : { ipv4 | ipv6 }\n")
-
-
-    def cmd_new_resource(self, args):
-        fn_rc    = 1
-        port  = RES_PORT_NR_AUTO
-        # Command parser configuration
-        order      = [ "name" ]
-        params     = {}
-        opt        = { "-p" : "auto" }
-        optalias   = { "--port" : "-p" }
-        flags      = {}
-        flagsalias = {}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            name      = params["name"]
-            port_str  = opt["-p"]
-            if port_str != "auto":
-                try:
-                    port = int(port_str)
-                except ValueError:
-                    raise SyntaxException
-
-            props = dbus.Dictionary(signature="ss")
-            props[RES_PORT] = str(port)
-
-            self.dbus_init()
-            server_rc = self._server.create_resource(dbus.String(name),
-              props)
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_new_resource()
-        return fn_rc
-
-
-    def syntax_new_resource(self):
-        sys.stderr.write("Syntax: new-resource [ options ] <name>\n")
-        sys.stderr.write("  Options:\n    --port | -p : <port-number>\n")
-
-
-    def cmd_new_volume(self, args):
-        fn_rc    = 1
-        unit  = SizeCalc.UNIT_GiB
-        size  = None
-        minor = MinorNr.MINOR_NR_AUTO
-        # Command parser configuration
-        order      = [ "name", "size" ]
-        params     = {}
-        opt        = { "-u" : None, "-m" : None, "-d" : None }
-        optalias   = { "--unit" : "-u", "--minor" : "-m", "--deploy" : "-d" }
-        flags      = {}
-        flagsalias = {}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            name       = params["name"]
-            size_str   = params["size"]
-            unit_str   = opt["-u"]
-            minor_str  = opt["-m"]
-            deploy_str = opt["-d"]
-            if minor_str is not None:
-                if minor_str == "auto":
-                    minor = MinorNr.MINOR_NR_AUTO
-                else:
+            # Text queries do not return error codes, so check whether the
+            # string returned by the server looks like a join command or
+            # like an error message
+            if joinc_text.startswith("Error:"):
+                sys.stderr.write(joinc_text + "\n")
+            elif flag_drbdctrl:
+                join_performed = False
+                if flag_autojoin:
                     try:
-                        minor = int(minor_str)
-                    except Exception:
-                        sys.stderr.write(
-                            "Error: <minor> must be a number "
-                            "or \"auto\"\n"
-                        )
-                        raise SyntaxException
-            deploy = None
-            if deploy_str is not None:
-                try:
-                    deploy = int(deploy_str)
-                except ValueError:
-                    pass
-            (size_digits, unit_suffix) = self.split_number_unit(size_str)
-            try:
-                size = long(size_digits)
-            except Exception:
-                sys.stderr.write("Error: <size> must be a number\n")
-                raise SyntaxException
+                        sshc = ["ssh", "-oBatchMode=yes",
+                                "-oConnectTimeout=2", "root@" + ip]
+                        if subprocess.call(sshc + ["true"]) == 0:
+                            sys.stdout.write(
+                                "\nExecuting join command on "
+                                "%s using ssh.\n" % (name)
+                            )
+                            ssh_joinc = sshc + joinc
+                            if args.quiet:
+                                ssh_joinc.append("-q")
+                            subprocess.check_call(ssh_joinc)
+                            join_performed = True
+                    except subprocess.CalledProcessError:
+                        sys.stderr.write("Error: Attempt to execute the "
+                                         "join command remotely failed\n")
+                if not join_performed:
+                    sys.stdout.write("\nJoin command for node %s:\n"
+                                     "%s\n" % (name, joinc_text))
+        return fn_rc
 
-            if unit_suffix is not None:
-                try:
-                    unit_suffix_sel = self.UNITS_MAP[unit_suffix.lower()]
-                except KeyError:
-                    raise SyntaxException
-            if unit_str is not None:
-                try:
-                    unit_str_sel = self.UNITS_MAP[unit_str.lower()]
-                except KeyError:
-                    raise SyntaxException
+    def cmd_new_resource(self, parser, args):
+        fn_rc = 1
 
-            if unit_str is None:
-                if unit_suffix is None:
-                    # no unit selected, default to GiB
-                    unit = SizeCalc.UNIT_GiB
-                else:
-                    # no unit parameter, but unit suffix present
-                    # use unit suffix
-                    unit = unit_suffix_sel
-            else:
-                if unit_suffix is None:
-                    # unit parameter set, but no unit suffix present
-                    # use unit parameter
-                    unit = unit_str_sel
-                else:
-                    # unit parameter set AND unit suffix present
-                    if unit_str_sel != unit_suffix_sel:
-                        # unit parameter and unit suffix disagree about the
-                        # selected unit, abort
-                        sys.stderr.write(
-                            "Error: unit parameter and size suffix mismatch\n"
-                        )
-                        raise SyntaxException
-                    else:
-                        # unit parameter and unit suffix agree about the
-                        # selected unit
-                        unit = unit_str_sel
+        name = args.name
+        port = args.port if args.port else RES_PORT_NR_AUTO
+
+        props = dbus.Dictionary(signature="ss")
+        props[RES_PORT] = str(port)
+
+        self.dbus_init()
+        server_rc = self._server.create_resource(dbus.String(name),
+                                                 props)
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+    def cmd_new_volume(self, parser, args):
+        fn_rc = 1
+        unit = SizeCalc.UNIT_GiB
+        size = None
+        minor = MinorNr.MINOR_NR_AUTO
+        name = args.name
+        size = args.size
+        unit_str = args.unit
+        if not args.minor:
+            minor = MinorNr.MINOR_NR_AUTO
+        deploy = args.deploy
+
+        try:
+            unit = self.UNITS_MAP[unit_str.lower()]
 
             if unit != SizeCalc.UNIT_kiB:
                 size = SizeCalc.convert_round_up(size, unit,
-                  SizeCalc.UNIT_kiB)
+                                                 SizeCalc.UNIT_kiB)
 
             props = dbus.Dictionary(signature="ss")
 
@@ -487,1067 +743,446 @@ class DrbdManage(object):
                     )
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            self.syntax_new_volume()
+            self.cmd_help(parser, args)
+
         return fn_rc
 
+    def cmd_modify_resource(self, parser, args):
+        fn_rc = 1
+        name = args.name
+        port = args.port if args.port else RES_PORT_NR_AUTO
 
-    def syntax_new_volume(self):
-        sys.stderr.write("Syntax: new-volume [ options ] <name> <size>\n")
-        sys.stderr.write(
-            "  Options:\n"
-            "    --unit | -u  : { kB | MB | GB | TB | PB | kiB | MiB | GiB "
-            "| TiB | PiB }\n"
-            "    --minor | -m : <minor-number>\n"
-            "The default size unit is GiB.\n"
+        props = dbus.Dictionary(signature="ss")
+        props[RES_PORT] = str(port)
+
+        self.dbus_init()
+        server_rc = self._server.modify_resource(
+            dbus.String(name), props
         )
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
 
+    def cmd_remove_node(self, parser, args):
+        fn_rc = 1
 
-    def cmd_modify_resource(self, args):
-        fn_rc    = 1
-        port  = RES_PORT_NR_AUTO
-        # Command parser configuration
-        order      = [ "name" ]
-        params     = {}
-        opt        = { "-p" : None }
-        optalias   = { "--port" : "-p" }
-        flags      = {}
-        flagsalias = {}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+        node_name = args.name
+        force = args.force
+        quiet = args.quiet
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to remove a node from the cluster. "
+                "This will remove all resources from the node.\n"
+                "Please confirm:"
             )
-            if parse_rc != 0:
-                raise SyntaxException
-            name     = params["name"]
-            port_str = opt["-p"]
-
-            if port_str is not None:
-                if not port_str == "auto":
-                    try:
-                        port = int(port_str)
-                    except ValueError:
-                        raise SyntaxException
-
-            props = dbus.Dictionary(signature="ss")
-            if port_str is not None:
-                props[RES_PORT]   = str(port)
-
+        if quiet:
             self.dbus_init()
-            server_rc = self._server.modify_resource(
-                dbus.String(name), props
+            server_rc = self._server.remove_node(
+                dbus.String(node_name), dbus.Boolean(force)
             )
             fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_modify_resource()
+        else:
+            fn_rc = 0
+
         return fn_rc
 
-
-    def syntax_modify_resource(self):
-        sys.stderr.write("Syntax: modify-resource [ options ] <name>\n")
-        sys.stderr.write(
-            "  Options:\n"
-            "    --port   | -p : <port-number>\n"
-            "    --secret | -s : <shared-secret>\n"
-        )
-
-
-    def cmd_remove_node(self, args):
+    def cmd_remove_resource(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order = [ "node" ]
-        params = {}
-        opt   = {}
-        optalias = {}
-        flags = { "-q" : False, "-f" : False }
-        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
 
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+        res_name = args.name
+        force = args.force
+        quiet = args.quiet
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to remove a resource and all of its "
+                "volumes from all nodes of the cluster.\n"
+                "Please confirm:"
             )
-            if parse_rc != 0:
-                raise SyntaxException
+        if quiet:
+            self.dbus_init()
+            server_rc = self._server.remove_resource(
+                dbus.String(res_name), dbus.Boolean(force)
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        else:
+            fn_rc = 0
 
-            node_name = params["node"]
-            force     = flags["-f"]
-            quiet     = flags["-q"]
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to remove a node from the cluster. "
-                    "This will remove all resources from the node.\n"
-                    "Please confirm:"
-                )
-            if quiet:
-                self.dbus_init()
-                server_rc = self._server.remove_node(
-                    dbus.String(node_name), dbus.Boolean(force)
-                )
-                fn_rc = self._list_rc_entries(server_rc)
-            else:
-                fn_rc = 0
-        except SyntaxException:
-            self.syntax_remove_node()
         return fn_rc
 
-
-    def syntax_remove_node(self):
-        sys.stderr.write("Syntax: remove-node [ --quiet | -q ] <name>\n")
-
-
-    def cmd_remove_resource(self, args):
+    def cmd_remove_volume(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order = [ "resource" ]
-        params = {}
-        opt   = {}
-        optalias = {}
-        flags = { "-q" : False, "-f" : False }
-        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
 
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+        vol_name = args.name
+        vol_id = args.id
+        force = args.force
+        quiet = args.quiet
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to remove a volume from all nodes of "
+                "the cluster.\n"
+                "Please confirm:"
             )
-            if parse_rc != 0:
-                raise SyntaxException
+        if quiet:
+            self.dbus_init()
+            server_rc = self._server.remove_volume(
+                dbus.String(vol_name), dbus.Int32(vol_id),
+                dbus.Boolean(force)
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        else:
+            fn_rc = 0
 
-            res_name = params["resource"]
-            force    = flags["-f"]
-            quiet    = flags["-q"]
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to remove a resource and all of its "
-                    "volumes from all nodes of the cluster.\n"
-                    "Please confirm:"
-                )
-            if quiet:
-                self.dbus_init()
-                server_rc = self._server.remove_resource(
-                    dbus.String(res_name), dbus.Boolean(force)
-                )
-                fn_rc = self._list_rc_entries(server_rc)
-            else:
-                fn_rc = 0
-        except SyntaxException:
-            self.syntax_remove_resource()
         return fn_rc
 
-
-    def syntax_remove_resource(self):
-        sys.stderr.write("Syntax: remove-resource [ --quiet | -q ] <name>\n")
-
-
-    def cmd_remove_volume(self, args):
-        fn_rc = 1
-        # Command parser configuration
-        order = [ "volume", "id" ]
-        params = {}
-        opt   = {}
-        optalias = {}
-        flags = { "-q" : False, "-f" : False }
-        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
-
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            vol_name = params["volume"]
-            id_str   = params["id"]
-            try:
-                vol_id   = int(id_str)
-            except ValueError:
-                raise SyntaxException
-            force    = flags["-f"]
-            quiet    = flags["-q"]
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to remove a volume from all nodes of "
-                    "the cluster.\n"
-                    "Please confirm:"
-                )
-            if quiet:
-                self.dbus_init()
-                server_rc = self._server.remove_volume(
-                    dbus.String(vol_name), dbus.Int32(vol_id),
-                    dbus.Boolean(force)
-                )
-                fn_rc = self._list_rc_entries(server_rc)
-            else:
-                fn_rc = 0
-        except SyntaxException:
-            self.syntax_remove_volume()
-        return fn_rc
-
-
-    def syntax_remove_volume(self):
-        sys.stderr.write(
-            "Syntax: remove-volume [ --quiet | -q ] <name> "
-            " <id>\n"
-        )
-
-
-    def cmd_connect(self, args):
+    def cmd_connect(self, parser, args):
         return self._connect(args, False)
 
+    def cmd_reconnect(self, parser, args):
+        return self._connect(parser, args, True)
 
-    def cmd_reconnect(self, args):
-        return self._connect(args, True)
-
-
-    def _connect(self, args, reconnect):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "node", "res" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            node_name = params["node"]
-            res_name  = params["res"]
-
-            self.dbus_init()
-            server_rc = self._server.connect(
-                dbus.String(node_name), dbus.String(res_name),
-                dbus.Boolean(reconnect)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_connect()
-        return fn_rc
-
-
-    def syntax_connect(self):
-        sys.stderr.write("Syntax: connect <node> <resource>\n")
-
-
-    def syntax_reconnect(self):
-        sys.stderr.write("Syntax: reconnect <node> <resource>\n")
-
-
-    def cmd_disconnect(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "node", "res" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            node_name = params["node"]
-            res_name  = params["res"]
-
-            self.dbus_init()
-            server_rc = self._server.disconnect(
-                dbus.String(node_name), dbus.String(res_name),
-                dbus.Boolean(False)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_disconnect()
-        return fn_rc
-
-
-    def syntax_disconnect(self):
-        sys.stderr.write("Syntax: disconnect <node> <resource>\n")
-
-
-    def cmd_flags(self, args):
-        fn_rc         = 1
-        clear_mask = 0
-        set_mask   = 0
-        node_name  = None
-        res_name   = None
-        # Command parser configuration
-        try:
-            crt_arg = args.next_arg()
-            while crt_arg is not None:
-                flag = 0
-                if crt_arg.startswith("-"):
-                    if crt_arg.startswith("--reconnect="):
-                        flag = Assignment.FLAG_RECONNECT
-                    elif crt_arg.startswith("--updcon="):
-                        flag = Assignment.FLAG_UPD_CON
-                    elif crt_arg.startswith("--overwrite="):
-                        flag = Assignment.FLAG_OVERWRITE
-                    elif crt_arg.startswith("--discard="):
-                        flag = Assignment.FLAG_DISCARD
-                    else:
-                        raise SyntaxException
-                    val = self._cmd_flags_val(crt_arg)
-                    if val == "0":
-                        clear_mask = clear_mask | flag
-                    elif val == "1":
-                        set_mask = set_mask | flag
-                    else:
-                        raise SyntaxException
-                else:
-                    if node_name is None:
-                        node_name = crt_arg
-                    elif res_name is None:
-                        res_name = crt_arg
-                    else:
-                        raise SyntaxException
-
-                crt_arg = args.next_arg()
-
-            if node_name is None or res_name is None:
-                raise SyntaxException
-
-            self.dbus_init()
-            server_rc = self._server.modify_state(
-                dbus.String(node_name), dbus.String(res_name), dbus.UInt64(0),
-                dbus.UInt64(0), dbus.UInt64(clear_mask), dbus.UInt64(set_mask)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_flags()
-        return fn_rc
-
-
-    def syntax_flags(self):
-        sys.stderr.write(
-            "Syntax: flags <node> <resource> [ flags ]\n"
-            "  flags:\n"
-            "          --reconnect={0|1}\n"
-            "          --updcon={0|1}\n"
-            "          --overwrite={0|1}\n"
-            "          --discard={0|1}\n"
-        )
-
-
-    def _cmd_flags_val(self, arg):
-        val = ""
-        idx = arg.find("=")
-        if idx != -1:
-            val = arg[idx + 1:]
-        return val
-
-
-    def cmd_attach(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "node", "res", "id" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            node_name = params["node"]
-            res_name  = params["res"]
-            id_str    = params["id"]
-            try:
-                vol_id   = int(id_str)
-            except ValueError:
-                raise SyntaxException
-
-            self.dbus_init()
-            server_rc = self._server.attach(
-                dbus.String(node_name), dbus.String(res_name),
-                dbus.Int32(vol_id)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_attach()
-        return fn_rc
-
-
-    def syntax_attach(self):
-        sys.stderr.write("Syntax: attach <node> <resource> <id>\n")
-
-
-    def cmd_detach(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "node", "res", "id" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            node_name = params["node"]
-            res_name  = params["res"]
-            id_str    = params["id"]
-            try:
-                vol_id   = int(id_str)
-            except ValueError:
-                raise SyntaxException
-
-            self.dbus_init()
-            server_rc = self._server.detach(
-                dbus.String(node_name), dbus.String(res_name),
-                dbus.Int32(vol_id)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_detach()
-        return fn_rc
-
-
-    def syntax_detach(self):
-        sys.stderr.write("Syntax: detach <node> <resource> <id>\n")
-
-
-    def cmd_assign(self, args):
-        fn_rc  = 1
-        cstate = 0
-        tstate = 0
-        # Command parser configuration
-        order    = [ "node", "res" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "--overwrite" : False, "--client" : False,
-          "--discard" : False }
-        flagsalias = {}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            node_name = params["node"]
-            res_name  = params["res"]
-
-            client    = flags["--client"]
-            overwrite = flags["--overwrite"]
-            discard   = flags["--discard"]
-            # Turn on the connect flag by default; drbdadm adjust connects
-            # anyway, so this flag does not make a lot of sense at this time,
-            # but it may be useful in the future
-            connect   = True
-            # connect   = flags["-c"]
-
-            if (overwrite and client):
-                sys.stderr.write(
-                    "Error: --overwrite and --client are mutually "
-                    "exclusive options\n"
-                )
-                raise SyntaxException
-            if (overwrite and discard):
-                sys.stderr.write(
-                    "Error: --overwrite and --discard are mutually "
-                    "exclusive options\n"
-                )
-                raise SyntaxException
-
-            props = {}
-            props[FLAG_DISKLESS]  = bool_to_string(client)
-            props[FLAG_OVERWRITE] = bool_to_string(overwrite)
-            props[FLAG_DISCARD]   = bool_to_string(discard)
-            props[FLAG_CONNECT]   = bool_to_string(connect)
-
-            self.dbus_init()
-            server_rc = self._server.assign(
-                dbus.String(node_name), dbus.String(res_name), props
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_assign()
-        return fn_rc
-
-
-    def syntax_assign(self):
-        sys.stderr.write("Syntax: assign [ options ] <node> <volume>\n")
-        sys.stderr.write(
-            "  Options:\n"
-            "    --client         make this node a DRBD client only\n"
-            "    --overwrite      copy this node's data to all other nodes\n"
-            "    --discard        discard this node's data upon connect\n"
-            "    -c | --connect   connect to peer resources on other nodes\n"
-        )
-        sys.stderr.write("The following options are mutually exclusive:\n"
-            "  --overwrite and --client\n"
-            "  --overwrite and --discard\n"
-        )
-
-
-    def cmd_free_space(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "redundancy" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            redundancy_str = params["redundancy"]
-            redundancy = 0
-            try:
-                redundancy = int(redundancy_str)
-            except ValueError:
-                raise SyntaxException
-
-            if redundancy < 1:
-                raise SyntaxException
-
-            self.dbus_init()
-            server_rc, free_space, total_space = (
-                self._server.cluster_free_query(dbus.Int32(redundancy))
-            )
-
-            successful = self._is_rc_successful(server_rc)
-            if successful:
-                machine_readable = flags["-m"]
-                if machine_readable:
-                    sys.stdout.write("%lu,%lu\n" % (free_space, total_space))
-                else:
-                    sys.stdout.write(
-                        "The maximum size for a %dx redundant "
-                        "volume is %lu kiB\n"
-                        "(Aggregate cluster storage size: %lu kiB)\n"
-                        % (redundancy, free_space, total_space)
-                    )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_free_space()
-        return fn_rc
-
-
-    def syntax_free_space(self):
-        sys.stderr.write(
-            "Syntax: free-space [ --machine-readable | -m ] "
-            "<redundancy-count>\n"
-        )
-        sys.stderr.write(
-            "    Queries the maximum size of a volume that "
-            "could be\n    deployed with the specified level of redundancy\n"
-        )
-
-
-    def cmd_deploy(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order    = [ "res", "count" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            res_name  = params["res"]
-            count_str = params["count"]
-            count = 0
-            try:
-                count = int(count_str)
-            except ValueError:
-                raise SyntaxException
-
-            if count < 1:
-                raise SyntaxException
-
-            self.dbus_init()
-            server_rc = self._server.auto_deploy(
-                dbus.String(res_name), dbus.Int32(count),
-                dbus.Int32(0), dbus.Boolean(False)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_deploy()
-        return fn_rc
-
-
-    def syntax_deploy(self):
-        sys.stderr.write("Syntax: deploy <resource> <redundancy-count>\n")
-        sys.stderr.write("    The redundancy count specifies the number of\n"
-          "    nodes to which the resource should be deployed. It must be at\n"
-          "    least 1 and at most the number of nodes in the cluster\n")
-
-
-    def cmd_extend(self, args):
-        fn_rc    = 1
-        rel_flag = False
-        # Command parser configuration
-        order    = [ "res", "count" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            res_name  = params["res"]
-            num_str = params["count"]
-            if num_str.startswith("+"):
-                num_str = num_str[1:]
-                rel_flag = True
-            num = 0
-            try:
-                num = int(num_str)
-            except ValueError:
-                raise SyntaxException
-
-            if num < 1:
-                raise SyntaxException
-
-            if rel_flag:
-                count = 0
-                delta = num
-            else:
-                count = num
-                delta = 0
-
-            self.dbus_init()
-            server_rc = self._server.auto_deploy(
-                dbus.String(res_name), dbus.Int32(count),
-                dbus.Int32(delta), dbus.Boolean(False)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_extend()
-        return fn_rc
-
-
-    def syntax_extend(self):
-        sys.stderr.write("Syntax: extend <resource> [+]<redundancy-count>\n")
-        sys.stderr.write(
-            "    The redundancy count specifies the number of\n"
-            "    nodes to which the resource should be deployed. It must be\n"
-            "    greater than the number of nodes the resource is currently\n"
-            "    assigned to and no more than the number of nodes in the\n"
-            "    cluster.\n"
-            "    If the redundancy count is prepended with a plus sign (+),\n"
-            "    the resource is deployed to the specified number of nodes\n"
-            "    in addition to those nodes where the resource is deployed\n"
-            "    already.\n"
-        )
-
-
-    def cmd_reduce(self, args):
-        # FIXME: illegal statement somewhere in here
-        fn_rc    = 1
-        try:
-            res_name  = None
-            num_str = None
-            while True:
-                arg = args.next_arg()
-                if arg is None:
-                    break
-                if res_name is None:
-                    res_name = arg
-                elif num_str is None:
-                    num_str = arg
-                else:
-                    raise SyntaxException
-
-            if res_name is None or num_str is None:
-                raise SyntaxException
-
-            num = 0
-            try:
-                num = int(num_str)
-            except ValueError:
-                raise SyntaxException
-
-            if num == 0:
-                raise SyntaxException
-
-            if num < 0:
-                count = 0
-                delta = num
-            else:
-                count = num
-                delta = 0
-
-            self.dbus_init()
-            server_rc = self._server.auto_deploy(
-                dbus.String(res_name), dbus.Int32(count),
-                dbus.Int32(delta), dbus.Boolean(False)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_reduce()
-        return fn_rc
-
-
-    def syntax_reduce(self):
-        sys.stderr.write("Syntax: reduce <resource> [-]<redundancy-count>\n")
-        sys.stderr.write(
-            "    The redundancy count specifies the number of\n"
-            "    nodes to which the resource should be deployed. It must be\n"
-            "    less than the number of nodes the resource is currently\n"
-            "    assigned to and must be at least one.\n"
-            "    If the redundancy count is prepended with a minus sign (-),\n"
-            "    the resource is undeployed from the specified number\n"
-            "    of nodes.\n"
-        )
-
-
-    def cmd_undeploy(self, args):
+    def _connect(self, parser, args, reconnect):
         fn_rc = 1
-        # Command parser configuration
-        order = [ "resource" ]
-        params = {}
-        opt   = {}
-        optalias = {}
-        flags = { "-q" : False, "-f" : False }
-        flagsalias = { "--quiet" : "-q", "--force" : "-f" }
 
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
+        node_name = args.node
+        res_name = args.resource
 
-            res_name = params["resource"]
-            force    = flags["-f"]
-            quiet    = flags["-q"]
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to undeploy this resource from all nodes "
-                    "of the cluster.\n"
-                    "Please confirm:"
-                )
-            if quiet:
-                self.dbus_init()
-                server_rc = self._server.auto_undeploy(
-                    dbus.String(res_name), dbus.Boolean(force)
-                )
-                fn_rc = self._list_rc_entries(server_rc)
-            else:
-                fn_rc = 0
-        except SyntaxException:
-            self.syntax_undeploy()
+        self.dbus_init()
+        server_rc = self._server.connect(
+            dbus.String(node_name), dbus.String(res_name),
+            dbus.Boolean(reconnect)
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
+    def cmd_disconnect(self, parser, args):
+        fn_rc = 1
 
-    def syntax_undeploy(self):
-        sys.stderr.write("Syntax: undeploy [ --quiet | -q ] <resource>\n")
+        node_name = args.node
+        res_name = args.resource
 
+        self.dbus_init()
+        server_rc = self._server.disconnect(
+            dbus.String(node_name), dbus.String(res_name),
+            dbus.Boolean(False)
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
 
-    def cmd_update_pool(self, args):
+    def cmd_flags(self, parser, args):
+        fn_rc = 1
+        clear_mask = 0
+        set_mask = 0
+
+        res_name = args.resource
+        node_name = args.node
+
+        if args.reconnect is not None:
+            if args.reconnect == 1:
+                set_mask |= Assignment.FLAG_RECONNECT
+            else:
+                clear_mask |= Assignment.FLAG_RECONNECT
+
+        if args.updcon is not None:
+            if args.updcon == 1:
+                set_mask |= Assignment.FLAG_UPD_CON
+            else:
+                clear_mask |= Assignment.FLAG_UPD_CON
+
+        if args.overwrite is not None:
+            if args.overwrite == 1:
+                set_mask |= Assignment.FLAG_OVERWRITE
+            else:
+                clear_mask |= Assignment.FLAG_OVERWRITE
+
+        if args.discard is not None:
+            if args.discard == 1:
+                set_mask |= Assignment.FLAG_DISCARD
+            else:
+                clear_mask |= Assignment.FLAG_DISCARD
+
+        self.dbus_init()
+        server_rc = self._server.modify_state(
+            dbus.String(node_name), dbus.String(res_name), dbus.UInt64(0),
+            dbus.UInt64(0), dbus.UInt64(clear_mask), dbus.UInt64(set_mask)
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_attach_detach(self, parser, args):
+        fn_rc = 1
+
+        node_name = args.node
+        res_name = args.resource
+        vol_id = args.id
+
+        self.dbus_init()
+
+        if args.fname == "attach":
+            func = self._server.attach
+        elif args.fname == "detach":
+            func = self._server.detach
+        else:
+            sys.stderr.write("Wether attach nor detach\n")
+            exit(1)
+        server_rc = func(
+            dbus.String(node_name), dbus.String(res_name),
+            dbus.Int32(vol_id)
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_assign(self, parser, args):
+        fn_rc = 1
+
+        node_name = args.node
+        res_name = args.resource
+
+        client = args.client
+        overwrite = args.overwrite
+        discard = args.discard
+        # Turn on the connect flag by default; drbdadm adjust connects
+        # anyway, so this flag does not make a lot of sense at this time,
+        # but it may be useful in the future
+        connect = True
+        # connect   = flags["-c"]
+
+        # we cannot handle this complex "double mutually exclusive" situation
+        # with argparse and its add_mutually_exclusive_group() :/
+        if (overwrite and client):
+            sys.stderr.write(
+                "Error: --overwrite and --client are mutually "
+                "exclusive options\n"
+            )
+            exit(1)
+        if (overwrite and discard):
+            sys.stderr.write(
+                "Error: --overwrite and --discard are mutually "
+                "exclusive options\n"
+            )
+            exit(1)
+
+        props = {}
+        props[FLAG_DISKLESS] = bool_to_string(client)
+        props[FLAG_OVERWRITE] = bool_to_string(overwrite)
+        props[FLAG_DISCARD] = bool_to_string(discard)
+        props[FLAG_CONNECT] = bool_to_string(connect)
+
+        self.dbus_init()
+        server_rc = self._server.assign(
+            dbus.String(node_name), dbus.String(res_name), props
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_free_space(self, parser, args):
+        fn_rc = 1
+
+        redundancy = args.redundancy
+
+        self.dbus_init()
+        server_rc, free_space, total_space = (
+            self._server.cluster_free_query(dbus.Int32(redundancy))
+        )
+
+        successful = self._is_rc_successful(server_rc)
+        if successful:
+            machine_readable = args.machine_readable
+            if machine_readable:
+                sys.stdout.write("%lu,%lu\n" % (free_space, total_space))
+            else:
+                sys.stdout.write(
+                    "The maximum size for a %dx redundant "
+                    "volume is %lu kiB\n"
+                    "(Aggregate cluster storage size: %lu kiB)\n"
+                    % (redundancy, free_space, total_space)
+                )
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+    def cmd_deploy(self, parser, args):
+        fn_rc = 1
+        res_name = args.resource
+        count = args.redundancy_count
+        delta = 0
+
+        if args.decrease:
+            count *= -1
+
+        if args.increase or args.decrease:
+            count, delta = delta, count
+
+        self.dbus_init()
+        server_rc = self._server.auto_deploy(
+            dbus.String(res_name), dbus.Int32(count),
+            dbus.Int32(delta), dbus.Boolean(False)
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_undeploy(self, parser, args):
+        fn_rc = 1
+
+        res_name = args.resource
+        force = args.force
+        quiet = args.quiet
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to undeploy this resource from all nodes "
+                "of the cluster.\n"
+                "Please confirm:"
+            )
+        if quiet:
+            self.dbus_init()
+            server_rc = self._server.auto_undeploy(
+                dbus.String(res_name), dbus.Boolean(force)
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        else:
+            fn_rc = 0
+
+        return fn_rc
+
+    def cmd_update_pool(self, parser, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.update_pool(dbus.Array([], signature="s"))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-
-    def cmd_reconfigure(self, args):
+    def cmd_reconfigure(self, parser, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.reconfigure()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-
-    def cmd_save(self, args):
+    def cmd_save(self, parser, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-
-    def cmd_load(self, args):
+    def cmd_load(self, parser, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-
-    def cmd_unassign(self, args):
+    def cmd_unassign(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order      = [ "node", "res" ]
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = { "-f" : False }
-        flagsalias = { "--force" : "-f" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc == 0:
-            node_name = params["node"]
-            res_name  = params["res"]
-            force     = flags["-f"]
-            self.dbus_init()
-            server_rc = self._server.unassign(node_name, res_name, force)
-            fn_rc = self._list_rc_entries(server_rc)
-        else:
-            self.syntax_unassign()
+
+        node_name = args.node
+        res_name = args.resource
+        force = args.force
+        # quiet = args.quiet
+        # TODO: implement quiet
+        self.dbus_init()
+        server_rc = self._server.unassign(node_name, res_name, force)
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
+    def cmd_new_snapshot(self, parser, args):
+        fn_rc = 1
 
-    def syntax_unassign(self):
-        sys.stderr.write("Syntax: unassign [ options ] <node> <volume>\n")
-        sys.stderr.write(
-            "  Options:\n"
-            "    --quiet | -q  disable the safety question\n"
+        res_name = args.resource
+        snaps_name = args.snapshot
+        node_list = args.nodes
+
+        props = dbus.Dictionary(signature="ss")
+
+        self.dbus_init()
+        server_rc = self._server.create_snapshot(
+            dbus.String(res_name), dbus.String(snaps_name),
+            dbus.Array(node_list, signature="s"), props
         )
+        fn_rc = self._list_rc_entries(server_rc)
 
-
-    def cmd_new_snapshot(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order      = ["res_name", "snaps_name"]
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = {}
-        flagsalias = {}
-        node_list  = []
-        try:
-            parse_rc = CommandParser().parse_further(
-                args, order, params, opt, optalias, flags, flagsalias,
-                node_list
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            res_name   = params["res_name"]
-            snaps_name = params["snaps_name"]
-
-            props = dbus.Dictionary(signature="ss")
-
-            self.dbus_init()
-            server_rc = self._server.create_snapshot(
-                dbus.String(res_name), dbus.String(snaps_name),
-                dbus.Array(node_list, signature="s"), props
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_new_snapshot()
         return fn_rc
 
+    def cmd_remove_snapshot(self, parser, args):
+        fn_rc = 1
 
-    def cmd_remove_snapshot(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order      = ["res_name", "snaps_name"]
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = {"-f": False}
-        flagsalias = {"--force": "-f"}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            res_name   = params["res_name"]
-            snaps_name = params["snaps_name"]
-            force      = flags["-f"]
+        res_name = args.resource
+        snaps_name = args.snapshot
+        force = args.force
 
-            self.dbus_init()
-            server_rc = self._server.remove_snapshot(
-                dbus.String(res_name), dbus.String(snaps_name), force
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_remove_snapshot()
+        self.dbus_init()
+        server_rc = self._server.remove_snapshot(
+            dbus.String(res_name), dbus.String(snaps_name), force
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
+    def cmd_remove_snapshot_assignment(self, parser, args):
+        fn_rc = 1
 
-    def cmd_remove_snapshot_assignment(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order      = ["res_name", "snaps_name", "node_name"]
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = {"-f": False}
-        flagsalias = {"--force": "-f"}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            res_name   = params["res_name"]
-            snaps_name = params["snaps_name"]
-            node_name  = params["node_name"]
-            force      = flags["-f"]
+        res_name = args.resource
+        snaps_name = args.snapshot
+        node_name = args.node
+        force = args.force
 
-            self.dbus_init()
-            server_rc = self._server.remove_snapshot_assignment(
-                dbus.String(res_name), dbus.String(snaps_name),
-                dbus.String(node_name), force
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_remove_snapshot_assignment()
+        self.dbus_init()
+        server_rc = self._server.remove_snapshot_assignment(
+            dbus.String(res_name), dbus.String(snaps_name),
+            dbus.String(node_name), force
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
+    def cmd_restore_snapshot(self, parser, args):
+        fn_rc = 1
 
-    def cmd_restore_snapshot(self, args):
-        fn_rc    = 1
-        # Command parser configuration
-        order      = ["res_name", "snaps_res_name", "snaps_name"]
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = {}
-        flagsalias = {}
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-            res_name       = params["res_name"]
-            snaps_res_name = params["snaps_res_name"]
-            snaps_name     = params["snaps_name"]
+        res_name = args.resource
+        snaps_res_name = args.snapshot_resource
+        snaps_name = args.snapshot
 
-            res_props  = dbus.Dictionary(signature="ss")
-            vols_props = dbus.Dictionary(signature="ss")
+        res_props = dbus.Dictionary(signature="ss")
+        vols_props = dbus.Dictionary(signature="ss")
 
-            self.dbus_init()
-            server_rc = self._server.restore_snapshot(
-                dbus.String(res_name), dbus.String(snaps_res_name),
-                dbus.String(snaps_name), res_props, vols_props
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_restore_snapshot()
+        self.dbus_init()
+        server_rc = self._server.restore_snapshot(
+            dbus.String(res_name), dbus.String(snaps_res_name),
+            dbus.String(snaps_name), res_props, vols_props
+        )
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
-
-    def syntax_new_snapshot(self):
-        sys.stderr.write(
-            "Syntax: new-snapshot <resource> "
-            "<new-snapshot-name> <node> [ node ... ]\n"
-        )
-
-
-    def syntax_remove_snapshot(self):
-        sys.stderr.write(
-            "Syntax: remove-snapshot <resource> <snapshot>\n"
-        )
-
-
-    def syntax_remove_snapshot_assignment(self):
-        sys.stderr.write(
-            "Syntax: remove-snapshot-assignment <resource> "
-            "<snapshot> <node>\n"
-        )
-
-
-    def syntax_restore_snapshot(self):
-        sys.stderr.write(
-            "Syntax: restore-snapshot <new-resource-name> "
-            "<snapshot-resource> <snapshot>\n"
-        )
-
-
-    def syntax(self):
-        sys.stderr.write("Syntax: drbdmanage [ options ] command\n")
-        sys.stderr.write(
-            "  Options:\n"
-            "    --interactive | -i ... run in interactive mode\n"
-            "    --stdin       | -s ... read commands from stdin "
-            "(for scripts)\n"
-        )
-
-
-    def cmd_shutdown(self, args):
-        # Command parser configuration
-        order      = []
-        params     = {}
-        opt        = {}
-        optalias   = {}
-        flags      = { "-q" : False }
-        flagsalias = { "--quiet" : "-q" }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+    def cmd_shutdown(self, parser, args):
+        quiet = args.quiet
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to shut down the drbdmanaged server "
+                "process on this node.\nPlease confirm:"
             )
-            if parse_rc != 0:
-                raise SyntaxException
-            quiet = flags["-q"]
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to shut down the drbdmanaged server "
-                    "process on this node.\nPlease confirm:"
-                )
-            if quiet:
-                try:
-                    self.dbus_init()
-                    self._server.shutdown()
-                except dbus.exceptions.DBusException:
-                    # An exception is expected here, as the server
-                    # probably will not answer
-                    pass
-                # Continuing the client without a server
-                # does not make sense, therefore exit
-                exit(0)
-        except SyntaxException:
-            sys.stderr.write("Syntax: shutdown [ --quiet | -q ]\n")
+        if quiet:
+            try:
+                self.dbus_init()
+                self._server.shutdown()
+            except dbus.exceptions.DBusException:
+                # An exception is expected here, as the server
+                # probably will not answer
+                pass
+            # Continuing the client without a server
+            # does not make sense, therefore exit
+            exit(0)
         return 0
 
-
-    def cmd_list_nodes(self, args):
+    def cmd_list_nodes(self, parser, args):
         color = self.color
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc != 0:
-            self.syntax_list_nodes()
-            return 1
 
         self.dbus_init()
 
-        machine_readable = flags["-m"]
+        machine_readable = args.machine_readable
 
         server_rc, node_list = self._server.list_nodes(
             dbus.Array([], signature="s"),
@@ -1557,7 +1192,7 @@ class DrbdManage(object):
         )
 
         if (not machine_readable) and (node_list is None
-            or len(node_list) == 0):
+                                       or len(node_list) == 0):
                 sys.stdout.write("No nodes defined\n")
                 return 0
 
@@ -1580,8 +1215,8 @@ class DrbdManage(object):
         for node_entry in node_list:
             try:
                 node_name, properties = node_entry
-                view   = DrbdNodeView(properties, machine_readable)
-                v_af   = self._property_text(view.get_property(NODE_AF))
+                view = DrbdNodeView(properties, machine_readable)
+                v_af = self._property_text(view.get_property(NODE_AF))
                 v_addr = self._property_text(view.get_property(NODE_ADDR))
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
@@ -1647,16 +1282,10 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-
-    def syntax_list_nodes(self):
-        sys.stderr.write("Syntax: nodes [ --machine-readable | -m ]\n")
-
-
-    def cmd_list_resources(self, args):
+    def cmd_list_resources(self, parser, args):
         return self._list_resources(args, False)
 
-
-    def cmd_list_volumes(self, args):
+    def cmd_list_volumes(self, parser, args):
         return self._list_resources(args, True)
 
 
@@ -1674,23 +1303,10 @@ class DrbdManage(object):
         respective resource.
         """
         color = self.color
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc != 0:
-            self.syntax_list_resources()
-            return 1
 
         self.dbus_init()
 
-        machine_readable = flags["-m"]
+        machine_readable = args.machine_readable
 
         if list_volumes:
             server_rc, res_list = self._server.list_volumes(
@@ -1738,7 +1354,7 @@ class DrbdManage(object):
                 else:
                     res_name, properties = res_entry
                 res_view = DrbdResourceView(properties, machine_readable)
-                v_port  = self._property_text(res_view.get_property(RES_PORT))
+                v_port = self._property_text(res_view.get_property(RES_PORT))
                 if not machine_readable:
                     # Human readable output of the resource description
                     sys.stdout.write(
@@ -1755,7 +1371,7 @@ class DrbdManage(object):
                     for vol_entry in vol_list:
                         vol_id, vol_properties = vol_entry
                         vol_view = DrbdVolumeView(vol_properties,
-                            machine_readable)
+                                                  machine_readable)
                         v_minor = self._property_text(
                             vol_view.get_property(VOL_MINOR)
                         )
@@ -1796,30 +1412,12 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-
-    def syntax_list_resources(self):
-        sys.stderr.write("Syntax: resources [ --machine-readable | -m ]\n")
-
-
-    def cmd_list_snapshots(self, args):
+    def cmd_list_snapshots(self, parser, args):
         color = self.color
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc != 0:
-            self.syntax_list_snapshots()
-            return 1
 
         self.dbus_init()
 
-        machine_readable = flags["-m"]
+        machine_readable = args.machine_readable
 
         server_rc, res_list = self._server.list_snapshots(
             dbus.Array([], signature="s"),
@@ -1830,7 +1428,7 @@ class DrbdManage(object):
         )
 
         if (not machine_readable) and (res_list is None
-            or len(res_list) == 0):
+                                       or len(res_list) == 0):
                 sys.stdout.write("Snapshot list is empty\n")
                 return 0
 
@@ -1871,29 +1469,12 @@ class DrbdManage(object):
         return 0
 
 
-    def syntax_list_snapshots(self):
-        sys.stderr.write("Syntax: snapshots [ --machine-readable | -m ]\n")
-
-
-    def cmd_list_snapshot_assignments(self, args):
+    def cmd_list_snapshot_assignments(self, parser, args):
         color = self.color
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc != 0:
-            self.syntax_list_snapshot_assignments()
-            return 1
 
         self.dbus_init()
 
-        machine_readable = flags["-m"]
+        machine_readable = args.machine_readable
 
         server_rc, assg_list = self._server.list_snapshot_assignments(
             dbus.Array([], signature="s"),
@@ -1905,7 +1486,7 @@ class DrbdManage(object):
         )
 
         if (not machine_readable) and (assg_list is None
-            or len(assg_list) == 0):
+                                       or len(assg_list) == 0):
                 sys.stdout.write("Snapshot assignment list is empty\n")
                 return 0
 
@@ -1962,30 +1543,12 @@ class DrbdManage(object):
                     )
         return 0
 
-
-    def syntax_list_snapshot_assignments(self):
-        sys.stderr.write("Syntax: snapshots [ --machine-readable | -m ]\n")
-
-
-    def cmd_list_assignments(self, args):
+    def cmd_list_assignments(self, parser, args):
         color = self.color
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-m" : False }
-        flagsalias = { "--machine-readable" : "-m" }
-        parse_rc = CommandParser().parse(
-            args, order, params, opt, optalias, flags, flagsalias
-        )
-        if parse_rc != 0:
-            self.syntax_list_assignments()
-            return 1
 
         self.dbus_init()
 
-        machine_readable = flags["-m"]
+        machine_readable = args.machine_readable
 
         server_rc, assg_list = self._server.list_assignments(
             dbus.Array([], signature="s"),
@@ -1995,7 +1558,7 @@ class DrbdManage(object):
             dbus.Array([], signature="s")
         )
         if (not machine_readable) and (assg_list is None
-            or len(assg_list) == 0):
+                                       or len(assg_list) == 0):
                 sys.stdout.write("No assignments defined\n")
                 return 0
 
@@ -2078,172 +1641,108 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-
-    def syntax_list_assignments(self):
-        sys.stderr.write("Syntax: assignments [ --machine-readable | -m ]\n")
-
-
-    def cmd_export_conf(self, args):
+    def cmd_export_conf(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order    = [ "res" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
 
-            res_name = params["res"]
-            if res_name == "*":
-                res_name = ""
+        res_name = args.resource
+        if res_name == "*":
+            res_name = ""
 
-            self.dbus_init()
-            server_rc = self._server.export_conf(dbus.String(res_name))
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_export_conf()
+        self.dbus_init()
+        server_rc = self._server.export_conf(dbus.String(res_name))
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
-
-    def cmd_howto_join(self, args):
+    def cmd_howto_join(self, parser, args):
         """
         Queries the command line to join a node from the server
         """
         fn_rc = 1
-        # Command parser configuration
-        order    = [ "node" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
 
-            node_name = params["node"]
-            self.dbus_init()
-            server_rc, joinc = self._server.text_query(["joinc", node_name])
-            sys.stdout.write("%s\n" % " ".join(joinc))
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_howto_join()
+        node_name = args.node
+        self.dbus_init()
+        server_rc, joinc = self._server.text_query(["joinc", node_name])
+        sys.stdout.write("%s\n" % " ".join(joinc))
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
+    def cmd_lowlevel_debug(self, parser, args):
+        cmd = args.cmd
 
-    def syntax_howto_join(self):
-        sys.stderr.write("Syntax: howto-join <node>\n")
+        params = []
+        for s in args.json:
+            # Empty instances need to have the type annotated manually.
+            st = s.strip()
+            if not st:
+                params.append('')
+            elif st == "[]":
+                params.append(dbus.Array([], signature="s"))
+            elif st == "{}":
+                params.append(dbus.Dictionary({}, signature="ss"))
+            elif st[0] in "[{":
+                params.append(json.loads(st))
+            else:
+                params.append(st)
 
-
-    def cmd_lowlevel_debug(self, args):
-	cmd = args.next_arg()
-	if not cmd:
-		return self.syntax_lowlevel_debug()
-
-	params = []
-	for s in args.rest():
-		# Empty instances need to have the type annotated manually.
-		st = s.strip()
-		if not st:
-			params.append( '' )
-		elif st == "[]":
-			params.append( dbus.Array([], signature="s"))
-		elif st == "{}":
-			params.append( dbus.Dictionary({}, signature="ss"))
-		elif st[0] in "[{":
-			params.append( json.loads(st) )
-		else:
-			params.append( st )
-
-	self.dbus_init()
+        self.dbus_init()
         fn = getattr(self._server, cmd)
-	if not fn:
-		raise "No such function"
+        if not fn:
+            raise "No such function"
 
-	try:
-		res = fn(*params)
-		print json.dumps(res,
-				sort_keys=True,
-				indent=4,
-				separators=(',', ': '))
-	except dbus.DBusException as e:
-		if e._dbus_error_name == 'org.freedesktop.DBus.Python.TypeError':
-			msg = re.sub(r'.*\n(TypeError:)', '\\1',
-					e.message,
-					flags=re.DOTALL + re.MULTILINE)
-			sys.stderr.write(msg)
-			return 1
-		else:
-			raise
-	except:
-		raise
+        try:
+            res = fn(*params)
+            print json.dumps(res,
+                             sort_keys=True,
+                             indent=4,
+                             separators=(',', ': '))
+        except dbus.DBusException as e:
+            if e._dbus_error_name == 'org.freedesktop.DBus.Python.TypeError':
+                msg = re.sub(r'.*\n(TypeError:)', '\\1',
+                             e.message,
+                             flags=re.DOTALL + re.MULTILINE)
+                sys.stderr.write(msg)
+                return 1
+            else:
+                raise
+        except:
+            raise
 
-	return 0
+        return 0
 
-
-    def syntax_lowlevel_debug(self):
-        sys.stderr.write("Syntax: _debug_ <cmd> [input args as JSON]\n")
-
-
-    def cmd_query_conf(self, args):
+    def cmd_query_conf(self, parser, args):
         """
         Retrieves the configuration file for a resource on a specified node
         """
         fn_rc = 1
-        # Command parser configuration
-        order    = [ "node", "res" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { }
-        flagsalias = { }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
 
-            node_name = params["node"]
-            res_name  = params["res"]
-            self.dbus_init()
-            server_rc, res_config = self._server.text_query(
-                [
-                    "export_conf",
-                    node_name, res_name
-                ]
-            )
+        node_name = args.node
+        res_name = args.resource
 
-            # Server generated error messages do not end with newline,
-            # but the configuration file does, so compensate for that
-            # to avoid a superfluous empty line at the end of the
-            # configuration output
-            if res_config[0].endswith("\n"):
-                format = "%s"
-            else:
-                format = "%s\n"
+        self.dbus_init()
+        server_rc, res_config = self._server.text_query(
+            [
+                "export_conf",
+                node_name, res_name
+            ]
+        )
 
-            sys.stdout.write(format % res_config[0])
-            fn_rc = self._list_rc_entries(server_rc)
-        except SyntaxException:
-            self.syntax_query_conf()
+        # Server generated error messages do not end with newline,
+        # but the configuration file does, so compensate for that
+        # to avoid a superfluous empty line at the end of the
+        # configuration output
+        if res_config[0].endswith("\n"):
+            format = "%s"
+        else:
+            format = "%s\n"
+
+        sys.stdout.write(format % res_config[0])
+        fn_rc = self._list_rc_entries(server_rc)
+
         return fn_rc
 
-
-    def syntax_query_conf(self):
-        sys.stderr.write("Syntax: query-conf <node> <resource>\n")
-
-
-    def cmd_ping(self, args):
+    def cmd_ping(self, parser, args):
         fn_rc = 1
         try:
             self.dbus_init()
@@ -2258,8 +1757,7 @@ class DrbdManage(object):
             )
         return fn_rc
 
-
-    def cmd_startup(self, args):
+    def cmd_startup(self, parser, args):
         fn_rc = 1
         try:
             sys.stdout.write(
@@ -2283,31 +1781,15 @@ class DrbdManage(object):
             )
         return fn_rc
 
-
-    def cmd_init(self, args):
+    def cmd_init(self, parser, args):
         """
         Initializes a new drbdmanage cluster
         """
-        fn_rc = 1
-        order    = [ "address" ]
-        params   = {}
-        opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
-        optalias = { "--port" : "-p", "--address-family" : "-a" }
-        flags    = { "-q" : False }
-        flagsalias = { "--quiet" : "-q" }
 
         server_conf = self.load_server_conf()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         try:
-            params["address"] = default_ip();
-
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
             # BEGIN Setup drbdctrl resource properties
             node_name = None
             try:
@@ -2319,22 +1801,10 @@ class DrbdManage(object):
             if node_name is None:
                 raise AbortException
 
-            af   = opt["-a"]
-            if af is None:
-                af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
-            address = params["address"]
-            if address is None:
-                raise SyntaxException
-
-            port  = opt["-p"]
-            try:
-                port_nr = int(port)
-                if port_nr < 1 or port_nr > 65535:
-                    raise ValueError
-            except ValueError:
-                sys.stderr.write("Invalid port number\n")
-                raise AbortException
-            quiet = flags["-q"]
+            af = args.address_family
+            address = args.ip
+            port = args.port
+            quiet = args.quiet
             # END Setup drbdctrl resource properties
 
             if not quiet:
@@ -2364,10 +1834,9 @@ class DrbdManage(object):
                     ["drbdsetup", "secondary", DRBDCTRL_RES_NAME]
                 )
 
-
                 props = {}
                 props[NODE_ADDR] = address
-                props[NODE_AF]   = af
+                props[NODE_AF] = af
                 # Startup the drbdmanage server and add the current node
                 self.dbus_init()
                 server_rc = self._server.init_node(
@@ -2381,102 +1850,71 @@ class DrbdManage(object):
         except AbortException:
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback(drbdctrl_vg)
-        except SyntaxException:
-            sys.stderr.write("Syntax: ipaddress [ { -p | --port } port\n")
         return fn_rc
 
-
-    def cmd_uninit(self, args):
+    def cmd_uninit(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order    = []
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-q" : False, "-s" : False }
-        flagsalias = { "--quiet" : "-q", "--shutdown" : "-s" }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+
+        quiet = args.quiet
+        shutdown = args.shutdown
+
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to remove the drbdmanage server from "
+                "this node.\n"
+                "CAUTION! Note that:\n"
+                "  * All temporary configuration files for resources "
+                "managed by drbdmanage\n"
+                "    will be removed\n"
+                "  * Any remaining resources managed by this "
+                "drbdmanage installation\n"
+                "    that still exist on this system will no longer be "
+                "managed by drbdmanage\n"
+                "\n"
+                "Confirm:\n"
             )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            quiet    = flags["-q"]
-            shutdown = flags["-s"]
-
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to remove the drbdmanage server from "
-                    "this node.\n"
-                    "CAUTION! Note that:\n"
-                    "  * All temporary configuration files for resources "
-                    "managed by drbdmanage\n"
-                    "    will be removed\n"
-                    "  * Any remaining resources managed by this "
-                    "drbdmanage installation\n"
-                    "    that still exist on this system will no longer be "
-                    "managed by drbdmanage\n"
-                    "\n"
-                    "Confirm:\n"
-                )
-            if quiet:
-                if shutdown:
-                    try:
-                        self.dbus_init()
-                        self._server.shutdown()
-                    except dbus.exceptions.DBusException:
-                        # The server does not answer after a shutdown,
-                        # or it might not have been running in the first place,
-                        # both is not considered an error here
-                        pass
+        if quiet:
+            if shutdown:
                 try:
-                    server_conf = self.load_server_conf()
-                    drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
-                    conf_path   = self._get_conf_path(server_conf)
-                    self._init_join_cleanup(drbdctrl_vg, conf_path)
-                    fn_rc = 0
-                except:
-                    fn_rc = 1
-            else:
+                    self.dbus_init()
+                    self._server.shutdown()
+                except dbus.exceptions.DBusException:
+                    # The server does not answer after a shutdown,
+                    # or it might not have been running in the first place,
+                    # both is not considered an error here
+                    pass
+            try:
+                server_conf = self.load_server_conf()
+                drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
+                conf_path = self._get_conf_path(server_conf)
+                self._init_join_cleanup(drbdctrl_vg, conf_path)
                 fn_rc = 0
-        except SyntaxException:
-            self.syntax_uninit()
+            except:
+                fn_rc = 1
+        else:
+            fn_rc = 0
+
         return fn_rc
 
-
-    def cmd_join(self, args):
+    def cmd_join(self, parser, args):
         """
         Joins an existing drbdmanage cluster
         """
         fn_rc = 1
-        order    = [ "local_ip", "local_node_id", "peer_ip", "peer_name",
-            "peer_node_id", "secret" ]
-        params   = {}
-        opt      = { "-p" : str(DRBDCTRL_DEFAULT_PORT), "-a" : None }
-        optalias = { "--port" : "-p", "--address-family" : "-a" }
-        flags    = { "-q" : False }
-        flagsalias = { "--quiet" : "-q" }
 
         server_conf = self.load_server_conf()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         # Initialization of the usermode helper restore delay
         delay_flag = False
-        time_set   = False
+        time_set = False
         begin_time = 0
-        end_time   = 0
+        end_time = 0
 
         # DRBD usermode helper file, usermode helper setting
         umh_f = None
-        umh   = None
+        umh = None
         try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
-            )
-            if parse_rc != 0:
-                raise SyntaxException
-
             # BEGIN Setup drbdctrl resource properties
             node_name = None
             try:
@@ -2487,18 +1925,9 @@ class DrbdManage(object):
                 pass
             if node_name is None:
                 raise AbortException
-            af   = opt["-a"]
-            if af is None:
-                af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
-            port  = opt["-p"]
-            try:
-                port_nr = int(port)
-                if port_nr < 1 or port_nr > 65535:
-                    raise ValueError
-            except ValueError:
-                sys.stderr.write("Invalid port number\n")
-                raise AbortException
-            quiet = flags["-q"]
+            af = args.address_family
+            port = args.port
+            quiet = args.quiet
             # END Setup drbdctrl resource properties
 
             if not quiet:
@@ -2517,12 +1946,12 @@ class DrbdManage(object):
             if quiet:
                 # Enable the usermode helper restore delay
                 delay_flag = True
-                l_addr     = params["local_ip"]
-                p_addr     = params["peer_ip"]
-                p_name     = params["peer_name"]
-                l_node_id  = params["local_node_id"]
-                p_node_id  = params["peer_node_id"]
-                secret     = params["secret"]
+                l_addr = args.local_ip
+                p_addr = args.peer_ip
+                p_name = args.peer_name
+                l_node_id = args.local_node_id
+                p_node_id = args.peer_node_id
+                secret = args.secret
 
                 drbdctrl_blockdev = self._create_drbdctrl(
                     l_node_id, server_conf
@@ -2567,8 +1996,8 @@ class DrbdManage(object):
                 proc_rc = self._ext_command(
                     [
                         "drbdsetup", "connect", DRBDCTRL_RES_NAME,
-                        "ipv4:" + l_addr + ":" + str(port),
-                        "ipv4:" + p_addr + ":" + str(port),
+                        af + ':' + l_addr + ":" + str(port),
+                        af + ':' + p_addr + ":" + str(port),
                         "--peer-node-id=" + p_node_id,
                         "--_name=" + p_name,
                         "--shared-secret=" + secret,
@@ -2601,11 +2030,6 @@ class DrbdManage(object):
             delay_flag = False
             sys.stderr.write("Initialization failed\n")
             self._init_join_rollback(drbdctrl_vg)
-        except SyntaxException:
-            sys.stderr.write(
-                "Syntax: local_ip local_node_id peer_ip peer_name "
-                "peer_node_id secret\n"
-            )
         finally:
             if delay_flag:
                 # undo the temporary change of the usermode helper
@@ -2651,7 +2075,6 @@ class DrbdManage(object):
                             pass
         return fn_rc
 
-
     def _init_join_cleanup(self, drbdctrl_vg, conf_path):
         """
         Cleanup before init / join operations
@@ -2671,7 +2094,7 @@ class DrbdManage(object):
         # Delete any existing configuration file
         try:
             [os.unlink(os.path.join(conf_path, f))
-                       for f in os.listdir(conf_path) if f.endswith(".res")]
+             for f in os.listdir(conf_path) if f.endswith(".res")]
         except OSError:
             pass
 
@@ -2679,7 +2102,6 @@ class DrbdManage(object):
             os.unlink(build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE))
         except OSError:
             pass
-
 
     def _init_join_rollback(self, drbdctrl_vg):
         """
@@ -2698,50 +2120,33 @@ class DrbdManage(object):
         except AbortException:
             pass
 
-
-    def cmd_initcv(self, args):
+    def cmd_initcv(self, parser, args):
         fn_rc = 1
-        # Command parser configuration
-        order    = [ "dev" ]
-        params   = {}
-        opt      = {}
-        optalias = {}
-        flags    = { "-q" : False }
-        flagsalias = { "--quiet" : "-q" }
-        try:
-            parse_rc = CommandParser().parse(
-                args, order, params, opt, optalias, flags, flagsalias
+
+        drbdctrl_file = args.dev
+        quiet = args.quiet
+
+        if not quiet:
+            quiet = self.user_confirm(
+                "You are going to initalize a new "
+                "drbdmanage control volume on:\n"
+                "  %s\n"
+                "CAUTION! Note that:\n"
+                "  * Any previous drbdmanage cluster information may be "
+                "removed\n"
+                "  * Any remaining resources managed by a previous "
+                "drbdmanage installation\n"
+                "    that still exist on this system will no longer be "
+                "managed by drbdmanage\n"
+                "\n"
+                "Confirm:\n"
+                % (drbdctrl_file)
             )
-            if parse_rc != 0:
-                raise SyntaxException
-
-            drbdctrl_file = params["dev"]
-            quiet         = flags["-q"]
-
-            if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to initalize a new "
-                    "drbdmanage control volume on:\n"
-                    "  %s\n"
-                    "CAUTION! Note that:\n"
-                    "  * Any previous drbdmanage cluster information may be "
-                    "removed\n"
-                    "  * Any remaining resources managed by a previous "
-                    "drbdmanage installation\n"
-                    "    that still exist on this system will no longer be "
-                    "managed by drbdmanage\n"
-                    "\n"
-                    "Confirm:\n"
-                    % (drbdctrl_file)
-                )
-            if quiet:
-                fn_rc = self._drbdctrl_init(drbdctrl_file)
-            else:
-                fn_rc = 0
-        except SyntaxException:
-            self.syntax_init()
+        if quiet:
+            fn_rc = self._drbdctrl_init(drbdctrl_file)
+        else:
+            fn_rc = 0
         return fn_rc
-
 
     def _ext_command(self, args):
         """
@@ -2766,7 +2171,6 @@ class DrbdManage(object):
                 )
             raise AbortException
         return proc_rc
-
 
     def _create_drbdctrl(self, node_id, server_conf):
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
@@ -2817,7 +2221,6 @@ class DrbdManage(object):
         )
         return drbdctrl_blockdev
 
-
     def _get_drbdctrl_vg(self, server_conf):
         # ========================================
         # Set up the path to the drbdctrl LV
@@ -2830,7 +2233,6 @@ class DrbdManage(object):
             drbdctrl_vg = DEFAULT_VG
         return drbdctrl_vg
 
-
     def _get_conf_path(self, server_conf):
         if server_conf is not None:
             conf_path = map_val_or_dflt(
@@ -2840,58 +2242,11 @@ class DrbdManage(object):
             conf_path = DEFAULT_DRBD_CONFPATH
         return conf_path
 
-
-    def print_sub_commands(self):
-        col_width = 20
-        (term_width, term_height) = get_terminal_size()
-        columns = term_width / col_width if term_width >= col_width else 1
-
-        items = 0
-        for cmd_name in sorted(self.COMMANDS):
-
-            # ignore shortcut aliases (one and two characters) for now
-            if len(cmd_name) > 2 and cmd_name[0] != '_':
-                items += 1
-                if items % columns != 0:
-                    sys.stdout.write("  ")
-                sys.stdout.write("%-18s" % (cmd_name))
-                if items % columns == 0:
-                    sys.stdout.write("\n")
-
-        if items % columns != 0:
-            sys.stdout.write("\n")
-        return 0
-
-
-    def cmd_usage(self, args):
-        sys.stdout.write("Usage: drbdmanage [options...] command [args...]\n"
-                         "\n"
-                         "where command is one out of:\n")
-        self.print_sub_commands()
-        return 0
-
-
-    def syntax_init(self):
-        sys.stderr.write("Syntax: init [ -q | --quiet ] device\n")
-
-
-    def syntax_uninit(self):
-        sys.stderr.write("Syntax: uninit [ -q | --quiet ] [ -s | --shutdown } "
-                         " device\n"
-                         "  -s | --shutdown   Attempt to shutdown the "
-                         "drbdmanage server first\n")
-
-
-    def cmd_exit(self, args):
-        exit(0)
-
-
     def _list_rc_entries(self, server_rc):
         """
         Lists default error messages for a list of server return codes
         """
         return self._process_rc_entries(server_rc, True)
-
 
     def _is_rc_successful(self, server_rc):
         """
@@ -2899,7 +2254,6 @@ class DrbdManage(object):
         """
         successful = (self._process_rc_entries(server_rc, False) == 0)
         return successful
-
 
     def _process_rc_entries(self, server_rc, output):
         """
@@ -2926,21 +2280,10 @@ class DrbdManage(object):
             sys.stderr.write("WARNING: cannot parse server return codes\n")
         return fn_rc
 
-
-    def cmd_debug(self, args):
+    def cmd_debug(self, parser, args):
         fn_rc = 1
-        command = ""
-        first   = True
-        while True:
-            arg = args.next_arg()
-            if arg is not None:
-                if first:
-                    first = False
-                else:
-                    command += " "
-                command += arg
-            else:
-                break
+
+        command = args.cmd
         try:
             self.dbus_init()
             fn_rc = self._server.debug_console(dbus.String(command))
@@ -2951,11 +2294,6 @@ class DrbdManage(object):
                 "server through D-Bus.\n"
             )
         return fn_rc
-
-
-    def syntax_export_conf(self):
-        sys.stderr.write("Syntax: export { resource | * }\n")
-
 
     def user_confirm(self, question):
         """
@@ -2986,7 +2324,6 @@ class DrbdManage(object):
                 break
         return fn_rc
 
-
     def error_msg_text(self, error):
         if error == 0:
             prefix = ""
@@ -2994,13 +2331,11 @@ class DrbdManage(object):
             prefix = "Error: "
         sys.stderr.write("%s%s\n" % (prefix, dm_exc_text(error)))
 
-
     def color(self, col):
         if self._colors:
             return col
         else:
             return ""
-
 
     def split_number_unit(self, input):
         split_idx = 0
@@ -3009,13 +2344,12 @@ class DrbdManage(object):
                 break
             split_idx += 1
         number = input[:split_idx]
-        unit   = input[split_idx:]
+        unit = input[split_idx:]
         if len(number) == 0:
             number = None
         if len(unit) == 0:
             unit = None
         return (number, unit)
-
 
     def _property_text(self, text):
         if text is None:
@@ -3023,25 +2357,24 @@ class DrbdManage(object):
         else:
             return text
 
-
     def _drbdctrl_init(self, drbdctrl_file):
         fn_rc = 1
 
         init_blks = 4
         pers_impl = drbdmanage.drbd.persistence.PersistenceImpl
-        blksz     = pers_impl.BLKSZ
+        blksz = pers_impl.BLKSZ
 
         index_name = pers_impl.IDX_NAME
-        index_off  = pers_impl.IDX_OFFSET
-        hash_off   = pers_impl.HASH_OFFSET
-        data_off   = pers_impl.DATA_OFFSET
+        index_off = pers_impl.IDX_OFFSET
+        hash_off = pers_impl.HASH_OFFSET
+        data_off = pers_impl.DATA_OFFSET
 
-        assg_len_name  = pers_impl.ASSG_LEN_NAME
-        assg_off_name  = pers_impl.ASSG_OFF_NAME
+        assg_len_name = pers_impl.ASSG_LEN_NAME
+        assg_off_name = pers_impl.ASSG_OFF_NAME
         nodes_len_name = pers_impl.NODES_LEN_NAME
         nodes_off_name = pers_impl.NODES_OFF_NAME
-        res_len_name   = pers_impl.RES_LEN_NAME
-        res_off_name   = pers_impl.RES_OFF_NAME
+        res_len_name = pers_impl.RES_LEN_NAME
+        res_off_name = pers_impl.RES_OFF_NAME
         cconf_len_name = pers_impl.CCONF_LEN_NAME
         cconf_off_name = pers_impl.CCONF_OFF_NAME
 
@@ -3050,22 +2383,22 @@ class DrbdManage(object):
             data_hash = drbdmanage.utils.DataHash()
 
             index_str = (
-                    "{\n"
-                    "    \"" + index_name + "\": {\n"
-                    "        \"" + assg_len_name + "\": 3,\n"
-                    "        \"" + assg_off_name + "\": "
-                    + str(data_off) + ",\n"
-                    "        \"" + nodes_len_name + "\": 3,\n"
-                    "        \"" + nodes_off_name + "\": "
-                    + str(data_off) + ",\n"
-                    "        \"" + res_len_name + "\": 3,\n"
-                    "        \"" + res_off_name + "\": "
-                    + str(data_off) + ",\n"
-                    "        \"" + cconf_len_name + "\": 3,\n"
-                    "        \"" + cconf_off_name + "\": "
-                    + str(data_off) + "\n"
-                    "    }\n"
-                    "}\n"
+                "{\n"
+                "    \"" + index_name + "\": {\n"
+                "        \"" + assg_len_name + "\": 3,\n"
+                "        \"" + assg_off_name + "\": "
+                + str(data_off) + ",\n"
+                "        \"" + nodes_len_name + "\": 3,\n"
+                "        \"" + nodes_off_name + "\": "
+                + str(data_off) + ",\n"
+                "        \"" + res_len_name + "\": 3,\n"
+                "        \"" + res_off_name + "\": "
+                + str(data_off) + ",\n"
+                "        \"" + cconf_len_name + "\": 3,\n"
+                "        \"" + cconf_off_name + "\": "
+                + str(data_off) + "\n"
+                "    }\n"
+                "}\n"
             )
             data_str = "{}\n"
 
@@ -3075,8 +2408,8 @@ class DrbdManage(object):
                 pos += 1
 
             drbdctrl = open(drbdctrl_file, "rb+")
-            zeroblk  = bytearray('\0' * blksz)
-            pos      = 0
+            zeroblk = bytearray('\0' * blksz)
+            pos = 0
             while pos < init_blks:
                 drbdctrl.write(zeroblk)
                 pos += 1
@@ -3106,9 +2439,8 @@ class DrbdManage(object):
 
         return fn_rc
 
-
     def load_server_conf(self):
-        in_file     = None
+        in_file = None
         conf_loaded = None
         try:
             in_file = open(SERVER_CONFFILE, "r")
@@ -3154,94 +2486,6 @@ class DrbdManage(object):
         "tb"  : SizeCalc.UNIT_TB,
         "pb"  : SizeCalc.UNIT_PB,
     }
-
-
-    COMMANDS = {
-        "assignments"       : cmd_list_assignments,
-        "a"                 : cmd_list_assignments,
-        "resources"         : cmd_list_resources,
-        "r"                 : cmd_list_resources,
-        "volumes"           : cmd_list_volumes,
-        "v"                 : cmd_list_volumes,
-        "nodes"             : cmd_list_nodes,
-        "n"                 : cmd_list_nodes,
-        "snapshots"         : cmd_list_snapshots,
-        "s"                 : cmd_list_snapshots,
-        "poke"              : cmd_poke,
-        "p"                 : cmd_poke,
-        "new-node"          : cmd_new_node,
-        "add-node"          : cmd_new_node,
-        "nn"                : cmd_new_node,
-        "an"                : cmd_new_node,
-        "remove-node"       : cmd_remove_node,
-        "delete-node"       : cmd_remove_node,
-        "dn"                : cmd_remove_node,
-        "rn"                : cmd_remove_node,
-        "new-volume"        : cmd_new_volume,
-        "add-volume"        : cmd_new_volume,
-        "nv"                : cmd_new_volume,
-        "av"                : cmd_new_volume,
-        "new-resource"      : cmd_new_resource,
-        "add-resource"      : cmd_new_resource,
-        "nr"                : cmd_new_resource,
-        "ar"                : cmd_new_resource,
-        "modify-resource"   : cmd_modify_resource,
-        "remove-volume"     : cmd_remove_volume,
-        "delete-volume"     : cmd_remove_volume,
-        "dv"                : cmd_remove_volume,
-        "rv"                : cmd_remove_volume,
-        "remove-resource"   : cmd_remove_resource,
-        "delete-resource"   : cmd_remove_resource,
-        "dr"                : cmd_remove_resource,
-        "rr"                : cmd_remove_resource,
-        "connect"           : cmd_connect,
-        "reconnect"         : cmd_connect,
-        "disconnect"        : cmd_disconnect,
-        "flags"             : cmd_flags,
-        "attach"            : cmd_attach,
-        "detach"            : cmd_detach,
-        "free-space"        : cmd_free_space,
-        "assign"            : cmd_assign,
-        "unassign"          : cmd_unassign,
-        "deploy"            : cmd_deploy,
-        "extend"            : cmd_extend,
-        "reduce"            : cmd_reduce,
-        "undeploy"          : cmd_undeploy,
-        "reconfigure"       : cmd_reconfigure,
-        "update-pool"       : cmd_update_pool,
-        "save"              : cmd_save,
-        "load"              : cmd_load,
-        "export"            : cmd_export_conf,
-        "ping"              : cmd_ping,
-        "startup"           : cmd_startup,
-        "shutdown"          : cmd_shutdown,
-        "exit"              : cmd_exit,
-        "usage"             : cmd_usage,
-        "init"              : cmd_init,
-        "initcv"            : cmd_initcv,
-        "uninit"            : cmd_uninit,
-        "join"              : cmd_join,
-        "howto-join"        : cmd_howto_join,
-        "_debug_"           : cmd_lowlevel_debug,
-        "query-conf"        : cmd_query_conf,
-        "create-snapshot"   : cmd_new_snapshot,
-        "cs"                : cmd_new_snapshot,
-        "new-snapshot"      : cmd_new_snapshot,
-        "ns"                : cmd_new_snapshot,
-        "add-snapshot"      : cmd_new_snapshot,
-        "as"                : cmd_new_snapshot,
-        "remove-snapshot"   : cmd_remove_snapshot,
-        "delete-snapshot"   : cmd_remove_snapshot,
-        "ds"                : cmd_remove_snapshot,
-        "restore-snapshot"  : cmd_restore_snapshot,
-        "rs"                : cmd_restore_snapshot,
-        "snapshot-assignments"      : cmd_list_snapshot_assignments,
-        "sa"                        : cmd_list_snapshot_assignments,
-        "remove-snapshot-assignment": cmd_remove_snapshot_assignment,
-        "rsa"                       : cmd_remove_snapshot_assignment,
-        "delete-snapshot-assignment": cmd_remove_snapshot_assignment,
-        "dsa"                       : cmd_remove_snapshot_assignment
-      }
 
 
 def main():
