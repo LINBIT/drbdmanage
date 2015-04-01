@@ -41,7 +41,7 @@ from drbdmanage.consts import (
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
     SNAPS_SRC_BLOCKDEV
 )
-from drbdmanage.utils import NioLineReader, CmdLineReader, MetaData
+from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number, plugin_import,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
@@ -3709,12 +3709,12 @@ class DrbdManageServer(object):
         """
         fn_rc = 127
         try:
-            args = CmdLineReader(cmdline)
-            command = args.next_arg()
+            args = cmdline.split()
+            command = args.pop(0)
             if command is not None:
                 if command == "set":
                     try:
-                        subcommand = args.next_arg()
+                        subcommand = args.pop(0)
                         if subcommand == "n":
                             fn_rc = self._debug_set_node(args)
                         elif subcommand == "r":
@@ -3738,11 +3738,11 @@ class DrbdManageServer(object):
                                 fn_rc = 0
                             elif key == "dbgout":
                                 fn_rc = self._debug_set_debug_out(val)
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         fn_rc = 1
                 elif command == "run":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "cleanup":
                             self.cleanup()
                             fn_rc = 0
@@ -3766,19 +3766,19 @@ class DrbdManageServer(object):
                         elif item == "uninit_events":
                             self.uninit_events()
                             fn_rc = 0
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "restart":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "events":
                             self.restart_events(None, None)
                             fn_rc = 0
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "test":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "stdout":
                             sys.stdout.write("(test stdout)\n")
                             fn_rc = 0
@@ -3788,11 +3788,11 @@ class DrbdManageServer(object):
                         elif item == "dbgout":
                             self._debug_out.write("(test dbgout)\n")
                             fn_rc = 0
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "list":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "n":
                             fn_rc = self._debug_list_nodes(args)
                         elif item == "r":
@@ -3811,28 +3811,28 @@ class DrbdManageServer(object):
                             fn_rc = self._debug_list_cluster_conf(args)
                         elif item == "props":
                             fn_rc = self._debug_list_props(args)
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "gen":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "drbdctrl":
                             fn_rc = self._debug_gen_drbdctrl(args)
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "mod":
                     try:
-                        item = args.next_arg()
+                        item = args.pop(0)
                         if item == "drbdctrl":
                             fn_rc = self._debug_mod_drbdctrl(args)
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "invalidate":
                     self._conf_hash = None
                     fn_rc = 0
                 elif command == "show":
                     try:
-                        subcommand = args.next_arg()
+                        subcommand = args.pop(0)
                         if subcommand == "hash":
                             if self._conf_hash is None:
                                 self._debug_out.write("unset/invalid\n")
@@ -3841,11 +3841,11 @@ class DrbdManageServer(object):
                                     "%s\n" % (self._conf_hash)
                                 )
                             fn_rc = 0
-                    except AttributeError:
+                    except (AttributeError, IndexError):
                         pass
                 elif command == "exit":
                     try:
-                        exit_code_str = args.next_arg()
+                        exit_code_str = args.pop(0)
                         exit_code     = int(exit_code_str)
                         exit_msg = ("server shutdown (debug command): exit %d"
                                     % (exit_code))
@@ -3853,10 +3853,8 @@ class DrbdManageServer(object):
                         self._debug_out.flush()
                         logging.debug(exit_msg)
                         exit(exit_code)
-                    except (ValueError, AttributeError):
+                    except (ValueError, AttributeError, IndexError):
                         pass
-        except SyntaxException:
-            fn_rc = 1
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
             fn_rc = DM_DEBUG
@@ -3870,18 +3868,18 @@ class DrbdManageServer(object):
 
     def _debug_gen_drbdctrl(self, args):
         fn_rc = 1
-        secret = args.next_arg()
-        port   = args.next_arg()
-        bdev   = args.next_arg()
+        secret = args.pop(0)
+        port   = args.pop(0)
+        bdev   = args.pop(0)
         fn_rc  = self._configure_drbdctrl(True, secret, bdev, port)
         return fn_rc
 
 
     def _debug_mod_drbdctrl(self, args):
         fn_rc = 1
-        secret = args.next_arg()
-        port   = args.next_arg()
-        bdev   = args.next_arg()
+        secret = args.pop(0)
+        port   = args.pop(0)
+        bdev   = args.pop(0)
         fn_rc  = self._configure_drbdctrl(False, secret, bdev, port)
         return fn_rc
 
@@ -3889,7 +3887,11 @@ class DrbdManageServer(object):
     def _debug_list_nodes(self, args):
         fn_rc = 1
         title = "list: nodes"
-        nodename = args.next_arg()
+        nodename = None
+        try:
+            nodename = args.pop(0)
+        except IndexError:
+            pass
         if nodename is not None:
             node = self._nodes.get(nodename)
             if node is not None:
@@ -3911,7 +3913,11 @@ class DrbdManageServer(object):
     def _debug_list_resources(self, args):
         fn_rc = 1
         title = "list: resources"
-        resname = args.next_arg()
+        resname = None
+        try:
+            resname = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None:
             resource = self._resources.get(resname)
             if resource is not None:
@@ -3933,7 +3939,11 @@ class DrbdManageServer(object):
     def _debug_list_volumes(self, args):
         fn_rc = 1
         title = "list: resources"
-        resname = args.next_arg()
+        resname = None
+        try:
+            resname = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None:
             resource = self._resources.get(resname)
             if resource is not None:
@@ -3955,7 +3965,11 @@ class DrbdManageServer(object):
     def _debug_list_assignments(self, args):
         fn_rc = 1
         title = "list: assignments"
-        objname = args.next_arg()
+        objname = None
+        try:
+            objname = args.pop(0)
+        except IndexError:
+            pass
         if objname is not None:
             if objname.find("@") == 0:
                 nodename = objname[1:]
@@ -3995,7 +4009,11 @@ class DrbdManageServer(object):
     def _debug_list_snapshots(self, args):
         fn_rc = 1
         title = "list: snapshots"
-        resname = args.next_arg()
+        resname = None
+        try:
+            resname = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None:
             resource = self._resources.get(resname)
             if resource is not None:
@@ -4019,8 +4037,16 @@ class DrbdManageServer(object):
     def _debug_list_snapshot_assignments(self, args):
         fn_rc = 1
         title = "list: snapshot assignments"
-        resname   = args.next_arg()
-        snapsname = args.next_arg()
+        resname = None
+        try:
+            resname   = args.pop(0)
+        except IndexError:
+            pass
+        snapsname = None
+        try:
+            snapsname = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None and snapsname is not None:
             resource = self._resources.get(resname)
             if resource is not None:
@@ -4052,9 +4078,21 @@ class DrbdManageServer(object):
         fn_rc        = 1
         title        = "list: object properties"
         props_format = "%-30s = %s\n"
-        obj_class    = args.next_arg()
-        obj_name     = args.next_arg()
-        prop_key     = args.next_arg()
+        obj_class = None
+        try:
+            obj_class    = args.pop(0)
+        except IndexError:
+            pass
+        obj_name = None
+        try:
+            obj_name     = args.pop(0)
+        except IndexError:
+            pass
+        prop_key = None
+        try:
+            prop_key     = args.pop(0)
+        except IndexError:
+            pass
         props        = None
         if obj_class == "n":
             node = self._nodes.get(obj_name)
@@ -4196,7 +4234,11 @@ class DrbdManageServer(object):
         keyval_format    = "%-30s = %s\n"
         key_unset_format = "Key '%s' not found\n"
         val_unset_format = "%-30s is unset\n"
-        key = args.next_arg()
+        key = None
+        try:
+            key = args.pop(0)
+        except IndexError:
+            pass
         if key is not None:
             try:
                 val = conf[key]
@@ -4305,19 +4347,27 @@ class DrbdManageServer(object):
 
     def _debug_set_node(self, args):
         fn_rc = 1
-        nodename = args.next_arg()
+        nodename = None
+        try:
+            nodename = args.pop(0)
+        except IndexError:
+            pass
         if nodename is not None:
             node = self._nodes.get(nodename)
             if node is not None:
-                keyval = args.next_arg()
-                key, val = self._debug_keyval_split(keyval)
-                if key == "state":
-                    try:
-                        state_update = long(val)
-                        node.set_state(state_update)
-                        fn_rc = 0
-                    except ValueError:
-                        pass
+                keyval = None
+                try:
+                    keyval = args.pop(0)
+                    key, val = self._debug_keyval_split(keyval)
+                    if key == "state":
+                        try:
+                            state_update = long(val)
+                            node.set_state(state_update)
+                            fn_rc = 0
+                        except ValueError:
+                            pass
+                except IndexError:
+                    self._debug_out.write("Missing argument\n")
             else:
                 self._debug_out.write("Node '%s' not found\n" % (nodename))
         return fn_rc
@@ -4325,19 +4375,27 @@ class DrbdManageServer(object):
 
     def _debug_set_resource(self, args):
         fn_rc = 1
-        resname = args.next_arg()
+        resname = None
+        try:
+            resname = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None:
             resource = self._resources.get(resname)
             if resource is not None:
-                keyval = args.next_arg()
-                key, val = self._debug_keyval_split(keyval)
-                if key == "state":
-                    try:
-                        state_update = long(val)
-                        resource.set_state(state_update)
-                        fn_rc = 0
-                    except ValueError:
-                        pass
+                keyval = None
+                try:
+                    keyval = args.pop(0)
+                    key, val = self._debug_keyval_split(keyval)
+                    if key == "state":
+                        try:
+                            state_update = long(val)
+                            resource.set_state(state_update)
+                            fn_rc = 0
+                        except ValueError:
+                            pass
+                except IndexError:
+                    self._debug_out.write("Missing argument\n")
             else:
                 self._debug_out.write("Resource '%s' not found\n" % (resname))
         return fn_rc
@@ -4345,7 +4403,11 @@ class DrbdManageServer(object):
 
     def _debug_set_volume(self, args):
         fn_rc = 1
-        resname    = args.next_arg()
+        resname = None
+        try:
+            resname    = args.pop(0)
+        except IndexError:
+            pass
         if resname is not None:
             vol_id_str = None
             split_idx  = resname.find("/")
@@ -4358,12 +4420,15 @@ class DrbdManageServer(object):
                     vol_id = int(vol_id_str)
                     volume = resource.get_volume(vol_id)
                     if volume is not None:
-                        keyval = args.next_arg()
-                        key, val = self._debug_keyval_split(keyval)
-                        if key == "state":
-                            state_update = long(val)
-                            volume.set_state(state_update)
-                            fn_rc = 0
+                        try:
+                            keyval = args.pop(0)
+                            key, val = self._debug_keyval_split(keyval)
+                            if key == "state":
+                                state_update = long(val)
+                                volume.set_state(state_update)
+                                fn_rc = 0
+                        except IndexError:
+                            self._debug_out.write("Missing argument\n")
                     else:
                         self._debug_out.write(
                             "Invalid volume index %u for resource '%s'\n"
@@ -4378,8 +4443,16 @@ class DrbdManageServer(object):
 
     def _debug_set_assignment(self, args):
         fn_rc = 1
-        nodename   = args.next_arg()
-        resname    = None
+        nodename = None
+        try:
+            nodename   = args.pop(0)
+        except IndexError:
+            pass
+        resname = None
+        try:
+            resname    = None
+        except IndexError:
+            pass
         split_idx  = nodename.find("/")
         if split_idx != -1:
             resname  = nodename[split_idx + 1:]
@@ -4391,7 +4464,7 @@ class DrbdManageServer(object):
                 assg = node.get_assignment(resource.get_name())
                 if assg is not None:
                     try:
-                        keyval = args.next_arg()
+                        keyval = args.pop(0)
                         key, val = self._debug_keyval_split(keyval)
                         if key == "cstate":
                             state_update = long(val)
@@ -4403,6 +4476,8 @@ class DrbdManageServer(object):
                             fn_rc = 0
                     except ValueError:
                         pass
+                    except IndexError:
+                        self._debug_out.write("Missing argument\n")
                 else:
                     self._debug_out.write(
                         "Resource '%s' is not assigned to node '%s'\n"
