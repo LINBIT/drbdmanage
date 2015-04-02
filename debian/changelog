@@ -1,0 +1,21 @@
+drbdmanage (0.31~pre1+git.24c2a4f) experimental; urgency=low
+
+  * New upstream version
+  * Staring to maintain or own debian release cycle. This work is largely
+    based on the work of Martin Loschwitz <madkiss@debian.org>
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 02 Apr 2015 09:37:33 +0200
+
+drbdmanage (0.20~pre1+git.f925f91-0ubuntu0+1) experimental; urgency=medium
+
+  * Second unofficial build
+  * New upstream version
+
+ -- Martin Loschwitz <madkiss@debian.org>  Tue, 07 Oct 2014 07:41:55 +0000
+
+drbdmanage (0.11-1) experimental; urgency=medium
+
+  * Initial version of this package, largely based on work done by
+    Philipp Marek <philipp.marek@linbit.com>
+
+ -- Martin Loschwitz <madkiss@debian.org>  Thu, 02 Oct 2014 15:12:00 +0000

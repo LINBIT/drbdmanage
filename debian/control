@@ -1,0 +1,23 @@
+Source: drbdmanage
+Maintainer: DRBD dev <drbd-dev@lists.linbit.com>
+Uploaders:
+ Robert Altnoeder <robert.altnoeder@linbit.com>
+ Roland Kammerer <roland.kammerer@linbit.com>
+Section: python
+Priority: optional
+Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 9)
+# Currently, we do not include dh-python (as suggested by jessie),
+# because it is not available on unbuntu 12.04
+# Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 9), dh-python
+Standards-Version: 3.9.6
+
+Package: python-drbdmanage
+Architecture: all
+Depends: ${misc:Depends}, ${python:Depends}, python-gobject, python-dbus, dbus, drbd-utils (>= 8.9.1)
+Description: DRBD distributed resource management utility
+ Drbdmanage is a daemon and a command line utility that manages DRBD
+ replicated LVM volumes across a group of machines.
+ .
+ It maintains DRBD configuration an the participating machines. It
+ creates/deletes the backing LVM volumes. It automatically places
+ the backing LVM volumes among the participating machines.
