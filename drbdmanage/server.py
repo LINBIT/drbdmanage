@@ -39,7 +39,7 @@ from drbdmanage.consts import (
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
-    SNAPS_SRC_BLOCKDEV
+    SNAPS_SRC_BLOCKDEV, DM_VERSION
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -74,8 +74,6 @@ class DrbdManageServer(object):
     """
     drbdmanage server - main class
     """
-
-    DM_VERSION = "0.30"
 
     EVT_UTIL = "drbdsetup"
 

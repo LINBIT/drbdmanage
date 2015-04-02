@@ -44,7 +44,7 @@ from drbdmanage.consts import (
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
-    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
+    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import (
@@ -90,7 +90,8 @@ class DrbdManage(object):
     UMHELPER_WAIT_TIME = 5.0
 
     def __init__(self):
-        pass
+        self._parser = self.setup_parser()
+        self._all_commands = self.parser_cmds()
 
     def dbus_init(self):
         try:
@@ -111,7 +112,9 @@ class DrbdManage(object):
             exit(1)
 
     def setup_parser(self):
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(prog='drbdmanage')
+        parser.add_argument('--version', '-v', action='version',
+                            version='%(prog)s ' + DM_VERSION)
         subp = parser.add_subparsers(title='subcommands',
                                      description='valid subcommands',
                                      help='Use the list command to print a '
@@ -498,18 +501,18 @@ class DrbdManage(object):
 
         return parser
 
-    def parse(self, parser, pargs):
-        args = parser.parse_args(pargs)
-        args.func(parser, args)
+    def parse(self, pargs):
+        args = self._parser.parse_args(pargs)
+        args.func(args)
 
-    def parser_cmds(self, parser):
+    def parser_cmds(self):
         # AFAIK there is no other way to get the subcommands out of argparse.
         # This avoids at least to manually keep track of subcommands
 
         cmds = dict()
         subparsers_actions = [
-            action for action in parser._actions if isinstance(action,
-                                                               argparse._SubParsersAction)]
+            action for action in self._parser._actions if isinstance(action,
+                                                                     argparse._SubParsersAction)]
         for subparsers_action in subparsers_actions:
             for choice, subparser in subparsers_action.choices.items():
                 parser_hash = subparser.__hash__
@@ -526,7 +529,7 @@ class DrbdManage(object):
         cmds_sorted.sort(lambda a, b: cmp(a[0], b[0]))
         return cmds_sorted
 
-    def cmd_list(self, parser, args):
+    def cmd_list(self, args):
         print 'Use "help <command>" to get help for a specific command.\n'
         print 'Available commands:'
         # import pprint
@@ -538,22 +541,22 @@ class DrbdManage(object):
                 print "(%s)" % (', '.join(cmd[1:])),
             print
 
-    def cmd_interactive(self, parser, args):
+    def cmd_interactive(self, args):
         all_cmds = [i for sl in self._all_commands for i in sl]
 
         # helper function
         def unknown(cmd):
             print '\n' + 'Command "%s" not known!' % (cmd)
-            self.cmd_list(parser, args)
+            self.cmd_list(args)
 
         devnull = open(os.devnull, "w")
         stderr = sys.stderr
 
         # helper function
-        def parsecatch(parser, cmds, stoprec=False):
+        def parsecatch(cmds, stoprec=False):
             sys.stderr = devnull
             try:
-                self.parse(parser, cmds)
+                self.parse(cmds)
             except SystemExit:  # raised by argparse
                 if stoprec:
                     return
@@ -563,7 +566,7 @@ class DrbdManage(object):
                     sys.exit(0)
                 elif cmd == "help":
                     if len(cmds) == 1:
-                        self.cmd_list(parser, args)
+                        self.cmd_list(args)
                         return
                     else:
                         cmd = " ".join(cmds[1:])
@@ -572,7 +575,7 @@ class DrbdManage(object):
                 elif cmd in all_cmds:
                     sys.stderr = stderr
                     print '\n' + 'Wrong synopsis. Use the command as follows:'
-                    parsecatch(parser, ["help", cmd], stoprec=True)
+                    parsecatch(["help", cmd], stoprec=True)
                 else:
                     unknown(cmd)
 
@@ -585,7 +588,7 @@ class DrbdManage(object):
         except:
             pass
 
-        self.cmd_list(parser, args)
+        self.cmd_list(args)
         while True:
             try:
                 p = COLOR_DARKGREEN + '>' + COLOR_NONE if self._colors else '>'
@@ -594,32 +597,30 @@ class DrbdManage(object):
 
                 cmds = [cmd.strip() for cmd in cmds.split()]
                 if not cmds:
-                    self.cmd_list(parser, args)
+                    self.cmd_list(args)
                 else:
-                    parsecatch(parser, cmds)
+                    parsecatch(cmds)
             except (EOFError, KeyboardInterrupt):  # raised by ctrl-d, ctrl-c
                 print  # additional newline, makes shell prompt happy
                 return
 
-    def cmd_help(self, parser, args):
-        self.parse(parser, [args.command, "-h"])
+    def cmd_help(self, args):
+        self.parse([args.command, "-h"])
 
     def cmd_exit(self, _, __):
         exit(0)
 
     def run(self):
-        parser = self.setup_parser()
-        self._all_commands = self.parser_cmds(parser)
-        self.parse(parser, sys.argv[1:])
+        self.parse(sys.argv[1:])
 
-    def cmd_poke(self, parser, args):
+    def cmd_poke(self, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.poke()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_new_node(self, parser, args):
+    def cmd_new_node(self, args):
         fn_rc = 1
         name = args.name
         ip = args.ip
@@ -677,7 +678,7 @@ class DrbdManage(object):
                                      "%s\n" % (name, joinc_text))
         return fn_rc
 
-    def cmd_new_resource(self, parser, args):
+    def cmd_new_resource(self, args):
         fn_rc = 1
 
         name = args.name
@@ -692,7 +693,7 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_new_volume(self, parser, args):
+    def cmd_new_volume(self, args):
         fn_rc = 1
         unit = SizeCalc.UNIT_GiB
         size = None
@@ -747,7 +748,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_modify_resource(self, parser, args):
+    def cmd_modify_resource(self, args):
         fn_rc = 1
         name = args.name
         port = args.port if args.port else RES_PORT_NR_AUTO
@@ -762,7 +763,7 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_remove_node(self, parser, args):
+    def cmd_remove_node(self, args):
         fn_rc = 1
 
         node_name = args.name
@@ -785,7 +786,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_remove_resource(self, parser, args):
+    def cmd_remove_resource(self, args):
         fn_rc = 1
 
         res_name = args.name
@@ -808,7 +809,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_remove_volume(self, parser, args):
+    def cmd_remove_volume(self, args):
         fn_rc = 1
 
         vol_name = args.name
@@ -833,13 +834,13 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_connect(self, parser, args):
+    def cmd_connect(self, args):
         return self._connect(args, False)
 
-    def cmd_reconnect(self, parser, args):
+    def cmd_reconnect(self, args):
         return self._connect(parser, args, True)
 
-    def _connect(self, parser, args, reconnect):
+    def _connect(self, args, reconnect):
         fn_rc = 1
 
         node_name = args.node
@@ -854,7 +855,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_disconnect(self, parser, args):
+    def cmd_disconnect(self, args):
         fn_rc = 1
 
         node_name = args.node
@@ -868,7 +869,7 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_flags(self, parser, args):
+    def cmd_flags(self, args):
         fn_rc = 1
         clear_mask = 0
         set_mask = 0
@@ -909,7 +910,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_attach_detach(self, parser, args):
+    def cmd_attach_detach(self, args):
         fn_rc = 1
 
         node_name = args.node
@@ -933,7 +934,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_assign(self, parser, args):
+    def cmd_assign(self, args):
         fn_rc = 1
 
         node_name = args.node
@@ -977,7 +978,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_free_space(self, parser, args):
+    def cmd_free_space(self, args):
         fn_rc = 1
 
         redundancy = args.redundancy
@@ -1002,7 +1003,7 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_deploy(self, parser, args):
+    def cmd_deploy(self, args):
         fn_rc = 1
         res_name = args.resource
         count = args.redundancy_count
@@ -1023,7 +1024,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_undeploy(self, parser, args):
+    def cmd_undeploy(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1046,35 +1047,35 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_update_pool(self, parser, args):
+    def cmd_update_pool(self, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.update_pool(dbus.Array([], signature="s"))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_reconfigure(self, parser, args):
+    def cmd_reconfigure(self, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.reconfigure()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_save(self, parser, args):
+    def cmd_save(self, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.save_conf()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_load(self, parser, args):
+    def cmd_load(self, args):
         fn_rc = 1
         self.dbus_init()
         server_rc = self._server.load_conf()
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_unassign(self, parser, args):
+    def cmd_unassign(self, args):
         fn_rc = 1
 
         node_name = args.node
@@ -1088,7 +1089,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_new_snapshot(self, parser, args):
+    def cmd_new_snapshot(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1106,7 +1107,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_remove_snapshot(self, parser, args):
+    def cmd_remove_snapshot(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1121,7 +1122,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_remove_snapshot_assignment(self, parser, args):
+    def cmd_remove_snapshot_assignment(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1138,7 +1139,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_restore_snapshot(self, parser, args):
+    def cmd_restore_snapshot(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1157,7 +1158,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_shutdown(self, parser, args):
+    def cmd_shutdown(self, args):
         quiet = args.quiet
         if not quiet:
             quiet = self.user_confirm(
@@ -1177,7 +1178,7 @@ class DrbdManage(object):
             exit(0)
         return 0
 
-    def cmd_list_nodes(self, parser, args):
+    def cmd_list_nodes(self, args):
         color = self.color
 
         self.dbus_init()
@@ -1282,10 +1283,10 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-    def cmd_list_resources(self, parser, args):
+    def cmd_list_resources(self, args):
         return self._list_resources(args, False)
 
-    def cmd_list_volumes(self, parser, args):
+    def cmd_list_volumes(self, args):
         return self._list_resources(args, True)
 
 
@@ -1412,7 +1413,7 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-    def cmd_list_snapshots(self, parser, args):
+    def cmd_list_snapshots(self, args):
         color = self.color
 
         self.dbus_init()
@@ -1469,7 +1470,7 @@ class DrbdManage(object):
         return 0
 
 
-    def cmd_list_snapshot_assignments(self, parser, args):
+    def cmd_list_snapshot_assignments(self, args):
         color = self.color
 
         self.dbus_init()
@@ -1543,7 +1544,7 @@ class DrbdManage(object):
                     )
         return 0
 
-    def cmd_list_assignments(self, parser, args):
+    def cmd_list_assignments(self, args):
         color = self.color
 
         self.dbus_init()
@@ -1641,7 +1642,7 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-    def cmd_export_conf(self, parser, args):
+    def cmd_export_conf(self, args):
         fn_rc = 1
 
         res_name = args.resource
@@ -1654,7 +1655,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_howto_join(self, parser, args):
+    def cmd_howto_join(self, args):
         """
         Queries the command line to join a node from the server
         """
@@ -1668,7 +1669,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_lowlevel_debug(self, parser, args):
+    def cmd_lowlevel_debug(self, args):
         cmd = args.cmd
 
         params = []
@@ -1711,7 +1712,7 @@ class DrbdManage(object):
 
         return 0
 
-    def cmd_query_conf(self, parser, args):
+    def cmd_query_conf(self, args):
         """
         Retrieves the configuration file for a resource on a specified node
         """
@@ -1742,7 +1743,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_ping(self, parser, args):
+    def cmd_ping(self, args):
         fn_rc = 1
         try:
             self.dbus_init()
@@ -1757,7 +1758,7 @@ class DrbdManage(object):
             )
         return fn_rc
 
-    def cmd_startup(self, parser, args):
+    def cmd_startup(self, args):
         fn_rc = 1
         try:
             sys.stdout.write(
@@ -1781,7 +1782,7 @@ class DrbdManage(object):
             )
         return fn_rc
 
-    def cmd_init(self, parser, args):
+    def cmd_init(self, args):
         """
         Initializes a new drbdmanage cluster
         """
@@ -1852,7 +1853,7 @@ class DrbdManage(object):
             self._init_join_rollback(drbdctrl_vg)
         return fn_rc
 
-    def cmd_uninit(self, parser, args):
+    def cmd_uninit(self, args):
         fn_rc = 1
 
         quiet = args.quiet
@@ -1896,7 +1897,7 @@ class DrbdManage(object):
 
         return fn_rc
 
-    def cmd_join(self, parser, args):
+    def cmd_join(self, args):
         """
         Joins an existing drbdmanage cluster
         """
@@ -2120,7 +2121,7 @@ class DrbdManage(object):
         except AbortException:
             pass
 
-    def cmd_initcv(self, parser, args):
+    def cmd_initcv(self, args):
         fn_rc = 1
 
         drbdctrl_file = args.dev
@@ -2280,7 +2281,7 @@ class DrbdManage(object):
             sys.stderr.write("WARNING: cannot parse server return codes\n")
         return fn_rc
 
-    def cmd_debug(self, parser, args):
+    def cmd_debug(self, args):
         fn_rc = 1
 
         command = args.cmd
