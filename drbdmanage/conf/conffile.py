@@ -23,6 +23,8 @@ import drbdmanage.utils as dmutils
 
 from drbdmanage.exceptions import InvalidMinorNrException
 
+is_set   = dmutils.is_set
+is_unset = dmutils.is_unset
 
 class ConfFile(object):
 
@@ -288,6 +290,7 @@ class DrbdAdmConf(object):
             # begin resource/nodes
             local_node = assignment.get_node()
             for assg in resource.iterate_assignments():
+                diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
                 if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or
                     undeployed_flag):
                         node = assg.get_node()
@@ -327,13 +330,19 @@ class DrbdAdmConf(object):
                                     "        volume %d {\n"
                                     "            device minor %d;\n"
                                     "            disk %s;\n"
-                                    "            disk {"
-                                    "                size %dk;"
-                                    "            }"
+                                    % (volume.get_id(), minor.get_value(),
+                                       bd_path)
+                                )
+                                if not diskless:
+                                    stream.write(
+                                        "            disk {\n"
+                                        "                size %dk;\n"
+                                        "            }\n"
+                                        % (volume.get_size_kiB())
+                                    )
+                                stream.write(
                                     "            meta-disk internal;\n"
                                     "        }\n"
-                                    % (volume.get_id(), minor.get_value(),
-                                       bd_path, volume.get_size_kiB())
                                 )
                         stream.write("    }\n")
             # end resource/nodes
@@ -343,11 +352,18 @@ class DrbdAdmConf(object):
                 "    connection-mesh {\n"
                 "        hosts"
             )
+            servers = []
+            clients = []
             for assg in resource.iterate_assignments():
-                if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or
+                tstate = assg.get_tstate()
+                if (is_set(tstate, assg.FLAG_DEPLOY) or
                     undeployed_flag):
                         node = assg.get_node()
-                        stream.write(" %s" % (node.get_name()))
+                        if is_unset(tstate, assg.FLAG_DISKLESS):
+                            stream.write(" %s" % (node.get_name()))
+                            servers.append(node)
+                        else:
+                            clients.append(node)
             stream.write(";\n")
             stream.write(
                 "        net {\n"
@@ -355,6 +371,18 @@ class DrbdAdmConf(object):
                 "        }\n"
             )
             stream.write("    }\n")
+
+            # connect each client to every server, but not to other clients
+            for client_node in clients:
+                client_name = client_node.get_name()
+                for server_node in servers:
+                    stream.write(
+                        "    connection {\n"
+                        "        host %s;\n"
+                        "        host %s;\n"
+                        "    }\n"
+                        % (client_name, server_node.get_name())
+                    )
             # end resource/connection
 
             stream.write("}\n")
@@ -399,9 +427,16 @@ class DrbdAdmConf(object):
 
             # begin resource/nodes
             local_node = assignment.get_node()
+            clients = []
+            servers = []
             for node in nodes:
                 assg = node.get_assignment(resource.get_name())
                 if assg is not None:
+                    diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
+                    if not diskless:
+                        servers.append(node)
+                    else:
+                        clients.append(node)
                     stream.write(
                         "    on %s {\n"
                         "        node-id %s;\n"
@@ -436,13 +471,19 @@ class DrbdAdmConf(object):
                             "        volume %d {\n"
                             "            device minor %d;\n"
                             "            disk %s;\n"
-                            "            disk {"
-                            "                size %dk;"
-                            "            }"
+                            % (volume.get_id(), minor.get_value(),
+                               bd_path)
+                        )
+                        if not diskless:
+                            stream.write(
+                                "            disk {\n"
+                                "                size %dk;\n"
+                                "            }\n"
+                                % (volume.get_size_kiB())
+                            )
+                        stream.write(
                             "            meta-disk internal;\n"
                             "        }\n"
-                            % (volume.get_id(), minor.get_value(),
-                               bd_path, volume.get_size_kiB())
                         )
                     # end resource/nodes/volumes
                     stream.write("    }\n")
@@ -450,14 +491,14 @@ class DrbdAdmConf(object):
 
             # If any hosts are left in the configuration, generate the
             # connection mesh section
-            if len(nodes) > 0:
+            if len(servers) > 0:
                 # begin resource/connection
                 stream.write(
                     "    connection-mesh {\n"
                     "        hosts"
                 )
-                for node in nodes:
-                    stream.write(" %s" % (node.get_name()))
+                for server_node in servers:
+                    stream.write(" %s" % (server_node.get_name()))
                 stream.write(";\n")
                 stream.write(
                     "        net {\n"
@@ -465,6 +506,18 @@ class DrbdAdmConf(object):
                     "        }\n"
                 )
                 stream.write("    }\n")
+
+                # connect each client to every server, but not to other clients
+                for client_node in clients:
+                    client_name = client_node.get_name()
+                    for server_node in servers:
+                        stream.write(
+                            "    connection {\n"
+                            "        host %s;\n"
+                            "        host %s;\n"
+                            "    }\n"
+                            % (client_name, server_node.get_name())
+                        )
                 # end resource/connection
 
             stream.write("}\n")
