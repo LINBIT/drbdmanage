@@ -3,8 +3,9 @@
 MANIFEST
 build/
 dist/
-/man-pages/drbdmanage.8
-/man-pages/drbdmanage.8.gz
+/man-pages/*.8
+/man-pages/*.8.gz
+!/man-pages/*.xml
 
 tags
 python-drbdmanage_*.deb
