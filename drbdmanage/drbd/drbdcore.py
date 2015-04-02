@@ -737,13 +737,15 @@ class DrbdManager(object):
             fn_rc, blockdev = self._deploy_volume_from_snapshot(
                 assignment, vol_state, src_bd_name
             )
+            if fn_rc != 0 or blockdev is None:
+                failed_actions = True
         else:
-            fn_rc, blockdev = self._deploy_volume_blockdev(
-                assignment, vol_state, max_peers
-            )
-
-        if fn_rc != 0 or blockdev is None:
-            failed_actions = True
+            if not diskless:
+                fn_rc, blockdev = self._deploy_volume_blockdev(
+                    assignment, vol_state, max_peers
+                )
+                if fn_rc != 0 or blockdev is None:
+                    failed_actions = True
 
         # Continue if none of the previous steps failed
         if not failed_actions:
@@ -1373,8 +1375,9 @@ class DrbdManager(object):
         if fn_rc == 0:
             assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             assignment.clear_tstate_flags(Assignment.FLAG_UPD_CON)
-            for vol_state in assignment.iterate_volume_states():
-                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
+                for vol_state in assignment.iterate_volume_states():
+                    vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
 
         return fn_rc
 
