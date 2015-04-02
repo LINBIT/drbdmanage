@@ -206,7 +206,7 @@ class DrbdManageServer(object):
         self.init_logging()
         logging.info("DRBDmanage server, version %s"
                      " -- initializing on node '%s'"
-                     % (self.DM_VERSION, self._instance_node_name))
+                     % (DM_VERSION, self._instance_node_name))
         self._nodes     = {}
         self._resources = {}
         # load the server configuration file
