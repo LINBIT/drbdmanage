@@ -1384,6 +1384,7 @@ class DrbdManageServer(object):
                 except KeyError:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
                                  [ NODE_NAME, node_name ])
+                resource = None
                 try:
                     resource = self._resources[res_name]
                 except KeyError:
