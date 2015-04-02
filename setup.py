@@ -47,10 +47,40 @@ class BuildManCommand(Command):
 
     def run(self):
         assert os.getcwd() == self.cwd, "Must be in package root: %s" % self.cwd
-        os.system("cd man-pages; "
+        outdir = "man-pages"
+        os.system("cd %s; " % (outdir) + ' ' +
             "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
             "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
             "drbdmanage.xml; gzip -9 drbdmanage.8")
+        # subcommands
+        import subprocess
+        import gzip
+
+        from drbdmanage_client import DrbdManage
+        from drbdmanage.consts import DM_VERSION
+
+        name = "dm"
+        mansection = '8'
+        replace = ("drbdmanage_client.py", "drbdmanage")
+
+        client = DrbdManage()
+        for cmd in client._all_commands:
+            toplevel = cmd[0]
+            # aliases = cmd[1:]
+            # we could use the aliases to symlink them to the toplevel cmd
+            outfile = os.path.join('.', outdir, name + '-' + toplevel + '.' +
+                                   mansection + ".gz")
+            print "Generating %s ..." % (outfile)
+            mangen = ["help2man", "-n", toplevel, '-s', '8',
+                      '--version-string=%s' % (DM_VERSION), "-N",
+                      '"./drbdmanage_client.py %s"' % (toplevel)]
+
+            toexec = " ".join(mangen)
+            manpage = subprocess.check_output(toexec, shell=True)
+            manpage = manpage.replace(replace[0], replace[1])
+            manpage = manpage.replace(replace[0].upper(), replace[1].upper())
+            with gzip.open(outfile, 'wb') as f:
+                f.write(manpage)
 
 setup(
     name="drbdmanage",
