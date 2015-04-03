@@ -591,9 +591,8 @@ class DrbdManage(object):
         self.cmd_list(args)
         while True:
             try:
-                p = COLOR_DARKGREEN + '>' + COLOR_NONE if self._colors else '>'
-                print '\n' + p,
-                cmds = raw_input().strip()
+                print
+                cmds = raw_input('> ').strip()
 
                 cmds = [cmd.strip() for cmd in cmds.split()]
                 if not cmds:
