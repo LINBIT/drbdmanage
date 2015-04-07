@@ -22,7 +22,7 @@
 Installer & Package creator for drbdmanage
 """
 
-import os
+import os, glob
 
 from distutils.core import setup, Command
 
@@ -82,6 +82,24 @@ class BuildManCommand(Command):
             with gzip.open(outfile, 'wb') as f:
                 f.write(manpage)
 
+
+def gen_data_files():
+    data_files = [("/etc/drbd.d", ["conf/drbdctrl.res_template",
+                                   "conf/drbdmanage-resources.res"]),
+                  ("/etc", ["conf/drbdmanaged.conf",
+                            "conf/drbdmanaged-lvm.conf"]),
+                  ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
+                  ("/usr/share/dbus-1/system-services",
+                   ["conf/org.drbd.drbdmanaged.service"]),
+                  ("/var/lib/drbd.d", []),
+                  ("/var/lib/drbdmanage", []),
+                  ("/etc/bash_completion.d", ["scripts/bash_completion/drbdmanage"])]
+
+    for manpage in glob.glob(os.path.join("man-pages", "*.8.gz")):
+        data_files.append(("/usr/share/man/man8", [manpage]))
+
+    return data_files
+
 setup(
     name="drbdmanage",
     version="0.30",
@@ -108,18 +126,7 @@ setup(
         "drbdmanage.argcomplete"],
     py_modules=["drbdmanage_server", "drbdmanage_client"],
     scripts=["scripts/drbdmanage", "scripts/dbus-drbdmanaged-service"],
-    data_files=[("/etc/drbd.d", ["conf/drbdctrl.res_template",
-                    "conf/drbdmanage-resources.res"]),
-                ("/etc", ["conf/drbdmanaged.conf",
-                    "conf/drbdmanaged-lvm.conf"]),
-                ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
-                ("/usr/share/man/man8", ["man-pages/drbdmanage.8.gz"]),
-                ("/usr/share/dbus-1/system-services",
-                    ["conf/org.drbd.drbdmanaged.service"]),
-                ("/var/lib/drbd.d", []),
-                ("/var/lib/drbdmanage", []),
-                ("/etc/bash_completion.d", ["scripts/bash_completion/drbdmanage"])
-               ],
+    data_files=gen_data_files(),
     cmdclass={
         "build_man": BuildManCommand
         }
