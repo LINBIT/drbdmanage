@@ -3440,7 +3440,7 @@ class DrbdManageServer(object):
 
         if (all([secret, port, r_addr, r_node_id, r_name, l_addr, l_node_id])):
             return ["drbdmanage", "join", "-p",
-                    port, l_addr, l_node_id, r_addr, r_name,
+                    port, l_addr, l_node_id, r_name, r_addr,
                     r_node_id, secret]
         else:
             return [("Error: Generation of the join command failed")]

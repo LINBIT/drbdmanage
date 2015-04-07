@@ -173,12 +173,24 @@ class DrbdManage(object):
         p_new_node.set_defaults(func=self.cmd_new_node)
 
         # remove-node
+        def NodeCompleter(prefix, **kwargs):
+            server_rc, node_list = self._get_nodes()
+            possible = set()
+            for n in node_list:
+                name, _ = n
+                possible.add(name)
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [node for node in possible if node.startswith(prefix)]
+
         p_rm_node = subp.add_parser('remove-node',
                                     description='Remove node',
                                     aliases=['rn', 'delete-node', 'dn'])
         p_rm_node.add_argument('-q', '--quiet', action="store_true")
         p_rm_node.add_argument('-f', '--force', action="store_true")
-        p_rm_node.add_argument('name', help='Name of the new node')
+        p_rm_node.add_argument('name', help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
         def port_type(p):
@@ -195,10 +207,23 @@ class DrbdManage(object):
         p_new_res.set_defaults(func=self.cmd_new_resource)
 
         # modify-resource
+        def ResourceCompleter(prefix, **kwargs):
+            server_rc, res_list = self.__list_resources(False)
+            possible = set()
+            for r in res_list:
+                name, _ = r
+                possible.add(name)
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [res for res in possible if res.startswith(prefix)]
+
         p_mod_res = subp.add_parser('modify-resource',
                                     description='Modify a resource')
         p_mod_res.add_argument('-p', '--port', type=port_type)
-        p_mod_res.add_argument('name', help='Name of the resource to modify')
+        p_mod_res.add_argument('name',
+                               help='Name of the resource to modify'). completer = ResourceCompleter
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
 
         # remove-resource
@@ -207,7 +232,8 @@ class DrbdManage(object):
                                    aliases=['rr', 'delete-resource', 'dr'])
         p_rm_res.add_argument('-q', '--quiet', action="store_true")
         p_rm_res.add_argument('-f', '--force', action="store_true")
-        p_rm_res.add_argument('name', help='Name of the resource to delete')
+        p_rm_res.add_argument('name',
+                              help='Name of the resource to delete').completer = ResourceCompleter
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
 
         # new-volume
@@ -225,31 +251,47 @@ class DrbdManage(object):
         p_new_vol.set_defaults(func=self.cmd_new_volume)
 
         # remove-volume
+        def VolumeCompleter(prefix, parsed_args, **kwargs):
+            server_rc, res_list = self.__list_resources(True)
+            possible = set()
+            for r in res_list:
+                name, _, vol_list = r
+                if name == parsed_args.name:
+                    vol_list.sort(key=lambda vol_entry: vol_entry[0])
+                    for v in vol_list:
+                        vol_id, _ = v
+                        possible.add(str(vol_id))
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [res for res in possible if res.startswith(prefix)]
+
         p_mod_res = subp.add_parser('remove-volume',
                                     description='Remove volume',
                                     aliases=['rv', 'delete-volume', 'dv'])
         p_mod_res.add_argument('-q', '--quiet', action="store_true")
         p_mod_res.add_argument('-f', '--force', action="store_true")
-        p_mod_res.add_argument('name', help='Name of the volume to delete')
-        p_mod_res.add_argument('id', type=int)
+        p_mod_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
+        p_mod_res.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
         p_mod_res.set_defaults(func=self.cmd_remove_volume)
 
         # connect
         p_conn = subp.add_parser('connect', description='Connect')
-        p_conn.add_argument('node')
-        p_conn.add_argument('resource')
+        p_conn.add_argument('node').completer = NodeCompleter
+        p_conn.add_argument('resource').completer = ResourceCompleter
         p_conn.set_defaults(func=self.cmd_connect)
 
         # reconnect
         p_reconn = subp.add_parser('reconnect', description='Reonnect')
-        p_reconn.add_argument('node')
-        p_reconn.add_argument('resource')
+        p_reconn.add_argument('node').completer = NodeCompleter
+        p_reconn.add_argument('resource').completer = ResourceCompleter
         p_reconn.set_defaults(func=self.cmd_reconnect)
 
         # disconnect
         p_disconn = subp.add_parser('disconnect', description='Disconnect')
-        p_disconn.add_argument('node')
-        p_disconn.add_argument('resource')
+        p_disconn.add_argument('node').completer = NodeCompleter
+        p_disconn.add_argument('resource').completer = ResourceCompleter
         p_disconn.set_defaults(func=self.cmd_disconnect)
 
         # flags
@@ -264,15 +306,15 @@ class DrbdManage(object):
 
         # attach
         p_attach = subp.add_parser('attach', description='Attach')
-        p_attach.add_argument('node')
-        p_attach.add_argument('resource')
-        p_attach.add_argument('id', type=int)
+        p_attach.add_argument('node').completer = NodeCompleter
+        p_attach.add_argument('resource').completer = ResourceCompleter
+        p_attach.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
         p_attach.set_defaults(func=self.cmd_attach_detach, fname='attach')
         # detach
         p_detach = subp.add_parser('detach', description='Detach')
-        p_detach.add_argument('node')
-        p_detach.add_argument('resource')
-        p_detach.add_argument('id', type=int)
+        p_detach.add_argument('node').completer = NodeCompleter
+        p_detach.add_argument('resource').completer = ResourceCompleter
+        p_detach.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
         p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
 
         # assign
@@ -280,8 +322,8 @@ class DrbdManage(object):
         p_assign.add_argument('--client', action="store_true")
         p_assign.add_argument('--overwrite', action="store_true")
         p_assign.add_argument('--discard', action="store_true")
-        p_assign.add_argument('node')
-        p_assign.add_argument('resource')
+        p_assign.add_argument('node').completer = NodeCompleter
+        p_assign.add_argument('resource').completer = ResourceCompleter
         p_assign.set_defaults(func=self.cmd_assign)
 
         # free space
@@ -301,7 +343,7 @@ class DrbdManage(object):
 
         # deploy
         p_deploy = subp.add_parser('deploy', description='Deploy a resource')
-        p_deploy.add_argument('resource')
+        p_deploy.add_argument('resource').completer = ResourceCompleter
         p_deploy.add_argument('-i', '--increase', action="store_true",
                               help='Increase the redundancy count relative to '
                               'the currently set value by a number of '
@@ -322,7 +364,7 @@ class DrbdManage(object):
                                      description='Undeploy a resource')
         p_undeploy.add_argument('-q', '--quiet', action="store_true")
         p_undeploy.add_argument('-f', '--force', action="store_true")
-        p_undeploy.add_argument('resource')
+        p_undeploy.add_argument('resource').completer = ResourceCompleter
         p_undeploy.set_defaults(func=self.cmd_undeploy)
 
         # update-pool
@@ -351,8 +393,8 @@ class DrbdManage(object):
                                      'node')
         p_unassign.add_argument('-q', '--quiet', action="store_true")
         p_unassign.add_argument('-f', '--force', action="store_true")
-        p_unassign.add_argument('node')
-        p_unassign.add_argument('resource')
+        p_unassign.add_argument('node').completer = NodeCompleter
+        p_unassign.add_argument('resource').completer = ResourceCompleter
         p_unassign.set_defaults(func=self.cmd_unassign)
 
         # new-snapshot
@@ -360,18 +402,33 @@ class DrbdManage(object):
                                   aliases=['ns', 'create-snapshot', 'cs',
                                            'add-snapshot', 'as'],
                                   description='Create LVM snapshot')
-        p_nsnap.add_argument('resource', help='Name of the resource')
+        p_nsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_nsnap.add_argument('snapshot', help='Name of the snapshot')
-        p_nsnap.add_argument('nodes', help='List of nodes', nargs='+')
+        p_nsnap.add_argument('nodes', help='List of nodes', nargs='+').completer = NodeCompleter
         p_nsnap.set_defaults(func=self.cmd_new_snapshot)
 
         # remove-snapshot
+        def SnapsCompleter(prefix, parsed_args, **kwargs):
+            server_rc, res_list = self._list_snapshots()
+            possible = set()
+            for r in res_list:
+                res_name, snaps_list = r
+                if res_name == parsed_args.resource:
+                    for s in snaps_list:
+                        snaps_name, _ = s
+                        possible.add(snaps_name)
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [snap for snap in possible if snap.startswith(prefix)]
+
         p_rmsnap = subp.add_parser('remove-snapshot',
                                    aliases=['delete-snapshot', 'ds'],
                                    description='Remove LVM snapshot')
         p_rmsnap.add_argument('-f', '--force', action="store_true")
-        p_rmsnap.add_argument('resource', help='Name of the resource')
-        p_rmsnap.add_argument('snapshot', help='Name of the snapshot')
+        p_rmsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
+        p_rmsnap.add_argument('snapshot', help='Name of the snapshot').completer = SnapsCompleter
         p_rmsnap.set_defaults(func=self.cmd_remove_snapshot)
 
         # remove-snapshot-assignment
@@ -381,9 +438,11 @@ class DrbdManage(object):
                                               'dsa'],
                                      description='Remove snapshot assignment')
         p_rmsnapas.add_argument('-f', '--force', action="store_true")
-        p_rmsnapas.add_argument('resource', help='Name of the resource')
-        p_rmsnapas.add_argument('snapshot', help='Name of the snapshot')
-        p_rmsnapas.add_argument('node', help='Name of the node')
+        p_rmsnapas.add_argument('resource',
+                                help='Name of the resource').completer = ResourceCompleter
+        p_rmsnapas.add_argument('snapshot',
+                                help='Name of the snapshot').completer = SnapsCompleter
+        p_rmsnapas.add_argument('node', help='Name of the node').completer = NodeCompleter
         p_rmsnapas.set_defaults(func=self.cmd_remove_snapshot_assignment)
 
         # restore-snapshot
@@ -442,18 +501,21 @@ class DrbdManage(object):
         # export
         p_export = subp.add_parser('export',
                                    description='Export config')
-        p_export.add_argument('resource', help='Name of the resource')
+        p_export.add_argument('resource',
+                              help='Name of the resource').completer = ResourceCompleter
         p_export.set_defaults(func=self.cmd_export_conf)
 
         # howto-join
         p_howtojoin = subp.add_parser('howto-join')
-        p_howtojoin.add_argument('node', help='Name of the node to join')
+        p_howtojoin.add_argument('node',
+                                 help='Name of the node to join').completer = NodeCompleter
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
         # query-conf
         p_queryconf = subp.add_parser('query-conf')
-        p_queryconf.add_argument('node', help='Name of the node')
-        p_queryconf.add_argument('resource', help='Name of the resource')
+        p_queryconf.add_argument('node', help='Name of the node').completer = NodeCompleter
+        p_queryconf.add_argument('resource',
+                                 help='Name of the resource').completer = ResourceCompleter
         p_queryconf.set_defaults(func=self.cmd_query_conf)
 
         # ping
@@ -482,6 +544,13 @@ class DrbdManage(object):
         p_uninit.set_defaults(func=self.cmd_uninit)
 
         # join
+        def IPCompleter2(prefix, parsed_args, **kwargs):
+            import socket
+            name = parsed_args.peer_ip
+            ip = socket.gethostbyname(name)
+            ip = [ip]
+            return ip
+
         p_join = subp.add_parser('join')
         p_join.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
@@ -491,8 +560,8 @@ class DrbdManage(object):
         p_join.add_argument('-q', '--quiet', action="store_true")
         p_join.add_argument('local_ip')
         p_join.add_argument('local_node_id')
-        p_join.add_argument('peer_ip')
         p_join.add_argument('peer_name')
+        p_join.add_argument('peer_ip').completer = IPCompleter2
         p_join.add_argument('peer_node_id')
         p_join.add_argument('secret')
         p_join.set_defaults(func=self.cmd_join)
@@ -1192,12 +1261,8 @@ class DrbdManage(object):
             exit(0)
         return 0
 
-    def cmd_list_nodes(self, args):
-        color = self.color
-
+    def _get_nodes(self):
         self.dbus_init()
-
-        machine_readable = args.machine_readable
 
         server_rc, node_list = self._server.list_nodes(
             dbus.Array([], signature="s"),
@@ -1205,6 +1270,18 @@ class DrbdManage(object):
             dbus.Dictionary({}, signature="ss"),
             dbus.Array([], signature="s")
         )
+
+        # sort the node list by node name
+        node_list.sort(key=lambda node_entry: node_entry[0])
+
+        return (server_rc, node_list)
+
+    def cmd_list_nodes(self, args):
+        color = self.color
+
+        machine_readable = args.machine_readable
+
+        server_rc, node_list = self._get_nodes()
 
         if (not machine_readable) and (node_list is None
                                        or len(node_list) == 0):
@@ -1223,9 +1300,6 @@ class DrbdManage(object):
                 % (color(COLOR_BROWN), "", "", color(COLOR_NONE))
             )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
-
-        # sort the node list by node name
-        node_list.sort(key=lambda node_entry: node_entry[0])
 
         for node_entry in node_list:
             try:
@@ -1303,6 +1377,28 @@ class DrbdManage(object):
     def cmd_list_volumes(self, args):
         return self._list_resources(args, True)
 
+    def __list_resources(self, list_volumes):
+        self.dbus_init()
+
+        if list_volumes:
+            server_rc, res_list = self._server.list_volumes(
+                dbus.Array([], signature="s"),
+                0,
+                dbus.Dictionary({}, signature="ss"),
+                dbus.Array([], signature="s")
+            )
+        else:
+            server_rc, res_list = self._server.list_resources(
+                dbus.Array([], signature="s"),
+                0,
+                dbus.Dictionary({}, signature="ss"),
+                dbus.Array([], signature="s")
+            )
+
+        # sort the resource list by resource name
+        res_list.sort(key=lambda res_entry: res_entry[0])
+
+        return (server_rc, res_list)
 
     def _list_resources(self, args, list_volumes):
         """
@@ -1319,24 +1415,10 @@ class DrbdManage(object):
         """
         color = self.color
 
-        self.dbus_init()
-
         machine_readable = args.machine_readable
 
-        if list_volumes:
-            server_rc, res_list = self._server.list_volumes(
-                dbus.Array([], signature="s"),
-                0,
-                dbus.Dictionary({}, signature="ss"),
-                dbus.Array([], signature="s")
-            )
-        else:
-            server_rc, res_list = self._server.list_resources(
-                dbus.Array([], signature="s"),
-                0,
-                dbus.Dictionary({}, signature="ss"),
-                dbus.Array([], signature="s")
-            )
+        server_rc, res_list = self.__list_resources(list_volumes)
+
         if (not machine_readable) and (res_list is None or len(res_list) == 0):
                 sys.stdout.write("No resources defined\n")
                 return 0
@@ -1358,9 +1440,6 @@ class DrbdManage(object):
                        "state", color(COLOR_NONE))
                 )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
-
-        # sort the resource list by resource name
-        res_list.sort(key=lambda res_entry: res_entry[0])
 
         for res_entry in res_list:
             try:
@@ -1427,12 +1506,8 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
         return 0
 
-    def cmd_list_snapshots(self, args):
-        color = self.color
-
+    def _list_snapshots(self):
         self.dbus_init()
-
-        machine_readable = args.machine_readable
 
         server_rc, res_list = self._server.list_snapshots(
             dbus.Array([], signature="s"),
@@ -1441,6 +1516,18 @@ class DrbdManage(object):
             dbus.Dictionary({}, signature="ss"),
             dbus.Array([], signature="s")
         )
+
+        # sort the list by resource name
+        res_list.sort(key=lambda res_entry: res_entry[0])
+
+        return (server_rc, res_list)
+
+    def cmd_list_snapshots(self, args):
+        color = self.color
+
+        machine_readable = args.machine_readable
+
+        server_rc, res_list = self._list_snapshots()
 
         if (not machine_readable) and (res_list is None
                                        or len(res_list) == 0):
@@ -1458,9 +1545,6 @@ class DrbdManage(object):
                    "Snapshot", color(COLOR_NONE))
             )
             sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
-
-        # sort the list by resource name
-        res_list.sort(key=lambda res_entry: res_entry[0])
 
         for res_entry in res_list:
             res_name, snaps_list = res_entry
