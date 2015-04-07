@@ -148,6 +148,13 @@ class DrbdManage(object):
         p_poke.set_defaults(func=self.cmd_poke)
 
         # new-node
+        def IPCompleter(prefix, parsed_args, **kwargs):
+            import socket
+            name = parsed_args.name
+            ip = socket.gethostbyname(name)
+            ip = [ip]
+            return ip
+
         p_new_node = subp.add_parser('new-node',
                                      description='Names must match the output '
                                      'of "uname -n"',
@@ -161,7 +168,8 @@ class DrbdManage(object):
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
-        p_new_node.add_argument('ip', help='IP address of the new node')
+        p_new_node.add_argument('ip',
+                                help='IP address of the new node').completer = IPCompleter
         p_new_node.set_defaults(func=self.cmd_new_node)
 
         # remove-node
