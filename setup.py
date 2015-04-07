@@ -103,7 +103,9 @@ setup(
         "drbdmanage.conf",
         "drbdmanage.drbd",
         "drbdmanage.storage",
-        "drbdmanage.snapshots"],
+        "drbdmanage.snapshots",
+        "drbdmanage.argparse",
+        "drbdmanage.argcomplete"],
     py_modules=["drbdmanage_server", "drbdmanage_client"],
     scripts=["scripts/drbdmanage", "scripts/dbus-drbdmanaged-service"],
     data_files=[("/etc/drbd.d", ["conf/drbdctrl.res_template",
@@ -115,7 +117,8 @@ setup(
                 ("/usr/share/dbus-1/system-services",
                     ["conf/org.drbd.drbdmanaged.service"]),
                 ("/var/lib/drbd.d", []),
-                ("/var/lib/drbdmanage", [])
+                ("/var/lib/drbdmanage", []),
+                ("/etc/bash_completion.d", ["scripts/bash_completion/drbdmanage"])
                ],
     cmdclass={
         "build_man": BuildManCommand

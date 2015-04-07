@@ -36,7 +36,8 @@ import time
 import traceback
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
-import drbdmanage.argparse as argparse
+import drbdmanage.argparse.argparse as argparse
+import drbdmanage.argcomplete as argcomplete
 
 from drbdmanage.consts import (
     SERVER_CONFFILE, KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
@@ -499,6 +500,8 @@ class DrbdManage(object):
         p_debug.add_argument('cmd')
         p_debug.set_defaults(func=self.cmd_debug)
 
+        argcomplete.autocomplete(parser)
+
         return parser
 
     def parse(self, pargs):
@@ -585,6 +588,10 @@ class DrbdManage(object):
         # if loaded, raw_input makes use of it
         try:
             import readline
+            completer = argcomplete.CompletionFinder(self._parser)
+            readline.set_completer_delims("")
+            readline.set_completer(completer.rl_complete)
+            readline.parse_and_bind("tab: complete")
         except:
             pass
 
