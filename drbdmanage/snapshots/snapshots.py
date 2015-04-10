@@ -28,6 +28,11 @@ import drbdmanage.utils as dmutils
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
+    # Valid characters in addition to [a-zA-Z0-9]
+    NAME_VALID_CHARS      = "_"
+    # Additional valid characters, but not allowed as the first character
+    NAME_VALID_INNER_CHARS = "-"
+
     _name        = None
     _resource    = None
     _assignments = None
@@ -44,7 +49,8 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
     def name_check(self, name):
         return drbdcommon.GenericDrbdObject.name_check(
-            name, DrbdSnapshot.NAME_MAXLEN
+            name, DrbdSnapshot.NAME_MAXLEN,
+            DrbdSnapshot.NAME_VALID_CHARS, DrbdSnapshot.NAME_VALID_INNER_CHARS
         )
 
 

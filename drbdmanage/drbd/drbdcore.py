@@ -1509,7 +1509,12 @@ class DrbdManager(object):
 
 
 class DrbdResource(GenericDrbdObject):
+
     NAME_MAXLEN  = consts.RES_NAME_MAXLEN
+    # Valid characters in addition to [a-zA-Z0-9]
+    NAME_VALID_CHARS      = "_"
+    # Additional valid characters, but not allowed as the first character
+    NAME_VALID_INNER_CHARS = "-"
 
     _name        = None
     _secret      = None
@@ -1585,7 +1590,8 @@ class DrbdResource(GenericDrbdObject):
 
     def name_check(self, name):
         checked_name = GenericDrbdObject.name_check(
-            name, DrbdResource.NAME_MAXLEN
+            name, DrbdResource.NAME_MAXLEN,
+            DrbdResource.NAME_VALID_CHARS, DrbdResource.NAME_VALID_INNER_CHARS
         )
         # A resource can not be named "all", because that is a
         # keyword in the drbdsetup/drbdadm utilities
@@ -1918,6 +1924,10 @@ class DrbdNode(GenericDrbdObject):
     """
 
     NAME_MAXLEN = consts.NODE_NAME_MAXLEN
+    # Valid characters in addition to [a-zA-Z0-9]
+    NAME_VALID_CHARS      = "_"
+    # Additional valid characters, but not allowed as the first character
+    NAME_VALID_INNER_CHARS = ".-"
 
     AF_IPV4 = 4
     AF_IPV6 = 6
@@ -2065,7 +2075,10 @@ class DrbdNode(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return GenericDrbdObject.name_check(name, DrbdNode.NAME_MAXLEN)
+        return GenericDrbdObject.name_check(
+            name, DrbdNode.NAME_MAXLEN,
+            DrbdNode.NAME_VALID_CHARS, DrbdNode.NAME_VALID_INNER_CHARS
+        )
 
 
     def init_add_assignment(self, assignment):

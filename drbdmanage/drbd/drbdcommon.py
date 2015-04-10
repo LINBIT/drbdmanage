@@ -19,22 +19,33 @@ class GenericDrbdObject(object):
 
 
     @staticmethod
-    def name_check(name, length):
+    def name_check(name, max_length, valid_chars, valid_inner_chars):
         """
         Check the validity of a string for use as a name for
         objects like nodes or volumes.
         A valid name must match these conditions:
           * must at least be 1 byte long
           * must not be longer than specified by the caller
-          * contains a-z, A-Z, 0-9, - and _ characters only
+          * contains a-z, A-Z, 0-9, and the characters allowed
+            by the caller only
           * contains at least one alpha character (a-z, A-Z)
           * must not start with a numeric character
+          * must not start with a character allowed by the caller as
+            an inner character only (valid_inner_chars)
+        @param name         the name to check
+        @param max_length   the maximum permissible length of the name
+        @param valid_chars  list of characters allowed in addition to
+                            [a-zA-Z0-9]
+        @param valid_inner_chars    list of characters allowed in any
+                            position in the name other than the first,
+                            in addition to [a-zA-Z0-9] and the characters
+                            already specified in valid_chars
         """
-        if name == None or length == None:
+        if name == None or max_length == None:
             raise TypeError
         name_b   = bytearray(str(name), "utf-8")
         name_len = len(name_b)
-        if name_len < 1 or name_len > length:
+        if name_len < 1 or name_len > max_length:
             raise dmexc.InvalidNameException
         alpha = False
         idx = 0
@@ -45,8 +56,11 @@ class GenericDrbdObject(object):
             elif item >= ord('A') and item <= ord('Z'):
                 alpha = True
             else:
-                if (not ((item >= ord('0') and item <= ord('9') and idx >= 1) or
-                    item == ord("-") or item == ord("_"))):
+                if (not (item >= ord('0') and item <= ord('9') and idx >= 1)):
+                    letter = chr(item)
+                    if (not (letter in valid_chars or
+                        (letter in valid_inner_chars and idx >= 1))):
+                        # Illegal character in name
                         raise dmexc.InvalidNameException
             idx += 1
         if not alpha:

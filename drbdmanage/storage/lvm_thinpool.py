@@ -822,6 +822,10 @@ class ThinPool(storagecommon.GenericStorage):
     # length of a thin pool name must be allowed to be 19 characters longer
     # than a resource name.
     THINPOOL_NAME_MAXLEN = consts.RES_NAME_MAXLEN + 19
+    # Valid characters in addition to [a-zA-Z0-9]
+    NAME_VALID_CHARS      = "_"
+    # Additional valid characters, but not allowed as the first character
+    NAME_VALID_INNER_CHARS = "-"
 
     _name    = None
     _volumes = None
@@ -829,9 +833,9 @@ class ThinPool(storagecommon.GenericStorage):
 
     def __init__(self, name, size_kiB):
         super(ThinPool, self).__init__(size_kiB)
-        self._name    = drbdcommon.GenericDrbdObject.name_check(
-            name,
-            self.THINPOOL_NAME_MAXLEN
+        self._name = drbdcommon.GenericDrbdObject.name_check(
+            name, ThinPool.THINPOOL_NAME_MAXLEN,
+            ThinPool.NAME_VALID_CHARS, ThinPool.NAME_VALID_INNER_CHARS
         )
         self._volumes = {}
 

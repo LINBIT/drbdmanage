@@ -43,7 +43,7 @@ SNAPS_NAME          = "snaps_name"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
-NODE_NAME_MAXLEN    = 32
+NODE_NAME_MAXLEN    = 128
 RES_NAME_MAXLEN     = 48    # Enough for a UUID string plus prefix
 SNAPS_NAME_MAXLEN   = 48
 

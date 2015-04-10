@@ -33,7 +33,11 @@ class BlockDevice(GenericStorage):
     """
     Represents a block device
     """
-    NAME_MAXLEN = 60 ## at least as long as res name
+    NAME_MAXLEN            = 60 ## at least as long as res name
+    # Valid characters in addition to [a-zA-Z0-9]
+    NAME_VALID_CHARS       = "_"
+    # Additional valid characters, but not allowed as the first character
+    NAME_VALID_INNER_CHARS = "-"
 
     _path     = None
     _name     = None
@@ -47,7 +51,8 @@ class BlockDevice(GenericStorage):
 
     def name_check(self, name):
         return drbdmanage.drbd.drbdcore.GenericDrbdObject.name_check(
-            name, BlockDevice.NAME_MAXLEN
+            name, BlockDevice.NAME_MAXLEN,
+            BlockDevice.NAME_VALID_CHARS, BlockDevice.NAME_VALID_INNER_CHARS
         )
 
 
