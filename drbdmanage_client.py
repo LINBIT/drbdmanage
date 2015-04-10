@@ -246,7 +246,8 @@ class DrbdManage(object):
                                         'MiB', 'GiB'], help='Default: "GiB"')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
-        p_new_vol.add_argument('name', help='Name of the new resource')
+        p_new_vol.add_argument('name',
+                               help='Name of the new resource').completer = ResourceCompleter
         p_new_vol.add_argument('size', help='Size of the new resource',
                                type=int)
         p_new_vol.set_defaults(func=self.cmd_new_volume)
