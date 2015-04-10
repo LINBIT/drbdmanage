@@ -22,11 +22,12 @@
 Generalized utility functions and classes for drbdmanage
 """
 
-import sys
 import os
 import hashlib
 import base64
+import operator
 import drbdmanage.consts as consts
+from drbdmanage.exceptions import SyntaxException
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -56,6 +57,150 @@ SECRET_LEN    = 15
 # Used by get_terminal_size()
 DEFAULT_TERM_WIDTH  = 80
 DEFAULT_TERM_HEIGHT = 25
+
+
+class Table():
+    def __init__(self):
+        self.r_just = False
+        self.got_column = False
+        self.got_row = False
+        self.groups = []
+        self.header = []
+        self.table = []
+        self.view = None
+
+    def addColumn(self, name, color=False, just_col='<', just_txt='<'):
+        self.got_column = True
+        if self.got_row:
+            raise SyntaxException("Not allowed to define columns after rows")
+        if just_col == '>':
+            if self.r_just:
+                raise SyntaxException("Not allowed to use multiple times")
+            else:
+                self.r_just = True
+
+        self.header.append({
+            'name': name,
+            'color': color,
+            'just_col': just_col,
+            'just_txt': just_txt})
+
+    def addRow(self, row, color=False, just_txt='<'):
+        self.got_row = True
+        if not self.got_column:
+            raise SyntaxException("Not allowed to define rows before columns")
+        if len(row) != len(self.header):
+            raise SyntaxException("Row len does not match headers")
+        for idx, c in enumerate(row):
+            if type(c) == type(tuple()) and not self.header[idx]['color']:
+                raise SyntaxException("Color tuple for this row not allowed "
+                                      "to have colors")
+
+        self.table.append(row)
+
+    def addSeparator(self):
+        self.table.append([None])
+
+    def setView(self, columns):
+        self.view = columns
+
+    def setGroupBy(self, groups):
+        if groups:
+            self.groups = groups
+
+    def show(self, machine_readable=False, overwrite=False):
+        if machine_readable:
+            overwrite = False
+
+        if self.groups:
+            self.view += [g for g in self.groups if g not in self.view]
+
+        pcnt = 0
+        for idx, c in enumerate(self.header[:]):
+            if c['name'] not in self.view:
+                pidx = idx - pcnt
+                pcnt += 1
+                self.header.pop(pidx)
+                for row in self.table:
+                    row.pop(pidx)
+
+        columnmax = [0] * len(self.header)
+        term_width, _ = get_terminal_size()
+        maxwidht = 110 if term_width > 110 else term_width
+
+        # color overhead
+        co = len(COLOR_RED) + len(COLOR_NONE)
+        co_sum = 0
+
+        hdrnames = [h['name'] for h in self.header]
+        if self.groups:
+            group_bys = [hdrnames.index(g) for g in self.groups if g in hdrnames]
+            for row in self.table:
+                for idx in group_bys:
+                    try:
+                        row[idx] = int(row[idx])
+                    except ValueError:
+                        pass
+            self.table.sort(key=operator.itemgetter(*group_bys))
+
+            lstlen = len(self.table)
+            seps = set()
+            for c in range(len(self.header)):
+                if c not in group_bys:
+                    continue
+                cur = self.table[0][c]
+                for idx, l in enumerate(self.table):
+                    if idx < lstlen - 1:
+                        if self.table[idx + 1][c] == cur:
+                            if overwrite:
+                                self.table[idx + 1][c] = ' '
+                        else:
+                            cur = self.table[idx + 1][c]
+                            seps.add(idx + 1)
+
+            for c, pos in enumerate(sorted(seps)):
+                self.table.insert(c + pos, [None])
+
+        # calc max width per column and set final strings (with color codes)
+        self.table.insert(0, [h.replace('_', ' ') for h in hdrnames])
+        for row in self.table:
+            if not row[0]:
+                continue
+            for idx, col in enumerate(self.header):
+                if col['color']:
+                    color = col["color"]
+                    text = str(row[idx])
+                    row[idx] = color + text + COLOR_NONE
+                columnmax[idx] = max(len(row[idx]), columnmax[idx])
+
+        for h in self.header:
+            if h['color']:
+                co_sum += co
+
+        # insert frames
+        self.table.insert(0, [None])
+        self.table.insert(2, [None])
+        self.table.append([None])
+
+        # build format string
+        fstr = '|'
+        for idx, col in enumerate(self.header):
+            if col['just_col'] == '>':
+                space = (maxwidht - sum(columnmax) + co_sum)
+                space_and_overhead = space - (len(self.header) * 3) - 2
+                if space_and_overhead >= 0:
+                    fstr += ' ' * space_and_overhead + '|'
+
+            fstr += ' {' + str(idx) + ':' + col['just_txt'] + str(columnmax[idx]) + '} |'
+
+        for row in self.table:
+            if not row[0]:  # print a separator
+                if self.r_just:
+                    print '+' + '-' * (maxwidht - 2) + '+'
+                else:
+                    print '+' + '-' * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + '+'
+            else:
+                print fstr.format(*row)
 
 
 def get_free_number(min_nr, max_nr, nr_list):

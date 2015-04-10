@@ -48,12 +48,13 @@ from drbdmanage.consts import (
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION
 )
 from drbdmanage.utils import SizeCalc
+from drbdmanage.utils import Table
 from drbdmanage.utils import (
     build_path, bool_to_string, map_val_or_dflt
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
-    COLOR_DARKPINK, COLOR_TEAL
+    COLOR_DARKPINK, COLOR_TEAL, COLOR_GREEN
 )
 from drbdmanage.conf.conffile import ConfFile
 from drbdmanage.exceptions import AbortException
@@ -462,9 +463,37 @@ class DrbdManage(object):
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
+        nodesverbose = ['Family', 'IP']
+        nodesgroupby = ['Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'State']
+
+        def NodesVerboseCompleter(prefix, parsed_args, **kwargs):
+            possible = nodesverbose
+            if parsed_args.show:
+                possible = [i for i in nodesverbose if i not in
+                            parsed_args.show]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
+
+        def NodesGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = nodesgroupby
+            if parsed_args.groupby:
+                possible = [i for i in nodesgroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_lnodes = subp.add_parser('nodes', aliases=['n'],
                                    description='List nodes')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
+        p_lnodes.add_argument('-s', '--show', nargs='+',
+                              choices=nodesverbose).completer = NodesVerboseCompleter
+        p_lnodes.add_argument('-g', '--groupby', nargs='+',
+                              choices=nodesgroupby).completer = NodesGroupCompleter
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
         # resources
@@ -1261,7 +1290,7 @@ class DrbdManage(object):
             exit(0)
         return 0
 
-    def _get_nodes(self):
+    def _get_nodes(self, sort=False):
         self.dbus_init()
 
         server_rc, node_list = self._server.list_nodes(
@@ -1271,8 +1300,8 @@ class DrbdManage(object):
             dbus.Array([], signature="s")
         )
 
-        # sort the node list by node name
-        node_list.sort(key=lambda node_entry: node_entry[0])
+        if sort:
+            node_list.sort(key=lambda node_entry: node_entry[0])
 
         return (server_rc, node_list)
 
@@ -1281,25 +1310,29 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
-        server_rc, node_list = self._get_nodes()
+        server_rc, node_list = self._get_nodes(sort=True)
 
         if (not machine_readable) and (node_list is None
                                        or len(node_list) == 0):
                 sys.stdout.write("No nodes defined\n")
                 return 0
 
-        if not machine_readable:
-            sys.stdout.write(
-                "%s%-*s%s %-12s %-34s %s%s%s\n"
-                % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(), "Node",
-                   color(COLOR_NONE), "addr family", "Network address",
-                   color(COLOR_RED), "state", color(COLOR_NONE))
-            )
-            sys.stdout.write(
-                "  %s* pool size  %14s / free  %14s%s\n"
-                % (color(COLOR_BROWN), "", "", color(COLOR_NONE))
-            )
-            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        t = Table()
+
+        t.addColumn("Name", color=color(COLOR_TEAL))
+        t.addColumn("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
+        t.addColumn("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
+        t.addColumn("Family", just_txt='>')
+        t.addColumn("IP", just_txt='>')
+        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+
+        # fixed ones we always show
+        tview = ["Name", "Pool_Size", "Pool_Free", "State"]
+        if args.show:
+            tview += args.show
+        t.setView(tview)
+
+        t.setGroupBy(args.groupby)
 
         for node_entry in node_list:
             try:
@@ -1342,19 +1375,8 @@ class DrbdManage(object):
                     except:
                         poolfree = "n/a"
 
-                    sys.stdout.write(
-                        "%s%-*s%s %-12s %-34s %s%s%s\n"
-                        % (color(COLOR_TEAL), view.get_name_maxlen(),
-                           node_name, color(COLOR_NONE), v_af,
-                           v_addr, color(COLOR_RED), view.get_state(),
-                           color(COLOR_NONE))
-                    )
-                    sys.stdout.write(
-                        "  %s* pool size: %14s / free: %14s%s\n"
-                        % (color(COLOR_BROWN),
-                           poolsize_text, poolfree_text,
-                           color(COLOR_NONE))
-                    )
+                    t.addRow([node_name, poolsize_text, poolfree_text,
+                              "ipv" + v_af, v_addr, view.get_state()])
                 else:
                     v_psize = self._property_text(
                         view.get_property(NODE_POOLSIZE))
@@ -1369,6 +1391,7 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
+        t.show()
         return 0
 
     def cmd_list_resources(self, args):
