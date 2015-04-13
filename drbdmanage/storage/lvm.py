@@ -64,6 +64,9 @@ class LVM(object):
     # LV exists error code
     LVM_EEXIST   = 5
 
+    # lvs exit code if the LV was not found
+    LVM_LVS_ENOENT = 5
+
     # Delay (in seconds) for lvcreate/lvremove retries
     RETRY_DELAY = 1
 
@@ -133,24 +136,54 @@ class LVM(object):
         @rtype:  BlockDevice object; None if the allocation fails
         """
         blockdev = None
+        storcore = drbdmanage.storage.storagecore
         lv_name = self._lv_name(name, vol_id)
         try:
             tries = 0
             while tries < LVM.MAX_RETRIES:
-                fn_rc = self._create_lv(lv_name, size)
-                if fn_rc == 0:
-                    blockdev = drbdmanage.storage.storagecore.BlockDevice(
-                        lv_name, size, self._lv_path_prefix() + lv_name
+                try:
+                    # Check whether an LV with that name exists already
+                    lv_exists = self._check_lv_exists(lv_name)
+                    if lv_exists:
+                        # LV exists, maybe from an earlier attempt at creating
+                        # the volume. Remove existing LV and recreate it.
+                        logging.warning(
+                            "LVM plugin: Attempt %d of %d: "
+                            "LV '%s' exists already, attempting to "
+                            "remove and recreate the LV"
+                            % (tries + 1, LVM.MAX_RETRIES, lv_name)
+                        )
+                        self._remove_lv(lv_name)
+
+                    # Proceed with creating the LV
+                    self._create_lv(lv_name, size)
+                    # Check whether the LV was actually created
+                    lv_exists = self._check_lv_exists(lv_name)
+                    if lv_exists:
+                        # LVM reports that the LV exists, create the
+                        # blockdevice object representing the LV in
+                        # drbdmanage and register it in the LVM module's
+                        # persistent data structures
+                        blockdev = storcore.BlockDevice(
+                            lv_name, size,
+                            self._lv_path_prefix() + lv_name
+                        )
+                        self._lvs[lv_name] = blockdev
+                        self.save_state()
+                        break
+                    else:
+                        logging.error(
+                            "LVM plugin: Attempt %d of %d: "
+                            "Creation of LV '%s' failed."
+                            % (tries + 1, LVM.MAX_RETRIES, lv_name)
+                        )
+                except LVMException:
+                    # Check for existing LVs failed, retry
+                    logging.error(
+                        "LVM plugin: Unable to retrieve the list "
+                        "of existing LVs"
                     )
-                    self._lvs[lv_name] = blockdev
-                    self.save_state()
-                    break
-                elif fn_rc == self.LVM_EEXIST:
-                    # LV with the same name exists, remote it and try again
-                    self._remove_lv(lv_name)
-                else:
-                    # Some other LVM error, fail
-                    break
+                    pass
                 tries += 1
         except Exception as exc:
             logging.error(
@@ -171,18 +204,39 @@ class LVM(object):
         """
         fn_rc = DM_ESTORAGE
         tries = 0
+        lv_name = blockdevice.get_name()
         while tries < LVM.MAX_RETRIES:
+            # Attempt to remove the LV
+            self._remove_lv(lv_name)
+            # Check whether the LV is still there
             try:
-                stor_rc = self._remove_lv(blockdevice.get_name())
-                if stor_rc == 0:
-                    del self._lvs[blockdevice.get_name()]
+                lv_exists = self._check_lv_exists(lv_name)
+                if lv_exists:
+                    # LV still exists, removal failed
+                    logging.warning(
+                        "LVM plugin: Attempt %d of %d: "
+                        "Unable to remove LV '%s'"
+                        % (tries + 1, LVM.MAX_RETRIES, lv_name)
+                    )
+                else:
+                    # LV removal successful
+                    try:
+                        del self._lvs[blockdevice.get_name()]
+                    except KeyError:
+                        # Being unable to remove an element that is not there
+                        # in the first place is irrelevant, ignore error
+                        pass
+                    self.save_state()
                     fn_rc = DM_SUCCESS
                     break
-            except KeyError:
-                fn_rc = DM_ENOENT
-                break
+            except LVMException:
+                # Check for existing LVs failed, retry
+                logging.error(
+                    "LVM plugin: Unable to retrieve the list "
+                    "of existing LVs"
+                )
+                pass
             tries += 1
-        self.save_state()
         return fn_rc
 
 
@@ -330,6 +384,40 @@ class LVM(object):
         return build_path(dev_path, vg_name) + "/"
 
 
+    def _check_lv_exists(self, name):
+        # Check whether an LVM logical volume exists
+        #
+        # @returns: True if the LV exists, False if the LV does not exist
+        # Throws an LVMException if the check itself fails
+        lvcheck = self._lv_command_path(self.LVM_LVS)
+
+        exists = False
+
+        try:
+            lvm_proc = subprocess.Popen(
+                [
+                    lvcheck, "--noheadings", "--options", "lv_name",
+                    self._conf[self.KEY_VG_NAME] + "/" + name
+                ],
+                0, lvcheck,
+                env=self._subproc_env(), stdout=subprocess.PIPE,
+                close_fds=True
+            )
+            lventry = lvm_proc.stdout.readline()
+            if len(lventry) > 0:
+                lventry = lventry[:-1].strip()
+                if lventry == name:
+                    exists = True
+            lvm_rc = lvm_proc.wait()
+            # lvs exits with exit code 5 if the LV was not found
+            if lvm_rc != 0 and lvm_rc != self.LVM_LVS_ENOENT:
+                raise LVMException
+        except OSError:
+            raise LVMException
+
+        return exists
+
+
     def load_conf(self):
         in_file = None
         conf = None
@@ -424,3 +512,9 @@ class LVM(object):
         Reconfigures the storage plugin
         """
         pass
+
+
+class LVMException(Exception):
+
+    def __init__(self):
+        super(LVMException, self).__init__()
