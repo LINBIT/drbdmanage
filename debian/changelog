@@ -1,3 +1,10 @@
+drbdmanage (0.34-1) experimental; urgency=medium
+
+  * New upstream version
+  * Release codename: "Lars". If he says "34", he _really_ means it!
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 14 Apr 2015 13:26:08 +0200
+
 drbdmanage (0.31~pre1+git.24c2a4f) experimental; urgency=low
 
   * New upstream version
