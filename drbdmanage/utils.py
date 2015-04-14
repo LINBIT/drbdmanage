@@ -112,6 +112,10 @@ class Table():
         if machine_readable:
             overwrite = False
 
+        # no view set, use all headers
+        if not self.view:
+            self.view = [h['name'] for h in self.header]
+
         if self.groups:
             self.view += [g for g in self.groups if g not in self.view]
 
@@ -167,10 +171,10 @@ class Table():
             if not row[0]:
                 continue
             for idx, col in enumerate(self.header):
+                row[idx] = str(row[idx])
                 if col['color']:
                     color = col["color"]
-                    text = str(row[idx])
-                    row[idx] = color + text + COLOR_NONE
+                    row[idx] = color + row[idx] + COLOR_NONE
                 columnmax[idx] = max(len(row[idx]), columnmax[idx])
 
         for h in self.header:
