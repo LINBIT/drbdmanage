@@ -498,34 +498,135 @@ class DrbdManage(object):
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
         # resources
+        resverbose = ['Port']
+        resgroupby = ['Name', 'Port', 'State']
+
+        def ResVerboseCompleter(prefix, parsed_args, **kwargs):
+            possible = resverbose
+            if parsed_args.show:
+                possible = [i for i in resverbose if i not in
+                            parsed_args.show]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
+
+        def ResGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = resgroupby
+            if parsed_args.groupby:
+                possible = [i for i in resgroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_lreses = subp.add_parser('resources', aliases=['r'],
                                    description='List resources')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
+        p_lreses.add_argument('-s', '--show', nargs='+',
+                              choices=resverbose).completer = ResVerboseCompleter
+        p_lreses.add_argument('-g', '--groupby', nargs='+',
+                              choices=resgroupby).completer = ResGroupCompleter
         p_lreses.set_defaults(func=self.cmd_list_resources)
 
         # volumes
+        volgroupby = resgroupby + ["Vol_ID", "Size", "Minor"]
+
+        def VolGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = volgroupby
+            if parsed_args.groupby:
+                possible = [i for i in volgroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_lvols = subp.add_parser('volumes', aliases=['v'],
                                   description='List volumes')
         p_lvols.add_argument('-m', '--machine-readable', action="store_true")
+        p_lvols.add_argument('-s', '--show', nargs='+',
+                             choices=resverbose).completer = ResVerboseCompleter
+        p_lvols.add_argument('-g', '--groupby', nargs='+',
+                             choices=volgroupby).completer = VolGroupCompleter
         p_lvols.set_defaults(func=self.cmd_list_volumes)
 
         # snapshots
+        snapgroupby = ["Resource", "Name", "State"]
+
+        def SnapGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = snapgroupby
+            if parsed_args.groupby:
+                possible = [i for i in snapgroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_lsnaps = subp.add_parser('snapshots', aliases=['s'],
                                    description='List snapshots')
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnaps.add_argument('-g', '--groupby', nargs='+',
+                              choices=snapgroupby).completer = SnapGroupCompleter
         p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
 
         # snapshot-assignments
+        snapasgroupby = ["Resource", "Name", "Node", "State"]
+
+        def SnapasGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = snapasgroupby
+            if parsed_args.groupby:
+                possible = [i for i in snapasgroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_lsnapas = subp.add_parser('snapshot-assignments', aliases=['sa'],
                                     description='List snapshot assignments')
         p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnapas.add_argument('-g', '--groupby', nargs='+',
+                               choices=snapasgroupby).completer = SnapasGroupCompleter
         p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
 
         # assignments
+        assignverbose = ['Blockdevice', 'Node_ID']
+        assigngroupby = ['Node', 'Resource', 'Vol_ID', 'Blockdevice', 'Node_ID',
+                         'State']
+
+        def AssVerboseCompleter(prefix, parsed_args, **kwargs):
+            possible = assignverbose
+            if parsed_args.show:
+                possible = [i for i in assignverbose if i not in
+                            parsed_args.show]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
+
+        def AssGroupCompleter(prefix, parsed_args, **kwargs):
+            possible = assigngroupby
+            if parsed_args.groupby:
+                possible = [i for i in assigngroupby if i not in
+                            parsed_args.groupby]
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [opt for opt in possible if opt.startswith(prefix)]
         p_assignments = subp.add_parser('assignments', aliases=['a'],
                                         description='List assignments')
         p_assignments.add_argument('-m', '--machine-readable',
                                    action="store_true")
+        p_assignments.add_argument('-s', '--show', nargs='+',
+                                   choices=assignverbose).completer = AssVerboseCompleter
+        p_assignments.add_argument('-g', '--groupby', nargs='+',
+                                   choices=assigngroupby).completer = AssGroupCompleter
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
         # export
@@ -1319,6 +1420,10 @@ class DrbdManage(object):
                 return 0
 
         t = Table()
+        if not args.groupby:
+            groupby = ["Name"]
+        else:
+            groupby = args.groupby
 
         t.addColumn("Name", color=color(COLOR_TEAL))
         t.addColumn("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
@@ -1333,7 +1438,7 @@ class DrbdManage(object):
             tview += args.show
         t.setView(tview)
 
-        t.setGroupBy(args.groupby)
+        t.setGroupBy(groupby)
 
         for node_entry in node_list:
             try:
@@ -1447,23 +1552,32 @@ class DrbdManage(object):
                 sys.stdout.write("No resources defined\n")
                 return 0
 
-        # Header/key for the table
-        if not machine_readable:
-            sys.stdout.write(
-                "%s%-*s%s %7s        %s%s%s\n"
-                % (color(COLOR_DARKGREEN),
-                   DrbdResourceView.get_name_maxlen(), "Resource",
-                   color(COLOR_NONE), "Port",
-                   color(COLOR_RED), "state", color(COLOR_NONE))
-            )
-            if list_volumes:
-                sys.stdout.write(
-                    "  %s*%s%6s%s %14s %7s  %s%s\n"
-                    % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                       "id#", color(COLOR_BROWN), "size (MiB)", "minor#",
-                       "state", color(COLOR_NONE))
-                )
-            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        t = Table()
+
+        if not args.groupby:
+            groupby = ["Name"]
+        else:
+            groupby = args.groupby
+
+        t.addColumn("Name", color=color(COLOR_TEAL))
+        if list_volumes:
+            t.addColumn("Vol_ID", color=color(COLOR_BROWN), just_txt='>')
+            t.addColumn("Size", color=color(COLOR_BROWN), just_txt='>')
+            t.addColumn("Minor", color=color(COLOR_BROWN), just_txt='>')
+        t.addColumn("Port", just_txt='>')
+        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+
+        # fixed ones we always show
+        tview = ["Name", "State"]
+
+        if list_volumes:
+            tview += ["Vol_ID", "Size", "Minor"]
+
+        if args.show:
+            tview += args.show
+        t.setView(tview)
+
+        t.setGroupBy(groupby)
 
         for res_entry in res_list:
             try:
@@ -1473,16 +1587,9 @@ class DrbdManage(object):
                     res_name, properties = res_entry
                 res_view = DrbdResourceView(properties, machine_readable)
                 v_port = self._property_text(res_view.get_property(RES_PORT))
-                if not machine_readable:
+                if not machine_readable and not list_volumes:
                     # Human readable output of the resource description
-                    sys.stdout.write(
-                        "%s%-*s%s %7s         %s%s%s\n"
-                        % (color(COLOR_DARKGREEN),
-                           res_view.get_name_maxlen(), res_name,
-                           color(COLOR_NONE), v_port,
-                           color(COLOR_RED), res_view.get_state(),
-                           color(COLOR_NONE))
-                    )
+                    t.addRow([res_name, v_port, res_view.get_state()])
                 if list_volumes:
                     # sort volume list by volume id
                     vol_list.sort(key=lambda vol_entry: vol_entry[0])
@@ -1503,14 +1610,9 @@ class DrbdManage(object):
                                 size_MiB_str = "< 1"
                             else:
                                 size_MiB_str = str(size_MiB)
-                            sys.stdout.write(
-                                "  %s*%s%6s%s %14s %7s  %s%s\n"
-                                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                                   str(vol_view.get_id()), color(COLOR_BROWN),
-                                   size_MiB_str,
-                                   v_minor, vol_view.get_state(),
-                                   color(COLOR_NONE))
-                            )
+                            t.addRow([res_name, str(vol_view.get_id()),
+                                      size_MiB_str, v_minor, v_port,
+                                      vol_view.get_state()])
                         else:
                             # machine readable output of the volume description
                             sys.stdout.write(
@@ -1528,6 +1630,8 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
+
+        t.show(overwrite=list_volumes)
         return 0
 
     def _list_snapshots(self):
@@ -1558,39 +1662,30 @@ class DrbdManage(object):
                 sys.stdout.write("Snapshot list is empty\n")
                 return 0
 
-        if not machine_readable:
-            sys.stdout.write(
-                "%s%s%s\n"
-                % (color(COLOR_DARKGREEN), "Resource", color(COLOR_NONE))
-            )
-            sys.stdout.write(
-                "  %s* %s%s%s\n"
-                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                   "Snapshot", color(COLOR_NONE))
-            )
-            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        t = Table()
+        if not args.groupby:
+            groupby = ["Resource"]
+        else:
+            groupby = args.groupby
+
+        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
+        t.addColumn("Name", color=color(COLOR_DARKPINK))
+        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+
+        t.setGroupBy(groupby)
 
         for res_entry in res_list:
             res_name, snaps_list = res_entry
             # sort the list by snapshot name
-            if not machine_readable:
-                sys.stdout.write(
-                    "%s%s%s\n"
-                    % (color(COLOR_DARKGREEN), res_name, color(COLOR_NONE))
-                )
             snaps_list.sort(key=lambda snaps_entry: snaps_entry[0])
             for snaps_entry in snaps_list:
                 snaps_name, snaps_props = snaps_entry
                 if machine_readable:
                     sys.stdout.write("%s,%s\n" % (res_name, snaps_name))
                 else:
-                    sys.stdout.write(
-                        "  %s* %s%s%s\n"
-                        % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                           snaps_name, color(COLOR_NONE))
-                    )
+                    t.addRow([res_name, snaps_name, "OK"])
+        t.show()
         return 0
-
 
     def cmd_list_snapshot_assignments(self, args):
         color = self.color
@@ -1613,36 +1708,21 @@ class DrbdManage(object):
                 sys.stdout.write("Snapshot assignment list is empty\n")
                 return 0
 
-        if not machine_readable:
-            sys.stdout.write(
-                "%s%-*s %s%s%s\n"
-                % (color(COLOR_DARKGREEN), DrbdResourceView.get_name_maxlen(),
-                   "Resource",
-                   color(COLOR_DARKPINK), "Snapshot", color(COLOR_NONE))
-            )
-            sys.stdout.write(
-                "  %s* %s%-*s %s%s%s\n"
-                % (color(COLOR_BROWN), color(COLOR_TEAL),
-                   DrbdNodeView.get_name_maxlen(), "Node",
-                   color(COLOR_RED), "state", color(COLOR_NONE))
-            )
-            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        t = Table()
+        if not args.groupby:
+            groupby = ["Resource", "Name"]
+        else:
+            groupby = args.groupby
 
-        # sort the list by resource name
-        assg_list.sort(key=lambda res_entry: res_entry[0])
+        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
+        t.addColumn("Name", color=color(COLOR_DARKPINK))
+        t.addColumn("Node", color=color(COLOR_TEAL))
+        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+
+        t.setGroupBy(groupby)
 
         for assg_list_entry in assg_list:
             res_name, snaps_name, snaps_assg_list = assg_list_entry
-            if not machine_readable:
-                sys.stdout.write(
-                    "%s%-*s %s%s%s\n"
-                    % (color(COLOR_DARKGREEN),
-                       DrbdResourceView.get_name_maxlen(), res_name,
-                       color(COLOR_DARKPINK), snaps_name,
-                       color(COLOR_NONE))
-                )
-            # sort the assignment entries by node name
-            snaps_assg_list.sort(key=lambda list_entry: list_entry[0])
             for snaps_assg_entry in snaps_assg_list:
                 node_name, snaps_assg_props = snaps_assg_entry
                 snaps_assg = DrbdSnapshotAssignmentView(
@@ -1656,14 +1736,11 @@ class DrbdManage(object):
                            snaps_assg.get_cstate(), snaps_assg.get_tstate())
                     )
                 else:
-                    sys.stdout.write(
-                        "  %s* %s%-*s %s%s -> %s%s\n"
-                        % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                           DrbdNodeView.get_name_maxlen(), node_name,
-                           color(COLOR_RED),
-                           snaps_assg.get_cstate(), snaps_assg.get_tstate(),
-                           color(COLOR_NONE))
-                    )
+                    t.addRow([res_name, snaps_name, node_name,
+                              "%s -> %s" % (snaps_assg.get_cstate(),
+                                            snaps_assg.get_tstate())])
+
+        t.show()
         return 0
 
     def cmd_list_assignments(self, args):
@@ -1685,35 +1762,29 @@ class DrbdManage(object):
                 sys.stdout.write("No assignments defined\n")
                 return 0
 
-        if not machine_readable:
-            sys.stdout.write(
-                "%s%-*s%s\n"
-                % (color(COLOR_TEAL), DrbdNodeView.get_name_maxlen(),
-                   "Node", color(COLOR_NONE))
-            )
-            sys.stdout.write(
-                "  %s%-*s%s %5s %35s%s%s%s\n"
-                % (color(COLOR_DARKGREEN),
-                   DrbdResourceView.get_name_maxlen(),
-                   "Resource", color(COLOR_NONE),
-                   "Node#", "", color(COLOR_RED),
-                   "state (crt -> tgt)",
-                   color(COLOR_NONE))
-            )
-            sys.stdout.write(
-                "  %s* %s%6s%s %-48s %s%s%s\n"
-                % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                   "Vol#",  color(COLOR_BROWN),
-                   "Blockdevice path",
-                   color(COLOR_DARKRED), "state (crt -> tgt)",
-                   color(COLOR_NONE))
-            )
-            sys.stdout.write((self.VIEW_SEPARATOR_LEN * '-') + "\n")
+        t = Table()
 
-        # Sort the assignment list by node name, then by resource name
-        assg_list.sort(key=lambda assg_entry: (assg_entry[0], assg_entry[1]))
+        if not args.groupby:
+            groupby = ["Node", "Resource"]
+        else:
+            groupby = args.groupby
 
-        prev_node = ""
+        t.addColumn("Node", color=color(COLOR_TEAL))
+        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
+        t.addColumn("Vol_ID", color=color(COLOR_DARKPINK), just_txt='>')
+        t.addColumn("Blockdevice")
+        t.addColumn("Node_ID", just_txt='>')
+        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+
+        # fixed ones we always show
+        tview = ["Node", "Resource", "Vol_ID", "State"]
+
+        if args.show:
+            tview += args.show
+        t.setView(tview)
+
+        t.setGroupBy(groupby)
+
         for assg_entry in assg_list:
             try:
                 node_name, res_name, properties, vol_state_list = assg_entry
@@ -1722,39 +1793,16 @@ class DrbdManage(object):
                 v_cstate  = view.get_cstate()
                 v_tstate  = view.get_tstate()
                 if not machine_readable:
-                    if node_name != prev_node:
-                        prev_node = node_name
-                        sys.stdout.write(
-                            "%s%-*s%s\n"
-                            % (color(COLOR_TEAL),
-                               DrbdNodeView.get_name_maxlen(), node_name,
-                               color(COLOR_NONE))
-                        )
-                    sys.stdout.write(
-                        "  %s%-*s%s %5s %35s%s%s -> %s%s\n"
-                        % (color(COLOR_DARKGREEN),
-                           DrbdResourceView.get_name_maxlen(),
-                           res_name, color(COLOR_NONE),
-                           v_node_id, "", color(COLOR_RED),
-                           v_cstate, v_tstate,
-                           color(COLOR_NONE))
-                    )
 
                     for vol_state in vol_state_list:
                         vol_id, properties = vol_state
                         vol_view = DrbdVolumeStateView(properties,
-                            machine_readable)
+                                                       machine_readable)
                         v_bdev = self._property_text(
                             vol_view.get_property(VOL_BDEV))
 
-                        sys.stdout.write(
-                            "  %s* %s%6s%s %-48s %s%s  -> %s%s\n"
-                            % (color(COLOR_BROWN), color(COLOR_DARKPINK),
-                               vol_id,  color(COLOR_BROWN),
-                               v_bdev,
-                               color(COLOR_DARKRED), vol_view.get_cstate(),
-                               vol_view.get_tstate(), color(COLOR_NONE))
-                        )
+                        t.addRow([node_name, res_name, vol_id, v_bdev,
+                                  v_node_id, vol_view.get_tstate()])
                 else:
                     sys.stdout.write(
                         "%s,%s,%s,%s,%s\n"
@@ -1762,6 +1810,7 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
+        t.show(overwrite=True)
         return 0
 
     def cmd_export_conf(self, args):
