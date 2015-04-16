@@ -56,7 +56,7 @@ class BuildManCommand(Command):
         os.system("cd %s; " % (outdir) + ' ' +
             "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
             "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
-            "drbdmanage.xml; gzip -9 drbdmanage.8")
+            "drbdmanage.xml; gzip -f -9 drbdmanage.8")
         # subcommands
         import subprocess
         import gzip
