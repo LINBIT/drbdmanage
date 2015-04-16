@@ -53,10 +53,11 @@ class BuildManCommand(Command):
     def run(self):
         assert os.getcwd() == self.cwd, "Must be in package root: %s" % self.cwd
         outdir = "man-pages"
-        os.system("cd %s; " % (outdir) + ' ' +
-            "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
-            "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
-            "drbdmanage.xml; gzip -f -9 drbdmanage.8")
+        if not os.path.isfile(os.path.join(outdir, "drbdmanage.8.gz")):
+            os.system("cd %s; " % (outdir) + ' ' +
+                "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
+                "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
+                "drbdmanage.xml; gzip -f -9 drbdmanage.8")
         # subcommands
         import subprocess
         import gzip
@@ -74,6 +75,8 @@ class BuildManCommand(Command):
             # we could use the aliases to symlink them to the toplevel cmd
             outfile = os.path.join('.', outdir, name + '-' + toplevel + '.' +
                                    mansection + ".gz")
+            if os.path.isfile(outfile):
+                continue
             print "Generating %s ..." % (outfile)
             mangen = ["help2man", "-n", toplevel, '-s', '8',
                       '--version-string=%s' % (get_version()), "-N",
