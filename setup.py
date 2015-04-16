@@ -27,6 +27,11 @@ import os, glob
 from distutils.core import setup, Command
 
 
+def get_version():
+    from drbdmanage.consts import DM_VERSION
+    return DM_VERSION
+
+
 class BuildManCommand(Command):
 
     """
@@ -57,7 +62,6 @@ class BuildManCommand(Command):
         import gzip
 
         from drbdmanage_client import DrbdManage
-        from drbdmanage.consts import DM_VERSION
 
         name = "dm"
         mansection = '8'
@@ -72,7 +76,7 @@ class BuildManCommand(Command):
                                    mansection + ".gz")
             print "Generating %s ..." % (outfile)
             mangen = ["help2man", "-n", toplevel, '-s', '8',
-                      '--version-string=%s' % (DM_VERSION), "-N",
+                      '--version-string=%s' % (get_version()), "-N",
                       '"./drbdmanage_client.py %s"' % (toplevel)]
 
             toexec = " ".join(mangen)
@@ -102,7 +106,7 @@ def gen_data_files():
 
 setup(
     name="drbdmanage",
-    version="0.30",
+    version=get_version(),
     description="DRBD distributed resource management utility",
     long_description=
 "Drbdmanage is a daemon and a command line utility that manages DRBD\n" +
