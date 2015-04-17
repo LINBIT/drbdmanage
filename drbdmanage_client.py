@@ -495,6 +495,7 @@ class DrbdManage(object):
                               choices=nodesverbose).completer = NodesVerboseCompleter
         p_lnodes.add_argument('-g', '--groupby', nargs='+',
                               choices=nodesgroupby).completer = NodesGroupCompleter
+        p_lnodes.add_argument('--separators', action="store_true")
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
         # resources
@@ -529,6 +530,7 @@ class DrbdManage(object):
                               choices=resverbose).completer = ResVerboseCompleter
         p_lreses.add_argument('-g', '--groupby', nargs='+',
                               choices=resgroupby).completer = ResGroupCompleter
+        p_lreses.add_argument('--separators', action="store_true")
         p_lreses.set_defaults(func=self.cmd_list_resources)
 
         # volumes
@@ -551,6 +553,7 @@ class DrbdManage(object):
                              choices=resverbose).completer = ResVerboseCompleter
         p_lvols.add_argument('-g', '--groupby', nargs='+',
                              choices=volgroupby).completer = VolGroupCompleter
+        p_lvols.add_argument('--separators', action="store_true")
         p_lvols.set_defaults(func=self.cmd_list_volumes)
 
         # snapshots
@@ -571,6 +574,7 @@ class DrbdManage(object):
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
                               choices=snapgroupby).completer = SnapGroupCompleter
+        p_lsnaps.add_argument('--separators', action="store_true")
         p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
 
         # snapshot-assignments
@@ -591,6 +595,7 @@ class DrbdManage(object):
         p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
         p_lsnapas.add_argument('-g', '--groupby', nargs='+',
                                choices=snapasgroupby).completer = SnapasGroupCompleter
+        p_lsnapas.add_argument('--separators', action="store_true")
         p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
 
         # assignments
@@ -627,6 +632,7 @@ class DrbdManage(object):
                                    choices=assignverbose).completer = AssVerboseCompleter
         p_assignments.add_argument('-g', '--groupby', nargs='+',
                                    choices=assigngroupby).completer = AssGroupCompleter
+        p_assignments.add_argument('--separators', action="store_true")
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
         # export
@@ -1497,6 +1503,8 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
+
+        t.showSeparators(args.separators)
         t.show()
         return 0
 
@@ -1631,6 +1639,7 @@ class DrbdManage(object):
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
+        t.showSeparators(args.separators)
         t.show(overwrite=list_volumes)
         return 0
 
@@ -1684,6 +1693,8 @@ class DrbdManage(object):
                     sys.stdout.write("%s,%s\n" % (res_name, snaps_name))
                 else:
                     t.addRow([res_name, snaps_name, "OK"])
+
+        t.showSeparators(args.separators)
         t.show()
         return 0
 
@@ -1740,6 +1751,7 @@ class DrbdManage(object):
                               "%s -> %s" % (snaps_assg.get_cstate(),
                                             snaps_assg.get_tstate())])
 
+        t.showSeparators(args.separators)
         t.show()
         return 0
 
@@ -1810,6 +1822,8 @@ class DrbdManage(object):
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
+
+        t.showSeparators(args.separators)
         t.show(overwrite=True)
         return 0
 

@@ -68,6 +68,7 @@ class Table():
         self.header = []
         self.table = []
         self.view = None
+        self.showseps = False
 
     def addColumn(self, name, color=False, just_col='<', just_txt='<'):
         self.got_column = True
@@ -100,6 +101,9 @@ class Table():
 
     def addSeparator(self):
         self.table.append([None])
+
+    def showSeparators(self, val=False):
+        self.showseps = val
 
     def setView(self, columns):
         self.view = columns
@@ -162,8 +166,9 @@ class Table():
                             cur = self.table[idx + 1][c]
                             seps.add(idx + 1)
 
-            for c, pos in enumerate(sorted(seps)):
-                self.table.insert(c + pos, [None])
+            if self.showseps:
+                for c, pos in enumerate(sorted(seps)):
+                    self.table.insert(c + pos, [None])
 
         # calc max width per column and set final strings (with color codes)
         self.table.insert(0, [h.replace('_', ' ') for h in hdrnames])
