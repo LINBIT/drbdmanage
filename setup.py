@@ -32,6 +32,26 @@ def get_version():
     return DM_VERSION
 
 
+class CheckUpToDate(Command):
+    description = "Check if version strings are up to date"
+    user_options = []
+
+    def initialize_options(self):
+        self.cwd = None
+
+    def finalize_options(self):
+        self.cwd = os.getcwd()
+
+    def run(self):
+        import sys
+        version = get_version()
+        with open("debian/changelog") as f:
+            firstline = f.readline()
+            if version not in firstline:
+                # returning false is not promoted
+                sys.exit(1)
+
+
 class BuildManCommand(Command):
 
     """
@@ -135,6 +155,7 @@ setup(
     scripts=["scripts/drbdmanage", "scripts/dbus-drbdmanaged-service"],
     data_files=gen_data_files(),
     cmdclass={
-        "build_man": BuildManCommand
+        "build_man": BuildManCommand,
+        "versionup2date": CheckUpToDate
         }
     )
