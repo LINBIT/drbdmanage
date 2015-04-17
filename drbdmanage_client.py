@@ -1640,7 +1640,8 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
         t.showSeparators(args.separators)
-        t.show(overwrite=list_volumes)
+        # t.show(overwrite=list_volumes)
+        t.show()
         return 0
 
     def _list_snapshots(self):
@@ -1824,7 +1825,8 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
         t.showSeparators(args.separators)
-        t.show(overwrite=True)
+        # t.show(overwrite=True)
+        t.show()
         return 0
 
     def cmd_export_conf(self, args):
