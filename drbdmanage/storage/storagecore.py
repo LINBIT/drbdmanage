@@ -26,7 +26,9 @@ from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.exceptions import (
     InvalidMajorNrException, InvalidMinorNrException
 )
-from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_DEBUG
+from drbdmanage.exceptions import (
+    DM_SUCCESS, DM_ENOENT, DM_ESTORAGE, DM_DEBUG, DM_ENOTIMPL
+)
 
 
 class BlockDevice(GenericStorage):
@@ -69,121 +71,255 @@ class BlockDeviceManager(object):
 
 
     def __init__(self, plugin_name):
+        """
+        Creates a new instance of the BlockDeviceManager
+        """
         # self._plugin = self._plugin_import(plugin_name)
         self._plugin = drbdmanage.utils.plugin_import(plugin_name)
         if self._plugin is None:
             logging.error(
-                "cannot import the storage management plugin (%s)"
+                "BlockDeviceManager: Import of the "
+                "storage management plugin '%s' failed"
                 % (plugin_name)
             )
 
 
     def get_blockdevice(self, bd_name):
-        blockdev = self._plugin.get_blockdevice(bd_name)
+        """
+        Retrieves a registered BlockDevice object
+        """
+        blockdev = None
+        if self._plugin is not None:
+            try:
+                blockdev = self._plugin.get_blockdevice(bd_name)
+            except NotImplementedError:
+                self._log_not_implemented("get_blockdevice")
+        else:
+            self._log_no_plugin()
         return blockdev
 
 
     def create_blockdevice(self, name, vol_id, size):
-        blockdev = self._plugin.create_blockdevice(name, vol_id, size)
-        if blockdev is not None:
-            status = "successful"
+        """
+        Allocates a block device as backing storage for a DRBD volume
+        """
+        blockdev = None
+        if self._plugin is not None:
+            try:
+                blockdev = self._plugin.create_blockdevice(name, vol_id, size)
+                status = "successful" if blockdev is not None else "failed"
+                logging.debug(
+                    "BlockDeviceManager: create_blockdevice('%s', %u, %u): %s"
+                    % (name, vol_id, size, status)
+                )
+            except NotImplementedError:
+                self._log_not_implemented("create_blockdevice")
         else:
-            status = "failed"
-        logging.debug(
-            "BlockDeviceManager: create '%s': volume #%u, %u kiB, %s"
-            % (name, vol_id, size, status)
-        )
+            self._log_no_plugin()
         return blockdev
 
 
     def remove_blockdevice(self, bd_name):
+        """
+        Deallocates a block device
+        """
         fn_rc = DM_ESTORAGE
-        blockdev = self._plugin.get_blockdevice(bd_name)
-        if blockdev is not None:
-            fn_rc = self._plugin.remove_blockdevice(blockdev)
-            logging.debug(
-                "BlockDeviceManager: remove '%s': blockdev=%s, rc=%d"
-                % (bd_name, blockdev, fn_rc)
-            )
+        if self._plugin is not None:
+            try:
+                blockdev = self.get_blockdevice(bd_name)
+                if blockdev is not None:
+                    fn_rc = self._plugin.remove_blockdevice(blockdev)
+                    status = "successful" if fn_rc == DM_SUCCESS else "failed"
+                    logging.debug(
+                        "BlockDeviceManager: remove_blockdevice('%s'): %s fn_rc=%d"
+                        % (bd_name, status, fn_rc)
+                    )
+                else:
+                    logging.debug(
+                        "BlockDeviceManager: remove_blockdevice('%s'): "
+                        "Cannot find the corresponding BlockDevice object"
+                        % (bd_name)
+                    )
+                    fn_rc = DM_ENOENT
+            except NotImplementedError:
+                self._log_not_implemented("remove_blockdevice")
+                fn_rc = DM_ENOTIMPL
         else:
-            logging.debug(
-                "BlockDeviceManager: remove '%s': has no storage block device"
-                % (bd_name)
-            )
-            fn_rc = DM_ENOENT
+            self._log_no_plugin()
         return fn_rc
 
 
     def up_blockdevice(self, bd_name):
-        blockdev = self._plugin.get_blockdevice(bd_name)
-        if blockdev is not None:
-            return self._plugin.up_blockdevice(blockdev)
+        """
+        Activates a block device (e.g., connects an iSCSI resource)
+        """
+        fn_rc = DM_ESTORAGE
+        if self._plugin is not None:
+            try:
+                blockdev = self.get_blockdevice(bd_name)
+                if blockdev is not None:
+                    fn_rc = self._plugin.up_blockdevice(blockdev)
+                else:
+                    logging.debug(
+                        "BlockDeviceManager: up_blockdevice('%s'): "
+                        "Cannot find the corresponding BlockDevice object"
+                        % (bd_name)
+                    )
+            except NotImplementedError:
+                self._log_not_implemented("up_blockdevice")
+                fn_rc = DM_ENOTIMPL
         else:
-            logging.debug(
-                "BlockDeviceManager: up '%s': has no storage block device"
-                % (bd_name)
-            )
-        return DM_ENOENT
+            self._log_no_plugin()
+        return fn_rc
 
 
     def down_blockdevice(self, bd_name):
-        blockdev = self._plugin.get_blockdevice(bd_name)
-        if blockdev is not None:
-            return self._plugin.down_blockdevice(blockdev)
+        """
+        Deactivates a block device (e.g., disconnects an iSCSI resource)
+        """
+        fn_rc = DM_ESTORAGE
+        if self._plugin is not None:
+            try:
+                blockdev = self.get_blockdevice(bd_name)
+                if blockdev is not None:
+                    fn_rc = self._plugin.down_blockdevice(blockdev)
+                else:
+                    logging.debug(
+                        "BlockDeviceManager: down_blockdevice('%s'): "
+                        "Cannot find the corresponding BlockDevice object"
+                        % (bd_name)
+                    )
+            except NotImplementedError:
+                self._log_not_implemented("up_blockdevice")
+                fn_rc = DM_ENOTIMPL
         else:
-            logging.debug(
-                "BlockDeviceManager: down '%s': has no storage block device"
-                % (bd_name)
-            )
-        return DM_ENOENT
+            self._log_no_plugin()
+        return fn_rc
 
 
     def create_snapshot(self, name, vol_id, src_bd_name):
-        successful = False
-        blockdev   = None
-        src_blockdev = self._plugin.get_blockdevice(src_bd_name)
-        if src_blockdev is not None:
-            blockdev = self._plugin.create_snapshot(name, vol_id, src_blockdev)
-            if blockdev is not None:
-                successful = True
+        """
+        Allocates a block device as a snapshot of an existing block device
+        """
+        blockdev = None
+        if self._plugin is not None:
+            try:
+                src_blockdev = self.get_blockdevice(src_bd_name)
+                if src_blockdev is not None:
+                    blockdev = self._plugin.create_snapshot(
+                        name, vol_id, src_blockdev
+                    )
+                else:
+                    logging.error(
+                        "BlockDeviceManager: Cannot find the source "
+                        "BlockDevice object '%s' required for "
+                        "snapshot creation"
+                        % (src_bd_name)
+                    )
+                status_text = "successful" if blockdev is not None else "failed"
+                logging.debug(
+                    "BlockDeviceManager: create snapshot('%s' ,%u, '%s'): %s"
+                    % (name, vol_id, src_bd_name, status_text)
+                )
+            except NotImplementedError:
+                logging.error(
+                    "BlockDeviceManager: The currently loaded storage "
+                    "management plugin does not implement "
+                    "snapshot capabilities"
+                )
         else:
-            logging.debug(
-                "BlockDeviceManager: create snapshot '%s' volume #%u: "
-                "source block device %s not found"
-                % (name, vol_id, src_bd_name)
-            )
-        status_text = "successful" if successful else "failed"
-        logging.debug(
-            "BlockDeviceManager: create snapshot '%s': volume #%u, %s"
-            % (name, vol_id, status_text)
-        )
+            self._log_no_plugin()
         return blockdev
 
 
     def remove_snapshot(self, bd_name):
-        fn_rc = DM_DEBUG
-        rm_blockdev = self._plugin.get_blockdevice(bd_name)
-        if rm_blockdev is not None:
-            fn_rc = self._plugin.remove_blockdevice(rm_blockdev)
+        """
+        Deallocates a snapshot block device
+        """
+        fn_rc = DM_ESTORAGE
+        if self._plugin is not None:
+            try:
+                rm_blockdev = self.get_blockdevice(bd_name)
+                if rm_blockdev is not None:
+                    fn_rc = self._plugin.remove_blockdevice(rm_blockdev)
+                else:
+                    logging.debug(
+                        "BlockDeviceManager: remove snapshot: volume '%s' not found"
+                        % (bd_name)
+                    )
+                status_text = "successful" if fn_rc == 0 else "failed"
+                logging.debug(
+                    "BlockDeviceManager: remove snapshot blockdev=%s, rc=%d, %s"
+                    % (bd_name, fn_rc, status_text)
+                )
+            except NotImplementedError:
+                logging.error(
+                    "BlockDeviceManager: The currently loaded storage "
+                    "management plugin does not implement snapshot capabilities"
+                )
+                fn_rc = DM_ENOTIMPL
         else:
-            logging.debug(
-                "BlockDeviceManager: remove snapshot: volume '%s' not found"
-                % (bd_name)
-            )
-        status_text = "successful" if fn_rc == 0 else "failed"
-        logging.debug(
-            "BlockDeviceManager: remove snapshot blockdev=%s, rc=%d, %s"
-            % (bd_name, fn_rc, status_text)
-        )
+            self._log_no_plugin()
         return fn_rc
 
 
-    def update_pool(self, drbdnode):
-        return self._plugin.update_pool(drbdnode)
+    def update_pool(self, drbd_node):
+        """
+        Retrieves storage pool space information
+        """
+        fn_rc = DM_ESTORAGE
+        pool_size = -1
+        pool_free = -1
+        if self._plugin is not None:
+            try:
+                fn_rc, pool_size, pool_free = (
+                    self._plugin.update_pool(drbd_node)
+                )
+            except NotImplementedError:
+                logging.error(
+                    "BlockDeviceManager: The currently loaded storage "
+                    "management plugin does not implement pool space queries"
+                )
+                fn_rc = DM_ENOTIMPL
+        else:
+            self._log_no_plugin()
+        return fn_rc, pool_size, pool_free
 
 
     def reconfigure(self):
-        pass
+        """
+        Reconfigures the storage plugin
+        """
+        fn_rc = DM_ESTORAGE
+        if self._plugin is not None:
+            try:
+                self._plugin.reconfigure()
+                fn_rc = DM_SUCCESS
+            except NotImplementedError:
+                logging.error(
+                    "BlockDeviceManager: The currently loaded storage "
+                    "management plugin does not support "
+                    "on-the-fly reconfiguration"
+                )
+                fn_rc = DM_ENOTIMPL
+        else:
+            self._log_no_plugin()
+        return fn_rc
+
+
+    def _log_not_implemented(self, function_name):
+        logging.error(
+            "BlockDeviceManager: The currently loaded storage "
+            "management plugin does not implement the mandatory function %s()"
+            % (function_name)
+        )
+
+
+    def _log_no_plugin(self):
+        logging.error(
+            "BlockDeviceManager: No storage management plugin is loaded, "
+            "storage management is inoperational"
+        )
 
 
     def _plugin_import(self, path):
@@ -204,8 +340,8 @@ class BlockDeviceManager(object):
                 p_inst  = p_class()
         except Exception as exc:
             logging.error(
-                "plugin import failed, exception returned by the "
-                "import system is: %s"
+                "BlockDeviceManager: Plugin import failed, the exception "
+                "returned by the import system is: %s"
                 % (str(exc))
             )
         return p_inst
@@ -330,33 +466,6 @@ class StoragePlugin(object):
         raise NotImplementedError
 
 
-    def create_snapshot(self, name, vol_id, blockdevice):
-        """
-        Allocates a block device as a snapshot of an existing block device
-
-        @param   name: snapshot name; subject to name constraints
-        @type    name: str
-        @param   vol_id: volume id
-        @type    vol_id: int
-        @param   blockdevice: the existing block device to snapshot
-        @type    blockdevice: BlockDevice object
-        @return: block device of the specified size
-        @rtype:  BlockDevice object; None if the allocation fails
-        """
-        raise NotImplementedError
-
-
-    def remove_snapshot(self, blockdevice):
-        """
-        Deallocates a snapshot block device
-
-        @param   blockdevice: the block device to deallocate
-        @type    blockdevice: BlockDevice object
-        @return: standard return code (see drbdmanage.exceptions)
-        """
-        raise NotImplementedError
-
-
     def remove_blockdevice(self, blockdevice):
         """
         Deallocates a block device
@@ -388,9 +497,36 @@ class StoragePlugin(object):
         raise NotImplementedError
 
 
+    def create_snapshot(self, name, vol_id, blockdevice):
+        """
+        Allocates a block device as a snapshot of an existing block device
+
+        @param   name: snapshot name; subject to name constraints
+        @type    name: str
+        @param   vol_id: volume id
+        @type    vol_id: int
+        @param   blockdevice: the existing block device to snapshot
+        @type    blockdevice: BlockDevice object
+        @return: block device of the specified size
+        @rtype:  BlockDevice object; None if the allocation fails
+        """
+        raise NotImplementedError
+
+
+    def remove_snapshot(self, blockdevice):
+        """
+        Deallocates a snapshot block device
+
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @return: standard return code (see drbdmanage.exceptions)
+        """
+        raise NotImplementedError
+
+
     def update_pool(self, drbdnode):
         """
-        Updates the DrbdNode object with the current storage status
+        Retrieves storage pool space information
 
         Determines the current total and free space that is available for
         allocation on the host this instance of the drbdmanage server is
@@ -398,7 +534,7 @@ class StoragePlugin(object):
 
         @param   node: The node to update
         @type    node: DrbdNode object
-        @return: standard return code (see drbdmanage.exceptions)
+        @return: standard return code, pool total size, pool free space
         """
         raise NotImplementedError
 
