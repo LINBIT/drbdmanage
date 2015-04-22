@@ -39,7 +39,7 @@ class BlockDevice(GenericStorage):
     # Valid characters in addition to [a-zA-Z0-9]
     NAME_VALID_CHARS       = "_"
     # Additional valid characters, but not allowed as the first character
-    NAME_VALID_INNER_CHARS = "-"
+    NAME_VALID_INNER_CHARS = "-."
 
     _path     = None
     _name     = None
@@ -131,7 +131,8 @@ class BlockDeviceManager(object):
                     fn_rc = self._plugin.remove_blockdevice(blockdev)
                     status = "successful" if fn_rc == DM_SUCCESS else "failed"
                     logging.debug(
-                        "BlockDeviceManager: remove_blockdevice('%s'): %s fn_rc=%d"
+                        "BlockDeviceManager: remove_blockdevice('%s'): "
+                        "%s fn_rc=%d"
                         % (bd_name, status, fn_rc)
                     )
                 else:
@@ -199,7 +200,7 @@ class BlockDeviceManager(object):
 
     def create_snapshot(self, name, vol_id, src_bd_name):
         """
-        Allocates a block device as a snapshot of an existing block device
+        Creates a snapshot of the volume of an existing resource
         """
         blockdev = None
         if self._plugin is not None:
@@ -216,9 +217,48 @@ class BlockDeviceManager(object):
                         "snapshot creation"
                         % (src_bd_name)
                     )
-                status_text = "successful" if blockdev is not None else "failed"
+                status_text = (
+                    "successful" if blockdev is not None else "failed"
+                )
                 logging.debug(
-                    "BlockDeviceManager: create snapshot('%s' ,%u, '%s'): %s"
+                    "BlockDeviceManager: create snapshot('%s', %u, '%s'): %s"
+                    % (name, vol_id, src_bd_name, status_text)
+                )
+            except NotImplementedError:
+                logging.error(
+                    "BlockDeviceManager: The currently loaded storage "
+                    "management plugin does not implement "
+                    "snapshot capabilities"
+                )
+        else:
+            self._log_no_plugin()
+        return blockdev
+
+
+    def restore_snapshot(self, name, vol_id, src_bd_name):
+        """
+        Creates a volume for a new resource from a snapshot
+        """
+        blockdev = None
+        if self._plugin is not None:
+            try:
+                src_blockdev = self.get_blockdevice(src_bd_name)
+                if src_blockdev is not None:
+                    blockdev = self._plugin.restore_snapshot(
+                        name, vol_id, src_blockdev
+                    )
+                else:
+                    logging.error(
+                        "BlockDeviceManager: Cannot find the source "
+                        "BlockDevice object '%s' required for "
+                        "snapshot creation"
+                        % (src_bd_name)
+                    )
+                status_text = (
+                    "successful" if blockdev is not None else "failed"
+                )
+                logging.debug(
+                    "BlockDeviceManager: create snapshot('%s', %u, '%s'): %s"
                     % (name, vol_id, src_bd_name, status_text)
                 )
             except NotImplementedError:
@@ -244,18 +284,21 @@ class BlockDeviceManager(object):
                     fn_rc = self._plugin.remove_blockdevice(rm_blockdev)
                 else:
                     logging.debug(
-                        "BlockDeviceManager: remove snapshot: volume '%s' not found"
+                        "BlockDeviceManager: remove snapshot: "
+                        "volume '%s' not found"
                         % (bd_name)
                     )
                 status_text = "successful" if fn_rc == 0 else "failed"
                 logging.debug(
-                    "BlockDeviceManager: remove snapshot blockdev=%s, rc=%d, %s"
+                    "BlockDeviceManager: remove snapshot blockdev=%s, "
+                    "rc=%d, %s"
                     % (bd_name, fn_rc, status_text)
                 )
             except NotImplementedError:
                 logging.error(
                     "BlockDeviceManager: The currently loaded storage "
-                    "management plugin does not implement snapshot capabilities"
+                    "management plugin does not implement "
+                    "snapshot capabilities"
                 )
                 fn_rc = DM_ENOTIMPL
         else:
@@ -499,9 +542,25 @@ class StoragePlugin(object):
 
     def create_snapshot(self, name, vol_id, blockdevice):
         """
-        Allocates a block device as a snapshot of an existing block device
+        Creates a snapshot of a volume under the same resource prefix name
 
         @param   name: snapshot name; subject to name constraints
+        @type    name: str
+        @param   vol_id: volume id
+        @type    vol_id: int
+        @param   blockdevice: the existing block device to snapshot
+        @type    blockdevice: BlockDevice object
+        @return: block device of the specified size
+        @rtype:  BlockDevice object; None if the allocation fails
+        """
+        raise NotImplementedError
+
+
+    def restore_snapshot(self, name, vol_id, blockdevice):
+        """
+        Creates a snapshot of a volume under a new resource prefix name
+
+        @param   name: resource name; subject to name constraints
         @type    name: str
         @param   vol_id: volume id
         @type    vol_id: int
