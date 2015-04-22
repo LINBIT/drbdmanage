@@ -58,6 +58,7 @@ class DrbdManager(object):
 
 
     def __init__(self, ref_server):
+        logging.debug("DrbdManager: Enter function __init__()")
         self._server  = ref_server
         self._resconf = drbdmanage.conf.conffile.DrbdAdmConf()
         self.reconfigure()
@@ -105,6 +106,7 @@ class DrbdManager(object):
         @type:  override_hash_check: bool
         @type:  poke_cluster:        bool
         """
+        logging.debug("DrbdManager: Enter function run()")
         persist = None
         logging.debug("DrbdManager: invoked")
         try:
@@ -166,6 +168,7 @@ class DrbdManager(object):
             # read-write streams
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
+        logging.debug("DrbdManager: Exit function __init__()")
 
 
     # FIXME
@@ -185,6 +188,7 @@ class DrbdManager(object):
         @return: True if the state of any resource has changed, False otherwise
         @rtype:  bool
         """
+        logging.debug("DrbdManager: Enter function perform_changes()")
         state_changed = False
         pool_changed  = False
 
@@ -241,6 +245,7 @@ class DrbdManager(object):
         if pool_changed:
             self._server.update_pool_data()
 
+        logging.debug("DrbdManager: Exit function perform_changes()")
         return state_changed
 
 
@@ -251,6 +256,7 @@ class DrbdManager(object):
         (concerning all volumes of a resource)
         ============================================================
         """
+        logging.debug("DrbdManager: Enter function _assignment_actions()")
         state_changed  = False
         pool_changed   = False
         failed_actions = False
@@ -365,6 +371,7 @@ class DrbdManager(object):
                     if is_set(assg.get_tstate(), Assignment.FLAG_DISKLESS):
                         assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
+        logging.debug("DrbdManager: Exit function _assignment_actions()")
         return (state_changed, pool_changed)
 
 
@@ -372,6 +379,7 @@ class DrbdManager(object):
         """
         Deploy or undeploy a volume
         """
+        logging.debug("DrbdManager: Enter function _volume_actions()")
         pool_changed   = False
         failed_actions = False
 
@@ -403,10 +411,12 @@ class DrbdManager(object):
                     if fn_rc != 0:
                         failed_actions = True
 
+        logging.debug("DrbdManager: Exit function _volume_actions()")
         return (pool_changed, failed_actions)
 
 
     def _snapshot_actions(self, assg):
+        logging.debug("DrbdManager: Enter function _snapshot_actions()")
         state_changed  = False
         failed_actions = False
         pool_changed   = False
@@ -424,7 +434,7 @@ class DrbdManager(object):
             if snaps_assg.requires_deploy():
                 assg_cstate    = assg.get_cstate()
                 assg_tstate    = assg.get_tstate()
-                if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) or
+                if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
                     is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
                     state_changed   = True
                     snaps_assg_iter = snaps_assg.iterate_snaps_vol_states()
@@ -486,10 +496,12 @@ class DrbdManager(object):
                             pool_changed = True
                         if set_failed_actions:
                             failed_actions = True
+        logging.debug("DrbdManager: Exit function _snapshot_actions()")
         return (state_changed, pool_changed)
 
 
     def _snaps_volume_actions(self, snaps_assg, snaps_vol_state):
+        logging.debug("DrbdManager: Enter function _snaps_volume_actions()")
         pool_changed   = False
         failed_actions = False
         snaps          = snaps_assg.get_snapshot()
@@ -511,10 +523,12 @@ class DrbdManager(object):
             pool_changed, failed_actions = (
                 self._snaps_undeploy_volume(snaps_assg, snaps_vol_state)
             )
+        logging.debug("DrbdManager: Exit function _snaps_volume_actions()")
         return (pool_changed, failed_actions)
 
 
     def _snaps_deploy_volume(self, snaps_assg, snaps_vol_state):
+        logging.debug("DrbdManager: Enter function _snaps_deploy_volume()")
         pool_changed   = False
         failed_actions = False
         blockdev       = None
@@ -566,10 +580,12 @@ class DrbdManager(object):
                 % (resource.get_name(), snaps.get_name(), snaps_vol_id)
             )
             failed_actions = True
+        logging.debug("DrbdManager: Exit function _snaps_deploy_volume()")
         return (pool_changed, failed_actions)
 
 
     def _snaps_undeploy_volume(self, snaps_assg, snaps_vol_state):
+        logging.debug("DrbdManager: Enter function _snaps_undeploy_volume()")
         pool_changed   = False
         failed_actions = False
         snaps          = snaps_assg.get_snapshot()
@@ -593,26 +609,31 @@ class DrbdManager(object):
                  % (snaps_name, snaps_vol_id, bd_name)
             )
             failed_actions = True
+        logging.debug("DrbdManager: Exit function _snaps_undeploy_volume()")
         return (pool_changed, failed_actions)
 
 
     def adjust_drbdctrl(self):
+        logging.debug("DrbdManager: Enter function adjust_drbdctrl()")
         # call drbdadm to bring up the control volume
         drbd_proc = self._drbdadm.ext_conf_adjust(consts.DRBDCTRL_RES_NAME)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+        logging.debug("DrbdManager: Exit function adjust_drbdctrl()")
         return fn_rc
 
 
     def down_drbdctrl(self):
+        logging.debug("DrbdManager: Enter function down_drbdctrl()")
         # call drbdadm to stop the control volume
         drbd_proc = self._drbdadm.ext_conf_down(consts.DRBDCTRL_RES_NAME)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+        logging.debug("DrbdManager: Exit function down_drbdctrl()")
         return fn_rc
 
 
@@ -621,6 +642,7 @@ class DrbdManager(object):
         Attempts to bring up all deployed resources.
         Used when the drbdmanage server starts up.
         """
+        logging.debug("DrbdManager: Enter function initial_up()")
         node = self._server.get_instance_node()
         if node is not None:
             for assg in node.iterate_assignments():
@@ -636,12 +658,14 @@ class DrbdManager(object):
                                 "unhandled exception: %s"
                                 % (assg.get_resource().get_name(), str(exc))
                             )
+        logging.debug("DrbdManager: Exit function initial_up()")
 
 
     def _up_resource(self, assignment):
         """
         Brings up DRBD resources
         """
+        logging.debug("DrbdManager: Enter function _up_resource()")
         resource = assignment.get_resource()
         res_name = resource.get_name()
 
@@ -675,6 +699,7 @@ class DrbdManager(object):
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _up_resource()")
         return fn_rc
 
 
@@ -682,6 +707,7 @@ class DrbdManager(object):
         """
         Brings down DRBD resources
         """
+        logging.debug("DrbdManager: Enter function _down_resource()")
         # Currently unused; bd_mgr might stop the backend volume in the future
         # bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
@@ -697,6 +723,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _down_resource()")
         return fn_rc
 
 
@@ -704,6 +731,7 @@ class DrbdManager(object):
         """
         Deploys a volumes or restores a snapshot
         """
+        logging.debug("DrbdManager: Enter function _deploy_volume_actions()")
         diskless = is_set(assignment.get_tstate(), Assignment.FLAG_DISKLESS)
         blockdev = None
         resource = assignment.get_resource()
@@ -852,6 +880,7 @@ class DrbdManager(object):
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _deploy_volume_actions()")
         return fn_rc
 
 
@@ -859,6 +888,7 @@ class DrbdManager(object):
         """
         Creates a new empty block device for a new volume
         """
+        logging.debug("DrbdManager: Enter function _deploy_volume_blockdev()")
         fn_rc    = -1
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
@@ -889,6 +919,7 @@ class DrbdManager(object):
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
             fn_rc = 0
 
+        logging.debug("DrbdManager: Exit function _deploy_volume_blockdev()")
         return fn_rc, blockdev
 
 
@@ -896,11 +927,14 @@ class DrbdManager(object):
         """
         Creates a new blockdevice from a snapshot
         """
+        logging.debug(
+            "DrbdManager: Enter function _deploy_volume_from_snapshot()"
+        )
         fn_rc    = -1
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
-        blockdev = bd_mgr.create_snapshot(
+        blockdev = bd_mgr.restore_snapshot(
             resource.get_name(),
             vol_state.get_id(),
             src_bd_name
@@ -913,6 +947,9 @@ class DrbdManager(object):
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
             fn_rc = 0
 
+        logging.debug(
+            "DrbdManager: Exit function _deploy_volume_from_snapshot()"
+        )
         return fn_rc, blockdev
 
 
@@ -921,6 +958,7 @@ class DrbdManager(object):
         """
         Creates DRBD metadata on a volume
         """
+        logging.debug("DrbdManager: Enter function _deploy_volume_metadata()")
         fn_rc    = -1
         resource = assignment.get_resource()
 
@@ -936,13 +974,15 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _deploy_volume_metadata()")
         return fn_rc
 
 
     def _deploy_volume(self, assignment, vol_state):
         """
-        Deploys a volume and update its state values
+        Deploys a volume and updates its state values
         """
+        logging.debug("DrbdManager: Enter function _deploy_volume()")
         # defaults to error
         fn_rc    = -1
         # do not create block devices for clients
@@ -1098,6 +1138,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _deploy_volume()")
         return fn_rc
 
 
@@ -1107,6 +1148,7 @@ class DrbdManager(object):
         entry, so it can be removed from the assignment by the cleanup
         function.
         """
+        logging.debug("DrbdManager: Enter function _undeploy_volume()")
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
@@ -1190,6 +1232,7 @@ class DrbdManager(object):
                     # target state changes to undeploy
                     assignment.set_cstate(0)
 
+        logging.debug("DrbdManager: Exit function _undeploy_volume()")
         return fn_rc
 
 
@@ -1199,6 +1242,7 @@ class DrbdManager(object):
         assignment's/resource's volumes takes place in per-volume actions
         of the DrbdManager.perform_changes() function.
         """
+        logging.debug("DrbdManager: Enter function _deploy_assignment()")
         fn_rc = 0
         deploy_fail = False
         resource = assignment.get_resource()
@@ -1246,6 +1290,7 @@ class DrbdManager(object):
                 assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
         else:
             assignment.set_cstate(0)
+        logging.debug("DrbdManager: Exit function _deploy_assignment()")
         return fn_rc
 
 
@@ -1254,6 +1299,7 @@ class DrbdManager(object):
         Undeploys all volumes of a resource, then reset the assignment's state
         values, so it can be removed by the cleanup function.
         """
+        logging.debug("DrbdManager: Enter function _undeploy_assignment()")
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
@@ -1307,6 +1353,7 @@ class DrbdManager(object):
 
         fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors else DM_SUCCESS)
 
+        logging.debug("DrbdManager: Exit function _undeploy_assignment()")
         return fn_rc
 
 
@@ -1314,6 +1361,7 @@ class DrbdManager(object):
         """
         Connects a resource on the current node to all peer nodes
         """
+        logging.debug("DrbdManager: Enter function _connect()")
         resource = assignment.get_resource()
         tstate = assignment.get_tstate()
         discard_flag = is_set(tstate, Assignment.FLAG_DISCARD)
@@ -1327,6 +1375,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _connect()")
         return fn_rc
 
 
@@ -1334,6 +1383,7 @@ class DrbdManager(object):
         """
         Disconnects a resource on the current node from all peer nodes
         """
+        logging.debug("DrbdManager: Enter function _disconnect()")
         resource = assignment.get_resource()
         drbd_proc = self._drbdadm.disconnect(resource.get_name())
         if drbd_proc is not None:
@@ -1344,6 +1394,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _disconnect()")
         return fn_rc
 
 
@@ -1355,6 +1406,7 @@ class DrbdManager(object):
         * Connect to nodes that have newly deployed a resource
         * Leave valid existing connections untouched
         """
+        logging.debug("DrbdManager: Enter function _update_connections()")
         resource = assignment.get_resource()
         # TODO:
         """
@@ -1379,6 +1431,7 @@ class DrbdManager(object):
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
 
+        logging.debug("DrbdManager: Exit function _update_connections()")
         return fn_rc
 
 
@@ -1386,12 +1439,14 @@ class DrbdManager(object):
         """
         Disconnects, then connects again
         """
+        logging.debug("DrbdManager: Enter function _reconnect()")
         # disconnect
         self._disconnect(assignment)
         # connect
         fn_rc = self._connect(assignment)
         assignment.clear_tstate_flags(Assignment.FLAG_RECONNECT)
 
+        logging.debug("DrbdManager: Exit function _reconnect()")
         return fn_rc
 
 
@@ -1399,6 +1454,7 @@ class DrbdManager(object):
         """
         Attaches a volume
         """
+        logging.debug("DrbdManager: Enter function _attach()")
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
         drbd_proc = self._drbdadm.attach(
@@ -1415,6 +1471,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _attach()")
         return fn_rc
 
 
@@ -1422,6 +1479,7 @@ class DrbdManager(object):
         """
         Detaches a volume
         """
+        logging.debug("DrbdManager: Enter function _detach()")
         resource = assignment.get_resource()
         drbd_proc = self._drbdadm.detach(
             resource.get_name(),
@@ -1435,6 +1493,7 @@ class DrbdManager(object):
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
+        logging.debug("DrbdManager: Exit function _detach()")
         return fn_rc
 
 
@@ -1469,6 +1528,7 @@ class DrbdManager(object):
             1 1 0   primary
             1 1 1   secondary
         """
+        logging.debug("DrbdManager: Enter function primary_deployment()")
         tstate = assignment.get_tstate()
         force_primary = is_set(tstate, Assignment.FLAG_OVERWRITE)
         discard = is_set(tstate, Assignment.FLAG_DISCARD)
@@ -1494,6 +1554,7 @@ class DrbdManager(object):
                             # Do not assume the primary role
                             primary = False
                             break
+        logging.debug("DrbdManager: Exit function primary_deployment()")
         return primary
 
 
@@ -1503,9 +1564,11 @@ class DrbdManager(object):
 
         Called by the server's reconfigure() function
         """
+        logging.debug("DrbdManager: Enter function reconfigure()")
         self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(
             self._server.get_conf_value(self._server.KEY_DRBDADM_PATH)
         )
+        logging.debug("DrbdManager: Exit function reconfigure()")
 
 
 class DrbdResource(GenericDrbdObject):
