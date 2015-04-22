@@ -237,7 +237,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         """
         Returns True if the snapshot needs to be deployed, False otherwise
         """
-        return ((self._tstate, self.FLAG_DEPLOY) and
+        return (dmutils.is_set(self._tstate, self.FLAG_DEPLOY) and
                 dmutils.is_unset(self._cstate, self.FLAG_DEPLOY))
 
 
@@ -245,8 +245,8 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         """
         Returns True if the assignment needs to be undeployed, False otherwise
         """
-        return ((self._cstate, self.FLAG_DEPLOY) and
-                dmutils.is_unset(self._tstate, self.FLAG_DEPLOY))
+        return (dmutils.is_unset(self._tstate, self.FLAG_DEPLOY) and
+                dmutils.is_set(self._cstate, self.FLAG_DEPLOY))
 
 
     def get_cstate(self):
