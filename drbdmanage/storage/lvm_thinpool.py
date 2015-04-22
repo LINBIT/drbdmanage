@@ -213,6 +213,13 @@ class LVMThinPool(drbdmanage.storage.storagecore.StoragePlugin):
         return blockdev
 
 
+    def restore_snapshot(self, name, vol_id, source_blockdev):
+        """
+        Restore a snapshot; currently an alias for create_snapshot()
+        """
+        return self.create_snapshot(name, vol_id, source_blockdev)
+
+
     def remove_snapshot(self, blockdevice):
         """
         Deallocates a snapshot block device
