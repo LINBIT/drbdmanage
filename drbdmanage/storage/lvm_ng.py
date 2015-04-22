@@ -335,6 +335,8 @@ class LvmNg(storcore.StoragePlugin):
             # Abort
             pass
         except LvmNgUnmanagedVolumeException:
+            # FIXME: this exception does not seem to be thrown anywhere?
+            #
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmNg: LV '%s' exists, but is unknown to "
@@ -570,41 +572,43 @@ class LvmNg(storcore.StoragePlugin):
         loaded_objects = {}
         state_file     = None
         try:
-            state_file = open(LvmNg.LVM_STATEFILE, "r")
+            state_file  = open(LvmNg.LVM_STATEFILE, "r")
 
-            # Find and read the signature
+            loaded_data = state_file.read()
+
+            state_file.close()
+            state_file = None
+
             stored_hash = None
-            offset      = 0
-            for line in utils.read_lines(state_file):
+            line_begin  = 0
+            line_end    = 0
+            while line_end >= 0 and stored_hash is None:
+                line_end = loaded_data.find("\n", line_begin)
+                if line_end != -1:
+                    line = loaded_data[line_begin:line_end]
+                else:
+                    line = loaded_data[line_begin:]
                 if line.startswith("sig:"):
                     stored_hash = line[4:]
-                    if stored_hash.endswith("\n"):
-                        stored_hash = stored_hash[:-1]
-                    break
                 else:
-                    offset = state_file.tell()
-
-            state_file.seek(0)
-
-            # Load file contents, without the signature if a
-            # signature is present
-            loaded_data = None
-            if offset != 0:
-                loaded_data = state_file.read(offset)
-            else:
-                loaded_data = state_file.read()
-
-            # Check the data's signature
+                    line_begin = line_end + 1
             if stored_hash is not None:
+                # truncate load_data so it does not contain the signature line
+                loaded_data = loaded_data[:line_begin]
                 data_hash = utils.DataHash()
                 data_hash.update(loaded_data)
                 computed_hash = data_hash.get_hex_hash()
                 if computed_hash != stored_hash:
                     logging.warning(
-                        "LvmNg: Data in state file '%s' has an invalid "
-                        "signature, this file may be corrupt"
+                        "LvmNg: Data in state file '%s' has "
+                        "an invalid signature, this file may be corrupt"
                         % (LvmNg.LVM_STATEFILE)
                     )
+            else:
+                logging.warning(
+                    "LvmNg: Data in state file '%s' is unsigned"
+                    % (LvmNg.LVM_STATEFILE)
+                )
 
             # Deserialize the saved objects
             loaded_property_map = json.loads(loaded_data)
