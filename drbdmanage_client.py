@@ -1973,6 +1973,7 @@ class DrbdManage(object):
         """
         Initializes a new drbdmanage cluster
         """
+        fn_rc = 1
 
         server_conf = self.load_server_conf()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
