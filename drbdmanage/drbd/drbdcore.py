@@ -62,6 +62,7 @@ class DrbdManager(object):
         self._server  = ref_server
         self._resconf = drbdmanage.conf.conffile.DrbdAdmConf()
         self.reconfigure()
+        logging.debug("DrbdManager: Exit function __init__()")
 
 
     # FIXME
@@ -168,7 +169,7 @@ class DrbdManager(object):
             # read-write streams
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
-        logging.debug("DrbdManager: Exit function __init__()")
+        logging.debug("DrbdManager: Exit function run()")
 
 
     # FIXME
@@ -267,7 +268,7 @@ class DrbdManager(object):
                 # disabled; Nothing to do, except for setting the correct
                 # state, so the assignment can be cleaned up
                 assg.set_tstate(0)
-                assg.set_cstate(0)
+                assg.undeploy_adjust_cstate()
                 state_changed = True
         elif act_flag:
             logging.debug(
@@ -343,7 +344,7 @@ class DrbdManager(object):
                 #        target state changes to 0 (e.g., unassign/undeploy).
                 if assg.is_empty():
                     if assg.get_cstate() != 0:
-                        assg.set_cstate(0)
+                        assg.undeploy_adjust_cstate()
                         state_changed = True
                 else:
                     """
@@ -1230,7 +1231,7 @@ class DrbdManager(object):
                     # assignment's current state to 0 to enable
                     # fast cleanup of the assignment in the case that the
                     # target state changes to undeploy
-                    assignment.set_cstate(0)
+                    assignment.undeploy_adjust_cstate()
 
         logging.debug("DrbdManager: Exit function _undeploy_volume()")
         return fn_rc
@@ -1289,7 +1290,7 @@ class DrbdManager(object):
             else:
                 assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
         else:
-            assignment.set_cstate(0)
+            assignment.undeploy_adjust_cstate()
         logging.debug("DrbdManager: Exit function _deploy_assignment()")
         return fn_rc
 
@@ -1348,7 +1349,7 @@ class DrbdManager(object):
         if not ud_errors:
             # Remove the external configuration file
             self._server.remove_assignment_conf(resource.get_name())
-            assignment.set_cstate(0)
+            assignment.undeploy_adjust_cstate()
             assignment.set_tstate(0)
 
         fn_rc = (DrbdManager.STOR_UNDEPLOY_FAILED if ud_errors else DM_SUCCESS)
@@ -2859,6 +2860,32 @@ class Assignment(GenericDrbdObject):
         if self._tstate != 0:
             self._tstate = 0
             self.get_props().new_serial()
+
+
+    def undeploy_adjust_cstate(self):
+        """
+        Conditionally clears the current state of the assignment
+
+        If the current state FLAG_DEPLOY is not set on any volume,
+        none of the volumes has a block device, and the assignment's
+        target state FLAG_DEPLOY is not set, then the assignment's
+        current state is set to 0.
+        """
+        if is_unset(self._tstate, self.FLAG_DEPLOY):
+            flag_clear = True
+            bd_clear   = True
+            for vol_state in self._vol_states.itervalues():
+                vol_cstate  = vol_state.get_cstate()
+                if is_set(vol_cstate, DrbdVolumeState.FLAG_DEPLOY):
+                    flag_clear = False
+                if vol_state.get_bd_name() is not None:
+                    bd_clear = False
+            if flag_clear and bd_clear:
+                # Clear the assignment's current state to indicate that
+                # undeploying the assignment was successful
+                if self._cstate != 0:
+                    self._cstate = 0
+                    self.get_props().new_serial()
 
 
     def connect(self):
