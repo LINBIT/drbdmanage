@@ -587,10 +587,12 @@ class LvmThinLv(storcore.StoragePlugin):
         try:
             lvm_proc = subprocess.Popen(
                 [
-                    self._cmd_vgs, "--noheadings", "--nosuffix",
+                    self._cmd_lvs, "--noheadings", "--nosuffix",
                     "--units", "k", "--separator", ",",
-                    "--options", "vg_size,vg_free",
-                    self._conf[LvmThinLv.KEY_VG_NAME]
+                    "--options",
+                    "size,data_percent,metadata_percent,snap_percent",
+                    self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                    self._conf[LvmThinLv.KEY_POOL_NAME]
                 ],
                 env=self._subproc_env, stdout=subprocess.PIPE,
                 close_fds=True
@@ -599,19 +601,52 @@ class LvmThinLv(storcore.StoragePlugin):
             if len(pool_data) > 0:
                 pool_data.strip()
                 try:
-                    size_data, free_data = pool_data.split(",")
+                    size_data, data_part, meta_part, snap_part = (
+                        pool_data.split(",")
+                    )
                     size_data = self._discard_fraction(size_data)
-                    free_data = self._discard_fraction(free_data)
+                    space_size = long(size_data)
 
-                    # Parse values and assign them in two steps, so that
-                    # either both values or none of them will be assigned,
-                    # depending on whether parsing succeeds or not
-                    size_value = long(size_data)
-                    free_value = long(free_data)
+                    # Data percentage
+                    data_perc = float(0)
+                    if len(data_part) > 0:
+                        try:
+                            data_perc = float(data_part) / 100
+                        except ValueError:
+                            pass
 
-                    # Assign values after successful parsing
-                    pool_size = size_value
-                    pool_free = free_value
+                    # Metadata percentage
+                    meta_perc = float(0)
+                    if len(meta_part) > 0:
+                        try:
+                            meta_perc = float(meta_part) / 100
+                        except ValueError:
+                            pass
+
+                    # Snapshots percentage
+                    snap_perc = float(0)
+                    if len(snap_part) > 0:
+                        try:
+                            snap_perc = float(snap_part) / 100
+                        except ValueError:
+                            pass
+
+                    # Calculate the amount of occupied space
+                    data_used = data_perc * space_size
+                    meta_used = meta_perc * space_size
+                    snap_used = snap_perc * space_size
+
+                    space_used = data_used + meta_used + snap_used
+
+                    space_free = int(space_size - space_used)
+                    if space_free < 0:
+                        space_free = 0
+
+                    # Finally, assign the results to the variables
+                    # that will be returned, so that neither will be set
+                    # if any of the earlier parsers or calculations fail
+                    pool_size = space_size
+                    pool_free = space_free
                     fn_rc = exc.DM_SUCCESS
                 except ValueError:
                     pass
