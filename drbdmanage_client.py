@@ -54,7 +54,7 @@ from drbdmanage.utils import (
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
-    COLOR_DARKPINK, COLOR_TEAL, COLOR_GREEN
+    COLOR_DARKPINK, COLOR_TEAL, COLOR_GREEN, COLOR_YELLOW
 )
 from drbdmanage.conf.conffile import ConfFile
 from drbdmanage.exceptions import AbortException
@@ -69,6 +69,7 @@ from drbdmanage.drbd.views import DrbdNodeView
 from drbdmanage.drbd.views import DrbdResourceView
 from drbdmanage.drbd.views import DrbdVolumeView
 from drbdmanage.drbd.views import DrbdVolumeStateView
+from drbdmanage.drbd.views import GenericView
 from drbdmanage.snapshots.views import DrbdSnapshotAssignmentView
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.defaultip import default_ip
@@ -1487,8 +1488,16 @@ class DrbdManage(object):
                     except:
                         poolfree = "n/a"
 
-                    t.addRow([node_name, poolsize_text, poolfree_text,
-                              "ipv" + v_af, v_addr, view.get_state()])
+                    level, state_text = view.state_info()
+                    level_color = self._level_color(level)
+                    row_data = [
+                        node_name, poolsize_text, poolfree_text,
+                        "ipv" + v_af, v_addr, state_text
+                    ]
+                    if level == GenericView.STATE_NORM:
+                        t.addRow(row_data)
+                    else:
+                        t.addRow(row_data, color=color(level_color))
                 else:
                     v_psize = self._property_text(
                         view.get_property(NODE_POOLSIZE))
@@ -1597,7 +1606,15 @@ class DrbdManage(object):
                 v_port = self._property_text(res_view.get_property(RES_PORT))
                 if not machine_readable and not list_volumes:
                     # Human readable output of the resource description
-                    t.addRow([res_name, v_port, res_view.get_state()])
+                    level, state_text = res_view.state_info()
+                    level_color = self._level_color(level)
+                    row_data = [
+                        res_name, v_port, state_text
+                    ]
+                    if level == GenericView.STATE_NORM:
+                        t.addRow(row_data)
+                    else:
+                        t.addRow(row_data, color=color(level_color))
                 if list_volumes:
                     # sort volume list by volume id
                     vol_list.sort(key=lambda vol_entry: vol_entry[0])
@@ -1618,9 +1635,16 @@ class DrbdManage(object):
                                 size_MiB_str = "< 1"
                             else:
                                 size_MiB_str = str(size_MiB)
-                            t.addRow([res_name, str(vol_view.get_id()),
-                                      size_MiB_str, v_minor, v_port,
-                                      vol_view.get_state()])
+                            level, state_text = vol_view.state_info()
+                            level_color = self._level_color(level)
+                            row_data = [
+                                res_name, str(vol_view.get_id()),
+                                size_MiB_str, v_minor, v_port, state_text
+                            ]
+                            if level == GenericView.STATE_NORM:
+                                t.addRow(row_data)
+                            else:
+                                t.addRow(row_data, color=color(level_color))
                         else:
                             # machine readable output of the volume description
                             sys.stdout.write(
@@ -1693,7 +1717,7 @@ class DrbdManage(object):
                 if machine_readable:
                     sys.stdout.write("%s,%s\n" % (res_name, snaps_name))
                 else:
-                    t.addRow([res_name, snaps_name, "OK"])
+                    t.addRow([res_name, snaps_name, "n/a"])
 
         t.showSeparators(args.separators)
         t.show()
@@ -1748,9 +1772,15 @@ class DrbdManage(object):
                            snaps_assg.get_cstate(), snaps_assg.get_tstate())
                     )
                 else:
-                    t.addRow([res_name, snaps_name, node_name,
-                              "%s -> %s" % (snaps_assg.get_cstate(),
-                                            snaps_assg.get_tstate())])
+                    level, state_text = snaps_assg.state_info()
+                    level_color = self._level_color(level)
+                    row_data = [
+                        res_name, snaps_name, node_name, state_text
+                    ]
+                    if level == GenericView.STATE_NORM:
+                        t.addRow(row_data)
+                    else:
+                        t.addRow(row_data, color=color(level_color))
 
         t.showSeparators(args.separators)
         t.show()
@@ -1806,16 +1836,36 @@ class DrbdManage(object):
                 v_cstate  = view.get_cstate()
                 v_tstate  = view.get_tstate()
                 if not machine_readable:
+                    level, state_text = view.state_info()
+                    level_color = self._level_color(level)
+                    row_data = [
+                        node_name, res_name, "*", "*", "*", state_text
+                    ]
+                    if level == GenericView.STATE_NORM:
+                        t.addRow(row_data)
+                    else:
+                        t.addRow(row_data, color=color(level_color))
 
                     for vol_state in vol_state_list:
                         vol_id, properties = vol_state
                         vol_view = DrbdVolumeStateView(properties,
                                                        machine_readable)
-                        v_bdev = self._property_text(
-                            vol_view.get_property(VOL_BDEV))
 
-                        t.addRow([node_name, res_name, vol_id, v_bdev,
-                                  v_node_id, vol_view.get_tstate()])
+                        v_level, v_state_text = vol_view.state_info()
+                        v_level_color = self._level_color(v_level)
+
+                        if v_level != GenericView.STATE_NORM:
+                            v_bdev = self._property_text(
+                                vol_view.get_property(VOL_BDEV)
+                            )
+                            v_row_data = [
+                                node_name, res_name, vol_id,
+                                v_bdev, v_node_id, v_state_text
+                            ]
+                            if v_level == GenericView.STATE_NORM:
+                                t.addRow(row_data)
+                            else:
+                                t.addRow(row_data, color=color(v_level_color))
                 else:
                     sys.stdout.write(
                         "%s,%s,%s,%s,%s\n"
@@ -2468,6 +2518,19 @@ class DrbdManage(object):
         except (TypeError, ValueError):
             sys.stderr.write("WARNING: cannot parse server return codes\n")
         return fn_rc
+
+
+    def _level_color(self, level):
+        """
+        Selects a color for a level returned by GenericView subclasses
+        """
+        level_color = COLOR_RED
+        if level == GenericView.STATE_NORM:
+            level_color = COLOR_GREEN
+        elif level == GenericView.STATE_WARN:
+            level_color = COLOR_YELLOW
+        return level_color
+
 
     def cmd_debug(self, args):
         fn_rc = 1

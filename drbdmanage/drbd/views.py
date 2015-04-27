@@ -24,8 +24,8 @@ import drbdmanage.consts as consts
 WARNING!
   do not import anything from drbdmanage.drbd.persistence
 """
-from drbdmanage.exceptions import IncompatibleDataException
-from drbdmanage.utils import string_to_bool
+import drbdmanage.exceptions as exc
+import drbdmanage.utils as utils
 
 
 class GenericView(object):
@@ -34,21 +34,29 @@ class GenericView(object):
     Base class for more specialized View objects
     """
 
-    props = None
+    STATE_NORM  = 0
+    STATE_WARN  = 1
+    STATE_ALERT = 2
 
+    _props = None
+
+    _level = STATE_NORM
+
+    _state_text   = ""
+    _pending_text = ""
 
     def __init__(self, props):
-        self.props = props
+        self._props = props
 
 
     def set_property(self, key, val):
-        self.props[str(key)] = str(val)
+        self._props[str(key)] = str(val)
 
 
     def get_property(self, key):
-        if self.props is not None:
+        if self._props is not None:
             try:
-                val = self.props.get(str(key))
+                val = self._props.get(str(key))
                 if val is not None:
                     val = str(val)
             except (ValueError, TypeError):
@@ -63,7 +71,7 @@ class GenericView(object):
         for item in flags_texts:
             flag_name, text_true, text_false, text_unkn = item
             try:
-                if string_to_bool(self.get_property(flag_name)):
+                if utils.string_to_bool(self.get_property(flag_name)):
                     if text_true is not None:
                         text_list.append(text_true)
                 else:
@@ -73,6 +81,57 @@ class GenericView(object):
                 if text_unkn is not None:
                     text_list.append(text_unkn)
         return str(sepa.join(text_list))
+
+
+    def raise_level(self, requested):
+        """
+        Conditionally raises and returns the current warning level
+        """
+        if (self._level == GenericView.STATE_NORM or
+            self._level == GenericView.STATE_WARN):
+            if (requested == GenericView.STATE_NORM or
+                requested == GenericView.STATE_WARN or
+                requested == GenericView.STATE_ALERT):
+                    if requested > self._level:
+                        self._level = requested
+            else:
+                # If the requested level is invalid, raise the
+                # warning levelto alert
+                self._level = GenericView.STATE_ALERT
+
+    def get_level(self):
+        return self._level
+
+
+    def add_pending_text(self, text):
+        if len(self._pending_text) == 0:
+            self._pending_text = "pending actions: " + text
+        else:
+            self._pending_text += ", " + text
+
+
+    def add_state_text(self, text):
+        if len(self._state_text) == 0:
+            self._state_text += text
+        else:
+            self._state_text += ", " + text
+
+
+    def format_state_info(self):
+        text = self._state_text
+        if len(text) > 0:
+            if len(self._pending_text) > 0:
+                text += ", " + self._pending_text
+        else:
+            if len(self._pending_text) > 0:
+                text = self._pending_text
+            else:
+                text = "ok"
+        return text
+
+
+    def state_info(self):
+        return GenericView.STATE_ALERT, "no state information available"
 
 
 class AssignmentView(GenericView):
@@ -157,8 +216,76 @@ class AssignmentView(GenericView):
             self._node     = properties[consts.NODE_NAME]
             self._resource = properties[consts.RES_NAME]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
+
+
+    def state_info(self):
+        c_connect = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_CONNECT)
+        )
+        c_deploy = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        t_connect = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_CONNECT)
+        )
+        t_deploy = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        t_diskless = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DISKLESS)
+        )
+
+        a_discard = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DISCARD)
+        )
+        a_overwrite = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_OVERWRITE)
+        )
+        a_reconnect = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_RECONNECT)
+        )
+        a_upd_con = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPD_CON)
+        )
+
+        if (not c_deploy) and (not t_deploy):
+            self.add_pending_text("cleanup")
+        elif c_deploy and (not t_deploy):
+            self.add_pending_text("decommission")
+            self.raise_level(GenericView.STATE_ALERT)
+        elif (not c_deploy) and t_deploy:
+            self.add_pending_text("commission")
+            self.raise_level(GenericView.STATE_WARN)
+
+        if (not c_connect) and (not t_connect):
+            self.add_state_text("disconnected")
+            self.raise_level(GenericView.STATE_WARN)
+        elif c_connect and (not t_connect) and t_deploy:
+            self.add_pending_text("disconnect")
+            self.raise_level(GenericView.STATE_WARN)
+        elif (not c_connect) and t_connect and c_deploy and t_deploy:
+            self.add_pending_text("connect")
+            self.raise_level(GenericView.STATE_WARN)
+
+        if t_diskless:
+            self.add_state_text("client")
+
+        if a_discard and t_deploy:
+            self.add_state_text("discard data")
+            self.raise_level(GenericView.STATE_ALERT)
+        if a_overwrite and t_deploy:
+            self.add_state_text("overwrite peers")
+            self.raise_level(GenericView.STATE_ALERT)
+        if a_reconnect and t_deploy:
+            self.add_pending_text("cycle connections")
+            self.raise_level(GenericView.STATE_WARN)
+        if a_upd_con and t_deploy:
+            self.add_pending_text("adjust connections")
+            self.raise_level(GenericView.STATE_WARN)
+
+        return self.get_level(), self.format_state_info()
 
 
     def get_cstate(self):
@@ -228,7 +355,7 @@ class DrbdNodeView(GenericView):
             super(DrbdNodeView, self).__init__(properties)
             self._name = properties[consts.NODE_NAME]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
@@ -236,6 +363,40 @@ class DrbdNodeView(GenericView):
     def get_name_maxlen(cls):
         return consts.NODE_NAME_MAXLEN
 
+
+    def state_info(self):
+        s_remove = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_REMOVE)
+        )
+        s_upd_pool = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL)
+        )
+        s_update = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPDATE)
+        )
+        s_drbdctrl = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL)
+        )
+        s_storage = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_STORAGE)
+        )
+
+        if s_remove:
+            self.add_pending_text("remove")
+            self.raise_level(GenericView.STATE_ALERT)
+        else:
+            if s_update:
+                self.add_pending_text("adjust connections")
+                self.raise_level(GenericView.STATE_ALERT)
+            if s_upd_pool:
+                self.raise_level(GenericView.STATE_WARN)
+                self.add_pending_text("check space")
+            if not s_drbdctrl:
+                self.add_state_text("satellite node")
+            if not s_storage:
+                self.add_state_text("no storage")
+
+        return self.get_level(), self.format_state_info()
 
     def get_state(self):
         if self._machine_readable:
@@ -279,7 +440,7 @@ class DrbdResourceView(GenericView):
             super(DrbdResourceView, self).__init__(properties)
             self._name = properties[consts.RES_NAME]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self.props = properties
         self._machine_readable = machine_readable
 
@@ -287,6 +448,18 @@ class DrbdResourceView(GenericView):
     @classmethod
     def get_name_maxlen(cls):
         return consts.RES_NAME_MAXLEN
+
+
+    def state_info(self):
+        s_remove = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_REMOVE)
+        )
+
+        if s_remove:
+            self.add_pending_text("remove")
+            self.raise_level(GenericView.STATE_ALERT)
+
+        return self.get_level(), self.format_state_info()
 
 
     def get_state(self):
@@ -332,7 +505,7 @@ class DrbdVolumeView(GenericView):
             self._id = properties[consts.VOL_ID]
             self._size_kiB = long(properties[consts.VOL_SIZE])
         except (KeyError, ValueError):
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
@@ -342,6 +515,18 @@ class DrbdVolumeView(GenericView):
 
     def get_size_kiB(self):
         return self._size_kiB
+
+
+    def state_info(self):
+        s_remove = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_REMOVE)
+        )
+
+        if s_remove:
+            self.add_pending_text("remove")
+            self.raise_level(GenericView.STATE_ALERT)
+
+        return self.get_level(), self.format_state_info()
 
 
     def get_state(self):
@@ -405,12 +590,45 @@ class DrbdVolumeStateView(GenericView):
             super(DrbdVolumeStateView, self).__init__(properties)
             self._id = properties[consts.VOL_ID]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
     def get_id(self):
         return self._id
+
+
+    def state_info(self):
+        c_deploy = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        c_attach = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_ATTACH)
+        )
+        t_deploy = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        t_attach = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_ATTACH)
+        )
+
+        if (not c_deploy) and (not t_deploy):
+            self.add_pending_text("cleanup")
+        elif c_deploy and (not t_deploy):
+            self.add_pending_text("decommission")
+            self.raise_level(GenericView.STATE_ALERT)
+        elif (not c_deploy) and t_deploy:
+            self.add_pending_text("commission")
+            self.raise_level(GenericView.STATE_WARN)
+
+        if c_attach and (not t_attach) and t_deploy:
+            self.add_pending_text("detach")
+            self.raise_level(GenericView.STATE_WARN)
+        elif (not c_attach) and t_attach and t_deploy:
+            self.add_pending_text("attach")
+            self.raise_level(GenericView.STATE_WARN)
+
+        return self.get_level(), self.format_state_info()
 
 
     def get_cstate(self):

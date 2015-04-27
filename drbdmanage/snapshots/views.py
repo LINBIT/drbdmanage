@@ -19,6 +19,7 @@
 """
 
 import drbdmanage.drbd.views as drbdviews
+import drbdmanage.utils as utils
 import drbdmanage.consts as consts
 
 from drbdmanage.exceptions import IncompatibleDataException
@@ -89,6 +90,26 @@ class DrbdSnapshotAssignmentView(drbdviews.GenericView):
         self._machine_readable = machine_readable
 
 
+    def state_info(self):
+        c_deploy = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        t_deploy = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+
+        if (not c_deploy) and (not t_deploy):
+            self.add_pending_text("cleanup")
+        elif c_deploy and (not t_deploy):
+            self.add_pending_text("delete")
+            self.raise_level(drbdviews.GenericView.STATE_ALERT)
+        elif (not c_deploy) and t_deploy:
+            self.add_pending_text("create")
+            self.raise_level(drbdviews.GenericView.STATE_WARN)
+
+        return self.get_level(), self.format_state_info()
+
+
     def get_cstate(self):
         if self._machine_readable:
             text = self.state_text(self.MR_CSTATE_TEXTS, "|")
@@ -146,6 +167,26 @@ class DrbdSnapshotVolumeStateView(drbdviews.GenericView):
 
     def get_id(self):
         return self._id
+
+
+    def state_info(self):
+        c_deploy = utils.string_to_bool(
+            self.get_property(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+        t_deploy = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY)
+        )
+
+        if (not c_deploy) and (not t_deploy):
+            self.add_pending_text("cleanup")
+        elif c_deploy and (not t_deploy):
+            self.add_pending_text("delete")
+            self.raise_level(drbdviews.GenericView.STATE_ALERT)
+        elif (not c_deploy) and t_deploy:
+            self.add_pending_text("create")
+            self.raise_level(drbdviews.GenericView.STATE_WARN)
+
+        return self.get_level(), self.format_state_info()
 
 
     def get_cstate(self):

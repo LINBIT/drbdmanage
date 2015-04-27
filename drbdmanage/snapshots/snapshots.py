@@ -317,7 +317,7 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
                 dmutils.bool_to_string(
-                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                    dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
                 )
             )
 
@@ -493,7 +493,7 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
         if selected(consts.CSTATE_PREFIX + consts.FLAG_DEPLOY):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DEPLOY] = (
                 dmutils.bool_to_string(
-                    dmutils.is_set(self._tstate, self.FLAG_DEPLOY)
+                    dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
                 )
             )
 
