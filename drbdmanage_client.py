@@ -1863,9 +1863,12 @@ class DrbdManage(object):
                                 v_bdev, v_node_id, v_state_text
                             ]
                             if v_level == GenericView.STATE_NORM:
-                                t.addRow(row_data)
+                                t.addRow(v_row_data)
                             else:
-                                t.addRow(row_data, color=color(v_level_color))
+                                t.addRow(
+                                    v_row_data,
+                                    color=color(v_level_color)
+                                )
                 else:
                     sys.stdout.write(
                         "%s,%s,%s,%s,%s\n"
