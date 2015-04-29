@@ -4,11 +4,8 @@
 # Tue, 01 Apr 2014 14:39:36 +0200
 
 %:
-	dh $@ --with python2
+	dh $@ --with python2 --buildsystem=python_distutils
 
 override_dh_auto_build:
 	dh_auto_build
 	python setup.py build_man
-
-override_dh_auto_install:
-	python setup.py install --root=debian/python-drbdmanage --install-layout=deb
