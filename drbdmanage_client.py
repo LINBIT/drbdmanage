@@ -50,7 +50,7 @@ from drbdmanage.consts import (
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import (
-    build_path, bool_to_string, map_val_or_dflt
+    build_path, bool_to_string, map_val_or_dflt, checkrange
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -206,8 +206,7 @@ class DrbdManage(object):
 
         def rangecheck(i, j):
             def range(p):
-                p = int(p)
-                if p < i or p > j:
+                if not checkrange(p, i, j):
                     raise argparse.ArgumentTypeError('Range: [%s, %s]' % (i, j))
                 return p
             return range

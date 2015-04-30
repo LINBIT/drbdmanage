@@ -212,6 +212,10 @@ class Table():
                 print fstr.format(*row)
 
 
+def checkrange(v, i, j):
+    return i <= int(v) <= j
+
+
 def get_free_number(min_nr, max_nr, nr_list):
     """
     Returns the first number in the range min..max that is not in nr_list
