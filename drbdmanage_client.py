@@ -150,12 +150,21 @@ class DrbdManage(object):
         p_poke.set_defaults(func=self.cmd_poke)
 
         # new-node
-        def IPCompleter(prefix, parsed_args, **kwargs):
-            import socket
-            name = parsed_args.name
-            ip = socket.gethostbyname(name)
-            ip = [ip]
-            return ip
+        def IPCompleter(where):
+            def Completer(prefix, parsed_args, **kwargs):
+                import socket
+                opt = where
+                if opt == "name":
+                    name = parsed_args.name
+                elif opt == "peer_ip":
+                    name = parsed_args.peer_ip
+                else:
+                    return ""
+
+                ip = socket.gethostbyname(name)
+                ip = [ip]
+                return ip
+            return Completer
 
         p_new_node = subp.add_parser('new-node',
                                      description='Names must match the output '
@@ -171,7 +180,7 @@ class DrbdManage(object):
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
         p_new_node.add_argument('ip',
-                                help='IP address of the new node').completer = IPCompleter
+                                help='IP address of the new node').completer = IPCompleter("name")
         p_new_node.set_defaults(func=self.cmd_new_node)
 
         # remove-node
@@ -195,16 +204,18 @@ class DrbdManage(object):
         p_rm_node.add_argument('name', help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
-        def port_type(p):
-            p = int(p)
-            if p < 1 or p > 65535:
-                raise argparse.ArgumentTypeError('Port range: [1, 65535]')
-            return p
+        def rangecheck(i, j):
+            def range(p):
+                p = int(p)
+                if p < i or p > j:
+                    raise argparse.ArgumentTypeError('Range: [%s, %s]' % (i, j))
+                return p
+            return range
         # new-resource
         p_new_res = subp.add_parser('new-resource',
                                     description='Add a new resource',
                                     aliases=['nr', 'add-resource', 'ar'])
-        p_new_res.add_argument('-p', '--port', type=port_type)
+        p_new_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_new_res.add_argument('name', help='Name of the new resource')
         p_new_res.set_defaults(func=self.cmd_new_resource)
 
@@ -223,7 +234,7 @@ class DrbdManage(object):
 
         p_mod_res = subp.add_parser('modify-resource',
                                     description='Modify a resource')
-        p_mod_res.add_argument('-p', '--port', type=port_type)
+        p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_mod_res.add_argument('name',
                                help='Name of the resource to modify'). completer = ResourceCompleter
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
@@ -468,27 +479,30 @@ class DrbdManage(object):
         nodesverbose = ['Family', 'IP']
         nodesgroupby = ['Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'State']
 
-        def NodesVerboseCompleter(prefix, parsed_args, **kwargs):
-            possible = nodesverbose
-            if parsed_args.show:
-                possible = [i for i in nodesverbose if i not in
-                            parsed_args.show]
+        def ShowGroupCompleter(lst, where):
+            def Completer(prefix, parsed_args, **kwargs):
+                possible = lst
+                opt = where
+                if opt == "groupby":
+                    opt = parsed_args.groupby
+                elif opt == "show":
+                    opt = parsed_args.show
+                else:
+                    return possible
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
+                if opt:
+                    possible = [i for i in lst if i not in opt]
 
-        def NodesGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = nodesgroupby
-            if parsed_args.groupby:
-                possible = [i for i in nodesgroupby if i not in
-                            parsed_args.groupby]
+                if not prefix or prefix == '':
+                    return possible
+                else:
+                    return [o for o in possible if o.startswith(prefix)]
+            return Completer
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
+        # NodesVerboseCompleter = VerboseCompleter(nodesverbose)
+        # NodesGroupCompleter = GroupCompleter(nodesgroupby)
+        NodesVerboseCompleter = ShowGroupCompleter(nodesverbose, "show")
+        NodesGroupCompleter = ShowGroupCompleter(nodesgroupby, "groupby")
         p_lnodes = subp.add_parser('nodes', aliases=['n'],
                                    description='List nodes')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
@@ -502,28 +516,9 @@ class DrbdManage(object):
         # resources
         resverbose = ['Port']
         resgroupby = ['Name', 'Port', 'State']
+        ResVerboseCompleter = ShowGroupCompleter(resverbose, "show")
+        ResGroupCompleter = ShowGroupCompleter(resgroupby, "groupby")
 
-        def ResVerboseCompleter(prefix, parsed_args, **kwargs):
-            possible = resverbose
-            if parsed_args.show:
-                possible = [i for i in resverbose if i not in
-                            parsed_args.show]
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
-
-        def ResGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = resgroupby
-            if parsed_args.groupby:
-                possible = [i for i in resgroupby if i not in
-                            parsed_args.groupby]
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
         p_lreses = subp.add_parser('resources', aliases=['r'],
                                    description='List resources')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
@@ -536,17 +531,8 @@ class DrbdManage(object):
 
         # volumes
         volgroupby = resgroupby + ["Vol_ID", "Size", "Minor"]
+        VolGroupCompleter = ShowGroupCompleter(volgroupby, "groupby")
 
-        def VolGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = volgroupby
-            if parsed_args.groupby:
-                possible = [i for i in volgroupby if i not in
-                            parsed_args.groupby]
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
         p_lvols = subp.add_parser('volumes', aliases=['v'],
                                   description='List volumes')
         p_lvols.add_argument('-m', '--machine-readable', action="store_true")
@@ -559,17 +545,8 @@ class DrbdManage(object):
 
         # snapshots
         snapgroupby = ["Resource", "Name", "State"]
+        SnapGroupCompleter = ShowGroupCompleter(snapgroupby, "groupby")
 
-        def SnapGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = snapgroupby
-            if parsed_args.groupby:
-                possible = [i for i in snapgroupby if i not in
-                            parsed_args.groupby]
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
         p_lsnaps = subp.add_parser('snapshots', aliases=['s'],
                                    description='List snapshots')
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
@@ -581,16 +558,8 @@ class DrbdManage(object):
         # snapshot-assignments
         snapasgroupby = ["Resource", "Name", "Node", "State"]
 
-        def SnapasGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = snapasgroupby
-            if parsed_args.groupby:
-                possible = [i for i in snapasgroupby if i not in
-                            parsed_args.groupby]
+        SnapasGroupCompleter = ShowGroupCompleter(snapasgroupby, "groupby")
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
         p_lsnapas = subp.add_parser('snapshot-assignments', aliases=['sa'],
                                     description='List snapshot assignments')
         p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
@@ -604,27 +573,9 @@ class DrbdManage(object):
         assigngroupby = ['Node', 'Resource', 'Vol_ID', 'Blockdevice', 'Node_ID',
                          'State']
 
-        def AssVerboseCompleter(prefix, parsed_args, **kwargs):
-            possible = assignverbose
-            if parsed_args.show:
-                possible = [i for i in assignverbose if i not in
-                            parsed_args.show]
+        AssVerboseCompleter = ShowGroupCompleter(assignverbose, "show")
+        AssGroupCompleter = ShowGroupCompleter(assigngroupby, "groupby")
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
-
-        def AssGroupCompleter(prefix, parsed_args, **kwargs):
-            possible = assigngroupby
-            if parsed_args.groupby:
-                possible = [i for i in assigngroupby if i not in
-                            parsed_args.groupby]
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [opt for opt in possible if opt.startswith(prefix)]
         p_assignments = subp.add_parser('assignments', aliases=['a'],
                                         description='List assignments')
         p_assignments.add_argument('-m', '--machine-readable',
@@ -669,7 +620,7 @@ class DrbdManage(object):
         p_init.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
                             help='FAMILY: "ipv4" (default) or "ipv6"')
-        p_init.add_argument('-p', '--port', type=port_type,
+        p_init.add_argument('-p', '--port', type=rangecheck(1, 65535),
                             default=DRBDCTRL_DEFAULT_PORT)
         p_init.add_argument('-q', '--quiet', action="store_true")
         p_init.add_argument('ip', nargs='?', default=default_ip())
@@ -682,24 +633,17 @@ class DrbdManage(object):
         p_uninit.set_defaults(func=self.cmd_uninit)
 
         # join
-        def IPCompleter2(prefix, parsed_args, **kwargs):
-            import socket
-            name = parsed_args.peer_ip
-            ip = socket.gethostbyname(name)
-            ip = [ip]
-            return ip
-
         p_join = subp.add_parser('join')
         p_join.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
                             help='FAMILY: "ipv4" (default) or "ipv6"')
-        p_join.add_argument('-p', '--port', type=port_type,
+        p_join.add_argument('-p', '--port', type=rangecheck(1, 65535),
                             default=DRBDCTRL_DEFAULT_PORT)
         p_join.add_argument('-q', '--quiet', action="store_true")
         p_join.add_argument('local_ip')
         p_join.add_argument('local_node_id')
         p_join.add_argument('peer_name')
-        p_join.add_argument('peer_ip').completer = IPCompleter2
+        p_join.add_argument('peer_ip').completer = IPCompleter("peer_ip")
         p_join.add_argument('peer_node_id')
         p_join.add_argument('secret')
         p_join.set_defaults(func=self.cmd_join)
