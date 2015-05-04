@@ -307,7 +307,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                     "automatically resolved later)"
                     % (pool_name)
                 )
-        except (LvmThinPoolNgCheckFailedException, LvmNgException):
+        except (LvmNgCheckFailedException, LvmNgException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
@@ -636,7 +636,8 @@ class LvmThinPoolNg(storcore.StoragePlugin):
         """
         Restore a snapshot; currently an alias for create_snapshot()
         """
-        return create_snapshot(name, vol_id, source_blockdev)
+        return self.create_snapshot(name, vol_id, source_blockdev)
+    
 
 
     def remove_snapshot(self, blockdevice):
