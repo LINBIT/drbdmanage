@@ -908,7 +908,7 @@ class DrbdManage(object):
                     )
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            self.cmd_help(parser, args)
+            self.cmd_help(args)
 
         return fn_rc
 
@@ -1002,7 +1002,7 @@ class DrbdManage(object):
         return self._connect(args, False)
 
     def cmd_reconnect(self, args):
-        return self._connect(parser, args, True)
+        return self._connect(args, True)
 
     def _connect(self, args, reconnect):
         fn_rc = 1
