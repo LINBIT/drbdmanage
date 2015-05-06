@@ -28,13 +28,16 @@ import drbdmanage.drbd.drbdcommon
 import drbdmanage.storage.storagecommon
 import drbdmanage.storage.storagecore as storcore
 import drbdmanage.storage.persistence as storpers
+import drbdmanage.storage.lvm_common as lvmcom
 
 import drbdmanage.consts as consts
 import drbdmanage.exceptions as exc
+import drbdmanage.storage.lvm_exceptions as lvmexc
 import drbdmanage.utils as utils
 import drbdmanage.conf.conffile as cf
 
-class LvmThinPoolNg(storcore.StoragePlugin):
+
+class LvmThinPoolNg(lvmcom.LvmCommon):
 
     """
     LVM thin pools/thin volumes backing store plugin for the drbdmanage server
@@ -236,7 +239,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
             pool_size = long(size * (pool_ratio / 100))
 
             # Generate the volume and pool names
-            lv_name   = self._lv_name(name, vol_id)
+            lv_name   = self.lv_name(name, vol_id)
             pool_name = ThinPool.generate_pool_name(name, vol_id)
 
             # Check for collisions (very unlikely)
@@ -307,13 +310,13 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                     "automatically resolved later)"
                     % (pool_name)
                 )
-        except (LvmNgCheckFailedException, LvmNgException):
+        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmNgUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPoolNg: LV '%s' exists already, but is unknown to "
@@ -337,11 +340,11 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 pool_name = pool.get_name()
                 try:
                     self._remove_lv(lv_name)
-                except LvmNgException:
+                except lvmexc.LvmNgException:
                     pass
                 try:
                     self._remove_lv(pool_name)
-                except LvmNgException:
+                except lvmexc.LvmNgException:
                     pass
                 try:
                     lv_exists = self._check_lv_exists(lv_name)
@@ -362,7 +365,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                             del self._pools[pool_name]
                         except KeyError:
                             pass
-                except (LvmNgCheckFailedException, KeyError):
+                except (lvmexc.LvmNgCheckFailedException, KeyError):
                     pass
 
         return blockdev
@@ -480,14 +483,14 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                         #       be better to return an error here
                         fn_rc = exc.DM_SUCCESS
             else:
-                raise LvmNgUnmanagedVolumeException
-        except (LvmNgCheckFailedException, LvmNgException):
+                raise lvmexc.LvmNgUnmanagedVolumeException
+        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmNgUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPoolNg: LV '%s' exists, but is unknown to "
@@ -548,7 +551,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
 
         try:
             if pool is not None:
-                snaps_base_name = self._lv_name(lv_name, vol_id)
+                snaps_base_name = self.lv_name(lv_name, vol_id)
                 snaps_suffix    = pool.extract_pool_name_suffix()
                 snaps_name      = snaps_base_name + snaps_suffix
 
@@ -574,13 +577,13 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                         self._pool_lookup[snaps_name] = pool_name
                         self.up_blockdevice(blockdev)
                         self._save_state(self._pools, self._volumes)
-        except (LvmNgCheckFailedException, LvmNgException):
+        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmNgUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPoolNg: LV '%s' exists already, but is unknown to "
@@ -594,7 +597,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 snaps_name   = blockdev.get_name()
                 try:
                     self._remove_lv(snaps_name)
-                except LvmNgException:
+                except lvmexc.LvmNgException:
                     pass
                 try:
                     snaps_exists = self._check_lv_exists(snaps_name)
@@ -620,7 +623,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                             del self._pools[pool_name]
                         except KeyError:
                             pass
-                except (LvmNgCheckFailedException, KeyError):
+                except (lvmexc.LvmNgCheckFailedException, KeyError):
                     pass
         except Exception as unhandled_exc:
             logging.error(
@@ -637,7 +640,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
         Restore a snapshot; currently an alias for create_snapshot()
         """
         return self.create_snapshot(name, vol_id, source_blockdev)
-    
+
 
 
     def remove_snapshot(self, blockdevice):
@@ -689,7 +692,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                     "from the OS: %s"
                     % (self._cmd_vgchange, str(os_err))
                 )
-                raise LvmNgException
+                raise lvmexc.LvmNgException
 
             if pool_name is not None:
                 try:
@@ -711,7 +714,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                         "from the OS: %s"
                         % (self._cmd_lvchange, str(os_err))
                     )
-                    raise LvmNgException
+                    raise lvmexc.LvmNgException
             else:
                 logging.error(
                     "LvmThinPoolNg: Incomplete activation of volume '%s', "
@@ -736,10 +739,10 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                     "external program '%s', error message from the OS: %s"
                     % (self._cmd_lvchange, str(os_err))
                 )
-                raise LvmNgException
+                raise lvmexc.LvmNgException
             if vg_activated and pool_activated and lv_activated:
                 fn_rc = exc.DM_SUCCESS
-        except (LvmNgCheckFailedException, LvmNgException):
+        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
@@ -798,8 +801,8 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 pool_data.strip()
                 try:
                     size_data, free_data = pool_data.split(",")
-                    size_data = self._discard_fraction(size_data)
-                    free_data = self._discard_fraction(free_data)
+                    size_data = self.discard_fraction(size_data)
+                    free_data = self.discard_fraction(free_data)
 
                     # Parse values and assign them in two steps, so that
                     # either both values or none of them will be assigned,
@@ -1012,34 +1015,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
         """
         Loads settings from the module configuration file
         """
-        conf_file   = None
-        loaded_conf = None
-
-        try:
-            conf_file = open(LvmThinPoolNg.LVM_CONFFILE, "r")
-            conf_obj  = cf.ConfFile(conf_file)
-            loaded_conf = conf_obj.get_conf()
-        except IOError as io_err:
-            if io_err.errno == errno.EACCES:
-                logging.error(
-                    "LvmThinPoolNg: Cannot open configuration file '%s': "
-                    "Permission denied"
-                    % (LvmThinPoolNg.LVM_CONFFILE)
-                )
-            elif io_err.errno == errno.ENOENT:
-                # No configuration file, use defaults. Not an error, ignore.
-                pass
-            else:
-                logging.error(
-                    "LvmThinPoolNg: Cannot open configuration file '%s', "
-                    "error message from the OS: %s"
-                    % (LvmThinPoolNg.LVM_CONFFILE, io_err.strerror)
-                )
-        finally:
-            if conf_file is not None:
-                conf_file.close()
-
-        return loaded_conf
+        return self.load_conf(LvmThinPoolNg.LVM_CONFFILE, "LvmThinPoolNg")
 
 
     def _check_lv_exists(self, lv_name):
@@ -1047,37 +1023,12 @@ class LvmThinPoolNg(storcore.StoragePlugin):
         Check whether an LVM logical volume exists
 
         @returns: True if the LV exists, False if the LV does not exist
-        Throws an LVMException if the check itself fails
+        Throws an LvmNgCheckFailedException if the check itself fails
         """
-        exists = False
-
-        try:
-            lvm_proc = subprocess.Popen(
-                [
-                    self._cmd_lvs, "--noheadings", "--options", "lv_name",
-                    self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" + lv_name
-                ],
-                0, self._cmd_lvs,
-                env=self._subproc_env, stdout=subprocess.PIPE,
-                close_fds=True
-            )
-            lv_entry = lvm_proc.stdout.readline()
-            if len(lv_entry) > 0:
-                lv_entry = lv_entry[:-1].strip()
-                if lv_entry == lv_name:
-                    exists = True
-            lvm_rc = lvm_proc.wait()
-            # LVM's "lvs" utility exits with exit code 5 if the
-            # LV was not found
-            if lvm_rc != 0 and lvm_rc != LvmThinPoolNg.LVM_LVS_ENOENT:
-                raise LvmNgCheckFailedException
-        except OSError:
-            logging.error(
-                "LvmThinPoolNg: Unable to retrieve the list of existing LVs"
-            )
-            raise LvmNgCheckFailedException
-
-        return exists
+        return self.check_lv_exists(
+            lv_name, self._conf[LvmThinPoolNg.KEY_VG_NAME],
+            self._cmd_lvs, self._subproc_env, "LvmThinPoolNg"
+        )
 
 
     def _create_lv(self, lv_name, pool_name, size):
@@ -1100,7 +1051,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise LvmNgException
+            raise lvmexc.LvmNgException
 
 
     def _create_snapshot(self, snaps_name, lv_name):
@@ -1125,7 +1076,7 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise LvmNgException
+            raise lvmexc.LvmNgException
 
 
     def _create_pool(self, pool_name, size):
@@ -1147,46 +1098,15 @@ class LvmThinPoolNg(storcore.StoragePlugin):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise LvmNgException
+            raise lvmexc.LvmNgException
 
 
     def _remove_lv(self, lv_name):
         """
         Removes an LVM logical volume
         """
-        try:
-            subprocess.call(
-                [
-                    self._cmd_remove, "--force",
-                    self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" + lv_name
-                ],
-                0, self._cmd_remove,
-                env=self._subproc_env, close_fds=True
-            )
-        except OSError as os_err:
-            logging.error(
-                "LvmThinPoolNg: LV removal failed, unable to run "
-                "external program '%s', error message from the OS: %s"
-                % (self._cmd_remove, str(os_err))
-            )
-            raise LvmNgException
-
-
-    def _lv_name(self, name, vol_id):
-        """
-        Build an LV name from the resource name and volume id
-        """
-        return ("%s_%.2d" % (name, vol_id))
-
-
-    def _discard_fraction(self, text):
-        """
-        Discards the fraction part from a string representing a number
-        """
-        idx = text.find(".")
-        if idx != -1:
-            text = text[:idx]
-        return text
+        self.remove_lv(lv_name, self._conf[LvmThinPoolNg.KEY_VG_NAME],
+                       self._cmd_remove, self._subproc_env, "LvmThinPoolNg")
 
 
 class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
@@ -1301,35 +1221,3 @@ class ThinPoolPersistence(storpers.GenericPersistence):
         except (KeyError, TypeError):
             pass
         return thin_pool
-
-
-class LvmNgCheckFailedException(Exception):
-
-    """
-    Indicates failure to check for existing logical volumes.
-    Not to be exposed to other parts of drbdmanage.
-    """
-
-    def __init__(self):
-        super(LvmNgCheckFailedException, self).__init__()
-
-
-class LvmNgException(Exception):
-
-    """
-    Indicates failure during the execution of LvmNg internal functions.
-    Not to be exposed to other parts of drbdmanage.
-    """
-
-    def __init__(self):
-        super(LvmNgException, self).__init__()
-
-
-class LvmNgUnmanagedVolumeException(Exception):
-
-    """
-    Indicates the attempt to operate on a volume not managed by drbdmanage
-    """
-
-    def __init__(self):
-        super(LvmNgUnmanagedVolumeException, self).__init__()
