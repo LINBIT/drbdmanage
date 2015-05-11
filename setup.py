@@ -98,7 +98,7 @@ class BuildManCommand(Command):
             if os.path.isfile(outfile):
                 continue
             print "Generating %s ..." % (outfile)
-            mangen = ["help2man", "-n", toplevel, '-s', '8',
+            mangen = ["help2man", "-n", toplevel, '-s', mansection,
                       '--version-string=%s' % (get_version()), "-N",
                       '"./drbdmanage_client.py %s"' % (toplevel)]
 
@@ -106,6 +106,9 @@ class BuildManCommand(Command):
             manpage = subprocess.check_output(toexec, shell=True)
             manpage = manpage.replace(replace[0], replace[1])
             manpage = manpage.replace(replace[0].upper(), replace[1].upper())
+            manpage = manpage.replace(toplevel.upper(), mansection)
+            manpage = manpage.replace("%s %s" % (replace[1], toplevel),
+                                      "%s_%s" % (replace[1], toplevel))
             with gzip.open(outfile, 'wb') as f:
                 f.write(manpage)
 
