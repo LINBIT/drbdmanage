@@ -212,6 +212,32 @@ class Table():
                 print fstr.format(*row)
 
 
+def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
+    import subprocess
+    import sys
+
+    try:
+        ssh_base = ["ssh", "-oBatchMode=yes",
+                    "-oConnectTimeout=2", "root@" + ip]
+        if subprocess.call(ssh_base + ["true"]) == 0:
+            sys.stdout.write(
+                "\nExecuting %s command using ssh.\n"
+                "IMPORTANT: The output you see comes from %s\n"
+                "IMPORTANT: Your input is executed on %s\n"
+                % (cmdname, name, name)
+            )
+            ssh_cmd = ssh_base + cmdline
+            if quiet:
+                ssh_cmd.append("-q")
+            subprocess.check_call(ssh_cmd)
+            return True
+    except subprocess.CalledProcessError:
+        sys.stderr.write("Error: Attempt to execute the %s command remotely"
+                         "failed\n" % (cmdname))
+
+    return False
+
+
 def checkrange(v, i, j):
     return i <= int(v) <= j
 

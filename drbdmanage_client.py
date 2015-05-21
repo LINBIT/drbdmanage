@@ -50,7 +50,7 @@ from drbdmanage.consts import (
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import (
-    build_path, bool_to_string, map_val_or_dflt, checkrange
+    build_path, bool_to_string, map_val_or_dflt, checkrange, ssh_exec
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -821,22 +821,8 @@ class DrbdManage(object):
             elif flag_drbdctrl:
                 join_performed = False
                 if flag_autojoin:
-                    try:
-                        sshc = ["ssh", "-oBatchMode=yes",
-                                "-oConnectTimeout=2", "root@" + ip]
-                        if subprocess.call(sshc + ["true"]) == 0:
-                            sys.stdout.write(
-                                "\nExecuting join command on "
-                                "%s using ssh.\n" % (name)
-                            )
-                            ssh_joinc = sshc + joinc
-                            if args.quiet:
-                                ssh_joinc.append("-q")
-                            subprocess.check_call(ssh_joinc)
-                            join_performed = True
-                    except subprocess.CalledProcessError:
-                        sys.stderr.write("Error: Attempt to execute the "
-                                         "join command remotely failed\n")
+                    join_performed = ssh_exec("join", ip, name, joinc,
+                                              args.quiet)
                 if not join_performed:
                     sys.stdout.write("\nJoin command for node %s:\n"
                                      "%s\n" % (name, joinc_text))
