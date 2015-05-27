@@ -509,6 +509,8 @@ class DrbdManage(object):
                               choices=nodesverbose).completer = NodesVerboseCompleter
         p_lnodes.add_argument('-g', '--groupby', nargs='+',
                               choices=nodesgroupby).completer = NodesGroupCompleter
+        p_lnodes.add_argument('-N', '--nodes', nargs='+',
+                              help='Filter by list of nodes').completer = NodeCompleter
         p_lnodes.add_argument('--separators', action="store_true")
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
@@ -525,6 +527,8 @@ class DrbdManage(object):
                               choices=resverbose).completer = ResVerboseCompleter
         p_lreses.add_argument('-g', '--groupby', nargs='+',
                               choices=resgroupby).completer = ResGroupCompleter
+        p_lreses.add_argument('-R', '--resources', nargs='+',
+                              help='Filter by list of resources').completer = ResourceCompleter
         p_lreses.add_argument('--separators', action="store_true")
         p_lreses.set_defaults(func=self.cmd_list_resources)
 
@@ -540,6 +544,8 @@ class DrbdManage(object):
         p_lvols.add_argument('-g', '--groupby', nargs='+',
                              choices=volgroupby).completer = VolGroupCompleter
         p_lvols.add_argument('--separators', action="store_true")
+        p_lvols.add_argument('-R', '--resources', nargs='+',
+                             help='Filter by list of resources').completer = ResourceCompleter
         p_lvols.set_defaults(func=self.cmd_list_volumes)
 
         # snapshots
@@ -552,6 +558,8 @@ class DrbdManage(object):
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
                               choices=snapgroupby).completer = SnapGroupCompleter
         p_lsnaps.add_argument('--separators', action="store_true")
+        p_lsnaps.add_argument('-R', '--resources', nargs='+',
+                              help='Filter by list of resources').completer = ResourceCompleter
         p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
 
         # snapshot-assignments
@@ -565,6 +573,10 @@ class DrbdManage(object):
         p_lsnapas.add_argument('-g', '--groupby', nargs='+',
                                choices=snapasgroupby).completer = SnapasGroupCompleter
         p_lsnapas.add_argument('--separators', action="store_true")
+        p_lsnapas.add_argument('-N', '--nodes', nargs='+',
+                               help='Filter by list of nodes').completer = NodeCompleter
+        p_lsnapas.add_argument('-R', '--resources', nargs='+',
+                               help='Filter by list of resources').completer = ResourceCompleter
         p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
 
         # assignments
@@ -584,6 +596,10 @@ class DrbdManage(object):
         p_assignments.add_argument('-g', '--groupby', nargs='+',
                                    choices=assigngroupby).completer = AssGroupCompleter
         p_assignments.add_argument('--separators', action="store_true")
+        p_assignments.add_argument('-N', '--nodes', nargs='+',
+                                   help='Filter by list of nodes').completer = NodeCompleter
+        p_assignments.add_argument('-R', '--resources', nargs='+',
+                                   help='Filter by list of resources').completer = ResourceCompleter
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
         # export
@@ -1328,11 +1344,11 @@ class DrbdManage(object):
             exit(0)
         return 0
 
-    def _get_nodes(self, sort=False):
+    def _get_nodes(self, sort=False, node_filter=[]):
         self.dbus_init()
 
         server_rc, node_list = self._server.list_nodes(
-            dbus.Array([], signature="s"),
+            dbus.Array(node_filter, signature="s"),
             0,
             dbus.Dictionary({}, signature="ss"),
             dbus.Array([], signature="s")
@@ -1348,7 +1364,10 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
-        server_rc, node_list = self._get_nodes(sort=True)
+        node_filter_arg = [] if args.nodes is None else args.nodes
+
+        server_rc, node_list = self._get_nodes(sort=True,
+                                               node_filter=node_filter_arg)
 
         if (not machine_readable) and (node_list is None
                                        or len(node_list) == 0):
@@ -1452,19 +1471,19 @@ class DrbdManage(object):
     def cmd_list_volumes(self, args):
         return self._list_resources(args, True)
 
-    def __list_resources(self, list_volumes):
+    def __list_resources(self, list_volumes, resource_filter=[]):
         self.dbus_init()
 
         if list_volumes:
             server_rc, res_list = self._server.list_volumes(
-                dbus.Array([], signature="s"),
+                dbus.Array(resource_filter, signature="s"),
                 0,
                 dbus.Dictionary({}, signature="ss"),
                 dbus.Array([], signature="s")
             )
         else:
             server_rc, res_list = self._server.list_resources(
-                dbus.Array([], signature="s"),
+                dbus.Array(resource_filter, signature="s"),
                 0,
                 dbus.Dictionary({}, signature="ss"),
                 dbus.Array([], signature="s")
@@ -1492,7 +1511,11 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
-        server_rc, res_list = self.__list_resources(list_volumes)
+        resource_filter_arg = [] if args.resources is None else args.resources
+
+        server_rc, res_list = self.__list_resources(
+            list_volumes, resource_filter=resource_filter_arg
+        )
 
         if (not machine_readable) and (res_list is None or len(res_list) == 0):
                 sys.stdout.write("No resources defined\n")
@@ -1597,11 +1620,11 @@ class DrbdManage(object):
         t.show()
         return 0
 
-    def _list_snapshots(self):
+    def _list_snapshots(self, resource_filter=[]):
         self.dbus_init()
 
         server_rc, res_list = self._server.list_snapshots(
-            dbus.Array([], signature="s"),
+            dbus.Array(resource_filter, signature="s"),
             dbus.Array([], signature="s"),
             0,
             dbus.Dictionary({}, signature="ss"),
@@ -1618,7 +1641,11 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
-        server_rc, res_list = self._list_snapshots()
+        resource_filter_arg = [] if args.resources is None else args.resources
+
+        server_rc, res_list = self._list_snapshots(
+            resource_filter=resource_filter_arg
+        )
 
         if (not machine_readable) and (res_list is None
                                        or len(res_list) == 0):
@@ -1659,10 +1686,13 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
+        node_filter_arg = [] if args.nodes is None else args.nodes
+        resource_filter_arg = [] if args.resources is None else args.resources
+
         server_rc, assg_list = self._server.list_snapshot_assignments(
+            dbus.Array(resource_filter_arg, signature="s"),
             dbus.Array([], signature="s"),
-            dbus.Array([], signature="s"),
-            dbus.Array([], signature="s"),
+            dbus.Array(node_filter_arg, signature="s"),
             0,
             dbus.Dictionary({}, signature="ss"),
             dbus.Array([], signature="s")
@@ -1722,9 +1752,12 @@ class DrbdManage(object):
 
         machine_readable = args.machine_readable
 
+        node_filter_arg = [] if args.nodes is None else args.nodes
+        resource_filter_arg = [] if args.resources is None else args.resources
+
         server_rc, assg_list = self._server.list_assignments(
-            dbus.Array([], signature="s"),
-            dbus.Array([], signature="s"),
+            dbus.Array(node_filter_arg, signature="s"),
+            dbus.Array(resource_filter_arg, signature="s"),
             0,
             dbus.Dictionary({}, signature="ss"),
             dbus.Array([], signature="s")
