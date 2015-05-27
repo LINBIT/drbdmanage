@@ -235,7 +235,7 @@ class DrbdManage(object):
                                     description='Modify a resource')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_mod_res.add_argument('name',
-                               help='Name of the resource to modify'). completer = ResourceCompleter
+                               help='Name of the resource to modify').completer = ResourceCompleter
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
 
         # remove-resource
