@@ -60,7 +60,7 @@ class DrbdManager(object):
     def __init__(self, ref_server):
         logging.debug("DrbdManager: Enter function __init__()")
         self._server  = ref_server
-        self._resconf = drbdmanage.conf.conffile.DrbdAdmConf()
+        self._resconf = drbdmanage.conf.conffile.DrbdAdmConf(self._server._objects_root)
         self.reconfigure()
         logging.debug("DrbdManager: Exit function __init__()")
 
@@ -312,6 +312,16 @@ class DrbdManager(object):
                         assg.set_rc(fn_rc)
                         if fn_rc != 0:
                             failed_actions = True
+
+                """
+                Update config (triggerd by {net,disk,resource}-options command)
+                """
+                if is_set(assg_actions, Assignment.FLAG_UPD_CONFIG):
+                    fn_rc = self._reconfigure_assignment(assg)
+                    if fn_rc == 0:
+                        assg.clear_tstate_flags(Assignment.FLAG_UPD_CONFIG)
+                    else:
+                        failed_actions = True
 
                 """
                 ============================================================
@@ -1510,6 +1520,28 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Exit function _detach()")
         return fn_rc
 
+    def _reconfigure_assignment(self, assignment):
+        """
+        Applies configuration changes (...)
+        """
+        import os
+
+        fn_rc = self._server.export_assignment_conf(assignment)
+
+        if fn_rc == 0:
+            drbd_proc = self._drbdadm.adjust(assignment.get_resource().get_name())
+            if drbd_proc is not None:
+                global_path = os.path.join(self._server._conf[consts.KEY_DRBD_CONFPATH],
+                                           'drbdmanage_global_common.conf')
+                global_conf = open(global_path, "w")
+                self._resconf.write(drbd_proc.stdin, assignment, False,
+                                    global_conf)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+        return fn_rc
 
     def primary_deployment(self, assignment):
         """
@@ -2580,6 +2612,7 @@ class Assignment(GenericDrbdObject):
     FLAG_OVERWRITE = 0x40000
     # --discard-my-data upon connect / resolve split-brain
     FLAG_DISCARD   = 0x80000
+    FLAG_UPD_CONFIG = 0x100000
 
     # CSTATE_MASK must include all valid current state flags;
     # used to mask the value supplied to set_cstate() to prevent setting
@@ -2591,11 +2624,12 @@ class Assignment(GenericDrbdObject):
     # non-existent flags
     TSTATE_MASK    = (FLAG_DEPLOY | FLAG_CONNECT | FLAG_DISKLESS |
                       FLAG_UPD_CON | FLAG_RECONNECT |
-                      FLAG_OVERWRITE | FLAG_DISCARD)
+                      FLAG_OVERWRITE | FLAG_DISCARD | FLAG_UPD_CONFIG)
 
     # Mask applied to ignore action flags on the target state
     # of an assignment.
-    ACT_IGN_MASK   = (TSTATE_MASK ^ (FLAG_DISCARD | FLAG_OVERWRITE))
+    ACT_IGN_MASK   = (TSTATE_MASK ^
+                      (FLAG_DISCARD | FLAG_OVERWRITE | FLAG_UPD_CONFIG))
 
 
     def __init__(self, node, resource, node_id, cstate, tstate,
@@ -3250,6 +3284,12 @@ class Assignment(GenericDrbdObject):
             properties[consts.CSTATE_PREFIX + consts.FLAG_DISKLESS] = (
                 bool_to_string(
                     is_set(self._cstate, self.FLAG_DISKLESS)
+                )
+            )
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG] = (
+                bool_to_string(
+                    is_set(self._tstate, self.FLAG_UPD_CONFIG)
                 )
             )
 

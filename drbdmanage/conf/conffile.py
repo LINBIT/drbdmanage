@@ -22,6 +22,7 @@ import logging
 import drbdmanage.utils as dmutils
 
 from drbdmanage.exceptions import InvalidMinorNrException
+from drbdmanage.propscontainer import PropsContainer
 
 is_set   = dmutils.is_set
 is_unset = dmutils.is_unset
@@ -262,30 +263,100 @@ class DrbdAdmConf(object):
 
     KEY_SECRET = "secret"
     KEY_ADDRESS = "port"
-    KEY_BDEV   = "blockdevice"
+    KEY_BDEV = "blockdevice"
 
-    def __init__(self):
-        pass
+    def __init__(self, objects_root):
+        self.indentwidth = 3
+        self.objects_root = objects_root
 
 
 # TODO: only have a single writer that returns a template and a dict of substitutions,
 # and use that in all the functions below.
-    def write(self, stream, assignment, undeployed_flag):
+    def write(self, stream, assignment, undeployed_flag, globalstream=False):
+
+        def get_setup_props(item, subnamespace):
+            """
+            Returns the props for this item for the given subnamespace on
+            success, otherwise 0. Return value is something len() can handle
+            """
+            import os
+            if subnamespace.startswith('/'):
+                subnamespace = subnamespace[1:]
+
+            try:
+                props = item.get_props()
+                if props:
+                    # this part of drbdmanage is GNU/Linux only and our namespaces
+                    # follow a unix-like path structure, therfore os.path.join is
+                    # the way to go
+                    ns = os.path.join(PropsContainer.NS["setupopt"], subnamespace)
+                    ns = os.path.normpath(ns) + '/'
+                    opts = props.get_all_props(ns)
+            except:
+                return {}
+
+            return opts if len(opts) else {}
+
+        def write_section(section, curstream, opts, indentlevel=0):
+            # opts are k, v pairs
+
+            if len(opts):
+                curstream.write("%s%s {\n" % (' ' * indentlevel * self.indentwidth,
+                                              section))
+
+                spaces = ' ' * self.indentwidth * (indentlevel + 1)
+                for k, v in opts.iteritems():
+                    curstream.write("%s %s %s;\n" % (spaces, k, v))
+
+                curstream.write("%s}\n" % (' ' * indentlevel * self.indentwidth))
+
         try:
+            wrote_global = False
+            globalstream_name = False
+
+            if self.objects_root:
+                common = self.objects_root["common"]
+                if common:
+                    diskopts = get_setup_props(common, "/disko/")
+                    netopts = get_setup_props(common, "/neto/")
+                    if globalstream:
+                        globalstream.write('common {\n')
+                        if diskopts or netopts:
+                            if diskopts:
+                                write_section('disk', globalstream, diskopts, 1)
+                            if netopts:
+                                write_section('net', globalstream, netopts, 1)
+                        else:
+                            globalstream.write('# currently empty\n')
+                        globalstream.write('}\n')
+                        wrote_global = True
+                        globalstream_name = globalstream.name
+                        globalstream.close()
+
             resource = assignment.get_resource()
-            secret   = resource.get_secret()
+            secret = resource.get_secret()
             if secret is None:
                 secret = ""
 
             # begin resource
-            stream.write(
-                "resource %s {\n"
-                "    net {\n"
-                "        cram-hmac-alg sha1;\n"
-                "        shared-secret \"%s\";\n"
-                "    }\n"
-                % (resource.get_name(), secret)
-            )
+            stream.write("resource %s {\n" % (resource.get_name()))
+
+            if wrote_global:
+                stream.write('template-file "%s";\n\n' % (globalstream_name))
+
+            # begin resource/net-options
+            netopts = get_setup_props(resource, "neto/")
+            netopts['cram-hmac-alg'] = 'sha1'
+            netopts['shared-secret'] = '"%s"' % (secret)
+            write_section('net', stream, netopts, 1)
+
+            resopts = get_setup_props(resource, "/reso/")
+            write_section('options', stream, resopts, 1)
+
+            # begin resource/disk options
+            diskopts = get_setup_props(resource, "/disko/")
+            write_section('disk', stream, diskopts, 1)
+            # end resource/disk options
 
             # begin resource/nodes
             local_node = assignment.get_node()
@@ -301,11 +372,13 @@ class DrbdAdmConf(object):
                             % (node.get_name(), assg.get_node_id(),
                                node.get_addr(), resource.get_port())
                         )
+                        # begin resource/disk options
+                        diskopts = get_setup_props(node, "/disko/")
                         for vol_state in assg.iterate_volume_states():
                             tstate = vol_state.get_tstate()
                             if (tstate & vol_state.FLAG_DEPLOY) != 0:
-                                volume  = vol_state.get_volume()
-                                minor   = volume.get_minor()
+                                volume = vol_state.get_volume()
+                                minor = volume.get_minor()
                                 if minor is None:
                                     raise InvalidMinorNrException
                                 bd_path = vol_state.get_bd_path()
@@ -334,12 +407,10 @@ class DrbdAdmConf(object):
                                        bd_path)
                                 )
                                 if not diskless:
-                                    stream.write(
-                                        "            disk {\n"
-                                        "                size %dk;\n"
-                                        "            }\n"
-                                        % (volume.get_size_kiB())
-                                    )
+                                    diskopts = get_setup_props(volume, "/disko/")
+                                    diskopts['size'] = str(volume.get_size_kiB()) + 'k'
+                                    write_section('disk', stream, diskopts, 4)
+                                    # end volume/disk options
                                 stream.write(
                                     "            meta-disk internal;\n"
                                     "        }\n"

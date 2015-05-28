@@ -319,6 +319,13 @@ class DBusServer(dbus.service.Object):
         """
         return self._server.update_pool(node_names)
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="a{ss}",
+        out_signature="a(isa(ss))"
+    )
+    def set_drbdsetup_props(self, props):
+        return self._server.set_drbdsetup_props(dict(props))
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,

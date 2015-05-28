@@ -174,7 +174,9 @@ class AssignmentView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
          consts.FLAG_RECONNECT,  None,       None],
         [consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
-         consts.FLAG_UPD_CON,    None,       None]
+         consts.FLAG_UPD_CON,    None,       None],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG,
+         consts.FLAG_UPD_CONFIG, None,       None]
     ]
 
     # Human readable texts for current state flags
@@ -206,7 +208,9 @@ class AssignmentView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_RECONNECT,
          "r",     "-",    "?"],
         [consts.TSTATE_PREFIX + consts.FLAG_UPD_CON,
-         "u",     "-",    "?"]
+         "u",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG,
+         "C",     "-",    "?"]
     ]
 
 
@@ -249,6 +253,9 @@ class AssignmentView(GenericView):
         a_upd_con = utils.string_to_bool(
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPD_CON)
         )
+        a_upd_config = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG)
+        )
 
         if (not c_deploy) and (not t_deploy):
             self.add_pending_text("cleanup")
@@ -283,6 +290,9 @@ class AssignmentView(GenericView):
             self.raise_level(GenericView.STATE_WARN)
         if a_upd_con and t_deploy:
             self.add_pending_text("adjust connections")
+            self.raise_level(GenericView.STATE_WARN)
+        if a_upd_config and t_deploy:
+            self.add_pending_text("adjust configuration")
             self.raise_level(GenericView.STATE_WARN)
 
         return self.get_level(), self.format_state_info()

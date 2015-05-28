@@ -67,6 +67,7 @@ from drbdmanage.snapshots.snapshots import (
 )
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
 from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
+from drbdmanage.propscontainer import PropsContainer
 
 
 class DrbdManageServer(object):
@@ -801,6 +802,18 @@ class DrbdManageServer(object):
             DrbdManageServer.catch_internal_error(exc)
         return volume
 
+    def get_common(self):
+        """
+        Retrieves the common object
+
+        @return: the common object, or None on failure
+        """
+        common = None
+        try:
+            common = self._common
+        except Exception as exc:
+            DrbdManageServer.catch_internal_error(exc)
+        return common
 
     # Get the node this server is running on
     def get_instance_node(self):
@@ -2393,6 +2406,71 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
 
+    def set_drbdsetup_props(self, props):
+        fn_rc = []
+        item, props_cont = False, False
+        persist = None
+
+        def set_updflag(item):
+            for assg in item.iterate_assignments():
+                assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
+
+        try:
+            persist = self.begin_modify_conf()
+
+            target = props.pop("target")
+            otype = props.pop("type")
+            target_name = props.pop(target, False)
+
+            if target == "common":
+                item = self.get_common()
+            elif target == "node":
+                item = self.get_node(target_name)
+            elif target == "resource":
+                item = self.get_resource(target_name)
+            elif target == "volume":
+                res_name, vol_id = target_name.split('/')
+                item = self.get_volume(res_name, int(vol_id))
+                item_res = self.get_resource(res_name)
+
+            if item:
+                props_cont = item.get_props()
+
+            if props_cont and persist:
+                for k, v in props.iteritems():
+                    ns = PropsContainer.NS["setupopt"] + "%s/" % (otype)
+                    if k.startswith('unset'):
+                        props_cont.remove_prop(k[len('unset-'):], ns)
+                    else:
+                        props_cont.set_prop(k, v, ns)
+
+                if target == "volume":
+                    # props got set for 'item', which was the volume.
+                    # now swith item to item_res, as the flag should be
+                    # set on the resource.
+                    item = item_res
+
+                if target == "common":
+                    for node in self._nodes.itervalues():
+                        set_updflag(node)
+                else:
+                    set_updflag(item)
+                    # assg.get_props().new_serial()
+
+                self._drbd_mgr.perform_changes()
+                self.save_conf_data(persist)
+
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc
+        except PersistenceException:
+            logging.error("cannot save updated drdb setup options")
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+
+        return fn_rc
 
     def list_nodes(self, node_names, serial, filter_props, req_props):
         """
@@ -3304,21 +3382,28 @@ class DrbdManageServer(object):
         if not file_path.endswith("/"):
             file_path += "/"
         file_path += "drbdmanage_" + resource.get_name() + ".res"
+
+        global_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                   'drbdmanage_global_common.conf')
         assg_conf = None
+        global_conf = None
         try:
             assg_conf = open(file_path, "w")
-            writer    = DrbdAdmConf()
-            writer.write(assg_conf, assignment, False)
+            global_conf = open(global_path, "w")
+            writer = DrbdAdmConf(self._objects_root)
+            writer.write(assg_conf, assignment, False, global_conf)
         except IOError as ioerr:
             logging.error(
-                "cannot write to configuration file '%s', error "
+                "cannot write to configuration file '%s' or '%s', error "
                 "returned by the OS is: %s"
-                % (file_path, ioerr.strerror)
+                % (file_path, global_path, ioerr.strerror)
             )
             fn_rc = 1
         finally:
             if assg_conf is not None:
                 assg_conf.close()
+            if global_conf is not None:
+                global_conf.close()
         return fn_rc
 
 
@@ -3517,7 +3602,7 @@ class DrbdManageServer(object):
 
         drbdctrl_res = None
 
-        conffile = DrbdAdmConf()
+        conffile = DrbdAdmConf(self._objects_root)
         try:
             drbdctrl_res = open(
                 build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE),
@@ -3599,7 +3684,7 @@ class DrbdManageServer(object):
             assignment = node.get_assignment(res_name)
             if assignment is not None:
                 conf_buffer = StringIO.StringIO()
-                writer = DrbdAdmConf()
+                writer = DrbdAdmConf(self._objects_root)
                 writer.write(conf_buffer, assignment, False)
                 val_list = list(reduce(lambda x, y: x + y, values.items()))
                 response = [conf_buffer.getvalue()] + val_list
@@ -3633,7 +3718,7 @@ class DrbdManageServer(object):
             assignment = node.get_assignment(res_name)
             if assignment is not None:
                 conf_buffer = StringIO.StringIO()
-                writer = DrbdAdmConf()
+                writer = DrbdAdmConf(self._objects_root)
                 writer.write(conf_buffer, assignment, False)
                 response = [conf_buffer.getvalue()]
                 conf_buffer.close()
@@ -3729,7 +3814,7 @@ class DrbdManageServer(object):
         # use default values
         fn_rc        = 1
         drbdctrl_res = None
-        conffile     = DrbdAdmConf()
+        conffile     = DrbdAdmConf(self._objects_root)
         update       = False
 
         if (secret is not None and bdev is not None and port is not None):

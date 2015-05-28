@@ -41,6 +41,7 @@ VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
 SNAPS_NAME          = "snaps_name"
 ERROR_CODE          = "error_code"
+COMMON_NAME         = "common_name"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
@@ -87,6 +88,7 @@ FLAG_UPD_CON        = "upd_con"
 FLAG_RECONNECT      = "reconnect"
 FLAG_OVERWRITE      = "overwrite"
 FLAG_DISCARD        = "discard"
+FLAG_UPD_CONFIG     = "upd_config"
 
 # volume states:
 FLAG_ATTACH         = "attach"

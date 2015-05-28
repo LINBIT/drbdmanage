@@ -49,8 +49,9 @@ from drbdmanage.consts import (
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
+from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
-    build_path, bool_to_string, map_val_or_dflt, checkrange, ssh_exec
+    build_path, bool_to_string, map_val_or_dflt, rangecheck, ssh_exec
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -204,12 +205,6 @@ class DrbdManage(object):
         p_rm_node.add_argument('name', help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
-        def rangecheck(i, j):
-            def range(p):
-                if not checkrange(p, i, j):
-                    raise argparse.ArgumentTypeError('Range: [%s, %s]' % (i, j))
-                return p
-            return range
         # new-resource
         p_new_res = subp.add_parser('add-resource',
                                     description='Add a new resource',
@@ -710,6 +705,70 @@ class DrbdManage(object):
         p_debug = subp.add_parser('debug')
         p_debug.add_argument('cmd')
         p_debug.set_defaults(func=self.cmd_debug)
+
+        # drbdsetup commands
+        def ResourceCompleter(prefix, **kwargs):
+            server_rc, res_list = self.__list_resources(False)
+            possible = set()
+            for r in res_list:
+                name, _ = r
+                possible.add(name)
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [res for res in possible if res.startswith(prefix)]
+
+        def ResVolCompleter(prefix, parsed_args, **kwargs):
+            server_rc, res_list = self.__list_resources(True)
+            possible = set()
+            for r in res_list:
+                name, _, vol_list = r
+                vol_list.sort(key=lambda vol_entry: vol_entry[0])
+                for v in vol_list:
+                    vol_id, _ = v
+                    possible.add("%s/%d" % (name, vol_id))
+
+            return possible
+
+        # disk-options
+        do = DrbdSetupOpts('disk-options')
+        p_do = do.genArgParseSubcommand(subp)
+        p_do.add_argument('--common', action="store_true")
+        p_do.add_argument('--resource',
+                          help='Name of the resource to modify').completer = ResourceCompleter
+        p_do.add_argument('--volume',
+                          help='Name of the volume to modify').completer = ResVolCompleter
+        p_do.set_defaults(optsobj=do)
+        p_do.set_defaults(func=self.cmd_disk_options)
+
+        # resource-options
+        ro = DrbdSetupOpts('resource-options')
+        p_ro = ro.genArgParseSubcommand(subp)
+        p_ro.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
+        p_ro.set_defaults(optsobj=ro)
+        p_ro.set_defaults(func=self.cmd_res_options)
+
+        # net-options
+        no = DrbdSetupOpts('net-options')
+        p_no = no.genArgParseSubcommand(subp)
+        p_no.add_argument('--common', action="store_true")
+        p_no.add_argument('--resource',
+                          help='Name of the resource to modify').completer = ResourceCompleter
+        p_no.set_defaults(optsobj=no)
+        p_no.set_defaults(func=self.cmd_net_options)
+
+        # peer-device-options
+        # TODO: not allowed, drbdmanage currently has no notion of a
+        # connection in its object model.
+        #
+        # pdo = DrbdSetupOpts('peer-device-options')
+        # p_pdo = pdo.genArgParseSubcommand(subp)
+        # p_pdo.add_argument('--common', action="store_true")
+        # p_pdo.add_argument('--volume',
+        #                    help='Name of the volume to modify').completer = ResVolCompleter
+        # p_pdo.set_defaults(optsobj=pdo)
+        # p_pdo.set_defaults(func=self.cmd_peer_device_options)
 
         argcomplete.autocomplete(parser)
 
@@ -2575,6 +2634,97 @@ class DrbdManage(object):
                 "server through D-Bus.\n"
             )
         return fn_rc
+
+    def _checkmutex(self, args, names):
+        target = ""
+        for o in names:
+            if args.__dict__[o]:
+                if target:
+                    sys.stderr.write("--%s and --%s are mutually exclusive\n" % (o, target))
+                    sys.exit(1)
+                target = o
+
+        if not target:
+            sys.stderr.write("You have to specify (exactly) one of %s\n" % ('--' + ' --'.join(names)))
+            sys.exit(1)
+
+        return target
+
+    def _set_drbdsetup_props(self, opts):
+        fn_rc = 1
+        try:
+            self.dbus_init()
+            fn_rc = self._server.set_drbdsetup_props(opts)
+        except dbus.exceptions.DBusException:
+            sys.stderr.write(
+                "drbdmanage: cannot connect to the drbdmanage "
+                "server through D-Bus.\n"
+            )
+        return fn_rc
+
+    def cmd_res_options(self, args):
+        fn_rc = 1
+        target = "resource"
+
+        newopts = args.optsobj.filterNew(args)
+        if not newopts:
+            sys.stderr.write('No new options found\n')
+            return fn_rc
+
+        newopts["target"] = target
+        newopts["type"] = "reso"
+
+        return self._set_drbdsetup_props(newopts)
+
+    def cmd_disk_options(self, args):
+        fn_rc = 1
+        target = self._checkmutex(args,
+                                  ("common", "resource", "volume"))
+
+        newopts = args.optsobj.filterNew(args)
+        if not newopts:
+            sys.stderr.write('No new options found\n')
+            return fn_rc
+        if target == "volume" and newopts["volume"].find('/') == -1:
+            sys.stderr.write('You have to specify the volume as: res/vol\n')
+            return fn_rc
+
+        newopts["target"] = target
+        newopts["type"] = "disko"
+
+        return self._set_drbdsetup_props(newopts)
+
+    def cmd_net_options(self, args):
+        fn_rc = 1
+        target = self._checkmutex(args, ("common", "resource"))
+
+        newopts = args.optsobj.filterNew(args)
+        if not newopts:
+            sys.stderr.write('No new options found\n')
+            return fn_rc
+
+        newopts["target"] = target
+        newopts["type"] = "neto"
+
+        return self._set_drbdsetup_props(newopts)
+
+    def cmd_peer_device_options(self, args):
+        # TODO: currently unsupported, see comment in parser section
+        fn_rc = 1
+        newopts = args.optsobj.filterNew(args)
+        target = "volume"
+
+        if not newopts:
+            sys.stderr.write('No new options found\n')
+            return fn_rc
+        if target == "volume" and newopts["volume"].find('/') == -1:
+            sys.stderr.write('You have to specify the volume as: res/vol\n')
+            return fn_rc
+
+        newopts["target"] = target
+        newopts["type"] = "peerdisko"
+
+        return self._set_drbdsetup_props(newopts)
 
     def user_confirm(self, question):
         """
