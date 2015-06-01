@@ -167,15 +167,18 @@ class DrbdManage(object):
             return Completer
 
         p_new_node = subp.add_parser('new-node',
-                                     description='Names must match the output '
-                                     'of "uname -n"',
+                                     description='Add a new node to your'
+                                     ' cluster. Names must match the output of'
+                                     ' "uname -n"',
                                      aliases=['nn', 'add-node', 'an'])
         p_new_node.add_argument('-a', '--address-family', metavar="FAMILY",
                                 default='ipv4', choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
         p_new_node.add_argument('-q', '--quiet', action="store_true")
         p_new_node.add_argument('-c', '--no-control-volume',
-                                action="store_true")
+                                action="store_true",
+                                help='This node does not have a control volume'
+                                ' on its own. It is used as a satelite node')
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
@@ -194,7 +197,7 @@ class DrbdManage(object):
             return possible
 
         p_rm_node = subp.add_parser('remove-node',
-                                    description='Remove node',
+                                    description='Remove node from cluster',
                                     aliases=['rn', 'delete-node', 'dn'])
         p_rm_node.add_argument('-q', '--quiet', action="store_true")
         p_rm_node.add_argument('-f', '--force', action="store_true")
@@ -234,7 +237,7 @@ class DrbdManage(object):
 
         # remove-resource
         p_rm_res = subp.add_parser('remove-resource',
-                                   description='Remove node',
+                                   description='Remove a resource',
                                    aliases=['rr', 'delete-resource', 'dr'])
         p_rm_res.add_argument('-q', '--quiet', action="store_true")
         p_rm_res.add_argument('-f', '--force', action="store_true")
@@ -247,13 +250,13 @@ class DrbdManage(object):
                                     description='Add a new volume',
                                     aliases=['nv', 'add-volume', 'av'])
         p_new_vol.add_argument('-u', '--unit', default='GiB',
-                               choices=['kB', 'MB', 'GB', 'TB', 'PB', 'kiB',
-                                        'MiB', 'GiB'], help='Default: "GiB"')
+                               choices=('kB', 'MB', 'GB', 'TB', 'PB', 'kiB',
+                                        'MiB', 'GiB'), help='Default: "GiB"')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
         p_new_vol.add_argument('name',
-                               help='Name of the new resource').completer = ResourceCompleter
-        p_new_vol.add_argument('size', help='Size of the new resource',
+                               help='Name of a new/existing resource').completer = ResourceCompleter
+        p_new_vol.add_argument('size', help='Size of the volume in resource',
                                type=int)
         p_new_vol.set_defaults(func=self.cmd_new_volume)
 
@@ -272,7 +275,7 @@ class DrbdManage(object):
             return possible
 
         p_mod_res = subp.add_parser('remove-volume',
-                                    description='Remove volume',
+                                    description='Remove volume from resource',
                                     aliases=['rv', 'delete-volume', 'dv'])
         p_mod_res.add_argument('-q', '--quiet', action="store_true")
         p_mod_res.add_argument('-f', '--force', action="store_true")
@@ -287,7 +290,7 @@ class DrbdManage(object):
         p_conn.set_defaults(func=self.cmd_connect)
 
         # reconnect
-        p_reconn = subp.add_parser('reconnect', description='Reonnect')
+        p_reconn = subp.add_parser('reconnect', description='Reconnect')
         p_reconn.add_argument('node').completer = NodeCompleter
         p_reconn.add_argument('resource').completer = ResourceCompleter
         p_reconn.set_defaults(func=self.cmd_reconnect)
@@ -302,10 +305,10 @@ class DrbdManage(object):
         p_flags = subp.add_parser('flags', description='Set flags')
         p_flags.add_argument('node', help='Name of the node')
         p_flags.add_argument('resource', help='Name of the resource')
-        p_flags.add_argument('--reconnect', choices=[0, 1], type=int)
-        p_flags.add_argument('--updcon', choices=[0, 1], type=int)
-        p_flags.add_argument('--overwrite', choices=[0, 1], type=int)
-        p_flags.add_argument('--discard', choices=[0, 1], type=int)
+        p_flags.add_argument('--reconnect', choices=(0, 1), type=int)
+        p_flags.add_argument('--updcon', choices=(0, 1), type=int)
+        p_flags.add_argument('--overwrite', choices=(0, 1), type=int)
+        p_flags.add_argument('--discard', choices=(0, 1), type=int)
         p_flags.set_defaults(func=self.cmd_flags)
 
         # attach
@@ -322,7 +325,8 @@ class DrbdManage(object):
         p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
 
         # assign
-        p_assign = subp.add_parser('assign', description='Assign')
+        p_assign = subp.add_parser('assign', description='Assign a resource to'
+                                   ' a given node')
         p_assign.add_argument('--client', action="store_true")
         p_assign.add_argument('--overwrite', action="store_true")
         p_assign.add_argument('--discard', action="store_true")
@@ -337,9 +341,9 @@ class DrbdManage(object):
                 raise argparse.ArgumentTypeError('Minimum redundancy is 1')
             return r
         p_fspace = subp.add_parser('free-space',
-                                   description='Queries the maximum size of a '
-                                   'volume that could be deployed with the '
-                                   'specified level of redundancy')
+                                   description='Queries the maximum size of a'
+                                   ' volume that could be deployed with the'
+                                   ' specified level of redundancy')
         p_fspace.add_argument('-m', '--machine-readable', action="store_true")
         p_fspace.add_argument('redundancy', type=redundancy_type,
                               help='Redundancy level (>=1)')
@@ -349,18 +353,18 @@ class DrbdManage(object):
         p_deploy = subp.add_parser('deploy', description='Deploy a resource')
         p_deploy.add_argument('resource').completer = ResourceCompleter
         p_deploy.add_argument('-i', '--increase', action="store_true",
-                              help='Increase the redundancy count relative to '
-                              'the currently set value by a number of '
-                              '<redundancy_count>')
+                              help='Increase the redundancy count relative to'
+                              ' the currently set value by a number of'
+                              ' <redundancy_count>')
         p_deploy.add_argument('-d', '--decrease', action="store_true",
-                              help='Decrease the redundancy count relative to '
-                              'the currently set value by a number of '
-                              '<redundancy_count>')
+                              help='Decrease the redundancy count relative to'
+                              ' the currently set value by a number of'
+                              ' <redundancy_count>')
         p_deploy.add_argument('redundancy_count', type=redundancy_type,
-                              help='The redundancy count specifies the number '
-                              'of nodes to which the resource should be '
-                              'deployed. It must be at least 1 and at most '
-                              'the number of nodes in the cluster')
+                              help='The redundancy count specifies the number'
+                              ' of nodes to which the resource should be'
+                              ' deployed. It must be at least 1 and at most'
+                              ' the number of nodes in the cluster')
         p_deploy.set_defaults(func=self.cmd_deploy)
 
         # undeploy
@@ -373,7 +377,8 @@ class DrbdManage(object):
 
         # update-pool
         p_upool = subp.add_parser('update-pool',
-                                  description='Update a pool')
+                                  description='Check available storage on node'
+                                  ' and write it to the configuration.')
         p_upool.set_defaults(func=self.cmd_update_pool)
 
         # reconfigure
@@ -393,8 +398,8 @@ class DrbdManage(object):
 
         # unassign
         p_unassign = subp.add_parser('unassign',
-                                     description='Unassign a resource from a '
-                                     'node')
+                                     description='Unassign a resource from a'
+                                     ' node')
         p_unassign.add_argument('-q', '--quiet', action="store_true")
         p_unassign.add_argument('-f', '--force', action="store_true")
         p_unassign.add_argument('node').completer = NodeCompleter
@@ -405,7 +410,7 @@ class DrbdManage(object):
         p_nsnap = subp.add_parser('new-snapshot',
                                   aliases=['ns', 'create-snapshot', 'cs',
                                            'add-snapshot', 'as'],
-                                  description='Create LVM snapshot')
+                                  description='Create a LVM snapshot')
         p_nsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_nsnap.add_argument('snapshot', help='Name of the snapshot')
         p_nsnap.add_argument('nodes', help='List of nodes', nargs='+').completer = NodeCompleter
@@ -458,13 +463,15 @@ class DrbdManage(object):
 
         # shutdown
         p_shutdown = subp.add_parser('shutdown',
-                                     description='Shutdown')
+                                     description='Shutdown the drbdmanage'
+                                     ' server process')
         p_shutdown.add_argument('-q', '--quiet', action="store_true")
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
-        nodesverbose = ['Family', 'IP']
-        nodesgroupby = ['Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'State']
+        nodesverbose = ('Family', 'IP')
+        nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP',
+                        'State')
 
         def ShowGroupCompleter(lst, where):
             def Completer(prefix, parsed_args, **kwargs):
@@ -488,7 +495,7 @@ class DrbdManage(object):
         NodesVerboseCompleter = ShowGroupCompleter(nodesverbose, "show")
         NodesGroupCompleter = ShowGroupCompleter(nodesgroupby, "groupby")
         p_lnodes = subp.add_parser('nodes', aliases=['n'],
-                                   description='List nodes')
+                                   description='List nodes in the cluster')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
         p_lnodes.add_argument('-s', '--show', nargs='+',
                               choices=nodesverbose).completer = NodesVerboseCompleter
@@ -500,13 +507,13 @@ class DrbdManage(object):
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
         # resources
-        resverbose = ['Port']
-        resgroupby = ['Name', 'Port', 'State']
+        resverbose = ('Port')
+        resgroupby = ('Name', 'Port', 'State')
         ResVerboseCompleter = ShowGroupCompleter(resverbose, "show")
         ResGroupCompleter = ShowGroupCompleter(resgroupby, "groupby")
 
         p_lreses = subp.add_parser('resources', aliases=['r'],
-                                   description='List resources')
+                                   description='List resources in the cluster')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
         p_lreses.add_argument('-s', '--show', nargs='+',
                               choices=resverbose).completer = ResVerboseCompleter
@@ -518,8 +525,8 @@ class DrbdManage(object):
         p_lreses.set_defaults(func=self.cmd_list_resources)
 
         # volumes
-        volgroupby = resgroupby + ["Vol_ID", "Size", "Minor"]
-        VolGroupCompleter = ShowGroupCompleter(volgroupby, "groupby")
+        volgroupby = resgroupby + ('Vol_ID', 'Size', 'Minor')
+        VolGroupCompleter = ShowGroupCompleter(volgroupby, 'groupby')
 
         p_lvols = subp.add_parser('volumes', aliases=['v'],
                                   description='List volumes')
@@ -534,11 +541,11 @@ class DrbdManage(object):
         p_lvols.set_defaults(func=self.cmd_list_volumes)
 
         # snapshots
-        snapgroupby = ["Resource", "Name", "State"]
+        snapgroupby = ("Resource", "Name", "State")
         SnapGroupCompleter = ShowGroupCompleter(snapgroupby, "groupby")
 
         p_lsnaps = subp.add_parser('snapshots', aliases=['s'],
-                                   description='List snapshots')
+                                   description='List available snapshots')
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
                               choices=snapgroupby).completer = SnapGroupCompleter
@@ -548,7 +555,7 @@ class DrbdManage(object):
         p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
 
         # snapshot-assignments
-        snapasgroupby = ["Resource", "Name", "Node", "State"]
+        snapasgroupby = ("Resource", "Name", "Node", "State")
 
         SnapasGroupCompleter = ShowGroupCompleter(snapasgroupby, "groupby")
 
@@ -565,9 +572,9 @@ class DrbdManage(object):
         p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
 
         # assignments
-        assignverbose = ['Blockdevice', 'Node_ID']
-        assigngroupby = ['Node', 'Resource', 'Vol_ID', 'Blockdevice', 'Node_ID',
-                         'State']
+        assignverbose = ('Blockdevice', 'Node_ID')
+        assigngroupby = ('Node', 'Resource', 'Vol_ID', 'Blockdevice',
+                         'Node_ID', 'State')
 
         AssVerboseCompleter = ShowGroupCompleter(assignverbose, "show")
         AssGroupCompleter = ShowGroupCompleter(assigngroupby, "groupby")
@@ -595,28 +602,37 @@ class DrbdManage(object):
         p_export.set_defaults(func=self.cmd_export_conf)
 
         # howto-join
-        p_howtojoin = subp.add_parser('howto-join')
+        p_howtojoin = subp.add_parser('howto-join',
+                                      description='Print the command to'
+                                      ' execute on the given node in order to'
+                                      ' join the cluster')
         p_howtojoin.add_argument('node',
                                  help='Name of the node to join').completer = NodeCompleter
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
         # query-conf
-        p_queryconf = subp.add_parser('query-conf')
+        p_queryconf = subp.add_parser('query-conf',
+                                      description='Print the DRBD'
+                                      ' configuration file for a given'
+                                      ' resource on a given node')
         p_queryconf.add_argument('node', help='Name of the node').completer = NodeCompleter
         p_queryconf.add_argument('resource',
                                  help='Name of the resource').completer = ResourceCompleter
         p_queryconf.set_defaults(func=self.cmd_query_conf)
 
         # ping
-        p_ping = subp.add_parser('ping')
+        p_ping = subp.add_parser('ping', description='Pings the server. The '
+                                 'server should anser with a "pong"')
         p_ping.set_defaults(func=self.cmd_ping)
 
         # startup
-        p_startup = subp.add_parser('startup')
+        p_startup = subp.add_parser('startup',
+                                    description='Start the server via D-Bus')
         p_startup.set_defaults(func=self.cmd_startup)
 
         # init
-        p_init = subp.add_parser('init')
+        p_init = subp.add_parser('init', description='Initialize the cluster'
+                                 ' (including the control volume)')
         p_init.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
                             help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -627,13 +643,15 @@ class DrbdManage(object):
         p_init.set_defaults(func=self.cmd_init)
 
         # uninit
-        p_uninit = subp.add_parser('uninit')
+        p_uninit = subp.add_parser('uninit', description='Delete the control'
+                                   ' volume of a node')
         p_uninit.add_argument('-q', '--quiet', action="store_true")
         p_uninit.add_argument('-s', '--shutdown', action="store_true")
         p_uninit.set_defaults(func=self.cmd_uninit)
 
         # join
-        p_join = subp.add_parser('join')
+        p_join = subp.add_parser('join',
+                                 description='Join an existing cluster')
         p_join.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
                             help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -649,9 +667,10 @@ class DrbdManage(object):
         p_join.set_defaults(func=self.cmd_join)
 
         # initcv
-        p_join = subp.add_parser('initcv')
+        p_join = subp.add_parser('initcv',
+                                 description='Initialize control volume')
         p_join.add_argument('-q', '--quiet', action="store_true")
-        p_join.add_argument('dev')
+        p_join.add_argument('dev', help='Path to the control volume')
         p_join.set_defaults(func=self.cmd_initcv)
 
         # debug
