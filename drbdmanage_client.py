@@ -191,10 +191,7 @@ class DrbdManage(object):
                 name, _ = n
                 possible.add(name)
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [node for node in possible if node.startswith(prefix)]
+            return possible
 
         p_rm_node = subp.add_parser('remove-node',
                                     description='Remove node',
@@ -226,10 +223,7 @@ class DrbdManage(object):
                 name, _ = r
                 possible.add(name)
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [res for res in possible if res.startswith(prefix)]
+            return possible
 
         p_mod_res = subp.add_parser('modify-resource',
                                     description='Modify a resource')
@@ -275,10 +269,7 @@ class DrbdManage(object):
                         vol_id, _ = v
                         possible.add(str(vol_id))
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [res for res in possible if res.startswith(prefix)]
+            return possible
 
         p_mod_res = subp.add_parser('remove-volume',
                                     description='Remove volume',
@@ -431,10 +422,7 @@ class DrbdManage(object):
                         snaps_name, _ = s
                         possible.add(snaps_name)
 
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [snap for snap in possible if snap.startswith(prefix)]
+            return possible
 
         p_rmsnap = subp.add_parser('remove-snapshot',
                                    aliases=['delete-snapshot', 'ds'],
@@ -492,10 +480,7 @@ class DrbdManage(object):
                 if opt:
                     possible = [i for i in lst if i not in opt]
 
-                if not prefix or prefix == '':
-                    return possible
-                else:
-                    return [o for o in possible if o.startswith(prefix)]
+                return possible
             return Completer
 
         # NodesVerboseCompleter = VerboseCompleter(nodesverbose)
