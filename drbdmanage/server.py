@@ -32,6 +32,7 @@ import re
 import traceback
 import inspect
 import StringIO
+import drbdmanage.drbd.persistence
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
@@ -59,12 +60,11 @@ from drbdmanage.exceptions import (
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
-    DrbdVolumeState
+    DrbdVolumeState, DrbdCommon
 )
 from drbdmanage.snapshots.snapshots import (
     DrbdSnapshot, DrbdSnapshotAssignment, DrbdSnapshotVolumeState
 )
-from drbdmanage.drbd.persistence import persistence_impl
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
 from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
 
@@ -74,6 +74,12 @@ class DrbdManageServer(object):
     """
     drbdmanage server - main class
     """
+
+    OBJ_NODES_NAME     = "nodes"
+    OBJ_RESOURCES_NAME = "resources"
+    OBJ_CCONF_NAME     = "cluster_conf"
+    OBJ_SCONF_NAME     = "server_conf"
+    OBJ_COMMON_NAME    = "common"
 
     EVT_UTIL = "drbdsetup"
 
@@ -137,6 +143,9 @@ class DrbdManageServer(object):
         KEY_LOGLEVEL       : "INFO"
     }
 
+    # Container for the server's objects directory
+    _objects_root = None
+
     # BlockDevice manager
     _bd_mgr    = None
     # Configuration objects maps
@@ -164,6 +173,9 @@ class DrbdManageServer(object):
     # Server configuration
     _conf      = None
 
+    # Common DRBD options
+    _common    = None
+
     # Logging
     _root_logger = None
     DM_LOGLEVELS = {
@@ -177,8 +189,7 @@ class DrbdManageServer(object):
     _debug_out = sys.stderr
 
     # Global drbdmanage cluster configuration
-    _cluster_conf         = {}
-    _cluster_conf[SERIAL] = 1
+    _cluster_conf         = None
 
     # Change generation flag; controls updates of the serial number
     _change_open  = False
@@ -191,6 +202,13 @@ class DrbdManageServer(object):
         """
         Initialize and start up the drbdmanage server
         """
+
+        # ========================================
+        # BEGIN -- Server initialization
+        # ========================================
+
+        # Determine the current node's name
+        #
         # The "(unknown)" node name never matches, because brackets are not
         # allowed characters in node names
         self._instance_node_name = "(unknown)"
@@ -203,32 +221,51 @@ class DrbdManageServer(object):
                     self._instance_node_name = uname[1]
             except Exception:
                 pass
+
+        # Initialize logging
         self.init_logging()
         logging.info("DRBDmanage server, version %s"
                      " -- initializing on node '%s'"
                      % (DM_VERSION, self._instance_node_name))
-        self._nodes     = {}
-        self._resources = {}
+
+        # Initialize the server's objects / datastructures
+        self._init_objects()
+
         # load the server configuration file
         self.load_server_conf()
-        # reset the loglevel to that specified in the configuration file
+
+        # Reset the loglevel to the one specified in the configuration file
         self.set_loglevel()
-        # ensure that the PATH environment variable is set up
+
+        # Setup the PATH environment variable
         extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
-        self._bd_mgr    = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
-        self._drbd_mgr  = DrbdManager(self)
+
+        # Create drbdmanage objects
+        #
+        # Block devices manager (manages backend storage devices)
+        self._bd_mgr   = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
+        #
+        # DRBD manager (manages DRBD resources using drbdadm etc.)
+        self._drbd_mgr = DrbdManager(self)
+
+        # Start up the drbdmanage control volume
         self._drbd_mgr.adjust_drbdctrl()
-        # load the drbdmanage database from the control volume
+
+        # Load the drbdmanage database from the control volume
         self.load_conf()
-        # start up the resources deployed by drbdmanage on the current node
+
+        # Start up the resources deployed by drbdmanage on the current node
         self._drbd_mgr.initial_up()
+
+        # Initialize events tracking
         try:
             self.init_events()
         except (OSError, IOError):
             logging.critical("failed to initialize drbdsetup events tracing, "
                              "aborting startup")
             exit(1)
-        # update storage pool information if it is unknown
+
+        # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
         if inst_node is not None:
             if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
@@ -236,6 +273,48 @@ class DrbdManageServer(object):
                 poolfree = inst_node.get_poolfree()
                 if poolsize == -1 or poolfree == -1:
                     self.update_pool([])
+
+        # ========================================
+        # END -- Server initialization
+        # ========================================
+
+
+    def _init_objects(self):
+        """
+        Initializes the server's objects and the objects directory
+        """
+        self._objects_root = {}
+
+        self._objects_root[DrbdManageServer.OBJ_NODES_NAME]     = {}
+        self._objects_root[DrbdManageServer.OBJ_RESOURCES_NAME] = {}
+        self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]     = {}
+        self._objects_root[DrbdManageServer.OBJ_SCONF_NAME]     = {}
+
+        cconf = self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]
+        cconf[SERIAL] = str(1)
+
+        self._objects_root[DrbdManageServer.OBJ_COMMON_NAME] = (
+            DrbdCommon(self.get_serial, cconf[SERIAL], None)
+        )
+
+        self._update_objects()
+
+
+    def _update_objects(self):
+        """
+        Updates the server's cached references into the objects directory
+
+        The server keeps direct references to objects in the objects
+        directory for quick access. These references must be updated
+        whenever the objects in the objects directory may have been
+        reloaded (exchanged)
+        """
+        srv = DrbdManageServer
+        self._nodes        = self._objects_root[srv.OBJ_NODES_NAME]
+        self._resources    = self._objects_root[srv.OBJ_RESOURCES_NAME]
+        self._cluster_conf = self._objects_root[srv.OBJ_CCONF_NAME]
+        self._conf         = self._objects_root[srv.OBJ_SCONF_NAME]
+        self._common       = self._objects_root[srv.OBJ_COMMON_NAME]
 
 
     def run(self):
@@ -530,19 +609,18 @@ class DrbdManageServer(object):
         the default configuration. Any values specified in the configuration
         file that are not known in the default configuration are discarded.
         """
-        in_file = None
+        in_file      = None
+        updated_conf = None
         try:
             in_file = open(SERVER_CONFFILE, "r")
             conffile = ConfFile(in_file)
             conf_loaded = conffile.get_conf()
             if conf_loaded is not None:
-                self._conf = (
+                updated_conf = (
                     ConfFile.conf_defaults_merge(
                         self.CONF_DEFAULTS, conf_loaded
                     )
                 )
-            else:
-                self._conf = self.CONF_DEFAULTS
         except IOError as ioerr:
             if ioerr.errno == errno.EACCES:
                 logging.warning(
@@ -556,10 +634,17 @@ class DrbdManageServer(object):
                     % (SERVER_CONFFILE, ioerr.strerror)
                 )
         finally:
-            if self._conf is None:
-                self._conf = self.CONF_DEFAULTS
+            sconf_key = DrbdManageServer.OBJ_SCONF_NAME
+            if updated_conf is None:
+                self._objects_root[sconf_key] = updated_conf
+            else:
+                self._objects_root[sconf_key] = self.CONF_DEFAULTS
+            self._update_objects()
             if in_file is not None:
-                in_file.close()
+                try:
+                    in_file.close()
+                except IOError:
+                    pass
 
 
     def get_conf_value(self, key):
@@ -2990,7 +3075,7 @@ class DrbdManageServer(object):
         fn_rc = []
         persist  = None
         try:
-            persist = persistence_impl(self)
+            persist = drbdmanage.drbd.persistence.persistence_impl(self)
             if persist.open(True):
                 self.save_conf_data(persist)
             else:
@@ -3015,7 +3100,7 @@ class DrbdManageServer(object):
         fn_rc = []
         persist  = None
         try:
-            persist = persistence_impl(self)
+            persist = drbdmanage.drbd.persistence.persistence_impl(self)
             if persist.open(False):
                 self.load_conf_data(persist)
             else:
@@ -3040,7 +3125,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        persist.load(self._cluster_conf, self._nodes, self._resources)
+        persist.load(self._objects_root)
+        self._update_objects()
         self._conf_hash = persist.get_stored_hash()
 
 
@@ -3054,7 +3140,7 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         hash_obj = None
-        persist.save(self._cluster_conf, self._nodes, self._resources)
+        persist.save(self._objects_root)
         hash_obj = persist.get_hash_obj()
         if hash_obj is not None:
             self._conf_hash = hash_obj.get_hex_hash()
@@ -3074,7 +3160,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = persistence_impl(self)
+            persist = drbdmanage.drbd.persistence.persistence_impl(self)
             if persist.open(False):
                 ret_persist = persist
         except Exception as exc:
@@ -3102,7 +3188,7 @@ class DrbdManageServer(object):
         ret_persist = None
         persist     = None
         try:
-            persist = persistence_impl(self)
+            persist = drbdmanage.drbd.persistence.persistence_impl(self)
             if persist.open(True):
                 if not self.hashes_match(persist.get_stored_hash()):
                     self.load_conf_data(persist)
@@ -3294,8 +3380,10 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
 
             # clear the configuration
-            self._nodes     = {}
-            self._resources = {}
+            srv = DrbdManageServer
+            self._objects_root[srv.OBJ_NODES_NAME] = {}
+            self._objects_root[srv.OBJ_RESOURCES_NAME] = {}
+            self._update_objects()
 
             if persist is not None:
                 sub_rc = self._create_node(True, name, props, bdev, port)

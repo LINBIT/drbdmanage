@@ -2598,6 +2598,8 @@ class DrbdManage(object):
         res_off_name = pers_impl.RES_OFF_NAME
         cconf_len_name = pers_impl.CCONF_LEN_NAME
         cconf_off_name = pers_impl.CCONF_OFF_NAME
+        common_len_name = pers_impl.COMMON_LEN_NAME
+        common_off_name = pers_impl.COMMON_OFF_NAME
 
         drbdctrl = None
         try:
@@ -2617,14 +2619,19 @@ class DrbdManage(object):
                 + str(data_off) + ",\n"
                 "        \"" + cconf_len_name + "\": 3,\n"
                 "        \"" + cconf_off_name + "\": "
+                + str(data_off) + ",\n"
+                "        \"" + common_len_name + "\": 3,\n"
+                "        \"" + common_off_name + "\": "
                 + str(data_off) + "\n"
                 "    }\n"
                 "}\n"
             )
             data_str = "{}\n"
 
+            # One update of the data_hash for every section that has an
+            # index entry
             pos = 0
-            while pos < 3:
+            while pos < 5:
                 data_hash.update(data_str)
                 pos += 1
 

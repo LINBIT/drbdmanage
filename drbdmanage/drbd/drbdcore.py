@@ -1584,6 +1584,18 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Exit function reconfigure()")
 
 
+class DrbdCommon(GenericDrbdObject):
+    """
+    Holds common DRBD setup options (configuration parameters for DRBD)
+    """
+
+    def __init__(self, get_serial_fn, init_serial, init_props):
+        super(DrbdCommon, self).__init__(
+            get_serial_fn, init_serial,
+            init_props
+        )
+
+
 class DrbdResource(GenericDrbdObject):
 
     NAME_MAXLEN  = consts.RES_NAME_MAXLEN

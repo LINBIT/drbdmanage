@@ -26,6 +26,7 @@ import time
 import json
 import logging
 import traceback
+import drbdmanage.server
 import drbdmanage.consts
 import drbdmanage.snapshots.persistence as snapspers
 
@@ -36,7 +37,7 @@ from drbdmanage.utils import read_lines
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import (
-    DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState, Assignment
+    DrbdCommon, DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState, Assignment
 )
 
 
@@ -94,16 +95,18 @@ class PersistenceImpl(object):
     _hash_obj   = None
     _server     = None
 
-    IDX_NAME       = "index"
-    NODES_OFF_NAME = "nodes_off"
-    NODES_LEN_NAME = "nodes_len"
-    RES_OFF_NAME   = "res_off"
-    RES_LEN_NAME   = "res_len"
-    ASSG_OFF_NAME  = "assg_off"
-    ASSG_LEN_NAME  = "assg_len"
-    CCONF_OFF_NAME = "cconf_off"
-    CCONF_LEN_NAME = "cconf_len"
-    HASH_NAME      = "hash"
+    IDX_NAME        = "index"
+    NODES_OFF_NAME  = "nodes_off"
+    NODES_LEN_NAME  = "nodes_len"
+    RES_OFF_NAME    = "res_off"
+    RES_LEN_NAME    = "res_len"
+    ASSG_OFF_NAME   = "assg_off"
+    ASSG_LEN_NAME   = "assg_len"
+    CCONF_OFF_NAME  = "cconf_off"
+    CCONF_LEN_NAME  = "cconf_len"
+    COMMON_OFF_NAME = "common_off"
+    COMMON_LEN_NAME = "common_len"
+    HASH_NAME       = "hash"
 
     BLKSZ       = 0x1000 # 4096
     IDX_OFFSET  = 0x1800 # 6144
@@ -193,7 +196,7 @@ class PersistenceImpl(object):
         return fn_rc
 
 
-    def save(self, cluster_conf, nodes, resources):
+    def save(self, objects_root):
         """
         Saves the configuration to the drbdmanage control volume
 
@@ -205,13 +208,23 @@ class PersistenceImpl(object):
         """
         if self._writeable:
             try:
-                p_index_con = {}
-                p_nodes_con = {}
-                p_res_con   = {}
-                p_assg_con  = {}
-                data_hash   = DataHash()
+                p_index_con   = {}
+                p_nodes_con   = {}
+                p_res_con     = {}
+                p_assg_con    = {}
+                p_common_con  = {}
+                data_hash     = DataHash()
 
-                # Prepare nodes container (and build assignments list)
+                cconf_key     = drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME
+                nodes_key     = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
+                resources_key = drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME
+                common_key    = drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME
+                cluster_conf  = objects_root[cconf_key]
+                nodes         = objects_root[nodes_key]
+                resources     = objects_root[resources_key]
+                common        = objects_root[common_key]
+
+                # Prepare nodes container and build assignments list
                 assignments = []
                 for node in nodes.itervalues():
                     p_node = DrbdNodePersistence(node)
@@ -228,6 +241,10 @@ class PersistenceImpl(object):
                 for assignment in assignments:
                     p_assignment = AssignmentPersistence(assignment)
                     p_assignment.save(p_assg_con)
+
+                # Prepare common DRBD options container
+                p_common = DrbdCommonPersistence(common)
+                p_common.save(p_common_con)
 
                 # Save data
                 self._file.seek(self.DATA_OFFSET)
@@ -266,19 +283,30 @@ class PersistenceImpl(object):
                 cconf_len = self._file.tell() - cconf_off
                 self._file.write(chr(0))
 
+                self._align_zero_fill()
+
+                common_off = self._file.tell()
+                save_data = self._container_to_json(p_common_con)
+                self._file.write(save_data)
+                data_hash.update(save_data)
+                common_len = self._file.tell() - common_off
+                self._file.write(chr(0))
+
                 # clean up to the end of the block
                 self._align_zero_fill()
 
                 self._file.seek(self.IDX_OFFSET)
                 p_index = {
-                    self.NODES_OFF_NAME : nodes_off,
-                    self.NODES_LEN_NAME : nodes_len,
-                    self.RES_OFF_NAME   : res_off,
-                    self.RES_LEN_NAME   : res_len,
-                    self.ASSG_OFF_NAME  : assg_off,
-                    self.ASSG_LEN_NAME  : assg_len,
-                    self.CCONF_OFF_NAME : cconf_off,
-                    self.CCONF_LEN_NAME : cconf_len
+                    self.NODES_OFF_NAME  : nodes_off,
+                    self.NODES_LEN_NAME  : nodes_len,
+                    self.RES_OFF_NAME    : res_off,
+                    self.RES_LEN_NAME    : res_len,
+                    self.ASSG_OFF_NAME   : assg_off,
+                    self.ASSG_LEN_NAME   : assg_len,
+                    self.CCONF_OFF_NAME  : cconf_off,
+                    self.CCONF_LEN_NAME  : cconf_len,
+                    self.COMMON_OFF_NAME : common_off,
+                    self.COMMON_LEN_NAME : common_len
                 }
                 p_index_con[self.IDX_NAME] = p_index
                 save_data = self._container_to_json(p_index_con)
@@ -367,7 +395,7 @@ class PersistenceImpl(object):
             )
 
 
-    def load(self, cluster_conf, nodes, resources):
+    def load(self, objects_root):
         """
         Loads the configuration from the drbdmanage control volume
 
@@ -393,11 +421,14 @@ class PersistenceImpl(object):
                 assg_len   = p_index[self.ASSG_LEN_NAME]
                 cconf_off  = p_index[self.CCONF_OFF_NAME]
                 cconf_len  = p_index[self.CCONF_LEN_NAME]
+                common_off = p_index[self.COMMON_OFF_NAME]
+                common_len = p_index[self.COMMON_LEN_NAME]
 
-                nodes_con = None
-                res_con   = None
-                assg_con  = None
-                cconf_con = None
+                nodes_con  = None
+                res_con    = None
+                assg_con   = None
+                cconf_con  = None
+                common_con = None
 
                 self._file.seek(nodes_off)
                 load_data = self._null_trunc(self._file.read(nodes_len))
@@ -427,12 +458,20 @@ class PersistenceImpl(object):
                 load_data = self._null_trunc(self._file.read(cconf_len))
                 data_hash.update(load_data)
                 try:
-                    cluster_conf.clear()
                     cconf_con = self._json_to_container(load_data)
-                    cluster_conf.update(cconf_con)
                 except Exception:
                     errors = True
 
+                self._file.seek(common_off)
+                load_data = self._null_trunc(self._file.read(common_len))
+                data_hash.update(load_data)
+                try:
+                    common_con = self._json_to_container(load_data)
+                except Exception:
+                    errors = True
+
+                # Discard the (potentially large) JSON string
+                # to free some memory as soon as possible
                 load_data = None
 
                 computed_hash = data_hash.get_hex_hash()
@@ -446,6 +485,9 @@ class PersistenceImpl(object):
                 # TODO: if the signature is wrong, load an earlier backup
                 #       of the configuration
 
+                # Load DrbdNode objects from data tables
+                nodes_key = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
+                nodes = objects_root[nodes_key]
                 nodes.clear()
                 if nodes_con is not None:
                     for properties in nodes_con.itervalues():
@@ -461,6 +503,9 @@ class PersistenceImpl(object):
                             )
                             errors = True
 
+                # Load DrbdResource objects from data tables
+                resources_key = drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME
+                resources = objects_root[resources_key]
                 resources.clear()
                 if res_con is not None:
                     for properties in res_con.itervalues():
@@ -477,6 +522,7 @@ class PersistenceImpl(object):
                             )
                             errors = True
 
+                # Load and reestablish Assignment objects from data tables
                 if assg_con is not None:
                     for properties in assg_con.itervalues():
                         assignment = AssignmentPersistence.load(properties,
@@ -487,6 +533,29 @@ class PersistenceImpl(object):
                                 "Assignment object"
                             )
                             errors = True
+
+                # Load the cluster configuration
+                cconf_key = drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME
+                cluster_conf = objects_root[cconf_key]
+                cluster_conf.clear()
+                cluster_conf.update(cconf_con)
+
+                # Load the common DRBD setup options object from data tables
+                if common_con is not None:
+                    common = DrbdCommonPersistence.load(
+                        common_con, self._server.get_serial
+                    )
+                    if common is not None:
+                        common_key = drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME
+                        objects_root[common_key] = common
+                    else:
+                        logging.debug(
+                            "persistence: Failed to load the "
+                            "DrbdCommon object"
+                        )
+                        errors = True
+
+                if not errors:
                     self._hash_obj = data_hash
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -652,6 +721,37 @@ class PersistenceImpl(object):
             if cfgline == "}\n":
                 break
         return json_blk
+
+
+class DrbdCommonPersistence(GenericPersistence):
+    """
+    Serializes/deserializes the DrbdCommon object
+    """
+
+    SERIALIZABLE = []
+
+
+    def __init__(self, common):
+        super(DrbdCommonPersistence, self).__init__(common)
+
+
+    def save(self, container):
+        common = self.get_object()
+        # Put the data directly into the container
+        container.update(self.load_dict(self.SERIALIZABLE))
+        container["props"] = common.get_props().get_all_props()
+
+
+    @classmethod
+    def load(cls, properties, get_serial_fn):
+        common = None
+        try:
+            init_props = properties.get("props")
+            common = DrbdCommon(get_serial_fn, None, init_props)
+        except Exception as exc:
+            # FIXME
+            raise exc
+        return common
 
 
 class DrbdNodePersistence(GenericPersistence):
