@@ -437,21 +437,31 @@ class DrbdManager(object):
                 assg_tstate    = assg.get_tstate()
                 if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
                     is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
-                    state_changed   = True
-                    snaps_assg_iter = snaps_assg.iterate_snaps_vol_states()
-                    for snaps_vol_state in snaps_assg_iter:
-                        (set_pool_changed, set_failed_actions) = (
-                            self._snaps_deploy_volume(
-                                snaps_assg, snaps_vol_state
+                    error_code = snaps_assg.get_error_code()
+                    if error_code == 0:
+                        state_changed   = True
+                        snaps_vol_iter = snaps_assg.iterate_snaps_vol_states()
+                        for snaps_vol_state in snaps_vol_iter:
+                            (set_pool_changed, set_failed_actions) = (
+                                self._snaps_deploy_volume(
+                                    snaps_assg, snaps_vol_state
+                                )
                             )
-                        )
-                        if set_pool_changed:
-                            pool_changed = True
-                        if set_failed_actions:
-                            failed_actions = True
-                    if not failed_actions:
-                        snaps_assg.set_cstate_flags(
-                            snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                            if set_pool_changed:
+                                pool_changed = True
+                            if set_failed_actions:
+                                failed_actions = True
+                        if not failed_actions:
+                            snaps_assg.set_cstate_flags(
+                                snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                            )
+                    else:
+                        logging.debug(
+                            "snapshot assignment %s/%s is marked FAILED, "
+                            "error code = %d"
+                            % (snaps_name,
+                               snaps_assg.get_snapshot().get_name(),
+                               error_code)
                         )
                 else:
                     logging.info(
@@ -581,6 +591,8 @@ class DrbdManager(object):
                 % (resource.get_name(), snaps.get_name(), snaps_vol_id)
             )
             failed_actions = True
+        if failed_actions:
+            snaps_assg.set_error_code(dmexc.DM_ESTORAGE)
         logging.debug("DrbdManager: Exit function _snaps_deploy_volume()")
         return (pool_changed, failed_actions)
 
@@ -3232,4 +3244,5 @@ class Assignment(GenericDrbdObject):
             if selected(key):
                 if val is not None:
                     properties[key] = str(val)
+
         return properties

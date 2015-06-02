@@ -142,6 +142,12 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         if selected(consts.RES_NAME):
             properties[consts.RES_NAME] = self._resource.get_name()
 
+        # Add PropsContainer properties
+        for (key, val) in self.get_props().iteritems():
+            if selected(key):
+                if val is not None:
+                    properties[key] = str(val)
+
         return properties
 
 
@@ -249,6 +255,29 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
                 dmutils.is_set(self._cstate, self.FLAG_DEPLOY))
 
 
+    def set_error_code(self, error_code):
+        """
+        Sets an error code to indicate that a snapshot action has failed.
+        """
+        self._props.set_prop(consts.ERROR_CODE, str(error_code))
+
+
+    def get_error_code(self):
+        """
+        Retrieves the error code
+
+        See set_error_code.
+        """
+        error_code = 0
+        error_code_entry = self._props.get_prop(consts.ERROR_CODE)
+        if error_code_entry is not None:
+            try:
+                error_code = int(error_code_entry)
+            except ValueError:
+                error_code = -1
+        return error_code
+
+
     def get_cstate(self):
         return self._cstate
 
@@ -320,6 +349,12 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
                     dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
                 )
             )
+
+        # Add PropsContainer properties
+        for (key, val) in self.get_props().iteritems():
+            if selected(key):
+                if val is not None:
+                    properties[key] = str(val)
 
         return properties
 
@@ -496,5 +531,11 @@ class DrbdSnapshotVolumeState(drbdcommon.GenericDrbdObject,
                     dmutils.is_set(self._cstate, self.FLAG_DEPLOY)
                 )
             )
+
+        # Add PropsContainer properties
+        for (key, val) in self.get_props().iteritems():
+            if selected(key):
+                if val is not None:
+                    properties[key] = str(val)
 
         return properties

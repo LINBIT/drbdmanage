@@ -21,8 +21,7 @@
 import drbdmanage.drbd.views as drbdviews
 import drbdmanage.utils as utils
 import drbdmanage.consts as consts
-
-from drbdmanage.exceptions import IncompatibleDataException
+import drbdmanage.exceptions as exc
 
 
 class DrbdSnapshotView(drbdviews.GenericView):
@@ -38,7 +37,7 @@ class DrbdSnapshotView(drbdviews.GenericView):
             self._name     = properties[consts.SNAPS_NAME]
             self._resource = properties[consts.RES_NAME]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
@@ -53,6 +52,8 @@ class DrbdSnapshotAssignmentView(drbdviews.GenericView):
     _snapshot     = None
 
     _machine_readable = False
+
+    _error_code   = 0
 
     # Machine readable texts for current state flags
     MR_CSTATE_TEXTS = [
@@ -85,8 +86,14 @@ class DrbdSnapshotAssignmentView(drbdviews.GenericView):
             self._node     = properties[consts.NODE_NAME]
             self._resource = properties[consts.RES_NAME]
             self._snapshot = properties[consts.SNAPS_NAME]
+            try:
+                self._error_code = int(properties[consts.ERROR_CODE])
+            except ValueError:
+                self._error_code = -1
+            except KeyError:
+                self._error_code = 0
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
@@ -107,7 +114,13 @@ class DrbdSnapshotAssignmentView(drbdviews.GenericView):
             self.add_pending_text("create")
             self.raise_level(drbdviews.GenericView.STATE_WARN)
 
-        return self.get_level(), self.format_state_info()
+        state_label = self.format_state_info()
+
+        if self._error_code != 0:
+            state_label = "FAILED: " + state_label
+            self.raise_level(drbdviews.GenericView.STATE_ALERT)
+
+        return self.get_level(), state_label
 
 
     def get_cstate(self):
@@ -161,7 +174,7 @@ class DrbdSnapshotVolumeStateView(drbdviews.GenericView):
             super(DrbdSnapshotVolumeStateView, self).__init__(properties)
             self._id = properties[consts.VOL_ID]
         except KeyError:
-            raise IncompatibleDataException
+            raise exc.IncompatibleDataException
         self._machine_readable = machine_readable
 
 
