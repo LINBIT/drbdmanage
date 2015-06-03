@@ -567,8 +567,9 @@ class DrbdAdmConf(object):
         stream.write(
             "resource .drbdctrl {\n"
             "    net {\n"
-            "        cram-hmac-alg   sha256;\n"
-            "        shared-secret   \"" + secret + "\";\n"
+            "        cram-hmac-alg       sha256;\n"
+            "        shared-secret       \"" + secret + "\";\n"
+            "        allow-two-primaries no;\n"
             "    }\n"
             "    volume 0 {\n"
             "        device      minor 0;\n"
