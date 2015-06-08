@@ -635,7 +635,7 @@ class DrbdManageServer(object):
                 )
         finally:
             sconf_key = DrbdManageServer.OBJ_SCONF_NAME
-            if updated_conf is None:
+            if updated_conf is not None:
                 self._objects_root[sconf_key] = updated_conf
             else:
                 self._objects_root[sconf_key] = self.CONF_DEFAULTS
