@@ -246,18 +246,30 @@ class DrbdManage(object):
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
 
         # new-volume
+        def SizeCompleter(prefix, **kwargs):
+            choices = ('kB', 'MB', 'GB', 'TB', 'PB', 'kiB', 'MiB', 'GiB',
+                       'TiB', 'PiB')
+            m = re.match('(\d+)(\D*)', prefix)
+
+            digits = m.group(1)
+            unit = m.group(2)
+
+            if unit and unit != "":
+                p_units = [x for x in choices if x.startswith(unit)]
+            else:
+                p_units = choices
+
+            return [digits + u for u in p_units]
+
         p_new_vol = subp.add_parser('new-volume',
                                     description='Add a new volume',
                                     aliases=['nv', 'add-volume', 'av'])
-        p_new_vol.add_argument('-u', '--unit', default='GiB',
-                               choices=('kB', 'MB', 'GB', 'TB', 'PB', 'kiB',
-                                        'MiB', 'GiB'), help='Default: "GiB"')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
         p_new_vol.add_argument('name',
                                help='Name of a new/existing resource').completer = ResourceCompleter
-        p_new_vol.add_argument('size', help='Size of the volume in resource',
-                               type=int)
+        p_new_vol.add_argument('size',
+                               help='Size of the volume in resource (Default: GiB)').completer = SizeCompleter
         p_new_vol.set_defaults(func=self.cmd_new_volume)
 
         # remove-volume
@@ -865,12 +877,26 @@ class DrbdManage(object):
 
     def cmd_new_volume(self, args):
         fn_rc = 1
-        unit = SizeCalc.UNIT_GiB
-        size = None
+        m = re.match('(\d+)(\D*)', args.size)
+
+        try:
+            size = int(m.group(1))
+        except AttributeError:
+            sys.stderr.write('Size is not a valid number\n')
+            return fn_rc
+
+        unit_str = m.group(2)
+        if unit_str == "":
+            unit_str = "GiB"
+        try:
+            unit = self.UNITS_MAP[unit_str.lower()]
+        except KeyError:
+            sys.stderr.write('"%s" is not a valid unit!\n' % (unit_str))
+            sys.stderr.write('Valid units: %s\n' % (','.join(self.UNITS_MAP.keys())))
+            return fn_rc
+
         minor = MinorNr.MINOR_NR_AUTO
         name = args.name
-        size = args.size
-        unit_str = args.unit
         if not args.minor:
             minor = MinorNr.MINOR_NR_AUTO
         deploy = args.deploy
