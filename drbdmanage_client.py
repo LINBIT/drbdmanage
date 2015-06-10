@@ -166,11 +166,11 @@ class DrbdManage(object):
                 return ip
             return Completer
 
-        p_new_node = subp.add_parser('new-node',
+        p_new_node = subp.add_parser('add-node',
                                      description='Add a new node to your'
                                      ' cluster. Names must match the output of'
                                      ' "uname -n"',
-                                     aliases=['nn', 'add-node', 'an'])
+                                     aliases=['nn', 'new-node', 'an'])
         p_new_node.add_argument('-a', '--address-family', metavar="FAMILY",
                                 default='ipv4', choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -211,9 +211,9 @@ class DrbdManage(object):
                 return p
             return range
         # new-resource
-        p_new_res = subp.add_parser('new-resource',
+        p_new_res = subp.add_parser('add-resource',
                                     description='Add a new resource',
-                                    aliases=['nr', 'add-resource', 'ar'])
+                                    aliases=['nr', 'new-resource', 'ar'])
         p_new_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_new_res.add_argument('name', help='Name of the new resource')
         p_new_res.set_defaults(func=self.cmd_new_resource)
@@ -261,9 +261,9 @@ class DrbdManage(object):
 
             return [digits + u for u in p_units]
 
-        p_new_vol = subp.add_parser('new-volume',
+        p_new_vol = subp.add_parser('add-volume',
                                     description='Add a new volume',
-                                    aliases=['nv', 'add-volume', 'av'])
+                                    aliases=['nv', 'new-volume', 'av'])
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
         p_new_vol.add_argument('name',
@@ -337,8 +337,9 @@ class DrbdManage(object):
         p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
 
         # assign
-        p_assign = subp.add_parser('assign', description='Assign a resource to'
-                                   ' a given node')
+        p_assign = subp.add_parser('assign-resource',
+                                   description='Assign a resource to a given node',
+                                   aliases=['assign'])
         p_assign.add_argument('--client', action="store_true")
         p_assign.add_argument('--overwrite', action="store_true")
         p_assign.add_argument('--discard', action="store_true")
@@ -352,17 +353,20 @@ class DrbdManage(object):
             if r < 1:
                 raise argparse.ArgumentTypeError('Minimum redundancy is 1')
             return r
-        p_fspace = subp.add_parser('free-space',
+        p_fspace = subp.add_parser('list-free-space',
                                    description='Queries the maximum size of a'
                                    ' volume that could be deployed with the'
-                                   ' specified level of redundancy')
+                                   ' specified level of redundancy',
+                                   aliases=['free-space'])
         p_fspace.add_argument('-m', '--machine-readable', action="store_true")
         p_fspace.add_argument('redundancy', type=redundancy_type,
                               help='Redundancy level (>=1)')
         p_fspace.set_defaults(func=self.cmd_free_space)
 
         # deploy
-        p_deploy = subp.add_parser('deploy', description='Deploy a resource')
+        p_deploy = subp.add_parser('deploy-resource',
+                                   description='Deploy a resource',
+                                   aliases=['deploy'])
         p_deploy.add_argument('resource').completer = ResourceCompleter
         p_deploy.add_argument('-i', '--increase', action="store_true",
                               help='Increase the redundancy count relative to'
@@ -380,8 +384,9 @@ class DrbdManage(object):
         p_deploy.set_defaults(func=self.cmd_deploy)
 
         # undeploy
-        p_undeploy = subp.add_parser('undeploy',
-                                     description='Undeploy a resource')
+        p_undeploy = subp.add_parser('undeploy-resource',
+                                     description='Undeploy a resource',
+                                     aliases=['undeploy'])
         p_undeploy.add_argument('-q', '--quiet', action="store_true")
         p_undeploy.add_argument('-f', '--force', action="store_true")
         p_undeploy.add_argument('resource').completer = ResourceCompleter
@@ -395,23 +400,27 @@ class DrbdManage(object):
 
         # reconfigure
         p_reconfigure = subp.add_parser('reconfigure',
-                                        description='Reconfigure')
+                                        description='Reads server config and'
+                                        ' reloads storage plugin')
         p_reconfigure.set_defaults(func=self.cmd_reconfigure)
 
         # save
         p_save = subp.add_parser('save',
-                                 description='Save')
+                                 description='Save cluster state to control'
+                                 ' volume')
         p_save.set_defaults(func=self.cmd_save)
 
         # load
         p_save = subp.add_parser('load',
-                                 description='Load')
+                                 description='Load cluster state from control'
+                                 ' volume, without taking any further actions')
         p_save.set_defaults(func=self.cmd_load)
 
         # unassign
-        p_unassign = subp.add_parser('unassign',
+        p_unassign = subp.add_parser('unassign-resource',
                                      description='Unassign a resource from a'
-                                     ' node')
+                                     ' node',
+                                     aliases=['unassign'])
         p_unassign.add_argument('-q', '--quiet', action="store_true")
         p_unassign.add_argument('-f', '--force', action="store_true")
         p_unassign.add_argument('node').completer = NodeCompleter
@@ -419,9 +428,9 @@ class DrbdManage(object):
         p_unassign.set_defaults(func=self.cmd_unassign)
 
         # new-snapshot
-        p_nsnap = subp.add_parser('new-snapshot',
+        p_nsnap = subp.add_parser('add-snapshot',
                                   aliases=['ns', 'create-snapshot', 'cs',
-                                           'add-snapshot', 'as'],
+                                           'new-snapshot', 'as'],
                                   description='Create a LVM snapshot')
         p_nsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_nsnap.add_argument('snapshot', help='Name of the snapshot')
@@ -506,7 +515,7 @@ class DrbdManage(object):
         # NodesGroupCompleter = GroupCompleter(nodesgroupby)
         NodesVerboseCompleter = ShowGroupCompleter(nodesverbose, "show")
         NodesGroupCompleter = ShowGroupCompleter(nodesgroupby, "groupby")
-        p_lnodes = subp.add_parser('nodes', aliases=['n'],
+        p_lnodes = subp.add_parser('list-nodes', aliases=['n', 'nodes'],
                                    description='List nodes in the cluster')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
         p_lnodes.add_argument('-s', '--show', nargs='+',
@@ -524,7 +533,7 @@ class DrbdManage(object):
         ResVerboseCompleter = ShowGroupCompleter(resverbose, "show")
         ResGroupCompleter = ShowGroupCompleter(resgroupby, "groupby")
 
-        p_lreses = subp.add_parser('resources', aliases=['r'],
+        p_lreses = subp.add_parser('list-resources', aliases=['r', 'resources'],
                                    description='List resources in the cluster')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
         p_lreses.add_argument('-s', '--show', nargs='+',
@@ -540,7 +549,7 @@ class DrbdManage(object):
         volgroupby = resgroupby + ('Vol_ID', 'Size', 'Minor')
         VolGroupCompleter = ShowGroupCompleter(volgroupby, 'groupby')
 
-        p_lvols = subp.add_parser('volumes', aliases=['v'],
+        p_lvols = subp.add_parser('list-volumes', aliases=['v', 'volumes'],
                                   description='List volumes')
         p_lvols.add_argument('-m', '--machine-readable', action="store_true")
         p_lvols.add_argument('-s', '--show', nargs='+',
@@ -556,7 +565,7 @@ class DrbdManage(object):
         snapgroupby = ("Resource", "Name", "State")
         SnapGroupCompleter = ShowGroupCompleter(snapgroupby, "groupby")
 
-        p_lsnaps = subp.add_parser('snapshots', aliases=['s'],
+        p_lsnaps = subp.add_parser('list-snapshots', aliases=['s', 'snapshots'],
                                    description='List available snapshots')
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
@@ -571,7 +580,7 @@ class DrbdManage(object):
 
         SnapasGroupCompleter = ShowGroupCompleter(snapasgroupby, "groupby")
 
-        p_lsnapas = subp.add_parser('snapshot-assignments', aliases=['sa'],
+        p_lsnapas = subp.add_parser('list-snapshot-assignments', aliases=['sa', 'snapshot-assignments'],
                                     description='List snapshot assignments')
         p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
         p_lsnapas.add_argument('-g', '--groupby', nargs='+',
@@ -591,7 +600,7 @@ class DrbdManage(object):
         AssVerboseCompleter = ShowGroupCompleter(assignverbose, "show")
         AssGroupCompleter = ShowGroupCompleter(assigngroupby, "groupby")
 
-        p_assignments = subp.add_parser('assignments', aliases=['a'],
+        p_assignments = subp.add_parser('list-assignments', aliases=['a', 'assignments'],
                                         description='List assignments')
         p_assignments.add_argument('-m', '--machine-readable',
                                    action="store_true")
@@ -662,8 +671,9 @@ class DrbdManage(object):
         p_uninit.set_defaults(func=self.cmd_uninit)
 
         # join
-        p_join = subp.add_parser('join',
-                                 description='Join an existing cluster')
+        p_join = subp.add_parser('join-cluster',
+                                 description='Join an existing cluster',
+                                 aliases=['join'])
         p_join.add_argument('-a', '--address-family', metavar="FAMILY",
                             default='ipv4', choices=['ipv4', 'ipv6'],
                             help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -714,9 +724,22 @@ class DrbdManage(object):
                 cmds[parser_hash].append(choice)
 
         # sort subcommands and their aliases,
-        # subcommand dictates sortorder, not its alias
+        # subcommand dictates sortorder, not its alias (assuming alias is
+        # shorter than the subcommand itself)
         cmds_sorted = [sorted(cmd, key=len, reverse=True) for cmd in
                        cmds.values()]
+
+        # "add" and "new" have the same length (as well as "delete" and
+        # "remove), therefore prefer one of them to group commands for the
+        # "list" command
+        for cmds in cmds_sorted:
+            found = False
+            for idx, cmd in enumerate(cmds):
+                if cmd.startswith("add-") or cmd.startswith("remove-"):
+                    found = True
+                    break
+            if found:
+                cmds.insert(0, cmds.pop(idx))
 
         # sort subcommands themselves
         cmds_sorted.sort(lambda a, b: cmp(a[0], b[0]))
