@@ -296,27 +296,31 @@ class DrbdManage(object):
         p_mod_res.set_defaults(func=self.cmd_remove_volume)
 
         # connect
-        p_conn = subp.add_parser('connect', description='Connect')
-        p_conn.add_argument('node').completer = NodeCompleter
+        p_conn = subp.add_parser('connect-resource', description='Connect resource on node',
+                                 aliases=['connect'])
         p_conn.add_argument('resource').completer = ResourceCompleter
+        p_conn.add_argument('node').completer = NodeCompleter
         p_conn.set_defaults(func=self.cmd_connect)
 
         # reconnect
-        p_reconn = subp.add_parser('reconnect', description='Reconnect')
-        p_reconn.add_argument('node').completer = NodeCompleter
+        p_reconn = subp.add_parser('reconnect-resource', description='Reconnect resource on node',
+                                   aliases=['reconnect'])
         p_reconn.add_argument('resource').completer = ResourceCompleter
+        p_reconn.add_argument('node').completer = NodeCompleter
         p_reconn.set_defaults(func=self.cmd_reconnect)
 
         # disconnect
-        p_disconn = subp.add_parser('disconnect', description='Disconnect')
-        p_disconn.add_argument('node').completer = NodeCompleter
+        p_disconn = subp.add_parser('disconnect-resource', description='Disconnect resource on node',
+                                    aliases=['disconnect'])
         p_disconn.add_argument('resource').completer = ResourceCompleter
+        p_disconn.add_argument('node').completer = NodeCompleter
         p_disconn.set_defaults(func=self.cmd_disconnect)
 
         # flags
-        p_flags = subp.add_parser('flags', description='Set flags')
-        p_flags.add_argument('node', help='Name of the node')
-        p_flags.add_argument('resource', help='Name of the resource')
+        p_flags = subp.add_parser('set-flags', description='Set flags of resource on node',
+                                  aliases=['flags'])
+        p_flags.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
+        p_flags.add_argument('node', help='Name of the node').completer = NodeCompleter
         p_flags.add_argument('--reconnect', choices=(0, 1), type=int)
         p_flags.add_argument('--updcon', choices=(0, 1), type=int)
         p_flags.add_argument('--overwrite', choices=(0, 1), type=int)
@@ -324,16 +328,18 @@ class DrbdManage(object):
         p_flags.set_defaults(func=self.cmd_flags)
 
         # attach
-        p_attach = subp.add_parser('attach', description='Attach')
-        p_attach.add_argument('node').completer = NodeCompleter
+        p_attach = subp.add_parser('attach-volume', description='Attach volume from node',
+                                   aliases=['attach'])
         p_attach.add_argument('resource').completer = ResourceCompleter
         p_attach.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
+        p_attach.add_argument('node').completer = NodeCompleter
         p_attach.set_defaults(func=self.cmd_attach_detach, fname='attach')
         # detach
-        p_detach = subp.add_parser('detach', description='Detach')
-        p_detach.add_argument('node').completer = NodeCompleter
+        p_detach = subp.add_parser('detach-volume', description='Detach volume from node',
+                                   aliases=['detach'])
         p_detach.add_argument('resource').completer = ResourceCompleter
         p_detach.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
+        p_detach.add_argument('node').completer = NodeCompleter
         p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
 
         # assign
@@ -343,8 +349,8 @@ class DrbdManage(object):
         p_assign.add_argument('--client', action="store_true")
         p_assign.add_argument('--overwrite', action="store_true")
         p_assign.add_argument('--discard', action="store_true")
-        p_assign.add_argument('node').completer = NodeCompleter
         p_assign.add_argument('resource').completer = ResourceCompleter
+        p_assign.add_argument('node').completer = NodeCompleter
         p_assign.set_defaults(func=self.cmd_assign)
 
         # free space
@@ -365,7 +371,7 @@ class DrbdManage(object):
 
         # deploy
         p_deploy = subp.add_parser('deploy-resource',
-                                   description='Deploy a resource',
+                                   description='Deploy a resource N times',
                                    aliases=['deploy'])
         p_deploy.add_argument('resource').completer = ResourceCompleter
         p_deploy.add_argument('-i', '--increase', action="store_true",
@@ -423,8 +429,8 @@ class DrbdManage(object):
                                      aliases=['unassign'])
         p_unassign.add_argument('-q', '--quiet', action="store_true")
         p_unassign.add_argument('-f', '--force', action="store_true")
-        p_unassign.add_argument('node').completer = NodeCompleter
         p_unassign.add_argument('resource').completer = ResourceCompleter
+        p_unassign.add_argument('node').completer = NodeCompleter
         p_unassign.set_defaults(func=self.cmd_unassign)
 
         # new-snapshot
@@ -432,10 +438,16 @@ class DrbdManage(object):
                                   aliases=['ns', 'create-snapshot', 'cs',
                                            'new-snapshot', 'as'],
                                   description='Create a LVM snapshot')
-        p_nsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_nsnap.add_argument('snapshot', help='Name of the snapshot')
+        p_nsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_nsnap.add_argument('nodes', help='List of nodes', nargs='+').completer = NodeCompleter
         p_nsnap.set_defaults(func=self.cmd_new_snapshot)
+
+        # Snapshot commands:
+        # These commands do not follow the usual option order:
+        # For example remove-snapshot should have the snapshot name as first argument and the resource as
+        # second argument. BUT: There are (potentially) more snapshots than resources, so specifying the
+        # resource first and then completing only the snapshots for that resource makes more sense.
 
         # remove-snapshot
         def SnapsCompleter(prefix, parsed_args, **kwargs):
@@ -452,7 +464,7 @@ class DrbdManage(object):
 
         p_rmsnap = subp.add_parser('remove-snapshot',
                                    aliases=['delete-snapshot', 'ds'],
-                                   description='Remove LVM snapshot')
+                                   description='Remove LVM snapshot of a resource')
         p_rmsnap.add_argument('-f', '--force', action="store_true")
         p_rmsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
         p_rmsnap.add_argument('snapshot', help='Name of the snapshot').completer = SnapsCompleter
@@ -476,10 +488,11 @@ class DrbdManage(object):
         p_restsnap = subp.add_parser('restore-snapshot',
                                      aliases=['rs'],
                                      description='Restore snapshot')
-        p_restsnap.add_argument('resource', help='Name of the new resource')
+        p_restsnap.add_argument('resource',
+                                help='Name of the new resource that gets created from existing snapshot')
         p_restsnap.add_argument('snapshot_resource',
-                                help='Name of the snapshot resource')
-        p_restsnap.add_argument('snapshot', help='Name of the snapshot')
+                                help='Name of the resource that was snapshoted').completer = ResourceCompleter
+        p_restsnap.add_argument('snapshot', help='Name of the snapshot').completer = SnapsCompleter
         p_restsnap.set_defaults(func=self.cmd_restore_snapshot)
 
         # shutdown
@@ -511,8 +524,6 @@ class DrbdManage(object):
                 return possible
             return Completer
 
-        # NodesVerboseCompleter = VerboseCompleter(nodesverbose)
-        # NodesGroupCompleter = GroupCompleter(nodesgroupby)
         NodesVerboseCompleter = ShowGroupCompleter(nodesverbose, "show")
         NodesGroupCompleter = ShowGroupCompleter(nodesgroupby, "groupby")
         p_lnodes = subp.add_parser('list-nodes', aliases=['n', 'nodes'],
