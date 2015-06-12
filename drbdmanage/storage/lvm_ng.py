@@ -427,7 +427,7 @@ class LvmNg(lvmcom.LvmCommon):
                 "--options", "vg_size,vg_free",
                 self._conf[LvmNg.KEY_VG_NAME]
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             lvm_proc = subprocess.Popen(
                 exec_args,
                 env=self._subproc_env, stdout=subprocess.PIPE,
@@ -479,7 +479,7 @@ class LvmNg(lvmcom.LvmCommon):
                 self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
                 self._conf[LvmNg.KEY_VG_NAME]
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
                 exec_args,
                 0, self._cmd_create,

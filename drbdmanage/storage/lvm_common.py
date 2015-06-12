@@ -38,7 +38,7 @@ class LvmCommon(storcore.StoragePlugin):
                 cmd_lvs, "--noheadings", "--options", "lv_name",
                 vg_name + "/" + lv_name
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             lvm_proc = subprocess.Popen(
                 exec_args,
                 0, cmd_lvs,
@@ -199,7 +199,7 @@ class LvmCommon(storcore.StoragePlugin):
                 cmd_remove, "--force",
                 vg_name + "/" + lv_name
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
                 exec_args,
                 0, cmd_remove,
@@ -229,13 +229,3 @@ class LvmCommon(storcore.StoragePlugin):
         Build an LV name from the resource name and volume id
         """
         return ("%s_%.2d" % (name, vol_id))
-
-
-    def debug_log_exec_args(self, exec_args):
-        """
-        Logs the arguments used to execute an external command
-        """
-        logging.debug(
-            "LvmThinLv: Running external command: %s"
-            % (" ".join(exec_args))
-        )

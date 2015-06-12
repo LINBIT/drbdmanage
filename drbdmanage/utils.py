@@ -27,6 +27,7 @@ import hashlib
 import base64
 import operator
 import drbdmanage.consts as consts
+import logging
 from drbdmanage.exceptions import SyntaxException
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
@@ -992,3 +993,13 @@ def aux_props_selector(props):
     for (key, val) in props.iteritems():
         if _is_aux_prop_name(key):
             yield (key, val)
+
+
+def debug_log_exec_args(source, exec_args):
+    """
+    Logs the arguments used to execute an external command
+    """
+    logging.debug(
+        "%s: Running external command: %s"
+        % (source, " ".join(exec_args))
+    )

@@ -21,8 +21,7 @@
 import subprocess
 import errno
 import logging
-
-from drbdmanage.utils import build_path
+import drbdmanage.utils as utils
 
 class DrbdAdm(object):
 
@@ -36,7 +35,7 @@ class DrbdAdm(object):
     execpath = None
 
     def __init__(self, path):
-        self.execpath = build_path(path, self.EXECUTABLE)
+        self.execpath = utils.build_path(path, self.EXECUTABLE)
 
 
     def ext_conf_adjust(self, res_name):
@@ -47,8 +46,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        args = [self.EXECUTABLE, "adjust", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "adjust", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def ext_conf_down(self, res_name):
@@ -59,8 +58,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        args = [self.EXECUTABLE, "down", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "down", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def adjust(self, res_name):
@@ -70,8 +69,8 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: adjust %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def up(self, res_name):
@@ -81,8 +80,8 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.warning("DEPRECATED: DrbdAdm: up %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-", "up", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "-c", "-", "up", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def down(self, res_name):
@@ -92,8 +91,8 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: down %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-", "down", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "-c", "-", "down", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def primary(self, res_name, force):
@@ -108,13 +107,13 @@ class DrbdAdm(object):
             logging.debug("DrbdAdm: primary %s --force" % (res_name))
         else:
             logging.debug("DrbdAdm: primary %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-"]
+        exec_args = [self.EXECUTABLE, "-c", "-"]
         if force:
-            args.append("--")
-            args.append("--force")
-        args.append("primary")
-        args.append(res_name)
-        return self._run_drbdadm(args)
+            exec_args.append("--")
+            exec_args.append("--force")
+        exec_args.append("primary")
+        exec_args.append(res_name)
+        return self._run_drbdadm(exec_args)
 
 
     def secondary(self, res_name):
@@ -123,8 +122,8 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: secondary %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def connect(self, res_name, discard):
@@ -136,13 +135,13 @@ class DrbdAdm(object):
             logging.debug("DrbdAdm: connect %s --discard-my-data" % (res_name))
         else:
             logging.debug("DrbdAdm: connect %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-"]
+        exec_args = [self.EXECUTABLE, "-c", "-"]
         if discard:
-            args.append("--")
-            args.append("--discard-my-data")
-        args.append("connect")
-        args.append(res_name)
-        return self._run_drbdadm(args)
+            exec_args.append("--")
+            exec_args.append("--discard-my-data")
+        exec_args.append("connect")
+        exec_args.append(res_name)
+        return self._run_drbdadm(exec_args)
 
 
     def disconnect(self, res_name):
@@ -151,8 +150,8 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: disconnect %s" % (res_name))
-        args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
-        return self._run_drbdadm(args)
+        exec_args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
+        return self._run_drbdadm(exec_args)
 
 
     def attach(self, res_name, vol_id):
@@ -161,9 +160,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: attach %s %d" % (res_name, vol_id))
-        args = [self.EXECUTABLE, "-c", "-", "attach",
+        exec_args = [self.EXECUTABLE, "-c", "-", "attach",
                 res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(args)
+        return self._run_drbdadm(exec_args)
 
 
     def detach(self, res_name, vol_id):
@@ -172,9 +171,9 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: detach %s %d" % (res_name, vol_id))
-        args = [self.EXECUTABLE, "-c", "-", "detach",
+        exec_args = [self.EXECUTABLE, "-c", "-", "detach",
                 res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(args)
+        return self._run_drbdadm(exec_args)
 
 
     def create_md(self, res_name, vol_id, peers):
@@ -183,20 +182,21 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         logging.debug("DrbdAdm: create-md %s %d" % (res_name, vol_id))
-        args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
+        exec_args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(args)
+        return self._run_drbdadm(exec_args)
 
 
-    def _run_drbdadm(self, args):
+    def _run_drbdadm(self, exec_args):
         """
         Runs the drbdadm command as a child process with its standard input
         redirected to a pipe from the drbdmanage server
         """
         drbd_proc = None
         try:
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             drbd_proc = subprocess.Popen(
-                args, 0, self.execpath,
+                exec_args, 0, self.execpath,
                 stdin=subprocess.PIPE, close_fds=True
             )
         except OSError as oserr:

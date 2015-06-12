@@ -507,7 +507,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                     self._cmd_vgchange, "-ay",
                     self._conf[LvmThinLv.KEY_VG_NAME],
                 ]
-                self.debug_log_exec_args(exec_args)
+                utils.debug_log_exec_args(self.__class__.__name__, exec_args)
                 lvm_rc = subprocess.call(
                     exec_args,
                     0, self._cmd_vgchange,
@@ -530,7 +530,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                     self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
                     lv_name
                 ]
-                self.debug_log_exec_args(exec_args)
+                utils.debug_log_exec_args(self.__class__.__name__, exec_args)
                 lvm_rc = subprocess.call(
                     exec_args,
                     0, self._cmd_lvchange,
@@ -599,7 +599,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
                 self._conf[LvmThinLv.KEY_POOL_NAME]
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             lvm_proc = subprocess.Popen(
                 exec_args,
                 env=self._subproc_env, stdout=subprocess.PIPE,
@@ -698,7 +698,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 "--thinpool", self._conf[LvmThinLv.KEY_POOL_NAME],
                 self._conf[LvmThinLv.KEY_VG_NAME]
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
                 exec_args,
                 0, self._cmd_create,
@@ -723,7 +723,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
                 lv_name, "-n", snaps_name
             ]
-            self.debug_log_exec_args(exec_args)
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
                 exec_args,
                 0, self._cmd_create,
