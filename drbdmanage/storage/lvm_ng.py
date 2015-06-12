@@ -21,7 +21,6 @@
 import os
 import time
 import json
-import errno
 import logging
 import subprocess
 import drbdmanage.storage.storagecore as storcore
@@ -422,13 +421,15 @@ class LvmNg(lvmcom.LvmCommon):
 
         lvm_proc = None
         try:
+            exec_args = [
+                self._cmd_vgs, "--noheadings", "--nosuffix",
+                "--units", "k", "--separator", ",",
+                "--options", "vg_size,vg_free",
+                self._conf[LvmNg.KEY_VG_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             lvm_proc = subprocess.Popen(
-                [
-                    self._cmd_vgs, "--noheadings", "--nosuffix",
-                    "--units", "k", "--separator", ",",
-                    "--options", "vg_size,vg_free",
-                    self._conf[LvmNg.KEY_VG_NAME]
-                ],
+                exec_args,
                 env=self._subproc_env, stdout=subprocess.PIPE,
                 close_fds=True
             )
@@ -474,11 +475,13 @@ class LvmNg(lvmcom.LvmCommon):
         Creates an LVM logical volume
         """
         try:
+            exec_args = [
+                self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
+                self._conf[LvmNg.KEY_VG_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
-                    self._conf[LvmNg.KEY_VG_NAME]
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )

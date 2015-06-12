@@ -675,11 +675,13 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
             lv_activated   = False
 
             try:
+                exec_args = [
+                    self._cmd_vgchange, "-ay",
+                    self._conf[LvmThinPoolNg.KEY_VG_NAME],
+                ]
+                self.debug_log_exec_args(exec_args)
                 lvm_rc = subprocess.call(
-                    [
-                        self._cmd_vgchange, "-ay",
-                        self._conf[LvmThinPoolNg.KEY_VG_NAME],
-                    ],
+                    exec_args,
                     0, self._cmd_vgchange,
                     env=self._subproc_env, close_fds=True
                 )
@@ -696,12 +698,14 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
 
             if pool_name is not None:
                 try:
+                    exec_args = [
+                        self._cmd_lvchange, "-ay", "-kn", "-K",
+                        self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
+                        pool_name
+                    ]
+                    self.debug_log_exec_args(exec_args)
                     lvm_rc = subprocess.call(
-                        [
-                            self._cmd_lvchange, "-ay", "-kn", "-K",
-                            self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
-                            pool_name
-                        ],
+                        exec_args,
                         0, self._cmd_lvchange,
                         env=self._subproc_env, close_fds=True
                     )
@@ -722,12 +726,14 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
                     % (lv_name)
                 )
             try:
+                exec_args = [
+                    self._cmd_lvchange, "-ay", "-kn", "-K",
+                    self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
+                    lv_name
+                ]
+                self.debug_log_exec_args(exec_args)
                 lvm_rc = subprocess.call(
-                    [
-                        self._cmd_lvchange, "-ay", "-kn", "-K",
-                        self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
-                        lv_name
-                    ],
+                    exec_args,
                     0, self._cmd_lvchange,
                     env=self._subproc_env, close_fds=True
                 )
@@ -786,13 +792,15 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
 
         lvm_proc = None
         try:
+            exec_args = [
+                self._cmd_vgs, "--noheadings", "--nosuffix",
+                "--units", "k", "--separator", ",",
+                "--options", "vg_size,vg_free",
+                self._conf[LvmThinPoolNg.KEY_VG_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             lvm_proc = subprocess.Popen(
-                [
-                    self._cmd_vgs, "--noheadings", "--nosuffix",
-                    "--units", "k", "--separator", ",",
-                    "--options", "vg_size,vg_free",
-                    self._conf[LvmThinPoolNg.KEY_VG_NAME]
-                ],
+                exec_args,
                 env=self._subproc_env, stdout=subprocess.PIPE,
                 close_fds=True
             )
@@ -1036,12 +1044,14 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
         Creates an LVM logical volume backed by a newly created LVM thin pool
         """
         try:
+            exec_args = [
+                self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
+                "--thinpool", pool_name,
+                self._conf[LvmThinPoolNg.KEY_VG_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
-                    "--thinpool", pool_name,
-                    self._conf[LvmThinPoolNg.KEY_VG_NAME]
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
@@ -1061,12 +1071,14 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
         #"LVMThinPool: exec: %s -s %s/%s -n %s"
         #    % (lvcreate, self._conf[self.KEY_VG_NAME], lv_name, snaps_name)
         try:
+            exec_args = [
+                self._cmd_create, "-s",
+                self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
+                lv_name, "-n", snaps_name
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-s",
-                    self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" +
-                    lv_name, "-n", snaps_name
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
@@ -1084,11 +1096,13 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
         Creates an LVM thin pool
         """
         try:
+            exec_args = [
+                self._cmd_create, "-L", str(size) + "k",
+                "-T", self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" + pool_name
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-L", str(size) + "k",
-                    "-T", self._conf[LvmThinPoolNg.KEY_VG_NAME] + "/" + pool_name
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )

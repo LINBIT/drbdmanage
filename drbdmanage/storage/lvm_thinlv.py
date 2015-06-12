@@ -21,7 +21,6 @@
 import os
 import time
 import json
-import errno
 import logging
 import subprocess
 import drbdmanage.storage.storagecore as storcore
@@ -504,11 +503,13 @@ class LvmThinLv(lvmcom.LvmCommon):
             lv_activated   = False
 
             try:
+                exec_args = [
+                    self._cmd_vgchange, "-ay",
+                    self._conf[LvmThinLv.KEY_VG_NAME],
+                ]
+                self.debug_log_exec_args(exec_args)
                 lvm_rc = subprocess.call(
-                    [
-                        self._cmd_vgchange, "-ay",
-                        self._conf[LvmThinLv.KEY_VG_NAME],
-                    ],
+                    exec_args,
                     0, self._cmd_vgchange,
                     env=self._subproc_env, close_fds=True
                 )
@@ -524,12 +525,14 @@ class LvmThinLv(lvmcom.LvmCommon):
                 raise lvmexc.LvmNgException
 
             try:
+                exec_args = [
+                    self._cmd_lvchange, "-ay", "-kn", "-K",
+                    self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                    lv_name
+                ]
+                self.debug_log_exec_args(exec_args)
                 lvm_rc = subprocess.call(
-                    [
-                        self._cmd_lvchange, "-ay", "-kn", "-K",
-                        self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
-                        lv_name
-                    ],
+                    exec_args,
                     0, self._cmd_lvchange,
                     env=self._subproc_env, close_fds=True
                 )
@@ -588,15 +591,17 @@ class LvmThinLv(lvmcom.LvmCommon):
 
         lvm_proc = None
         try:
+            exec_args = [
+                self._cmd_lvs, "--noheadings", "--nosuffix",
+                "--units", "k", "--separator", ",",
+                "--options",
+                "size,data_percent,metadata_percent,snap_percent",
+                self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                self._conf[LvmThinLv.KEY_POOL_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             lvm_proc = subprocess.Popen(
-                [
-                    self._cmd_lvs, "--noheadings", "--nosuffix",
-                    "--units", "k", "--separator", ",",
-                    "--options",
-                    "size,data_percent,metadata_percent,snap_percent",
-                    self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
-                    self._conf[LvmThinLv.KEY_POOL_NAME]
-                ],
+                exec_args,
                 env=self._subproc_env, stdout=subprocess.PIPE,
                 close_fds=True
             )
@@ -688,12 +693,14 @@ class LvmThinLv(lvmcom.LvmCommon):
         Creates an LVM logical volume backed by a thin pool
         """
         try:
+            exec_args = [
+                self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
+                "--thinpool", self._conf[LvmThinLv.KEY_POOL_NAME],
+                self._conf[LvmThinLv.KEY_VG_NAME]
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
-                    "--thinpool", self._conf[LvmThinLv.KEY_POOL_NAME],
-                    self._conf[LvmThinLv.KEY_VG_NAME]
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
@@ -711,12 +718,14 @@ class LvmThinLv(lvmcom.LvmCommon):
         Creates an LVM snapshot LV of an existing LV
         """
         try:
+            exec_args = [
+                self._cmd_create, "-s",
+                self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                lv_name, "-n", snaps_name
+            ]
+            self.debug_log_exec_args(exec_args)
             subprocess.call(
-                [
-                    self._cmd_create, "-s",
-                    self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
-                    lv_name, "-n", snaps_name
-                ],
+                exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
