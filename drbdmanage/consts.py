@@ -22,7 +22,7 @@
 Global constants for drbdmanage
 """
 
-DM_VERSION = "0.34"
+DM_VERSION = "0.35"
 
 SERIAL              = "serial"
 NODE_NAME           = "node_name"
