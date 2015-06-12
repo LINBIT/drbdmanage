@@ -1,16 +1,14 @@
 # Copyright 2012-2013, Andrey Kislyuk and argcomplete contributors.
 # Licensed under the Apache License. See https://github.com/kislyuk/argcomplete for more info.
 
-from argparse import ArgumentParser, ArgumentError, SUPPRESS, _SubParsersAction
-from argparse import OPTIONAL, ZERO_OR_MORE, ONE_OR_MORE, REMAINDER, PARSER
-from argparse import _get_action_name, _
+from ..argparse import argparse
 
 def action_is_satisfied(action):
     ''' Returns False if the parse would raise an error if no more arguments are given to this action, True otherwise.
     '''
     num_consumed_args = getattr(action, 'num_consumed_args', 0)
 
-    if action.nargs == ONE_OR_MORE and num_consumed_args < 1:
+    if action.nargs == argparse.ONE_OR_MORE and num_consumed_args < 1:
         return False
     elif action.nargs is None:
         return num_consumed_args == 1
@@ -20,9 +18,9 @@ def action_is_satisfied(action):
 def action_is_open(action):
     ''' Returns True if action could consume more arguments (i.e., its pattern is open).
     '''
-    return action.nargs in [ZERO_OR_MORE, ONE_OR_MORE, PARSER, REMAINDER]
+    return action.nargs in [argparse.ZERO_OR_MORE, argparse.ONE_OR_MORE, argparse.PARSER, argparse.REMAINDER]
 
-class IntrospectiveArgumentParser(ArgumentParser):
+class IntrospectiveArgumentParser(argparse.ArgumentParser):
     ''' The following is a verbatim copy of ArgumentParser._parse_known_args (Python 2.7.3),
     except for the lines that contain the string "Added by argcomplete".
     '''
@@ -85,15 +83,15 @@ class IntrospectiveArgumentParser(ArgumentParser):
                 seen_non_default_actions.add(action)
                 for conflict_action in action_conflicts.get(action, []):
                     if conflict_action in seen_non_default_actions:
-                        msg = _('not allowed with argument %s')
-                        action_name = _get_action_name(conflict_action)
-                        raise ArgumentError(action, msg % action_name)
+                        msg = argparse._('not allowed with argument %s')
+                        action_name = argparse._get_action_name(conflict_action)
+                        raise argparse.ArgumentError(action, msg % action_name)
 
             # take the action if we didn't receive a SUPPRESS value
             # (e.g. from a default)
             # argcomplete: we should walk through sub-commands.
-            if argument_values is not SUPPRESS \
-                    or isinstance(action, _SubParsersAction):
+            if argument_values is not argparse.SUPPRESS \
+                    or isinstance(action, argparse._SubParsersAction):
                 action(self, namespace, argument_values, option_string)
 
         # function to convert arg_strings into an optional action
@@ -133,8 +131,8 @@ class IntrospectiveArgumentParser(ArgumentParser):
                             action = optionals_map[option_string]
                             explicit_arg = new_explicit_arg
                         else:
-                            msg = _('ignored explicit argument %r')
-                            raise ArgumentError(action, msg % explicit_arg)
+                            msg = argparse._('ignored explicit argument %r')
+                            raise argparse.ArgumentError(action, msg % explicit_arg)
 
                     # if the action expect exactly one argument, we've
                     # successfully matched the option; exit the loop
@@ -147,8 +145,8 @@ class IntrospectiveArgumentParser(ArgumentParser):
                     # error if a double-dash option did not use the
                     # explicit argument
                     else:
-                        msg = _('ignored explicit argument %r')
-                        raise ArgumentError(action, msg % explicit_arg)
+                        msg = argparse._('ignored explicit argument %r')
+                        raise argparse.ArgumentError(action, msg % explicit_arg)
 
                 # if there is no explicit argument, try to match the
                 # optional's string arguments with the following strings
@@ -167,7 +165,7 @@ class IntrospectiveArgumentParser(ArgumentParser):
                     # it wouldn't be able to consume any more args)
                     if not action_is_open(action):
                         self.active_actions.remove(action)
-                    elif action.nargs == OPTIONAL and len(args) == 1:
+                    elif action.nargs == argparse.OPTIONAL and len(args) == 1:
                         self.active_actions.remove(action)
                     action.num_consumed_args = len(args)
                     # End added by argcomplete
@@ -263,7 +261,7 @@ class IntrospectiveArgumentParser(ArgumentParser):
         for action in self._actions:
             if action.required:
                 if action not in seen_actions:
-                    name = _get_action_name(action)
+                    name = argparse._get_action_name(action)
                     self.error(_('argument %s is required') % name)
 
         # make sure all required groups had one option present
@@ -275,10 +273,10 @@ class IntrospectiveArgumentParser(ArgumentParser):
 
                 # if no actions were used, report the error
                 else:
-                    names = [_get_action_name(action)
+                    names = [argparse._get_action_name(action)
                              for action in group._group_actions
-                             if action.help is not SUPPRESS]
-                    msg = _('one of the arguments %s is required')
+                             if action.help is not argparse.SUPPRESS]
+                    msg = argparse._('one of the arguments %s is required')
                     self.error(msg % ' '.join(names))
 
         # return the updated namespace and the extra arguments
