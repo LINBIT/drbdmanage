@@ -551,7 +551,7 @@ class LvmThinPoolNg(lvmcom.LvmCommon):
 
         try:
             if pool is not None:
-                snaps_base_name = self.lv_name(lv_name, vol_id)
+                snaps_base_name = self.lv_name(name, vol_id)
                 snaps_suffix    = pool.extract_pool_name_suffix()
                 snaps_name      = snaps_base_name + snaps_suffix
 
