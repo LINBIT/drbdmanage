@@ -348,10 +348,6 @@ class DrbdAdmConf(object):
             # end resource/nodes
 
             # begin resource/connection
-            stream.write(
-                "    connection-mesh {\n"
-                "        hosts"
-            )
             servers = []
             clients = []
             for assg in resource.iterate_assignments():
@@ -360,17 +356,24 @@ class DrbdAdmConf(object):
                     undeployed_flag):
                         node = assg.get_node()
                         if is_unset(tstate, assg.FLAG_DISKLESS):
-                            stream.write(" %s" % (node.get_name()))
                             servers.append(node)
                         else:
                             clients.append(node)
-            stream.write(";\n")
-            stream.write(
-                "        net {\n"
-                "            protocol C;\n"
-                "        }\n"
-            )
-            stream.write("    }\n")
+
+            if len(servers) > 0:
+                stream.write(
+                    "    connection-mesh {\n"
+                    "        hosts"
+                )
+                for node in servers:
+                    stream.write(" %s" % (node.get_name()))
+                stream.write(";\n")
+                stream.write(
+                    "        net {\n"
+                    "            protocol C;\n"
+                    "        }\n"
+                )
+                stream.write("    }\n")
 
             # connect each client to every server, but not to other clients
             for client_node in clients:
