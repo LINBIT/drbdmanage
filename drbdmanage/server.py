@@ -2263,23 +2263,52 @@ class DrbdManageServer(object):
                     removable = []
                     # delete snapshot assignments that have been undeployed
                     for snaps_assg in assg.iterate_snaps_assgs():
+		        # check for existing block devices
+                        #
+                        # turn the DEPLOY flag on again for those snapshot
+                        # volume states and snapshot assignments, that 
+                        # still have a block device
+                        snaps_assg_bd_exists = False
+                        for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                            bd_exists = False
+                            if snaps_vol_state.get_bd_name() is not None:
+                                bd_exists = True
+                                snaps_assg_bd_exists = True
+                                snaps_vol_state.set_cstate_flags(
+                                    DrbdSnapshotVolumeState.FLAG_DEPLOY
+                                )
+                        if snaps_assg_bd_exists:
+                            snaps_assg.set_cstate_flags(S_FLAG_DEPLOY)
+                        # collect snapshot assignments that can be removed
                         sa_cstate = snaps_assg.get_cstate()
                         sa_tstate = snaps_assg.get_tstate()
                         if (is_unset(sa_cstate, S_FLAG_DEPLOY) and
                             (is_unset(sa_tstate, S_FLAG_DEPLOY) or
-                             is_unset(assg_tstate, A_FLAG_DEPLOY))):
+                             is_unset(assg_tstate, A_FLAG_DEPLOY)) and
+                             (not snaps_assg_bd_exists)):
                                 removable.append(snaps_assg)
                     for snaps_assg in removable:
                         snaps_assg.remove()
                     # delete volume states of volumes that have been undeployed
                     removable = []
+                    assg_bd_exists = False
                     for vol_state in assg.iterate_volume_states():
                         vol_cstate = vol_state.get_cstate()
                         vol_tstate = vol_state.get_tstate()
+                        # check for existing block devices
+                        bd_exists = False
+                        if vol_state.get_bd_name() is not None:
+                            bd_exists = True
+                            assg_bd_exists = True
+                            vol_state.set_cstate_flags(VS_FLAG_DEPLOY)
+                        # collect volume states that can be removed
                         if (is_unset(vol_cstate, VS_FLAG_DEPLOY) and
                             (is_unset(vol_tstate, VS_FLAG_DEPLOY) or
-                             is_unset(assg_tstate, A_FLAG_DEPLOY))):
+                             is_unset(assg_tstate, A_FLAG_DEPLOY)) and
+                             (not bd_exists)):
                                 removable.append(vol_state)
+                    if assg_bd_exists:
+                        assg.set_cstate_flags(A_FLAG_DEPLOY)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
 
