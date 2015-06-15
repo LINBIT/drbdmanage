@@ -2701,6 +2701,15 @@ class DrbdManage(object):
             while pos < init_blks:
                 drbdctrl.write(zeroblk)
                 pos += 1
+
+            # Write the control volume magic number
+            drbdctrl.seek(pers_impl.MAGIC_OFFSET)
+            drbdctrl.write(pers_impl.PERSISTENCE_MAGIC)
+
+            # Write the control volume version
+            drbdctrl.seek(pers_impl.VERSION_OFFSET)
+            drbdctrl.write(pers_impl.PERSISTENCE_VERSION)
+
             drbdctrl.seek(index_off)
             drbdctrl.write(index_str)
             drbdctrl.seek(data_off)

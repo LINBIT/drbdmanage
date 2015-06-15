@@ -89,6 +89,12 @@ class PersistenceImpl(object):
     Persistence layer for the drbdmanage control volume
     """
 
+    # crc32 of "drbdmanage control volume"
+    PERSISTENCE_MAGIC   = "\x1a\xdb\x98\xa2";
+
+    # serial number, big-endian
+    PERSISTENCE_VERSION = "\x00\x00\x00\x01";
+
     _file       = None
     _server     = None
     _writeable  = False
@@ -108,16 +114,18 @@ class PersistenceImpl(object):
     COMMON_LEN_NAME = "common_len"
     HASH_NAME       = "hash"
 
-    BLKSZ       = 0x1000 # 4096
-    IDX_OFFSET  = 0x1800 # 6144
-    IDX_MAXLEN  =  0x400 # 1024
-    HASH_OFFSET = 0x1C00 # 6400
-    HASH_MAXLEN = 0x0100 #  256
-    DATA_OFFSET = 0x2000 # 8192
-    ZEROFILLSZ  = 0x0400 # 1024
-    CONF_FILE   = drbdmanage.consts.DRBDCTRL_DEV
+    BLKSZ          = 0x1000 # 4096
+    MAGIC_OFFSET   = 0x1000 # 4096
+    VERSION_OFFSET = 0x1004 # 4100
+    IDX_OFFSET     = 0x1800 # 6144
+    IDX_MAXLEN     =  0x400 # 1024
+    HASH_OFFSET    = 0x1C00 # 6400
+    HASH_MAXLEN    = 0x0100 #  256
+    DATA_OFFSET    = 0x2000 # 8192
+    ZEROFILLSZ     = 0x0400 # 1024
+    CONF_FILE      = drbdmanage.consts.DRBDCTRL_DEV
 
-    MMAP_BUFSZ  = 0x100000 # 1048576 == 1 MiB
+    MMAP_BUFSZ = 0x100000 # 1048576 == 1 MiB
 
     # FIXME: That constant should probably not be here, but there does not
     #        seem to be a good way to get it otherwise
@@ -247,6 +255,12 @@ class PersistenceImpl(object):
                 p_common.save(p_common_con)
 
                 # Save data
+                self._file.seek(self.MAGIC_OFFSET)
+                self._file.write(self.PERSISTENCE_MAGIC)
+
+                self._file.seek(self.VERSION_OFFSET)
+                self._file.write(self.PERSISTENCE_VERSION)
+
                 self._file.seek(self.DATA_OFFSET)
 
                 nodes_off = self._file.tell()
@@ -408,6 +422,24 @@ class PersistenceImpl(object):
         errors = False
         if self._file is not None:
             try:
+                self._file.seek(self.MAGIC_OFFSET)
+                magic = self._file.read(len(self.PERSISTENCE_MAGIC))
+                if magic != self.PERSISTENCE_MAGIC:
+                    logging.error(
+                        "Unusable control volume, "
+                        "the control volume magic number is missing"
+                    )
+                    raise PersistenceException
+
+                self._file.seek(self.VERSION_OFFSET)
+                version = self._file.read(len(self.PERSISTENCE_VERSION))
+                if version != self.PERSISTENCE_VERSION:
+                    logging.error(
+                        "Can not load data tables, "
+                        "control volume version does not match server version"
+                    )
+                    raise PersistenceException
+
                 data_hash = DataHash()
                 self._file.seek(self.IDX_OFFSET)
                 f_index = self._null_trunc(self._file.read(self.IDX_MAXLEN))
