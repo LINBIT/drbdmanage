@@ -1,3 +1,9 @@
+drbdmanage (0.36-1) experimental; urgency=medium
+
+  * New upstream version
+
+ -- Robert Altnoeder <robert.altnoeder@linbit.com>  Sun, 14 Jun 2015 15:17:02 +0200
+
 drbdmanage (0.35-1) experimental; urgency=medium
 
   * New version
