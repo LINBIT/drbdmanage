@@ -251,8 +251,8 @@ class PersistenceImpl(object):
 
                 nodes_off = self._file.tell()
                 save_data = self._container_to_json(p_nodes_con)
-                data_hash.update(save_data)
                 self._file.write(save_data)
+                data_hash.update(save_data)
                 nodes_len = self._file.tell() - nodes_off
                 self._file.write(chr(0))
 
