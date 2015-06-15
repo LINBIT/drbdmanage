@@ -110,7 +110,7 @@ _DM_EXC_TEXTS[DM_EVOLID]   = "Invalid volume id or no free volume id number"
 _DM_EXC_TEXTS[DM_EPORT]    = "Invalid port number or no free port numbers"
 _DM_EXC_TEXTS[DM_ESTORAGE] = "The storage subsystem failed to perform the " \
                              "requested operation"
-_DM_EXC_TEXTS[DM_ENOSPC]   = "Not enough free memory"
+_DM_EXC_TEXTS[DM_ENOSPC]   = "Not enough free space"
 _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
                              "nodes in the cluster"
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
