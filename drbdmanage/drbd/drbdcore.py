@@ -35,7 +35,7 @@ from drbdmanage.drbd.drbdcommon import GenericDrbdObject
 from drbdmanage.exceptions import (
     InvalidAddrFamException, VolSizeRangeException, PersistenceException
 )
-from drbdmanage.exceptions import DM_SUCCESS
+from drbdmanage.exceptions import DM_SUCCESS, DM_ESTORAGE
 from drbdmanage.utils import MetaData
 from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset
 
@@ -605,6 +605,7 @@ class DrbdManager(object):
         snaps_name     = snaps.get_name()
         snaps_vol_id   = snaps_vol_state.get_id()
 
+        fn_rc = DM_ESTORAGE
         bd_name = snaps_vol_state.get_bd_name()
         if bd_name is not None:
             pool_changed = True
