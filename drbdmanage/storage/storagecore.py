@@ -35,7 +35,7 @@ class BlockDevice(GenericStorage):
     """
     Represents a block device
     """
-    NAME_MAXLEN            = 60 ## at least as long as res name
+    NAME_MAXLEN            = 4096 ## at least as long as res name
     # Valid characters in addition to [a-zA-Z0-9]
     NAME_VALID_CHARS       = "_"
     # Additional valid characters, but not allowed as the first character
