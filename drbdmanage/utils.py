@@ -27,6 +27,7 @@ import sys
 import hashlib
 import base64
 import operator
+import subprocess
 import drbdmanage.consts as consts
 import logging
 from drbdmanage.exceptions import SyntaxException
@@ -214,9 +215,29 @@ class Table():
                 print fstr.format(*row)
 
 
-def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
-    import subprocess
+# a wrapper for subprocess.check_output
+def check_output(*args, **kwargs):
+    def _wrapcall_2_6(*args, **kwargs):
+        # no check_output in 2.6
+        if "stdout" in kwargs:
+            raise ValueError("stdout argument not allowed, it will be overridden.")
+        process = subprocess.Popen(stdout=subprocess.PIPE, *args, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = args[0]
+            raise subprocess.CalledProcessError(retcode, cmd)
+        return output
 
+    try:
+        return subprocess.check_output(*args, **kwargs)
+    except AttributeError:
+        return _wrapcall_2_6(*args, **kwargs)
+
+
+def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
     try:
         ssh_base = ["ssh", "-oBatchMode=yes",
                     "-oConnectTimeout=2", "root@" + ip]
@@ -255,7 +276,6 @@ def rangecheck(i, j):
 
 class DrbdSetupOpts():
     def __init__(self, command):
-        import subprocess
         import sys
         import xml.etree.ElementTree as ET
         self.command = command
@@ -265,7 +285,7 @@ class DrbdSetupOpts():
         out = False
         for cmd in ('drbdsetup', '/sbin/drbdsetup'):
             try:
-                out = subprocess.check_output([cmd, "xml-help", self.command])
+                out = check_output([cmd, "xml-help", self.command])
                 break
             except OSError:
                 pass

@@ -79,10 +79,21 @@ class BuildManCommand(Command):
                 "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
                 "drbdmanage.xml; gzip -f -9 drbdmanage.8")
         # subcommands
-        import subprocess
         import gzip
+        if "__enter__" not in dir(gzip.GzipFile):  # duck punch it in!
+            def __enter(self):
+                if self.fileobj is None:
+                    raise ValueError("I/O operation on closed GzipFile object")
+                return self
+
+            def __exit(self, *args):
+                self.close()
+
+            gzip.GzipFile.__enter__ = __enter
+            gzip.GzipFile.__exit__ = __exit
 
         from drbdmanage_client import DrbdManage
+        from drbdmanage.utils import check_output
 
         name = "dm"
         mansection = '8'
@@ -103,7 +114,7 @@ class BuildManCommand(Command):
                       '"./drbdmanage_client.py %s"' % (toplevel)]
 
             toexec = " ".join(mangen)
-            manpage = subprocess.check_output(toexec, shell=True)
+            manpage = check_output(toexec, shell=True)
             manpage = manpage.replace(replace[0], replace[1])
             manpage = manpage.replace(replace[0].upper(), replace[1].upper())
             manpage = manpage.replace(toplevel.upper(), mansection)
