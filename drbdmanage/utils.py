@@ -207,10 +207,11 @@ class Table():
 
         for row in self.table:
             if not row[0]:  # print a separator
-                if self.r_just:
+                sep = '+' + '-' * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + '+'
+                if self.r_just and len(sep) < maxwidht:
                     print '+' + '-' * (maxwidht - 2) + '+'
                 else:
-                    print '+' + '-' * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + '+'
+                    print sep
             else:
                 print fstr.format(*row)
 
