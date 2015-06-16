@@ -1,6 +1,9 @@
 drbdmanage (0.42-1) experimental; urgency=medium
 
   * New upstream version
+  * New upstream version
+  * Includes drbdsetup options
+  * Improved list filters (by resource/node/etc.)
 
  -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 16 Jun 2015 09:30:56 +0200
 
@@ -26,7 +29,7 @@ drbdmanage (0.34-1) experimental; urgency=medium
 drbdmanage (0.31~pre1+git.24c2a4f) experimental; urgency=low
 
   * New upstream version
-  * Staring to maintain or own debian release cycle. This work is largely
+  * Starting to maintain our own debian release cycle. This work is largely
     based on the work of Martin Loschwitz <madkiss@debian.org>
 
  -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 02 Apr 2015 09:37:33 +0200
