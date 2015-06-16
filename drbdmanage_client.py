@@ -534,7 +534,7 @@ class DrbdManage(object):
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
 
         # resources
-        resverbose = ('Port')
+        resverbose = ('Port',)
         resgroupby = ('Name', 'Port', 'State')
         ResVerboseCompleter = ShowGroupCompleter(resverbose, "show")
         ResGroupCompleter = ShowGroupCompleter(resgroupby, "groupby")
