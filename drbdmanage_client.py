@@ -2320,16 +2320,30 @@ class DrbdManage(object):
                         except (IOError, OSError):
                             pass
 
-                proc_rc = self._ext_command(
+                self._ext_command(
                     [
-                        "drbdsetup", "connect", DRBDCTRL_RES_NAME,
-                        af + ':' + l_addr + ":" + str(port),
-                        af + ':' + p_addr + ":" + str(port),
-                        "--peer-node-id=" + p_node_id,
+                        "drbdsetup", "new-peer",
+                        DRBDCTRL_RES_NAME, p_node_id,
                         "--_name=" + p_name,
                         "--shared-secret=" + secret,
                         "--cram-hmac-alg=sha256",
                         "--protocol=C"
+                    ]
+                )
+
+                self._ext_command(
+                    [
+                        "drbdsetup", "new-path",
+                        DRBDCTRL_RES_NAME, p_node_id,
+                        af + ':' + l_addr + ":" + str(port),
+                        af + ':' + p_addr + ":" + str(port)
+                    ]
+                )
+
+                self._ext_command(
+                    [
+                        "drbdsetup", "connect",
+                        DRBDCTRL_RES_NAME, p_node_id
                     ]
                 )
 
