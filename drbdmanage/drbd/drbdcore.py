@@ -19,6 +19,7 @@
 """
 
 import sys
+import os
 import logging
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
@@ -171,6 +172,11 @@ class DrbdManager(object):
             logging.debug("DrbdManager: finished")
         logging.debug("DrbdManager: Exit function run()")
 
+    def _get_global_conf(self):
+        global_path = os.path.join(self._server._conf[consts.KEY_DRBD_CONFPATH],
+                                   'drbdmanage_global_common.conf')
+        global_conf = open(global_path, "w")
+        return global_conf
 
     # FIXME
     # - still requires more error handling
@@ -880,7 +886,7 @@ class DrbdManager(object):
             drbd_proc = self._drbdadm.adjust(resource.get_name())
             if drbd_proc is not None:
                 self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                            nodes, vol_states)
+                                            nodes, vol_states, self._get_global_conf())
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
                 if fn_rc == 0:
@@ -992,7 +998,7 @@ class DrbdManager(object):
         )
         if drbd_proc is not None:
             self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                        nodes, vol_states)
+                                        nodes, vol_states, self._get_global_conf())
             drbd_proc.stdin.close()
             fn_rc = drbd_proc.wait()
         else:
@@ -1126,7 +1132,7 @@ class DrbdManager(object):
                 )
                 if drbd_proc is not None:
                     self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                                nodes, vol_states)
+                                                nodes, vol_states, self._get_global_conf())
                     drbd_proc.stdin.close()
                     fn_rc = drbd_proc.wait()
                 else:
@@ -1138,7 +1144,7 @@ class DrbdManager(object):
         drbd_proc = self._drbdadm.adjust(resource.get_name())
         if drbd_proc is not None:
             self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                        nodes, vol_states)
+                                        nodes, vol_states, self._get_global_conf())
             drbd_proc.stdin.close()
             fn_rc = drbd_proc.wait()
             if fn_rc == 0:
@@ -1215,7 +1221,7 @@ class DrbdManager(object):
             drbd_proc = self._drbdadm.adjust(resource.get_name())
             if drbd_proc is not None:
                 self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                            nodes, vol_states)
+                                            nodes, vol_states, self._get_global_conf())
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
                 if fn_rc == 0:
@@ -1230,7 +1236,7 @@ class DrbdManager(object):
             drbd_proc = self._drbdadm.down(resource.get_name())
             if drbd_proc is not None:
                 self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                            nodes, vol_states)
+                                            nodes, vol_states, self._get_global_conf())
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
                 if fn_rc == 0:
@@ -1340,7 +1346,7 @@ class DrbdManager(object):
                     vol_state_list.append(vol_state)
                 node_vol_states = { local_node.get_name(): vol_state_list }
                 self._resconf.write_excerpt(
-                    drbd_proc.stdin, assignment, nodes, node_vol_states
+                    drbd_proc.stdin, assignment, nodes, node_vol_states, self._get_global_conf()
                 )
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
@@ -1531,11 +1537,8 @@ class DrbdManager(object):
         if fn_rc == 0:
             drbd_proc = self._drbdadm.adjust(assignment.get_resource().get_name())
             if drbd_proc is not None:
-                global_path = os.path.join(self._server._conf[consts.KEY_DRBD_CONFPATH],
-                                           'drbdmanage_global_common.conf')
-                global_conf = open(global_path, "w")
                 self._resconf.write(drbd_proc.stdin, assignment, False,
-                                    global_conf)
+                                    self._get_global_conf())
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
             else:
