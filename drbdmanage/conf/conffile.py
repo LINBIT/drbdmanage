@@ -438,11 +438,6 @@ class DrbdAdmConf(object):
                 for node in servers:
                     stream.write(" %s" % (node.get_name()))
                 stream.write(";\n")
-                stream.write(
-                    "        net {\n"
-                    "            protocol C;\n"
-                    "        }\n"
-                )
                 stream.write("    }\n")
 
             # connect each client to every server, but not to other clients
@@ -582,11 +577,6 @@ class DrbdAdmConf(object):
                 for server_node in servers:
                     stream.write(" %s" % (server_node.get_name()))
                 stream.write(";\n")
-                stream.write(
-                    "        net {\n"
-                    "            protocol C;\n"
-                    "        }\n"
-                )
                 stream.write("    }\n")
 
                 # connect each client to every server, but not to other clients
