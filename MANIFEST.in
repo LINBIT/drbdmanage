@@ -3,3 +3,4 @@ recursive-include man-pages *.gz
 recursive-include scripts *
 include MANIFEST.in
 include COPYING
+include Makefile
