@@ -12,3 +12,4 @@ python-drbdmanage_*.deb
 debian/python-drbdmanage/
 
 .*.swp
+/drbdmanage/consts_githash.py
