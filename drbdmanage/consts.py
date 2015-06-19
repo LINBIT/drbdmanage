@@ -23,6 +23,10 @@ Global constants for drbdmanage
 """
 
 DM_VERSION = "0.43.1"
+try:
+    from drbdmanage.consts_githash import DM_GITHASH
+except:
+    DM_GITHASH = 'GIT-hash: UNKNOWN'
 
 SERIAL              = "serial"
 NODE_NAME           = "node_name"

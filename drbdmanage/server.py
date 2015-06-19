@@ -40,7 +40,7 @@ from drbdmanage.consts import (
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
-    SNAPS_SRC_BLOCKDEV, DM_VERSION
+    SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -4977,6 +4977,7 @@ class DrbdManageServer(object):
     def catch_and_append_internal_error(fn_rc, exc):
         msg, args = DrbdManageServer.catch_internal_error(exc)
         add_rc_entry(fn_rc, DM_DEBUG, msg, *args.items())
+        add_rc_entry(fn_rc, DM_DEBUG, "%s", DM_VERSION + '; ' + DM_GITHASH)
 
 
 """

@@ -45,7 +45,7 @@ from drbdmanage.consts import (
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
-    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION
+    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -118,7 +118,7 @@ class DrbdManage(object):
     def setup_parser(self):
         parser = argparse.ArgumentParser(prog='drbdmanage')
         parser.add_argument('--version', '-v', action='version',
-                            version='%(prog)s ' + DM_VERSION)
+                            version='%(prog)s ' + DM_VERSION + '; ' + DM_GITHASH)
         subp = parser.add_subparsers(title='subcommands',
                                      description='valid subcommands',
                                      help='Use the list command to print a '
