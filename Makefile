@@ -1,3 +1,4 @@
+SHELL=/bin/bash
 GIT = git
 override GITHEAD := $(shell test -e .git && $(GIT) rev-parse HEAD)
 

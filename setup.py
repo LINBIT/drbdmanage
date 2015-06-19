@@ -45,11 +45,15 @@ class CheckUpToDate(Command):
     def run(self):
         import sys
         version = get_version()
-        with open("debian/changelog") as f:
-            firstline = f.readline()
-            if version not in firstline:
-                # returning false is not promoted
-                sys.exit(1)
+        try:
+            with open("debian/changelog") as f:
+                firstline = f.readline()
+                if version not in firstline:
+                    # returning false is not promoted
+                    sys.exit(1)
+        except:
+            # probably a release tarball without the debian directory but with Makefile
+            return True
 
 
 class BuildManCommand(Command):
