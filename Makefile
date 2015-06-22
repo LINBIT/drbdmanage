@@ -24,6 +24,11 @@ endif
 release: up2date
 	python setup.py sdist
 
+debrelease: up2date
+	echo 'recursive-include debian *' >> MANIFEST.in
+	make release
+	git checkout MANIFEST.in
+
 deb: up2date
 	debuild -i -us -uc -b
 
