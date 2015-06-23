@@ -637,6 +637,12 @@ class DrbdManage(object):
                                  help='Name of the node to join').completer = NodeCompleter
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
+        p_lowlevel_debug = subp.add_parser("lowlevel-debug", description="JSON-to-DBus debug interface")
+        p_lowlevel_debug.add_argument("cmd",
+                                      help="DBusServer function to call")
+        p_lowlevel_debug.add_argument("json", help="JSON to deserialize", nargs="*")
+        p_lowlevel_debug.set_defaults(func=self.cmd_lowlevel_debug)
+
         # query-conf
         p_queryconf = subp.add_parser('query-conf',
                                       description='Print the DRBD'
