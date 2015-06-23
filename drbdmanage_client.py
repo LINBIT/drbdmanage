@@ -1693,42 +1693,48 @@ class DrbdManage(object):
                 if list_volumes:
                     # sort volume list by volume id
                     vol_list.sort(key=lambda vol_entry: vol_entry[0])
-                    for vol_entry in vol_list:
-                        vol_id, vol_properties = vol_entry
-                        vol_view = DrbdVolumeView(vol_properties,
-                                                  machine_readable)
-                        v_minor = self._property_text(
-                            vol_view.get_property(VOL_MINOR)
-                        )
-                        if not machine_readable:
-                            # human readable output of the volume description
-                            size_MiB = SizeCalc.convert(
-                                vol_view.get_size_kiB(),
-                                SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB
+                    if len(vol_list) > 0:
+                        for vol_entry in vol_list:
+                            vol_id, vol_properties = vol_entry
+                            vol_view = DrbdVolumeView(vol_properties,
+                                                      machine_readable)
+                            v_minor = self._property_text(
+                                vol_view.get_property(VOL_MINOR)
                             )
-                            if size_MiB < 1:
-                                size_MiB_str = "< 1"
+                            if not machine_readable:
+                                # human readable output of the volume description
+                                size_MiB = SizeCalc.convert(
+                                    vol_view.get_size_kiB(),
+                                    SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB
+                                )
+                                if size_MiB < 1:
+                                    size_MiB_str = "< 1"
+                                else:
+                                    size_MiB_str = str(size_MiB)
+                                level, state_text = vol_view.state_info()
+                                level_color = self._level_color(level)
+                                row_data = [
+                                    res_name, str(vol_view.get_id()),
+                                    size_MiB_str, v_minor, v_port, state_text
+                                ]
+                                if level == GenericView.STATE_NORM:
+                                    t.addRow(row_data)
+                                else:
+                                    t.addRow(row_data, color=color(level_color))
                             else:
-                                size_MiB_str = str(size_MiB)
-                            level, state_text = vol_view.state_info()
-                            level_color = self._level_color(level)
-                            row_data = [
-                                res_name, str(vol_view.get_id()),
-                                size_MiB_str, v_minor, v_port, state_text
-                            ]
-                            if level == GenericView.STATE_NORM:
-                                t.addRow(row_data)
-                            else:
-                                t.addRow(row_data, color=color(level_color))
-                        else:
-                            # machine readable output of the volume description
-                            sys.stdout.write(
-                                "%s,%s,%s,%d,%s,%s,%s\n"
-                                % (res_name, res_view.get_state(),
-                                   str(vol_view.get_id()),
-                                   vol_view.get_size_kiB(), v_port,
-                                   v_minor, vol_view.get_state())
-                            )
+                                # machine readable output of the volume description
+                                sys.stdout.write(
+                                    "%s,%s,%s,%d,%s,%s,%s\n"
+                                    % (res_name, res_view.get_state(),
+                                       str(vol_view.get_id()),
+                                       vol_view.get_size_kiB(), v_port,
+                                       v_minor, vol_view.get_state())
+                                )
+                    else:
+                        row_data = [
+                            res_name, "*", "*", "*", v_port, "*"
+                        ]
+                        t.addRow(row_data)
                 elif machine_readable:
                     # machine readable output of the resource description
                     sys.stdout.write(
@@ -1738,9 +1744,10 @@ class DrbdManage(object):
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
-        t.showSeparators(args.separators)
-        # t.show(overwrite=list_volumes)
-        t.show()
+        if not machine_readable:
+            t.showSeparators(args.separators)
+            # t.show(overwrite=list_volumes)
+            t.show()
         return 0
 
     def _list_snapshots(self, resource_filter=[]):

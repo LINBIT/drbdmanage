@@ -2279,7 +2279,7 @@ class DrbdManageServer(object):
 		        # check for existing block devices
                         #
                         # turn the DEPLOY flag on again for those snapshot
-                        # volume states and snapshot assignments, that 
+                        # volume states and snapshot assignments, that
                         # still have a block device
                         snaps_assg_bd_exists = False
                         for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
@@ -2597,12 +2597,11 @@ class DrbdManageServer(object):
                 for vol in selected_vol:
                     vol_entry = [ vol.get_id(), vol.get_properties(req_props) ]
                     vol_list.append(vol_entry)
-                if len(vol_list) > 0:
-                    res_entry = [
-                        res.get_name(),
-                        res.get_properties(req_props), vol_list
-                    ]
-                    res_list.append(res_entry)
+                res_entry = [
+                    res.get_name(),
+                    res.get_properties(req_props), vol_list
+                ]
+                res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
         except Exception as exc:
