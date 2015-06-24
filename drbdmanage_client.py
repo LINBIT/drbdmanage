@@ -716,10 +716,37 @@ class DrbdManage(object):
                                  help='Name of the node to join').completer = NodeCompleter
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
+        def LowLevelDebugCmdCompleter(prefix, **kwargs):
+            self.dbus_init()
+            # needed to wait for completion
+            self._server.Introspect()
+            fns = []
+            expected = DBusServer.DBUS_DRBDMANAGED + "."
+            expected_len = len(expected)
+            for fn in self._server._introspect_method_map.iterkeys():
+                if not fn.startswith(expected):
+                    continue
+                fn_short = fn[expected_len:]
+                if fn_short.startswith(prefix):
+                    fns.append(fn_short)
+            return fns
+
         p_lowlevel_debug = subp.add_parser("lowlevel-debug", description="JSON-to-DBus debug interface")
         p_lowlevel_debug.add_argument("cmd",
-                                      help="DBusServer function to call")
-        p_lowlevel_debug.add_argument("json", help="JSON to deserialize", nargs="*")
+                                      help="DBusServer function to call").completer = LowLevelDebugCmdCompleter
+
+        def LowLevelDebugJsonCompleter(prefix, parsed_args=None, **kwargs):
+            self.dbus_init()
+            fn = getattr(self._server, parsed_args.cmd)
+            if not fn: return []
+
+            # TODO: introspect fn, to see whether array/dict/etc. is wanted..
+            if prefix == '':
+                return ['[]', '{}']
+            return []
+        p_lowlevel_debug.add_argument("json",
+                                  help="JSON to deserialize",
+                                  nargs="*").completer = LowLevelDebugJsonCompleter
         p_lowlevel_debug.set_defaults(func=self.cmd_lowlevel_debug)
 
         # query-conf
