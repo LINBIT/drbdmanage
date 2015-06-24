@@ -168,10 +168,14 @@ class DrbdManage(object):
             return Completer
 
         p_new_node = subp.add_parser('add-node',
-                                     description='Add a new node to your'
-                                     ' cluster. Names must match the output of'
-                                     ' "uname -n"',
-                                     aliases=['nn', 'new-node', 'an'])
+                                     aliases=['nn', 'new-node', 'an'],
+                                     description='Creates a node entry for a node that participates in the '
+                                     'drbdmanage cluster. Nodename must match the name that is used as the '
+                                     'node name of the drbdmanage server on the new participating node. '
+                                     'Commonly, nodename is set to match the output of "uname -n" '
+                                     'on the new participating node. Unless specified otherwise, address is '
+                                     'expected to be an IPv4 ip address, and the address family field of the '
+                                     'node entry is implicitly set to ipv4.')
         p_new_node.add_argument('-a', '--address-family', metavar="FAMILY",
                                 default='ipv4', choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -198,17 +202,30 @@ class DrbdManage(object):
             return possible
 
         p_rm_node = subp.add_parser('remove-node',
-                                    description='Remove node from cluster',
-                                    aliases=['rn', 'delete-node', 'dn'])
-        p_rm_node.add_argument('-q', '--quiet', action="store_true")
-        p_rm_node.add_argument('-f', '--force', action="store_true")
+                                    aliases=['rn', 'delete-node', 'dn'],
+                                    description='Removes a node from the drbdmanage cluster. '
+                                    'All drbdmanage resources that are still deployed on the specified '
+                                    'node are marked for undeployment, and the node entry is marked for '
+                                    "removal from drbdmanage's data tables. The specified node is "
+                                    'expected to undeploy all resources. As soon as all resources have been '
+                                    'undeployed from the node, the node entry is removed from '
+                                    "drbdmanage's data tables.")
+        p_rm_node.add_argument('-q', '--quiet', action="store_true",
+                               help='Unless this option is used, drbdmanage will issue a safety question '
+                               'that must be answered with yes, otherwise the operation is canceled.')
+        p_rm_node.add_argument('-f', '--force', action="store_true",
+                               help='The node entry and all associated assignment entries are removed from '
+                               "drbdmanage's data tables immediately, without taking any action on the "
+                               'cluster node that the node entry refers to.')
         p_rm_node.add_argument('name', help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
         # new-resource
         p_new_res = subp.add_parser('add-resource',
-                                    description='Add a new resource',
-                                    aliases=['nr', 'new-resource', 'ar'])
+                                    aliases=['nr', 'new-resource', 'ar'],
+                                    description='Defines a DRBD resource for use with drbdmanage. '
+                                    'Unless a specific IP port-number is supplied, the port-number is '
+                                    'automatically selected by the drbdmanage server on the current node. ')
         p_new_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_new_res.add_argument('name', help='Name of the new resource')
         p_new_res.set_defaults(func=self.cmd_new_resource)
@@ -232,10 +249,19 @@ class DrbdManage(object):
 
         # remove-resource
         p_rm_res = subp.add_parser('remove-resource',
-                                   description='Remove a resource',
-                                   aliases=['rr', 'delete-resource', 'dr'])
-        p_rm_res.add_argument('-q', '--quiet', action="store_true")
-        p_rm_res.add_argument('-f', '--force', action="store_true")
+                                   aliases=['rr', 'delete-resource', 'dr'],
+                                   description=' Removes a resource and its associated resource definition '
+                                   'from the drbdmanage cluster. The resource is undeployed from all nodes '
+                                   "and the resource entry is marked for removal from drbdmanage's data "
+                                   'tables. After all nodes have undeployed the resource, the resource '
+                                   "entry is removed from drbdmanage's data tables.")
+        p_rm_res.add_argument('-q', '--quiet', action="store_true",
+                              help='Unless this option is used, drbdmanage will issue a safety question '
+                              'that must be answered with yes, otherwise the operation is canceled.')
+        p_rm_res.add_argument('-f', '--force', action="store_true",
+                              help='If present, then the resource entry and all associated assignment '
+                              "entries are removed from drbdmanage's data tables immediately, without "
+                              'taking any action on the cluster nodes that have the resource deployed.')
         p_rm_res.add_argument('name',
                               help='Name of the resource to delete').completer = ResourceCompleter
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
@@ -257,14 +283,26 @@ class DrbdManage(object):
             return [digits + u for u in p_units]
 
         p_new_vol = subp.add_parser('add-volume',
-                                    description='Add a new volume',
-                                    aliases=['nv', 'new-volume', 'av'])
+                                    aliases=['nv', 'new-volume', 'av'],
+                                    description='Defines a volume with a capacity of size for use with '
+                                    'drbdmanage. If the resource resname exists already, a new volume is '
+                                    'added to that resource, otherwise the resource is created automatically '
+                                    'with default settings. Unless minornr is specified, a minor number for '
+                                    "the volume's DRBD block device is assigned automatically by the "
+                                    'drbdmanage server.')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
         p_new_vol.add_argument('name',
                                help='Name of a new/existing resource').completer = ResourceCompleter
         p_new_vol.add_argument('size',
-                               help='Size of the volume in resource (Default: GiB)').completer = SizeCompleter
+                               help='Size of the volume in resource. '
+                               'The default unit for size is GiB (size * (2 ^ 30) bytes). '
+                               'Another unit can be specified by using an according postfix. '
+                               "Drbdmanage's internal granularity for the capacity of volumes is one "
+                               'Mebibyte (2 ^ 20 bytes). All other unit specifications are implicitly '
+                               'converted to Mebibyte, so that the actual size value used by drbdmanage '
+                               'is the smallest natural number of Mebibytes that is large enough to '
+                               'accomodate a volume of the requested size in the specified size unit.').completer = SizeCompleter
         p_new_vol.set_defaults(func=self.cmd_new_volume)
 
         # remove-volume
@@ -282,10 +320,20 @@ class DrbdManage(object):
             return possible
 
         p_mod_res = subp.add_parser('remove-volume',
-                                    description='Remove volume from resource',
-                                    aliases=['rv', 'delete-volume', 'dv'])
-        p_mod_res.add_argument('-q', '--quiet', action="store_true")
-        p_mod_res.add_argument('-f', '--force', action="store_true")
+                                    aliases=['rv', 'delete-volume', 'dv'],
+                                    description='Removes a volume from the drbdmanage cluster, and removes '
+                                    'the volume definition from the resource definition. The volume is '
+                                    'undeployed from all nodes and the volume entry is marked for removal '
+                                    "from the resource definition in drbdmanage's data tables. After all "
+                                    'nodes have undeployed the volume, the volume entry is removed from '
+                                    'the resource definition.')
+        p_mod_res.add_argument('-q', '--quiet', action="store_true",
+                               help='Unless this option is used, drbdmanage will issue a safety question '
+                               'that must be answered with yes, otherwise the operation is canceled.')
+        p_mod_res.add_argument('-f', '--force', action="store_true",
+                               help='If present, then the volume entry is removed from the resource '
+                               'definition immediately, without taking any action on the cluster nodes '
+                               'that have the volume deployed.')
         p_mod_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
         p_mod_res.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
         p_mod_res.set_defaults(func=self.cmd_remove_volume)
@@ -339,11 +387,16 @@ class DrbdManage(object):
 
         # assign
         p_assign = subp.add_parser('assign-resource',
-                                   description='Assign a resource to a given node',
-                                   aliases=['assign'])
+                                   aliases=['assign'],
+                                   description='Creates an assignment for the deployment of the '
+                                   'specified resource on the specified node.')
         p_assign.add_argument('--client', action="store_true")
-        p_assign.add_argument('--overwrite', action="store_true")
-        p_assign.add_argument('--discard', action="store_true")
+        p_assign.add_argument('--overwrite', action="store_true",
+                              help='If specified, drbdmanage will issue a "drbdmadm -- --force primary" '
+                              'after the resource has been started.')
+        p_assign.add_argument('--discard', action="store_true",
+                              help='If specified, drbdmanage will issue a "drbdadm -- --discard-my-data" '
+                              'connect after the resource has been started.')
         p_assign.add_argument('resource').completer = ResourceCompleter
         p_assign.add_argument('node').completer = NodeCompleter
         p_assign.set_defaults(func=self.cmd_assign)
@@ -366,8 +419,11 @@ class DrbdManage(object):
 
         # deploy
         p_deploy = subp.add_parser('deploy-resource',
-                                   description='Deploy a resource N times',
-                                   aliases=['deploy'])
+                                   aliases=['deploy'],
+                                   description='Deploys a resource on "N" automatically selected nodes '
+                                   "of the drbdmanage cluster.Using the information in drbdmanage's data "
+                                   'tables, the drbdmanage server tries to find n nodes that have enough '
+                                   'free storage capacity to deploy the resource resname.')
         p_deploy.add_argument('resource').completer = ResourceCompleter
         p_deploy.add_argument('-i', '--increase', action="store_true",
                               help='Increase the redundancy count relative to'
@@ -386,8 +442,9 @@ class DrbdManage(object):
 
         # undeploy
         p_undeploy = subp.add_parser('undeploy-resource',
-                                     description='Undeploy a resource',
-                                     aliases=['undeploy'])
+                                     aliases=['undeploy'],
+                                     description='Undeploys a resource from all nodes. The resource '
+                                     "definition is still kept in drbdmanage's data tables.")
         p_undeploy.add_argument('-q', '--quiet', action="store_true")
         p_undeploy.add_argument('-f', '--force', action="store_true")
         p_undeploy.add_argument('resource').completer = ResourceCompleter
@@ -395,35 +452,46 @@ class DrbdManage(object):
 
         # update-pool
         p_upool = subp.add_parser('update-pool',
-                                  description='Check available storage on node'
-                                  ' and write it to the configuration.')
+                                  description='Checks the storage pool total size and free space on '
+                                  'the local node and updates the associated values in the data '
+                                  'tables on the control volume.')
         p_upool.set_defaults(func=self.cmd_update_pool)
 
         # reconfigure
         p_reconfigure = subp.add_parser('reconfigure',
-                                        description='Reads server config and'
+                                        description='Re-reads server configuration and'
                                         ' reloads storage plugin')
         p_reconfigure.set_defaults(func=self.cmd_reconfigure)
 
         # save
         p_save = subp.add_parser('save',
-                                 description='Save cluster state to control'
-                                 ' volume')
+                                 description='Orders the drbdmanage server to save the current '
+                                 "configuration of drbdmanage's resources to the data tables "
+                                 'on the drbdmanaege control volume')
         p_save.set_defaults(func=self.cmd_save)
 
         # load
         p_save = subp.add_parser('load',
-                                 description='Load cluster state from control'
-                                 ' volume, without taking any further actions')
+                                 description='Orders the drbdmanage server to reload the current '
+                                 "configuration of drbdmanage's resources from the data tables on "
+                                 'the drbdmanage control volume')
         p_save.set_defaults(func=self.cmd_load)
 
         # unassign
         p_unassign = subp.add_parser('unassign-resource',
-                                     description='Unassign a resource from a'
-                                     ' node',
-                                     aliases=['unassign'])
-        p_unassign.add_argument('-q', '--quiet', action="store_true")
-        p_unassign.add_argument('-f', '--force', action="store_true")
+                                     aliases=['unassign'],
+                                     description='Undeploys the specified resource from the specified '
+                                     "node and removes the assignment entry from drbdmanage's data "
+                                     'tables after the node has finished undeploying the resource. '
+                                     'If the resource had been assigned to a node, but that node has '
+                                     'not deployed the resource yet, the assignment is canceled.')
+        p_unassign.add_argument('-q', '--quiet', action="store_true",
+                                help='Unless this option is used, drbdmanage will issue a safety question '
+                                'that must be answered with yes, otherwise the operation is canceled.')
+        p_unassign.add_argument('-f', '--force', action="store_true",
+                                help="If present, the assignment entry will be removed from drbdmanage's "
+                                'data tables immediately, without taking any action on the node where '
+                                'the resource is been deployed.')
         p_unassign.add_argument('resource').completer = ResourceCompleter
         p_unassign.add_argument('node').completer = NodeCompleter
         p_unassign.set_defaults(func=self.cmd_unassign)
@@ -492,9 +560,10 @@ class DrbdManage(object):
 
         # shutdown
         p_shutdown = subp.add_parser('shutdown',
-                                     description='Shutdown the drbdmanage'
-                                     ' server process')
-        p_shutdown.add_argument('-q', '--quiet', action="store_true")
+                                     description='Stops the local drbdmanage server process.')
+        p_shutdown.add_argument('-q', '--quiet', action="store_true",
+                                help='Unless this option is used, drbdmanage will issue a safety question '
+                                'that must be answered with yes, otherwise the operation is canceled.')
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
@@ -522,7 +591,8 @@ class DrbdManage(object):
         NodesVerboseCompleter = ShowGroupCompleter(nodesverbose, "show")
         NodesGroupCompleter = ShowGroupCompleter(nodesgroupby, "groupby")
         p_lnodes = subp.add_parser('list-nodes', aliases=['n', 'nodes'],
-                                   description='List nodes in the cluster')
+                                   description='Prints a list of all cluster nodes known to drbdmanage. '
+                                   'By default, the list is printed as a human readable table.')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
         p_lnodes.add_argument('-s', '--show', nargs='+',
                               choices=nodesverbose).completer = NodesVerboseCompleter
@@ -540,7 +610,8 @@ class DrbdManage(object):
         ResGroupCompleter = ShowGroupCompleter(resgroupby, "groupby")
 
         p_lreses = subp.add_parser('list-resources', aliases=['r', 'resources'],
-                                   description='List resources in the cluster')
+                                   description='Prints a list of all resource definitions known to '
+                                   'drbdmanage. By default, the list is printed as a human readable table.')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
         p_lreses.add_argument('-s', '--show', nargs='+',
                               choices=resverbose).completer = ResVerboseCompleter
@@ -556,7 +627,8 @@ class DrbdManage(object):
         VolGroupCompleter = ShowGroupCompleter(volgroupby, 'groupby')
 
         p_lvols = subp.add_parser('list-volumes', aliases=['v', 'volumes'],
-                                  description='List volumes')
+                                  description=' Prints a list of all volume definitions known to drbdmanage. '
+                                  'By default, the list is printed as a human readable table.')
         p_lvols.add_argument('-m', '--machine-readable', action="store_true")
         p_lvols.add_argument('-s', '--show', nargs='+',
                              choices=resverbose).completer = ResVerboseCompleter
@@ -607,7 +679,9 @@ class DrbdManage(object):
         AssGroupCompleter = ShowGroupCompleter(assigngroupby, "groupby")
 
         p_assignments = subp.add_parser('list-assignments', aliases=['a', 'assignments'],
-                                        description='List assignments')
+                                        description="Prints a list of each node's assigned resources."
+                                        "Nodes that do not have any resources assigned do not appear in the "
+                                        "list. By default, the list is printed as a human readable table.")
         p_assignments.add_argument('-m', '--machine-readable',
                                    action="store_true")
         p_assignments.add_argument('-s', '--show', nargs='+',
@@ -623,7 +697,12 @@ class DrbdManage(object):
 
         # export
         p_export = subp.add_parser('export',
-                                   description='Export config')
+                                   description='Exports the configuration files of the specified '
+                                   'drbdmanage resource for use with drbdadm. If "*" is used as '
+                                   'resource name, the configuration files of all drbdmanage resources '
+                                   'deployed on the local node are exported. The configuration files will '
+                                   'be created (or updated) in the drbdmanage directory for temporary '
+                                   'configuration files, typically /var/lib/drbd.d.')
         p_export.add_argument('resource',
                               help='Name of the resource').completer = ResourceCompleter
         p_export.set_defaults(func=self.cmd_export_conf)
