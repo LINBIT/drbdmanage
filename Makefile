@@ -26,6 +26,7 @@ release: up2date
 
 debrelease: up2date
 	echo 'recursive-include debian *' >> MANIFEST.in
+	dh_clean
 	make release
 	git checkout MANIFEST.in
 
