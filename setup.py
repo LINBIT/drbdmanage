@@ -76,12 +76,47 @@ class BuildManCommand(Command):
 
     def run(self):
         assert os.getcwd() == self.cwd, "Must be in package root: %s" % self.cwd
+        from drbdmanage_client import DrbdManage
         outdir = "man-pages"
+        name = "dm"
+        mansection = '8'
+        client = DrbdManage()
+        descriptions = client.parser_cmds_description(client._all_commands)
+
         if not os.path.isfile(os.path.join(outdir, "drbdmanage.8.gz")):
+            h = open(os.path.join(outdir, "drbdmanage_header.xml"))
+            t = open(os.path.join(outdir, "drbdmanage_trailer.xml"))
+            drbdmanagexml = open(os.path.join(outdir, "drbdmanage.xml"), 'w')
+            drbdmanagexml.write(h.read())
+            for cmd in [cmds[0] for cmds in client._all_commands]:
+                drbdmanagexml.write("""
+                <varlistentry>
+                  <term>
+                      <command moreinfo="none">drbdmanage</command>
+                      <arg choice="plain" rep="norepeat">%s
+                      </arg>
+                  </term>
+                  <listitem>
+                    <para>
+                       %s
+                    </para>
+                    <para>For furter information see 
+                        <citerefentry>
+                        <refentrytitle>%s</refentrytitle>
+                        <manvolnum>%s</manvolnum></citerefentry>
+                    </para>
+                  </listitem>
+                </varlistentry>
+                """ % (cmd, descriptions[cmd], name + '-' + cmd, mansection))
+            drbdmanagexml.write(t.read())
+            h.close()
+            t.close()
+            drbdmanagexml.close()
+
             os.system("cd %s; " % (outdir) + ' ' +
-                "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
-                "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
-                "drbdmanage.xml; gzip -f -9 drbdmanage.8")
+                      "xsltproc --xinclude --stringparam variablelist.term.break.after 1 "
+                      "http://docbook.sourceforge.net/release/xsl/current/manpages/docbook.xsl "
+                      "drbdmanage.xml; gzip -f -9 drbdmanage.8")
         # subcommands
         import gzip
         if "__enter__" not in dir(gzip.GzipFile):  # duck punch it in!
@@ -96,14 +131,10 @@ class BuildManCommand(Command):
             gzip.GzipFile.__enter__ = __enter
             gzip.GzipFile.__exit__ = __exit
 
-        from drbdmanage_client import DrbdManage
         from drbdmanage.utils import check_output
 
-        name = "dm"
-        mansection = '8'
         replace = ("drbdmanage_client.py", "drbdmanage")
 
-        client = DrbdManage()
         for cmd in client._all_commands:
             toplevel = cmd[0]
             # aliases = cmd[1:]

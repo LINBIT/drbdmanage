@@ -927,6 +927,20 @@ class DrbdManage(object):
         cmds_sorted.sort(lambda a, b: cmp(a[0], b[0]))
         return cmds_sorted
 
+    def parser_cmds_description(self, all_commands):
+        toplevel = [top[0] for top in all_commands]
+
+        subparsers_actions = [
+            action for action in self._parser._actions if isinstance(action,
+                                                                     argparse._SubParsersAction)]
+        description = {}
+        for subparsers_action in subparsers_actions:
+            for choice, subparser in subparsers_action.choices.items():
+                if choice in toplevel:
+                    description[choice] = subparser.description
+
+        return description
+
     def cmd_list(self, args):
         print 'Use "help <command>" to get help for a specific command.\n'
         print 'Available commands:'
