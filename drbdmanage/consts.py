@@ -47,6 +47,14 @@ SNAPS_NAME          = "snaps_name"
 ERROR_CODE          = "error_code"
 COMMON_NAME         = "common_name"
 
+# Keys for the version text-query
+KEY_SERVER_VERSION       = "server_version"
+KEY_SERVER_GITHASH       = "server_git_hash"
+KEY_DRBD_KERNEL_VERSION  = "drbd_kernel_version"
+KEY_DRBD_KERNEL_GIT_HASH = "drbd_kernel_git_hash"
+KEY_DRBD_UTILS_VERSION   = "drbd_utils_version"
+KEY_DRBD_UTILS_GIT_HASH  = "drbd_utils_git_hash"
+
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
 NODE_NAME_MAXLEN    = 128

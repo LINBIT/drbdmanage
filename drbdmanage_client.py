@@ -749,6 +749,12 @@ class DrbdManage(object):
                                   nargs="*").completer = LowLevelDebugJsonCompleter
         p_lowlevel_debug.set_defaults(func=self.cmd_lowlevel_debug)
 
+        # server-version
+        p_server_version = subp.add_parser('server-version',
+                                           description='Queries version information from the '
+                                               'drbdmanage server')
+        p_server_version.set_defaults(func=self.cmd_server_version)
+
         # query-conf
         p_queryconf = subp.add_parser('query-conf',
                                       description='Print the DRBD'
@@ -2123,6 +2129,22 @@ class DrbdManage(object):
         self.dbus_init()
         server_rc, joinc = self._server.text_query(["joinc", node_name])
         sys.stdout.write("%s\n" % " ".join(joinc))
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_server_version(self, args):
+        """
+        Queries version information from the drbdmanage server
+        """
+        fn_rc = 1
+
+        self.dbus_init()
+        query = [ "version" ]
+        server_rc, version_info = self._server.text_query(query)
+        for entry in version_info:
+            sys.stdout.write("%s\n" % entry)
+
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc

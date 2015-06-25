@@ -1152,6 +1152,13 @@ def aux_props_selector(props):
             yield (key, val)
 
 
+def key_value_string(key, value):
+    """
+    Creates a "key=value" string from a key and a value
+    """
+    return str(key) + "=" + str(value)
+
+
 def debug_log_exec_args(source, exec_args):
     """
     Logs the arguments used to execute an external command

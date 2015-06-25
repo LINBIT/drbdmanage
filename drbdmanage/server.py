@@ -40,13 +40,16 @@ from drbdmanage.consts import (
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
-    SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH
+    SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
+    KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
+    KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number, plugin_import,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
-    split_main_aux_props, aux_props_selector, is_set, is_unset
+    split_main_aux_props, aux_props_selector, is_set, is_unset, key_value_string,
+    debug_log_exec_args
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
@@ -103,6 +106,8 @@ class DrbdManageServer(object):
     # events subprocess termination loop
     EVT_TERM_SLEEP_SHORT = 0.5
     EVT_TERM_SLEEP_LONG  = 2
+
+    DRBD_KMOD_INFO_FILE = "/proc/drbd"
 
     LOGGING_FORMAT = "drbdmanaged[%(process)d]: %(levelname)-10s %(message)s"
 
@@ -3645,6 +3650,44 @@ class DrbdManageServer(object):
                     r_node_id, secret]
         else:
             return [("Error: Generation of the join command failed")]
+
+
+    def TQ_version(self):
+        """
+        Returns version information about various subsystems
+        """
+        DRBD_KERNEL_VERSION  = "<unknown>"
+        DRBD_KERNEL_GIT_HASH = "<unknown>"
+        DRBD_UTILS_VERSION   = "<unknown>"
+        DRBD_UTILS_GIT_HASH  = "<unknown>"
+
+        # Retrieve the DRBD kernel module's version and GIT hash
+        proc_drbd_file = None
+        try:
+            proc_drbd_file = open(DrbdManageServer.DRBD_KMOD_INFO_FILE, "r")
+            DRBD_KERNEL_VERSION = proc_drbd_file.readline().rstrip("\n")
+            DRBD_KERNEL_GIT_HASH = proc_drbd_file.readline().rstrip("\n")
+        except IOError:
+            logging.debug("Cannot retrieve DRBD kernel module version information from '%s'"
+                          % (DrbdManageServer.DRBD_KMOD_INFO_FILE))
+        finally:
+            if proc_drbd_file is not None:
+                try:
+                    proc_drbd_file.close()
+                except IOError:
+                    pass
+
+        # TODO: retrieve the drbd-utils' version
+
+        version_info = [
+            key_value_string(KEY_SERVER_VERSION, DM_VERSION),
+            key_value_string(KEY_SERVER_GITHASH, DM_GITHASH),
+            key_value_string(KEY_DRBD_KERNEL_VERSION, DRBD_KERNEL_VERSION),
+            key_value_string(KEY_DRBD_KERNEL_GIT_HASH, DRBD_KERNEL_GIT_HASH),
+            key_value_string(KEY_DRBD_UTILS_VERSION, DRBD_UTILS_VERSION),
+            key_value_string(KEY_DRBD_UTILS_GIT_HASH, DRBD_UTILS_GIT_HASH)
+        ]
+        return version_info
 
 
     def TQ_get_path(self, res_name, vol_id_arg="0"):
