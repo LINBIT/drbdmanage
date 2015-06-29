@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 
 import drbdmanage.propscontainer as propscon
 import drbdmanage.exceptions as dmexc

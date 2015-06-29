@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 """
     drbdmanage - management of distributed DRBD9 resources
     Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
