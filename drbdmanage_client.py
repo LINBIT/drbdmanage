@@ -29,6 +29,7 @@ import sys
 import os
 import errno
 import dbus
+import dbus.mainloop.glib
 import json
 import re
 import subprocess
@@ -38,6 +39,7 @@ import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 import drbdmanage.argparse.argparse as argparse
 import drbdmanage.argcomplete as argcomplete
+import gobject
 
 from drbdmanage.consts import (
     SERVER_CONFFILE, KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
@@ -82,6 +84,8 @@ class DrbdManage(object):
     drbdmanage dbus client, the CLI for controlling the drbdmanage server
     """
 
+    _dbus = None
+    _gmainloop = None
     _server = None
     _noerr = False
     _colors = True
@@ -93,15 +97,18 @@ class DrbdManage(object):
     UMHELPER_OVERRIDE = "/bin/true"
     UMHELPER_WAIT_TIME = 5.0
 
+
     def __init__(self):
         self._parser = self.setup_parser()
         self._all_commands = self.parser_cmds()
 
+
     def dbus_init(self):
         try:
             if self._server is None:
-                dbus_con = dbus.SystemBus()
-                self._server = dbus_con.get_object(
+                dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+                self._dbus = dbus.SystemBus()
+                self._server = self._dbus.get_object(
                     DBusServer.DBUS_DRBDMANAGED, DBusServer.DBUS_SERVICE
                 )
         except dbus.exceptions.DBusException as exc:
@@ -114,6 +121,29 @@ class DrbdManage(object):
             )
             sys.stderr.write("%s\n" % (str(exc)))
             exit(1)
+
+
+    def subscribe(self, signal_name_arg, signal_handler_fn):
+        if self._dbus is not None:
+            if self._gmainloop is None:
+                self._gmainloop = gobject.MainLoop()
+            self._dbus.add_signal_receiver(
+                handler_function=signal_handler_fn,
+                signal_name=signal_name_arg,
+                dbus_interface=None,
+                bus_name=DbusServer.DBUS_DRBDMANAGED,
+                path=DBusServer.DBUS_SERVICE
+            )
+        else:
+            sys.stderr.write(
+                "Error: DrbdManageClient.subscribe() without prior dbus_init()\n"
+            )
+
+
+    def wait_for_signals(self):
+        if self._gmainloop is not None:
+            self._gmainloop.run()
+
 
     def setup_parser(self):
         parser = argparse.ArgumentParser(prog='drbdmanage')
