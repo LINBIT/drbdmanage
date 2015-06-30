@@ -26,6 +26,10 @@ default error messages for drbdmanage and utility functions to work with
 those objects.
 """
 
+import sys
+import traceback
+import logging
+
 
 # return code for successful operations
 DM_SUCCESS  = 0
@@ -129,7 +133,36 @@ def dm_exc_text(exc_id):
     return text
 
 
-class InvalidNameException(Exception):
+class DrbdManageException(Exception):
+
+    """
+    Base class for exceptions
+    """
+
+    def __init__(self):
+        super(DrbdManageException, self).__init__()
+
+
+    def __str__(self):
+        exception = self.__class__.__name__
+        stack_trace = []
+
+        (exc_type, exc_value, exc_traceback) = sys.exc_info()
+        if exc_traceback is not None:
+            stack_trace = traceback.format_tb(exc_traceback)
+        else:
+            exception += " (uncaught)"
+
+        formatted_exc = exception + "\n"
+        if len(stack_trace) > 0:
+            formatted_exc += "Exception stack trace:\n"
+            for line in stack_trace:
+                formatted_exc += line
+
+        return formatted_exc
+
+
+class InvalidNameException(DrbdManageException):
 
     """
     Raised on an attempt to use a string that does not match the naming
@@ -140,7 +173,7 @@ class InvalidNameException(Exception):
         super(InvalidNameException, self).__init__()
 
 
-class InvalidAddrFamException(Exception):
+class InvalidAddrFamException(DrbdManageException):
 
     """
     Raised if an unknown address family is specified
@@ -150,7 +183,7 @@ class InvalidAddrFamException(Exception):
         super(InvalidAddrFamException, self).__init__()
 
 
-class VolSizeRangeException(Exception):
+class VolSizeRangeException(DrbdManageException):
 
     """
     Raised if the size specification for a volume is out of range
@@ -160,7 +193,7 @@ class VolSizeRangeException(Exception):
         super(VolSizeRangeException, self).__init__()
 
 
-class InvalidMinorNrException(Exception):
+class InvalidMinorNrException(DrbdManageException):
 
     """
     Raised if a device minor number is out of range or unparseable
@@ -170,7 +203,7 @@ class InvalidMinorNrException(Exception):
         super(InvalidMinorNrException, self).__init__()
 
 
-class InvalidMajorNrException(Exception):
+class InvalidMajorNrException(DrbdManageException):
 
     """
     Raised if a device major number is out of range or unparseable
@@ -180,7 +213,7 @@ class InvalidMajorNrException(Exception):
         super(InvalidMajorNrException, self).__init__()
 
 
-class IncompatibleDataException(Exception):
+class IncompatibleDataException(DrbdManageException):
 
     """
     Raised if received data is not in a format expected and/or recognizable
@@ -196,7 +229,7 @@ class IncompatibleDataException(Exception):
         super(IncompatibleDataException, self).__init__()
 
 
-class SyntaxException(Exception):
+class SyntaxException(DrbdManageException):
 
     """
     Raised on syntax errors in input data
@@ -206,7 +239,7 @@ class SyntaxException(Exception):
         super(SyntaxException, self).__init__()
 
 
-class PersistenceException(Exception):
+class PersistenceException(DrbdManageException):
 
     """
     Raised if access to persistent storage fails
@@ -216,7 +249,7 @@ class PersistenceException(Exception):
         super(PersistenceException, self).__init__()
 
 
-class PluginException(Exception):
+class PluginException(DrbdManageException):
 
     """
     Raised if a plugin cannot be loaded
@@ -226,7 +259,7 @@ class PluginException(Exception):
         super(PluginException, self).__init__()
 
 
-class AbortException(Exception):
+class AbortException(DrbdManageException):
 
     """
     Raised to abort execution of a chain of operations
@@ -236,7 +269,7 @@ class AbortException(Exception):
         super(AbortException, self).__init__()
 
 
-class DebugException(Exception):
+class DebugException(DrbdManageException):
 
     """
     Raised to indicate an implementation error
