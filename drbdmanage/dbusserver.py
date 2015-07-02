@@ -606,3 +606,47 @@ class DBusServer(dbus.service.Object):
         D-Bus interface for DrbdManageServer.debug_console(...)
         """
         return self._server.debug_console(command)
+
+
+class DBusSignal(dbus.service.Object):
+    _path = None
+
+
+    def __init__(self, path):
+        self._path = path
+        dbus.service.Object.__init__(self, dbus.SystemBus(), "/objects" + path)
+        logging.debug("DBusSignal '%s': Instance created" % self._path)
+
+
+    @dbus.service.signal(DBusServer.DBUS_DRBDMANAGED)
+    def notify_changed(self):
+        """
+        Signal to notify subscribers of a change
+
+        This signal is to be sent to notify subscribers that the state of
+        the object this signal is associated with has changed
+        """
+        logging.debug("DBusSignal '%s': notify_changed()" % self._path)
+
+
+    @dbus.service.signal(DBusServer.DBUS_DRBDMANAGED)
+    def notify_removed(self):
+        """
+        Signal to notify subscribers to unsubscribe
+
+        This signal is to be sent whenever an instance of this class
+        is removed (e.g., the server withdraws the DBus registration
+        of the object associated with this signal and will therefore
+        discard the DBusSignal instance, too)
+        """
+        logging.debug("DBusSignal '%s': notify_removed()" % self._path)
+
+
+    def destroy(self):
+        """
+        Withdraws this instance from the DBus interface
+        """
+        # Notify any subscribers of the removal of this DBus service object
+        self.notify_removed()
+        # Remove the DBus service object
+        self.remove_from_connection()
