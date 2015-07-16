@@ -2407,7 +2407,7 @@ class DrbdManageServer(object):
 
             if props_cont is not None and persist is not None:
                 for k, v in props.iteritems():
-                    ns = PropsContainer.NS["setupopt"] + "%s/" % (otype)
+                    ns = PropsContainer.NAMESPACES["setupopt"] + "%s/" % (otype)
                     if k.startswith('unset'):
                         props_cont.remove_prop(k[len('unset-'):], ns)
                     else:

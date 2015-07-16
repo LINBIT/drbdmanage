@@ -1,4 +1,8 @@
 #!/usr/bin/env python2
+"""
+Module for the PropsContainer class and related classes
+"""
+
 
 import drbdmanage.consts as consts
 
@@ -14,7 +18,8 @@ class PropsContainer(object):
     """
     Namespaces:
     """
-    NS = {"setupopt": "/dso/"}
+    NAMESPACES = {"setupopt": "/dso/"}
+
 
     def __init__(self, get_serial_fn, init_serial, ins_props):
         """
@@ -25,8 +30,8 @@ class PropsContainer(object):
 
         # Load initial properties, if present
         if ins_props is not None:
-            for (key, val) in ins_props.iteritems():
-                self._props[str(key)] = str(val)
+            for (key, value) in ins_props.iteritems():
+                self._props[str(key)] = str(value)
 
         # Set the initial serial number
         checked_serial = None
@@ -47,31 +52,35 @@ class PropsContainer(object):
             if checked_serial is None:
                 self._props[consts.SERIAL] = str(self._get_serial())
 
-    def _normalize_NS(self, ns):
-        """
-        ns has to be a string, can be ""
-        """
-        if ns:
-            ns = ns.strip()
-            ns = ns if ns[0] == '/' else '/' + ns
-            ns = ns if ns[-1] == '/' else ns + '/'
-        return ns
 
-    def _normalize_key(self, key, ns):
+    def _normalize_namespace(self, namespace):
         """
-        returns concat of ns and key
+        Namespace has to be a string, but can be an empty string ("")
         """
-        return self._normalize_NS(ns) + str(key)
+        if namespace is not None and len(namespace) >= 1:
+            namespace = namespace.strip()
+            namespace = namespace if namespace[0] == '/' else '/' + namespace
+            namespace = namespace if namespace[-1] == '/' else namespace + '/'
+        return namespace
+
+
+    def _normalize_key(self, key, namespace):
+        """
+        Returns concatenation of namespace and key
+        """
+        return self._normalize_namespace(namespace) + str(key)
+
 
     def get_prop(self, key, namespace=""):
         """
         Retrieves a property from the dictionary
         """
         key = self._normalize_key(key, namespace)
-        val = self._props.get(key)
-        if val is not None:
-            val = str(val)
-        return val
+        value = self._props.get(key)
+        if value is not None:
+            value = str(value)
+        return value
+
 
     def get_selected_props(self, keys, namespace=""):
         """
@@ -83,26 +92,29 @@ class PropsContainer(object):
         """
         sel_props = {}
         for key in keys:
-            k = self._normalize_key(key, namespace)
-            val = self._props.get(k)
-            if val is not None:
-                sel_props[k] = str(val)
+            norm_key = self._normalize_key(key, namespace)
+            value = self._props.get(norm_key)
+            if value is not None:
+                sel_props[norm_key] = str(value)
         return sel_props
+
 
     def get_all_props(self, namespace=""):
         """
         Retrieves a dictionary of all properties
         """
-        return dict([(k, v) for k, v in self.iteritems(namespace)])
+        return dict([(key, value) for key, value in self.iteritems(namespace)])
 
-    def set_prop(self, key, val, namespace=""):
+
+    def set_prop(self, key, value, namespace=""):
         """
         Sets the value of an existing property or adds a new property
         """
         if namespace or key != consts.SERIAL:
             key = self._normalize_key(key, namespace)
-            self._props[key] = str(val)
+            self._props[key] = str(value)
         self.new_serial()
+
 
     def set_selected_props(self, keys, ins_props, namespace=""):
         """
@@ -119,11 +131,12 @@ class PropsContainer(object):
         are ignored.
         """
         for key in keys:
-            k = self._normalize_key(key, namespace)
-            val = ins_props.get(k)
-            if val is not None:
-                self._props[k] = str(val)
+            norm_key = self._normalize_key(key, namespace)
+            value = ins_props.get(norm_key)
+            if value is not None:
+                self._props[norm_key] = str(value)
         self.new_serial()
+
 
     def remove_prop(self, key, namespace=""):
         """
@@ -135,17 +148,19 @@ class PropsContainer(object):
             pass
         self.new_serial()
 
+
     def remove_selected_props(self, keys, namespace=""):
         """
         Removes multiple properties from the dictionary
         """
         for key in keys:
-            k = self._normalize_key(key, namespace)
+            norm_key = self._normalize_key(key, namespace)
             try:
-                del self._props[k]
+                del self._props[norm_key]
             except KeyError:
                 pass
         self.new_serial()
+
 
     def merge_props(self, ins_props, namespace=""):
         """
@@ -156,10 +171,11 @@ class PropsContainer(object):
         container's dictionary with corresponing values from 'ins_props', or
         adding property entries to the container's dictionary
         """
-        for (key, val) in ins_props.iteritems():
-            k = self._normalize_key(key, namespace)
-            self._props[k] = str(val)
+        for (key, value) in ins_props.iteritems():
+            norm_key = self._normalize_key(key, namespace)
+            self._props[norm_key] = str(value)
         self.new_serial()
+
 
     def merge_gen(self, gen_obj, namespace=""):
         """
@@ -170,37 +186,41 @@ class PropsContainer(object):
         container's dictionary with corresponing values fetched from
         'gen_obj', or adding property entries to the container's dictionary
         """
-        for (key, val) in gen_obj:
-            k = self._normalize_key(key, namespace)
-            self._props[k] = str(val)
+        for (key, value) in gen_obj:
+            norm_key = self._normalize_key(key, namespace)
+            self._props[norm_key] = str(value)
         self.new_serial()
+
 
     def iterkeys(self, namespace=""):
         """
         Returns an iterator over the keys of the container's dictionary
         """
-        ns = self._normalize_NS(namespace)
-        for k in self._props:
-            if k.startswith(ns):
-                yield k[len(ns):]
+        norm_namespace = self._normalize_namespace(namespace)
+        for norm_key in self._props:
+            if norm_key.startswith(norm_namespace):
+                yield norm_key[len(norm_namespace):]
+
 
     def itervalues(self, namespace=""):
         """
         Returns an iterator over the values of the container's dictionary
         """
-        ns = self._normalize_NS(namespace)
-        for k, v in self._props.iteritems():
-            if k.startswith(ns):
-                yield v
+        norm_namespace = self._normalize_namespace(namespace)
+        for key, value in self._props.iteritems():
+            if key.startswith(norm_namespace):
+                yield value
+
 
     def iteritems(self, namespace=""):
         """
         Returns an iterator over the items of the container's dictionary
         """
-        ns = self._normalize_NS(namespace)
-        for k, v in self._props.iteritems():
-            if k.startswith(ns):
-                yield (k[len(ns):], v)
+        norm_namespace = self._normalize_namespace(namespace)
+        for key, value in self._props.iteritems():
+            if key.startswith(norm_namespace):
+                yield (key[len(norm_namespace):], value)
+
 
     def new_serial(self):
         """

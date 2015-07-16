@@ -284,7 +284,7 @@ class DrbdAdmConf(object):
                 # this part of drbdmanage is GNU/Linux only and our namespaces
                 # follow a unix-like path structure, therfore os.path.join is
                 # the way to go
-                ns = os.path.join(PropsContainer.NS["setupopt"], subnamespace)
+                ns = os.path.join(PropsContainer.NAMESPACES["setupopt"], subnamespace)
                 ns = os.path.normpath(ns) + '/'
                 opts = props.get_all_props(ns)
         except:
