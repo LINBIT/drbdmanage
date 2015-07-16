@@ -2605,6 +2605,9 @@ class Assignment(GenericDrbdObject):
     # Reference to the server's get_serial() function
     _get_serial = None
 
+    # Signal for status change notifications
+    _signal     = None
+
     FLAG_DEPLOY    = 0x1
     FLAG_CONNECT   = 0x2
     FLAG_DISKLESS  = 0x4
@@ -3140,6 +3143,53 @@ class Assignment(GenericDrbdObject):
         """
         return (is_set(self._cstate, self.FLAG_CONNECT) and
                 is_unset(self._tstate, self.FLAG_CONNECT))
+
+
+    def set_signal(self, signal):
+        """
+        Assigns the signal instance for client notifications
+        """
+        self._signal = signal
+
+
+    def get_signal(self):
+        """
+        Returns the signal instance for client notifications
+        """
+        return self._signal
+
+
+    def notify_changed(self):
+        """
+        Sends a signal to notify clients of a status change
+        """
+        if self._signal is not None:
+            try:
+                self._signal.notify_changed()
+            except dmexc.DrbdManageException as dm_exc:
+                logging.warning("Cannot send change notification signal: %s"
+                                % (str(dm_exc)))
+            except Exception:
+                logging.warning("Cannot send change notification signal, "
+                                "unhandled exception encountered")
+
+
+    def notify_removed(self):
+        """
+        Removes the assignment's signal
+
+        This method should be called when the assignment is removed
+        """
+        if self._signal is not None:
+            try:
+                self._signal.destroy()
+                self._signal = None
+            except dmexc.DrbdManageException as dm_exc:
+                logging.warning("Cannot send removal notification signal: %s"
+                                % (str(dm_exc)))
+            except Exception:
+                logging.warning("Cannot send removal notification signal, "
+                                "unhandled exception encountered")
 
 
     def set_cstate_flags(self, flags):

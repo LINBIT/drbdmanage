@@ -517,9 +517,21 @@ class PersistenceImpl(object):
                 # TODO: if the signature is wrong, load an earlier backup
                 #       of the configuration
 
-                # Load DrbdNode objects from data tables
+                # Cache the currently loaded assignment objects
+                # (Required later to figure out which assignments have been added or
+                # removed after reloading the configuration)
                 nodes_key = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
                 nodes = objects_root[nodes_key]
+
+                assg_map_cache = {}
+                for node in nodes.itervalues():
+                    node_assg_map = {}
+                    for assg in node.iterate_assignments():
+                        node_assg_map[assg.get_resource().get_name()] = assg
+                    if len(node_assg_map) > 0:
+                        assg_map_cache[node.get_name()] = node_assg_map
+
+                # Load DrbdNode objects from data tables
                 nodes.clear()
                 if nodes_con is not None:
                     for properties in nodes_con.itervalues():
@@ -557,14 +569,40 @@ class PersistenceImpl(object):
                 # Load and reestablish Assignment objects from data tables
                 if assg_con is not None:
                     for properties in assg_con.itervalues():
-                        assignment = AssignmentPersistence.load(properties,
-                          nodes, resources, self._server.get_serial)
+                        assignment = AssignmentPersistence.load(
+                            properties, nodes, resources,
+                            self._server.get_serial
+                        )
                         if assignment is None:
                             logging.debug(
-                                "persistence: Failed to load an "
-                                "Assignment object"
+                                "persistence: Failed to load an Assignment object"
                             )
                             errors = True
+
+
+                # Reestablish assignments signals
+                for node in nodes.itervalues():
+                    node_name = node.get_name()
+                    node_assg_map = assg_map_cache.get(node_name)
+                    for cur_assg in node.iterate_assignments():
+                        res_name = cur_assg.get_resource().get_name()
+                        prev_assg = None
+                        if node_assg_map is not None:
+                            prev_assg = node_assg_map.get(res_name)
+                        if prev_assg is not None:
+                            signal = prev_assg.get_signal()
+                            cur_assg.set_signal(signal)
+                            del node_assg_map[res_name]
+                        else:
+                            signal = self._server.create_signal(
+                                "assignments/" + node_name + "/" + res_name
+                            )
+                            cur_assg.set_signal(signal)
+                    if node_assg_map is not None and len(node_assg_map) == 0:
+                        del assg_map_cache[node_name]
+                for node_assg_map in assg_map_cache.itervalues():
+                    for prev_assg in node_assg_map.itervalues():
+                        prev_assg.notify_removed()
 
                 # Load the cluster configuration
                 cconf_key = drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME

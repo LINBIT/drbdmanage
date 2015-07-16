@@ -650,3 +650,22 @@ class DBusSignal(dbus.service.Object):
         self.notify_removed()
         # Remove the DBus service object
         self.remove_from_connection()
+
+
+
+class DBusSignalFactory():
+    """
+    Instance factory for the DBusSignal class
+
+    An object of this class is passed to the drbdmanage server to enable
+    it to create instances of the DBusSignal class, so the drbdmanage
+    server can be kept independent of the DBus layer.
+    """
+
+    def __init__(self):
+        pass
+
+
+    def create_signal(self, path):
+        return DBusSignal(path)
+

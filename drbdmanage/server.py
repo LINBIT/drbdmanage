@@ -56,9 +56,9 @@ from drbdmanage.exceptions import (
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOTIMPL, DM_SUCCESS
 )
 from drbdmanage.exceptions import (
-    InvalidMinorNrException, InvalidNameException, PersistenceException,
-    PluginException, SyntaxException, VolSizeRangeException, AbortException,
-    DebugException, dm_exc_text
+    DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
+    PluginException, SyntaxException, VolSizeRangeException, AbortException, DebugException,
+    dm_exc_text
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
@@ -151,6 +151,10 @@ class DrbdManageServer(object):
     # Container for the server's objects directory
     _objects_root = None
 
+
+    # Factory instance for creating signal objects
+    _signal_factory = None
+
     # BlockDevice manager
     _bd_mgr    = None
     # Configuration objects maps
@@ -203,7 +207,7 @@ class DrbdManageServer(object):
     dbg_events = False
 
 
-    def __init__(self):
+    def __init__(self, signal_factory):
         """
         Initialize and start up the drbdmanage server
         """
@@ -241,6 +245,13 @@ class DrbdManageServer(object):
 
         # Reset the loglevel to the one specified in the configuration file
         self.set_loglevel()
+
+        # Initialize the signal objects source
+        if signal_factory is not None:
+            self._signal_factory = signal_factory
+        else:
+            logging.warning("Server created without passing a signal factory, "
+                            "signals are disabled")
 
         # Setup the PATH environment variable
         extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
@@ -600,6 +611,23 @@ class DrbdManageServer(object):
             self._root_logger.setLevel(loglevel_id)
         except KeyError:
             pass
+
+
+    def create_signal(self, path):
+        """
+        Create a drbdmanage signal using the server's signal factory
+        """
+        signal = None
+        if self._signal_factory is not None:
+            try:
+                signal = self._signal_factory.create_signal(path)
+            except DrbdManageException as dm_exc:
+                logging.error("Signal creation failed: %s"
+                              % (str(dm_exc)))
+            except Exception:
+                logging.error("Signal creation failed, "
+                              "unhandled exception encountered")
+        return signal
 
 
     def load_server_conf(self):
@@ -1507,9 +1535,16 @@ class DrbdManageServer(object):
                 if is_unset(node.get_state(), DrbdNode.FLAG_STORAGE):
                     tstate = tstate | Assignment.FLAG_DISKLESS
 
+                # Create the assignment object
                 assignment = Assignment(node, resource, node_id,
                                         cstate, tstate, 0, None,
                                         self.get_serial, None, None)
+                # Create the signal for this assignment
+                assg_signal = self.create_signal(
+                    "assignments/" + node.get_name() +
+                    "/" + resource.get_name()
+                )
+                assignment.set_signal(assg_signal)
                 for vol_state in assignment.iterate_volume_states():
                     vol_state.deploy()
                     if is_unset(tstate, Assignment.FLAG_DISKLESS):

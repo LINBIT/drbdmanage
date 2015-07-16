@@ -31,7 +31,8 @@ def main():
     """
     Starts up the server and its communication layer
     """
-    server = drbdmanage.server.DrbdManageServer()
+    signal_factory = drbdmanage.dbusserver.DBusSignalFactory()
+    server = drbdmanage.server.DrbdManageServer(signal_factory)
     drbdmanage.dbusserver.DBusServer(server)
     try:
         server.run()
