@@ -159,6 +159,9 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
     _cstate           = 0
     _tstate           = 0
 
+    # Signal for status change notifications
+    _signal           = None
+
     FLAG_DEPLOY = 1
 
     TSTATE_MASK = FLAG_DEPLOY
@@ -225,6 +228,53 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         if self._tstate != 0:
             self._tstate = 0
             self.get_props().new_serial()
+
+
+    def set_signal(self, signal):
+        """
+        Assigns the signal instance for client notifications
+        """
+        self._signal = signal
+
+
+    def get_signal(self):
+        """
+        Returns the signal instance for client notifications
+        """
+        return self._signal
+
+
+    def notify_changed(self):
+        """
+        Sends a signal to notify clients of a status change
+        """
+        if self._signal is not None:
+            try:
+                self._signal.notify_changed()
+            except exc.DrbdManageException as dm_exc:
+                logging.warning("Cannot send change notification signal: %s"
+                                % (str(dm_exc)))
+            except Exception:
+                logging.warning("Cannot send change notification signal, "
+                                "unhandled exception encountered")
+
+
+    def notify_removed(self):
+        """
+        Removes the assignment's signal
+
+        This method should be called when the snapshot assignment is removed
+        """
+        if self._signal is not None:
+            try:
+                self._signal.destroy()
+                self._signal = None
+            except exc.DrbdManageException as dm_exc:
+                logging.warning("Cannot send removal notification signal: %s"
+                                % (str(dm_exc)))
+            except Exception:
+                logging.warning("Cannot send removal notification signal, "
+                                "unhandled exception encountered")
 
 
     def set_cstate(self, cstate):

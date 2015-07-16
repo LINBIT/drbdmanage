@@ -580,7 +580,7 @@ class PersistenceImpl(object):
                             errors = True
 
 
-                # Reestablish assignments signals
+                # Reestablish assignments and snapshot assignments signals
                 for node in nodes.itervalues():
                     node_name = node.get_name()
                     node_assg_map = assg_map_cache.get(node_name)
@@ -589,15 +589,65 @@ class PersistenceImpl(object):
                         prev_assg = None
                         if node_assg_map is not None:
                             prev_assg = node_assg_map.get(res_name)
+
                         if prev_assg is not None:
+                            # Assignment was present in the previous configuration
                             signal = prev_assg.get_signal()
                             cur_assg.set_signal(signal)
                             del node_assg_map[res_name]
+
+                            # Collect the previous snapshot assignments
+                            prev_snaps_assg_map = {}
+                            for snaps_assg in prev_assg.iterate_snaps_assgs():
+                                snaps = snaps_assg.get_snapshot()
+                                snaps_name = snaps.get_name()
+                                prev_snaps_assg_map[snaps_name] = snaps_assg
+
+                            # FIXME: delete notification for snapshot assignments
+                            #
+                            # Cross-check for changes (creation/removal) of
+                            # snapshot assignments
+                            for cur_snaps_assg in cur_assg.iterate_snaps_assgs():
+                                cur_snaps = cur_snaps_assg.get_snapshot()
+                                cur_snaps_name = cur_snaps.get_name()
+                                prev_snaps_assg = prev_snaps_assg_map.get(cur_snaps_name)
+
+                                # Transfer the existing signal or create a new signal
+                                # for the snapshot assignment
+                                signal = None
+                                if prev_snaps_assg is not None:
+                                    del prev_snaps_assg_map[cur_snaps_name]
+                                    # Transfer the signal from the previous configuration's
+                                    # snapshot assignment
+                                    signal = prev_snaps_assg.get_signal()
+                                else:
+                                    # Create a new signal for the newly present
+                                    # snapshot assignment
+                                    signal = self._server.create_signal(
+                                        "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                                    )
+                                cur_snaps_assg.set_signal(signal)
+
+                            # Send remove signals for those snapshot assignments that
+                            # existed in the previous configuration but do no longer
+                            # exist in the current configuration
+                            for prev_snaps_assg in prev_snaps_assg_map.itervalues():
+                                prev_snaps_assg.notify_removed()
                         else:
+                            # Assignment was not present in the previous configuration
+                            # (e.g. it was created by another node)
                             signal = self._server.create_signal(
                                 "assignments/" + node_name + "/" + res_name
                             )
                             cur_assg.set_signal(signal)
+                            # Create signals for the snapshot assignments
+                            for snaps_assg in cur_assg.iterate_snaps_assgs():
+                                snaps = snaps_assg.get_snapshot()
+                                snaps_name = snaps.get_name()
+                                signal = self._server.create_signal(
+                                    "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                                )
+                                snaps_assg.set_signal(signal)
                     if node_assg_map is not None and len(node_assg_map) == 0:
                         del assg_map_cache[node_name]
                 for node_assg_map in assg_map_cache.itervalues():

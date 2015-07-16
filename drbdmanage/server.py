@@ -2769,6 +2769,12 @@ class DrbdManageServer(object):
                     0, DrbdSnapshotAssignment.FLAG_DEPLOY,
                     self.get_serial, None, None
                 )
+                node_name = node.get_name()
+                res_name  = resource.get_name()
+                snaps_assg_signal = self.create_signal(
+                    "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                )
+                snaps_assg.set_signal(snaps_assg_signal)
                 # Create snapshot volume state objects
                 for vol_state in assignment.iterate_volume_states():
                     cstate = vol_state.get_cstate()
