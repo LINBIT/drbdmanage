@@ -3656,17 +3656,17 @@ class DrbdManageServer(object):
         """
         Returns version information about various subsystems
         """
-        DRBD_KERNEL_VERSION  = "<unknown>"
-        DRBD_KERNEL_GIT_HASH = "<unknown>"
-        DRBD_UTILS_VERSION   = "<unknown>"
-        DRBD_UTILS_GIT_HASH  = "<unknown>"
+        drbd_kernel_version  = "<unknown>"
+        drbd_kernel_git_hash = "<unknown>"
+        drbd_utils_version   = "<unknown>"
+        drbd_utils_git_hash  = "<unknown>"
 
         # Retrieve the DRBD kernel module's version and GIT hash
         proc_drbd_file = None
         try:
             proc_drbd_file = open(DrbdManageServer.DRBD_KMOD_INFO_FILE, "r")
-            DRBD_KERNEL_VERSION = proc_drbd_file.readline().rstrip("\n")
-            DRBD_KERNEL_GIT_HASH = proc_drbd_file.readline().rstrip("\n")
+            drbd_kernel_version = proc_drbd_file.readline().rstrip("\n")
+            drbd_kernel_git_hash = proc_drbd_file.readline().rstrip("\n")
         except IOError:
             logging.debug("Cannot retrieve DRBD kernel module version information from '%s'"
                           % (DrbdManageServer.DRBD_KMOD_INFO_FILE))
@@ -3682,10 +3682,10 @@ class DrbdManageServer(object):
         version_info = [
             key_value_string(KEY_SERVER_VERSION, DM_VERSION),
             key_value_string(KEY_SERVER_GITHASH, DM_GITHASH),
-            key_value_string(KEY_DRBD_KERNEL_VERSION, DRBD_KERNEL_VERSION),
-            key_value_string(KEY_DRBD_KERNEL_GIT_HASH, DRBD_KERNEL_GIT_HASH),
-            key_value_string(KEY_DRBD_UTILS_VERSION, DRBD_UTILS_VERSION),
-            key_value_string(KEY_DRBD_UTILS_GIT_HASH, DRBD_UTILS_GIT_HASH)
+            key_value_string(KEY_DRBD_KERNEL_VERSION, drbd_kernel_version),
+            key_value_string(KEY_DRBD_KERNEL_GIT_HASH, drbd_kernel_git_hash),
+            key_value_string(KEY_DRBD_UTILS_VERSION, drbd_utils_version),
+            key_value_string(KEY_DRBD_UTILS_GIT_HASH, drbd_utils_git_hash)
         ]
         return version_info
 
