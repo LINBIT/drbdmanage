@@ -1578,6 +1578,7 @@ class DrbdManageServer(object):
                 assignment.disconnect()
                 assignment.undeploy()
             else:
+                assignment.notify_removed()
                 assignment.remove()
             for assignment in resource.iterate_assignments():
                 if (assignment.get_node() != node and
@@ -2304,6 +2305,7 @@ class DrbdManageServer(object):
                              (not snaps_assg_bd_exists)):
                                 removable.append(snaps_assg)
                     for snaps_assg in removable:
+                        snaps_assg.notify_removed()
                         snaps_assg.remove()
                     # delete volume states of volumes that have been undeployed
                     removable = []
@@ -2350,6 +2352,7 @@ class DrbdManageServer(object):
                                 (not assg.has_volume_states())):
                                 removable.append(assg)
             for assg in removable:
+                assg.notify_removed()
                 assg.remove()
 
             # delete nodes that are marked for removal and that do not
@@ -3090,6 +3093,7 @@ class DrbdManageServer(object):
                 if (not force) and snaps_assg.is_deployed():
                     snaps_assg.undeploy()
                 else:
+                    snaps_assg.notify_removed()
                     snaps_assg.remove()
                 self._drbd_mgr.perform_changes()
             except KeyError:
@@ -3127,6 +3131,8 @@ class DrbdManageServer(object):
                     for snaps_assg in snapshot.iterate_snaps_assgs():
                         snaps_assg.undeploy()
                 else:
+                    # the notify_removed signal is triggered in the
+                    # DrbdSnapshot object's remove() method
                     snapshot.remove()
                 self._drbd_mgr.perform_changes()
             except KeyError:

@@ -274,21 +274,21 @@ class DrbdManager(object):
                 # disabled; Nothing to do, except for setting the correct
                 # state, so the assignment can be cleaned up
                 assg.set_tstate(0)
-                assg.undeploy_adjust_cstate()
                 state_changed = True
+                assg.undeploy_adjust_cstate()
         elif act_flag:
             logging.debug(
                 "assigned resource %s cstate(%x)->tstate(%x)"
                 % (assg.get_resource().get_name(),
                    assg.get_cstate(), assg.get_tstate())
             )
-            state_changed = True
 
             """
             Undeploy an assignment/resource and all of its volumes
             """
             if assg.requires_undeploy():
                 pool_changed = True
+                state_changed = True
                 fn_rc = self._undeploy_assignment(assg)
                 assg.set_rc(fn_rc)
                 if fn_rc != 0:
@@ -298,6 +298,7 @@ class DrbdManager(object):
                 Disconnect an assignment/resource
                 """
                 if assg.requires_disconnect():
+                    state_changed = True
                     fn_rc = self._disconnect(assg)
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
@@ -309,11 +310,13 @@ class DrbdManager(object):
                 assg_actions = assg.get_tstate()
                 if (not failed_actions):
                     if is_set(assg_actions, Assignment.FLAG_UPD_CON):
+                        state_changed = True
                         fn_rc = self._update_connections(assg)
                         assg.set_rc(fn_rc)
                         if fn_rc != 0:
                             failed_actions = True
                     if is_set(assg_actions, Assignment.FLAG_RECONNECT):
+                        state_changed = True
                         fn_rc = self._reconnect(assg)
                         assg.set_rc(fn_rc)
                         if fn_rc != 0:
@@ -323,6 +326,7 @@ class DrbdManager(object):
                 Update config (triggerd by {net,disk,resource}-options command)
                 """
                 if is_set(assg_actions, Assignment.FLAG_UPD_CONFIG):
+                    state_changed = True
                     fn_rc = self._reconfigure_assignment(assg)
                     if fn_rc == 0:
                         assg.clear_tstate_flags(Assignment.FLAG_UPD_CONFIG)
@@ -336,9 +340,11 @@ class DrbdManager(object):
                 ============================================================
                 """
                 for vol_state in assg.iterate_volume_states():
-                    (set_pool_changed, set_failed_actions) = (
+                    (set_state_changed, set_pool_changed, set_failed_actions) = (
                         self._volume_actions(assg, vol_state)
                     )
+                    if set_state_changed:
+                        state_changed = True
                     if set_pool_changed:
                         pool_changed = True
                     if set_failed_actions:
@@ -360,8 +366,8 @@ class DrbdManager(object):
                 #        target state changes to 0 (e.g., unassign/undeploy).
                 if assg.is_empty():
                     if assg.get_cstate() != 0:
-                        assg.undeploy_adjust_cstate()
                         state_changed = True
+                        assg.undeploy_adjust_cstate()
                 else:
                     """
                     Deploy an assignment (finish deploying)
@@ -371,13 +377,15 @@ class DrbdManager(object):
                     target state), then mark the assignment as deployed, too.
                     """
                     if (not failed_actions) and assg.requires_deploy():
-                        pool_changed = True
+                        state_changed = True
+                        pool_changed  = True
                         fn_rc = self._deploy_assignment(assg)
                         assg.set_rc(fn_rc)
                         if fn_rc != 0:
                             failed_actions = True
 
                     if (not failed_actions) and assg.requires_connect():
+                        state_changed = True
                         fn_rc = self._connect(assg)
                         assg.set_rc(fn_rc)
                         if fn_rc != 0:
@@ -385,9 +393,17 @@ class DrbdManager(object):
 
                     # TODO: Check whether all volumes are actually diskless
                     #       (e.g., bd_name/bd_path == NULL)
-                    if is_set(assg.get_tstate(), Assignment.FLAG_DISKLESS):
+
+                    assg_tstate = assg.get_tstate()
+                    assg_cstate = assg.get_cstate()
+                    if (is_set(assg_tstate, Assignment.FLAG_DISKLESS) and
+                        is_unset(assg_cstate, Assignment.FLAG_DISKLESS)):
+                        # Set the current state to diskless too
+                        state_changed = True
                         assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
+        if state_changed:
+            assg.notify_changed()
         logging.debug("DrbdManager: Exit function _assignment_actions()")
         return (state_changed, pool_changed)
 
@@ -397,11 +413,13 @@ class DrbdManager(object):
         Deploy or undeploy a volume
         """
         logging.debug("DrbdManager: Enter function _volume_actions()")
+        state_changed  = False
         pool_changed   = False
         failed_actions = False
 
         if vol_state.requires_undeploy():
-            pool_changed = True
+            pool_changed  = True
+            state_changed = True
             fn_rc = self._undeploy_volume(assg, vol_state)
             assg.set_rc(fn_rc)
             if fn_rc != 0:
@@ -409,6 +427,7 @@ class DrbdManager(object):
         else:
             if vol_state.requires_deploy():
                 pool_changed = True
+                state_changed = True
                 fn_rc = self._deploy_volume_actions(assg, vol_state)
                 assg.set_rc(fn_rc)
                 if fn_rc != 0:
@@ -418,18 +437,20 @@ class DrbdManager(object):
             """
             if (not failed_actions):
                 if vol_state.requires_attach():
+                    state_changed = True
                     fn_rc = self._attach(assg, vol_state)
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
                         failed_actions = True
                 elif vol_state.requires_detach():
+                    state_changed = True
                     fn_rc = self._detach(assg, vol_state)
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
                         failed_actions = True
 
         logging.debug("DrbdManager: Exit function _volume_actions()")
-        return (pool_changed, failed_actions)
+        return (state_changed, pool_changed, failed_actions)
 
 
     def _snapshot_actions(self, assg):
@@ -439,6 +460,7 @@ class DrbdManager(object):
         pool_changed   = False
         # Operate only on deployed assignments
         for snaps_assg in assg.iterate_snaps_assgs():
+            set_state_changed = False
             assg_tstate = assg.get_tstate()
             snaps_name = snaps_assg.get_snapshot().get_resource().get_name()
             if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
@@ -449,13 +471,13 @@ class DrbdManager(object):
                        snaps_assg.get_cstate(), snaps_assg.get_tstate())
                 )
             if snaps_assg.requires_deploy():
-                assg_cstate    = assg.get_cstate()
-                assg_tstate    = assg.get_tstate()
+                assg_cstate = assg.get_cstate()
+                assg_tstate = assg.get_tstate()
                 if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
                     is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
                     error_code = snaps_assg.get_error_code()
                     if error_code == 0:
-                        state_changed   = True
+                        set_state_changed = True
                         snaps_vol_iter = snaps_assg.iterate_snaps_vol_states()
                         for snaps_vol_state in snaps_vol_iter:
                             (set_pool_changed, set_failed_actions) = (
@@ -488,7 +510,7 @@ class DrbdManager(object):
                     failed_actions = True
             elif (snaps_assg.requires_undeploy() or
                   is_unset(assg_tstate, Assignment.FLAG_DEPLOY)):
-                state_changed = True
+                set_state_changed = True
                 for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
                     (set_pool_changed, set_failed_actions) = (
                         self._snaps_undeploy_volume(
@@ -514,15 +536,20 @@ class DrbdManager(object):
                                snaps_vol_state.get_id(),
                                vol_cstate, vol_tstate)
                         )
-                        (set_pool_changed, set_failed_actions) = (
+                        (vol_set_state_changed, set_pool_changed, set_failed_actions) = (
                             self._snaps_volume_actions(
                                 snaps_assg, snaps_vol_state
                             )
                         )
+                        if vol_set_state_changed:
+                            set_state_changed = True
                         if set_pool_changed:
                             pool_changed = True
                         if set_failed_actions:
                             failed_actions = True
+            if set_state_changed:
+                state_changed = True
+                snaps_assg.notify_changed()
         logging.debug("DrbdManager: Exit function _snapshot_actions()")
         return (state_changed, pool_changed)
 
@@ -531,6 +558,7 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Enter function _snaps_volume_actions()")
         pool_changed   = False
         failed_actions = False
+        state_changed  = False
         snaps          = snaps_assg.get_snapshot()
         resource       = snaps.get_resource()
         logging.debug(
@@ -542,16 +570,18 @@ class DrbdManager(object):
         )
         if snaps_vol_state.requires_deploy():
             # Deploy snapshots
+            state_changed = True
             pool_changed, failed_actions = (
                 self._snaps_deploy_volume(snaps_assg, snaps_vol_state)
             )
         elif snaps_vol_state.requires_undeploy():
             # Undeploy snapshots
+            state_changed = True
             pool_changed, failed_actions = (
                 self._snaps_undeploy_volume(snaps_assg, snaps_vol_state)
             )
         logging.debug("DrbdManager: Exit function _snaps_volume_actions()")
-        return (pool_changed, failed_actions)
+        return (state_changed, pool_changed, failed_actions)
 
 
     def _snaps_deploy_volume(self, snaps_assg, snaps_vol_state):

@@ -124,6 +124,7 @@ class DrbdSnapshot(drbdcommon.GenericDrbdObject):
         for snaps_assg in self._assignments.itervalues():
             removable.append(snaps_assg)
         for snaps_assg in removable:
+            snaps_assg.notify_removed()
             snaps_assg.remove()
         self._resource.remove_snapshot(self)
 
