@@ -39,7 +39,7 @@ from drbdmanage.consts import (
     DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, BOOL_TRUE, BOOL_FALSE,
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE,
     SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH
@@ -48,8 +48,7 @@ from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number, plugin_import,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
-    split_main_aux_props, aux_props_selector, is_set, is_unset, key_value_string,
-    debug_log_exec_args
+    aux_props_selector, is_set, is_unset, key_value_string,
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
@@ -1014,7 +1013,6 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc   = []
-        errors  = False
         persist = None
         node    = None
         try:
@@ -1094,7 +1092,6 @@ class DrbdManageServer(object):
 
 
     def _create_resource(self, res_name, props, fn_rc):
-        errors   = False
         resource = None
         try:
             resource = self._resources.get(res_name)
@@ -1146,42 +1143,8 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc = DM_EPERSIST
-        resource = None
-        persist  = None
-        try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                resource = self._resources.get(res_name)
-                if resource is None:
-                    fn_rc = DM_ENOENT
-                else:
-                    port_nr = None
-                    for keyval in props.iteritems():
-                        key = keyval[0]
-                        val = keyval[1]
-                        if key == RES_PORT:
-                            try:
-                                port_nr = int(val)
-                            except ValueError:
-                                fn_rc = DM_EINVAL
-                        else:
-                            fn_rc = DM_EINVAL
-                        # TODO: port change - not implemented
-                        aux_props = aux_props_selector(props)
-                        resource.get_props().merge_gen(aux_props)
-                        self._resources[resource.get_name()] = resource
-                        self.save_conf_data(persist)
-                        fn_rc = DM_SUCCESS
-        except PersistenceException:
-            pass
-        except InvalidNameException:
-            fn_rc = DM_ENAME
-        except Exception as exc:
-            DrbdManageServer.catch_internal_error(exc)
-            fn_rc = DM_DEBUG
-        finally:
-            self.end_modify_conf(persist)
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
 
@@ -2413,7 +2376,8 @@ class DrbdManageServer(object):
 
     def set_drbdsetup_props(self, props):
         fn_rc = []
-        item, props_cont = False, False
+        item = None
+        props_cont = None
         persist = None
 
         def set_updflag(item):
@@ -2438,10 +2402,10 @@ class DrbdManageServer(object):
                 item = self.get_volume(res_name, int(vol_id))
                 item_res = self.get_resource(res_name)
 
-            if item:
+            if item is not None:
                 props_cont = item.get_props()
 
-            if props_cont and persist:
+            if props_cont is not None and persist is not None:
                 for k, v in props.iteritems():
                     ns = PropsContainer.NS["setupopt"] + "%s/" % (otype)
                     if k.startswith('unset'):
@@ -2451,7 +2415,7 @@ class DrbdManageServer(object):
 
                 if target == "volume":
                     # props got set for 'item', which was the volume.
-                    # now swith item to item_res, as the flag should be
+                    # now switch item to item_res, as the flag should be
                     # set on the resource.
                     item = item_res
 
