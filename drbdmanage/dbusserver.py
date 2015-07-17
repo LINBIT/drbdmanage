@@ -609,13 +609,22 @@ class DBusServer(dbus.service.Object):
 
 
 class DBusSignal(dbus.service.Object):
+    PATH_PREFIX = "/objects"
+
     _path = None
 
 
     def __init__(self, path):
-        self._path = path
-        dbus.service.Object.__init__(self, dbus.SystemBus(), "/objects" + path)
-        logging.debug("DBusSignal '%s': Instance created" % self._path)
+        if len(path) >= 1:
+            if path[0] == "/":
+                self._path = DBusSignal.PATH_PREFIX + path
+            else:
+                self._path = DBusSignal.PATH_PREFIX + "/" + path
+        if self._path is not None:
+            dbus.service.Object.__init__(self, dbus.SystemBus(), self._path)
+            logging.debug("DBusSignal '%s': Instance created" % self._path)
+        else:
+            logging.debug("DBusSignal: Dummy instance created (no valid path specified)")
 
 
     @dbus.service.signal(DBusServer.DBUS_DRBDMANAGED)
@@ -649,8 +658,8 @@ class DBusSignal(dbus.service.Object):
         # Notify any subscribers of the removal of this DBus service object
         self.notify_removed()
         # Remove the DBus service object
-        self.remove_from_connection()
-
+        if self._path is not None:
+            self.remove_from_connection()
 
 
 class DBusSignalFactory():
