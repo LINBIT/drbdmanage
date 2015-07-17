@@ -595,6 +595,12 @@ class PersistenceImpl(object):
                             signal = prev_assg.get_signal()
                             cur_assg.set_signal(signal)
                             del node_assg_map[res_name]
+                            # If the current state or target state of that assignment
+                            # has changed, send out a change notification
+                            if (cur_assg.get_cstate() != prev_assg.get_cstate() or
+                                cur_assg.get_tstate() != prev_assg.get_tstate()):
+                                # cstate or tstate changed
+                                cur_assg.notify_changed()
 
                             # Collect the previous snapshot assignments
                             prev_snaps_assg_map = {}
@@ -603,8 +609,6 @@ class PersistenceImpl(object):
                                 snaps_name = snaps.get_name()
                                 prev_snaps_assg_map[snaps_name] = snaps_assg
 
-                            # FIXME: delete notification for snapshot assignments
-                            #
                             # Cross-check for changes (creation/removal) of
                             # snapshot assignments
                             for cur_snaps_assg in cur_assg.iterate_snaps_assgs():
@@ -620,13 +624,21 @@ class PersistenceImpl(object):
                                     # Transfer the signal from the previous configuration's
                                     # snapshot assignment
                                     signal = prev_snaps_assg.get_signal()
+                                    cur_snaps_assg.set_signal(signal)
+                                    # If the current state or target state of that
+                                    # snapshot assignment has changed, send out
+                                    # a change notification
+                                    if (cur_snaps_assg.get_cstate() != prev_snaps_assg.get_cstate() or
+                                        cur_snaps_assg.get_tstate() != prev_snaps_assg.get_tstate()):
+                                        # cstate or tstate change
+                                        cur_snaps_assg.notify_changed()
                                 else:
                                     # Create a new signal for the newly present
                                     # snapshot assignment
                                     signal = self._server.create_signal(
                                         "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
                                     )
-                                cur_snaps_assg.set_signal(signal)
+                                    cur_snaps_assg.set_signal(signal)
 
                             # Send remove signals for those snapshot assignments that
                             # existed in the previous configuration but do no longer
