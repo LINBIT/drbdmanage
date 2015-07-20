@@ -32,6 +32,7 @@ import traceback
 import inspect
 import StringIO
 import drbdmanage.drbd.persistence
+import drbdmanage.quorum
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
@@ -105,6 +106,10 @@ class DrbdManageServer(object):
     EVT_ROLE_SECONDARY = "Secondary"
 
     EVT_REPL_SYNCTARGET = "SyncTarget"
+    EVT_REPL_ON         = "Established"
+    EVT_REPL_OFF        = "Off"
+
+    EVT_CONN_NAME       = "conn-name"
 
     # Sleep times (in seconds) for various stages of the
     # events subprocess termination loop
@@ -222,6 +227,9 @@ class DrbdManageServer(object):
     # Change generation flag; controls updates of the serial number
     _change_open  = False
 
+    # Quorum management
+    _quorum = None
+
     # DEBUGGING FLAGS
     dbg_events = False
 
@@ -277,6 +285,11 @@ class DrbdManageServer(object):
 
         # Setup the PATH environment variable
         extend_path(self._path, self.get_conf_value(self.KEY_EXTEND_PATH))
+
+        # Create drbdmanage objects
+        #
+        # Quorum tracking
+        self._quorum = drbdmanage.quorum.Quorum(self)
 
         # DRBD manager (manages DRBD resources using drbdadm etc.)
         self._drbd_mgr = DrbdManager(self)
@@ -598,16 +611,25 @@ class DrbdManageServer(object):
                     # Check: replication change to SyncTarget
                     try:
                         replication = line_data[self.EVT_ARG_REPL]
-                        if (evt_source == self.EVT_SRC_PEERDEV and
-                            replication == self.EVT_REPL_SYNCTARGET):
+                        if evt_source == self.EVT_SRC_PEERDEV:
+                            if replication == self.EVT_REPL_SYNCTARGET:
                                 changed = True
                                 if self.dbg_events:
                                     logging.debug(
                                         "event change trigger "
                                         "replication:SyncTarget"
                                     )
+                            elif replication == self.EVT_REPL_OFF:
+                                # FIXME: Experimental: Quorum: May have lost a node
+                                node_name = line_data[self.EVT_CONN_NAME]
+                                self._quorum.node_left(node_name)
+                            elif replication == self.EVT_REPL_ON:
+                                # FIXME: Experimental: Quorum: Node may have joined
+                                node_name = line_data[self.EVT_CONN_NAME]
+                                self._quorum.node_joined(node_name)
                     except KeyError:
-                        # Ignore: Not a replication change
+                        # Ignore: Not a replication change or
+                        #         replication on/off change without a conn-name argument
                         pass
         except KeyError:
             # Ignore lines with missing fields (line_data keys)
