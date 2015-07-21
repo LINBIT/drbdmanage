@@ -92,6 +92,9 @@ DM_ESECRETG = 115
 # Control volume error
 DM_ECTRLVOL = 116
 
+# Absence of quorum
+DM_EQUORUM  = 117
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -120,6 +123,7 @@ _DM_EXC_TEXTS[DM_ENODECNT] = "Deployment node count exceeds the number of " \
 _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 _DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"
+_DM_EXC_TEXTS[DM_EQUORUM]  = "Partition does not have a quorum"
 
 
 def dm_exc_text(exc_id):
@@ -247,6 +251,16 @@ class PersistenceException(DrbdManageException):
 
     def __init__(self):
         super(PersistenceException, self).__init__()
+
+
+class QuorumException(DrbdManageException):
+
+    """
+    Raised if a partition does not have a quorum
+    """
+
+    def __init__(self):
+        super(QuorumException, self).__init__()
 
 
 class PluginException(DrbdManageException):

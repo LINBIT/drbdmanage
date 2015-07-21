@@ -34,7 +34,7 @@ WARNING!
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.drbd.drbdcommon import GenericDrbdObject
 from drbdmanage.exceptions import (
-    InvalidAddrFamException, VolSizeRangeException, PersistenceException
+    InvalidAddrFamException, VolSizeRangeException, PersistenceException, QuorumException
 )
 from drbdmanage.exceptions import DM_SUCCESS, DM_ESTORAGE
 from drbdmanage.utils import MetaData
@@ -134,32 +134,39 @@ class DrbdManager(object):
                                   "control volume (read-only)")
 
             if run_changes == True:
-                # close the read-only stream, then lock and open the
-                # configuration for reading and writing
-                persist = self._server.begin_modify_conf()
-                if persist is not None:
-                    old_serial = self._server.peek_serial()
-                    changed    = self.perform_changes()
-                    new_serial = self._server.peek_serial()
-                    if (poke_cluster == True and new_serial == old_serial):
-                        # increase the serial number, implicitly changing the
-                        # hash and thereby running requested changes on all
-                        # cluster nodes
-                        self._server.get_serial()
-                        changed = True
-                    if changed == True:
-                        logging.debug("DrbdManager: state changed, "
-                                      "saving control volume data")
-                        self._server.save_conf_data(persist)
+                quorum = self._server.get_quorum()
+                if quorum.is_present():
+                    # close the read-only stream, then lock and open the
+                    # configuration for reading and writing
+                    persist = self._server.begin_modify_conf()
+                    if persist is not None:
+                        old_serial = self._server.peek_serial()
+                        changed    = self.perform_changes()
+                        new_serial = self._server.peek_serial()
+                        if (poke_cluster == True and new_serial == old_serial):
+                            # increase the serial number, implicitly changing the
+                            # hash and thereby running requested changes on all
+                            # cluster nodes
+                            self._server.get_serial()
+                            changed = True
+                        if changed == True:
+                            logging.debug("DrbdManager: state changed, "
+                                          "saving control volume data")
+                            self._server.save_conf_data(persist)
+                        else:
+                            logging.debug("DrbdManager: state unchanged")
                     else:
-                        logging.debug("DrbdManager: state unchanged")
+                        logging.debug("DrbdManager: cannot open the "
+                                      "control volume (read-write)")
                 else:
-                    logging.debug("DrbdManager: cannot open the "
-                                  "control volume (read-write)")
+                    logging.warning("DrbdManager: Check for pending actions skipped, "
+                                    "partition does not have a quorum")
         except PersistenceException:
             exc_type, exc_obj, exc_trace = sys.exc_info()
             logging.debug("DrbdManager: caught PersistenceException:")
             logging.debug("Stack trace:\n%s" % (str(exc_trace)))
+        except QuorumException:
+            logging.error("DrbdManager: run(): Unexpected quorum exception")
         except Exception as exc:
             exc_type, exc_obj, exc_trace = sys.exc_info()
             logging.debug("DrbdManager: abort, unhandled exception: %s"
