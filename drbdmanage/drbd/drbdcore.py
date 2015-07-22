@@ -2115,13 +2115,15 @@ class DrbdNode(GenericDrbdObject):
     FLAG_UPDATE   =     0x2
     FLAG_DRBDCTRL =     0x4
     FLAG_STORAGE  =     0x8
+    FLAG_STANDBY  =    0x10
+    FLAG_QIGNORE  =    0x20
     FLAG_UPD_POOL = 0x10000
 
     # STATE_MASK must include all valid flags;
     # used to mask the value supplied to set_state() to prevent setting
     # non-existent flags
     STATE_MASK = (FLAG_REMOVE | FLAG_UPD_POOL | FLAG_UPDATE | FLAG_DRBDCTRL |
-                  FLAG_STORAGE)
+                  FLAG_STORAGE | FLAG_STANDBY | FLAG_QIGNORE)
 
 
     def __init__(self, name, addr, addrfam, node_id, state, poolsize, poolfree,
@@ -2298,7 +2300,11 @@ class DrbdNode(GenericDrbdObject):
                     consts.TSTATE_PREFIX + consts.FLAG_UPDATE   :
                         bool_to_string(is_set(self._state, self.FLAG_UPDATE)),
                     consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL :
-                        bool_to_string(is_set(self._state, self.FLAG_UPD_POOL))
+                        bool_to_string(is_set(self._state, self.FLAG_UPD_POOL)),
+                    consts.TSTATE_PREFIX + consts.FLAG_STANDBY :
+                        bool_to_string(is_set(self._state, self.FLAG_STANDBY)),
+                    consts.TSTATE_PREFIX + consts.FLAG_QIGNORE :
+                        bool_to_string(is_set(self._state, self.FLAG_QIGNORE))
                 }
                 match = self.special_properties_match(
                     special_props_list, filter_props
@@ -2346,6 +2352,14 @@ class DrbdNode(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_STORAGE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_STORAGE] = (
                 bool_to_string(is_set(self._state, self.FLAG_STORAGE))
+            )
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_STANDBY):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_STANDBY] = (
+                bool_to_string(is_set(self._state, self.FLAG_STANDBY))
+            )
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_QIGNORE):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_QIGNORE] = (
+                bool_to_string(is_set(self._state, self.FLAG_QIGNORE))
             )
         for (key, val) in self.get_props().iteritems():
             if selected(key):

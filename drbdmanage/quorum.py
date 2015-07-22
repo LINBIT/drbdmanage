@@ -152,3 +152,23 @@ class Quorum(object):
         Returns the number of currently active member nodes
         """
         return self._quorum_count
+
+
+    def readjust_full_member_count(self):
+        """
+        Readjusts the maximum number of nodes that are expected as quorum members
+        """
+        full_count = 1
+        instance_node = self._server.get_instance_node()
+        for node in self._server.iterate_nodes():
+            state = node.get_state()
+            if (node is not instance_node and
+                drbdmanage.utils.is_set(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_DRBDCTRL) and
+                drbdmanage.utils.is_unset(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE)):
+                # Node has a control volume and is not ignored in quorum decisions
+                full_count += 1
+        if full_count <= Quorum.COUNT_MAX:
+            if full_count >= self._quorum_count:
+                self._quorum_full = full_count
+        else:
+            self._quorum_full = Quorum.COUNT_MAX

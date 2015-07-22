@@ -362,19 +362,13 @@ class DrbdManageServer(object):
 
         self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
 
+        # Set the full member count for quorum tracking
+        self._quorum.readjust_full_member_count()
+
         # Create drbdmanage objects
         #
         # Block devices manager (manages backend storage devices)
         self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
-
-        # Update storage pool information if it is unknown
-        inst_node = self.get_instance_node()
-        if inst_node is not None:
-            if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
-                poolsize = inst_node.get_poolsize()
-                poolfree = inst_node.get_poolfree()
-                if poolsize == -1 or poolfree == -1:
-                    self.update_pool([])
 
         # Start up the resources deployed by drbdmanage on the current node
         self._drbd_mgr.initial_up()
@@ -386,6 +380,15 @@ class DrbdManageServer(object):
             logging.critical("failed to initialize drbdsetup events tracing, "
                              "aborting startup")
             exit(1)
+
+        # Update storage pool information if it is unknown
+        inst_node = self.get_instance_node()
+        if inst_node is not None:
+            if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
+                poolsize = inst_node.get_poolsize()
+                poolfree = inst_node.get_poolfree()
+                if poolsize == -1 or poolfree == -1:
+                    self.update_pool([])
 
         gobject.MainLoop().run()
 

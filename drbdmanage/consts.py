@@ -104,6 +104,8 @@ FLAG_RECONNECT      = "reconnect"
 FLAG_OVERWRITE      = "overwrite"
 FLAG_DISCARD        = "discard"
 FLAG_UPD_CONFIG     = "upd_config"
+FLAG_STANDBY        = "standby"
+FLAG_QIGNORE        = "qignore"
 
 # volume states:
 FLAG_ATTACH         = "attach"
