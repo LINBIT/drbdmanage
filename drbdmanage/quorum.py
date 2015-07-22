@@ -135,7 +135,7 @@ class Quorum(object):
         Sets the maximum number of nodes that are expected as quorum members
         """
         if count >= 1 and count <= Quorum.COUNT_MAX:
-            self._quorum_full = count
+            self._quorum_full = count if count > self._quorum_count else self._quorum_count
         else:
             raise ValueError
 
