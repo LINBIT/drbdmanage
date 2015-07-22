@@ -113,11 +113,42 @@ class Quorum(object):
         """
         Indicates whether the partition has a quorum or not
         """
-        established = False
+        present = False
         if self._quorum_full >= Quorum.FULL_MIN:
             threshold = int(self._quorum_full) / 2 + 1
             if self._quorum_count >= threshold:
-                established = True
+                present = True
         else:
-            established = True
-        return established
+            present = True
+        return present
+
+
+    def is_active_member_node(self, node_name):
+        """
+        Indicates whether a node is an active member of this partition
+        """
+        return True if node_name in self._quorum_nodes else False
+
+
+    def set_full_member_count(self, count):
+        """
+        Sets the maximum number of nodes that are expected as quorum members
+        """
+        if count >= 1 and count <= Quorum.COUNT_MAX:
+            self._quorum_full = count
+        else:
+            raise ValueError
+
+
+    def get_full_member_count(self):
+        """
+        Returns the maximum number of nodes that are expected as quorum members
+        """
+        return self._quorum_full
+
+
+    def get_active_member_count(self):
+        """
+        Returns the number of currently active member nodes
+        """
+        return self._quorum_count
