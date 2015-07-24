@@ -550,6 +550,10 @@ class PersistenceImpl(object):
                             )
                             errors = True
 
+                quorum = self._server.get_quorum()
+                # Quorum: Clear the quorum-ignore flag on each node that is currently connected
+                quorum.readjust_qignore_flags()
+
                 # Load DrbdResource objects from data tables
                 resources_key = drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME
                 resources = objects_root[resources_key]
@@ -693,6 +697,9 @@ class PersistenceImpl(object):
 
                 if not errors:
                     self._hash_obj = data_hash
+
+                # Quorum: Update the number of expected nodes
+                quorum.readjust_full_member_count()
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 logging.error(

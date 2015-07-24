@@ -47,9 +47,12 @@ class Quorum(object):
     def node_joined(self, node_name):
         """
         Adds a node to the partition (if the node type fits)
+
+        Returns True if any persistent data may need to be changed, False otherwise
         """
         # Check whether the target of the new connection
         # is already in the list of quorum nodes
+        change_flag = False
         if node_name not in self._quorum_nodes:
             # Check whether the target of the new connection
             # is a known drbdmanage node
@@ -57,6 +60,9 @@ class Quorum(object):
             if quorum_node is not None:
                 state = quorum_node.get_state()
                 if drbdmanage.utils.is_set(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_DRBDCTRL):
+                    # Reset the quorum ignore flag if it is set
+                    if drbdmanage.utils.is_set(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE):
+                        change_flag = True
                     # Add the node to the list of joined quorum nodes
                     # and increase the quorum count
                     connected_count = len(self._quorum_nodes)
@@ -90,6 +96,7 @@ class Quorum(object):
                                   % (node_name))
             else:
                 logging.warning("Quorum: Node %s is not a registered drbdmanage node")
+        return change_flag
 
 
     def node_left(self, node_name):
@@ -123,6 +130,13 @@ class Quorum(object):
         return present
 
 
+    def iterate_active_member_names(self):
+        """
+        Returns an iterator over the the names of active members
+        """
+        return self._quorum_nodes.iterkeys()
+
+
     def is_active_member_node(self, node_name):
         """
         Indicates whether a node is an active member of this partition
@@ -135,7 +149,11 @@ class Quorum(object):
         Sets the maximum number of nodes that are expected as quorum members
         """
         if count >= 1 and count <= Quorum.COUNT_MAX:
+            prev_full = self._quorum_full
             self._quorum_full = count if count > self._quorum_count else self._quorum_count
+            if prev_full != self._quorum_full:
+                logging.debug("Quorum: Expected number of nodes changed from %d to %d"
+                              % (prev_full, self._quorum_full))
         else:
             raise ValueError
 
@@ -167,8 +185,24 @@ class Quorum(object):
                 drbdmanage.utils.is_unset(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE)):
                 # Node has a control volume and is not ignored in quorum decisions
                 full_count += 1
+        prev_full = self._quorum_count
         if full_count <= Quorum.COUNT_MAX:
             if full_count >= self._quorum_count:
                 self._quorum_full = full_count
         else:
             self._quorum_full = Quorum.COUNT_MAX
+        if prev_full != self._quorum_full:
+            logging.debug("Quorum: Expected number of nodes changed from %d to %d"
+                          % (prev_full, self._quorum_full))
+
+
+    def readjust_qignore_flags(self):
+        """
+        Clears FLAG_QIGNORE on each connected node
+        """
+        for node_name in self._quorum_nodes.iterkeys():
+            node = self._server.get_node(node_name)
+            if node is not None:
+                if drbdmanage.utils.is_set(node.get_state(),
+                                           drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE):
+                    node.clear_state_flags(drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE)

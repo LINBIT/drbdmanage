@@ -630,7 +630,29 @@ class DrbdManageServer(object):
                             elif replication == self.EVT_REPL_ON:
                                 # FIXME: Experimental: Quorum: Node may have joined
                                 node_name = line_data[self.EVT_CONN_NAME]
-                                self._quorum.node_joined(node_name)
+                                change_quorum = self._quorum.node_joined(node_name)
+                                if change_quorum:
+                                    persist = None
+                                    try:
+                                        persist = self.begin_modify_conf()
+                                        if persist is not None:
+                                            # Unset QIGNORE status on connected nodes
+                                            self._quorum.readjust_qignore_flags()
+                                            self.save_conf_data(persist)
+                                        else:
+                                            # FIXME: Logging? See also the
+                                            #        PersistenceException below
+                                            pass
+                                    except QuorumException:
+                                        # This node does not have a quorum, skip saving
+                                        pass
+                                    except PersistenceException:
+                                        # FIXME: Should this problem be logged?
+                                        #        The other functions don't log, but they
+                                        #        report the problem back to a client
+                                        pass
+                                    finally:
+                                        self.end_modify_conf(persist)
                     except KeyError:
                         # Ignore: Not a replication change or
                         #         replication on/off change without a conn-name argument
