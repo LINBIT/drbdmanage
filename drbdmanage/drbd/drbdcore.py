@@ -1899,6 +1899,20 @@ class DrbdResource(GenericDrbdObject):
             self.get_props().new_serial()
 
 
+    def set_state_flags(self, flags):
+        saved_state = self._state
+        self._state = (self._state | flags) & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
+
+
+    def clear_state_flags(self, flags):
+        saved_state = self._state
+        self._state = ((self._state | flags) ^ flags) & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
+
+
     def filter_match(self, filter_props):
         match = False
         if filter_props is None or len(filter_props) == 0:
@@ -2021,6 +2035,20 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     def set_state(self, state):
         if state != self._state:
             self._state = state & self.STATE_MASK
+            self.get_props().new_serial()
+
+
+    def set_state_flags(self, flags):
+        saved_state = self._state
+        self._state = (self._state | flags) & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
+
+
+    def clear_state_flags(self, flags):
+        saved_state = self._state
+        self._state = ((self._state | flags) ^ flags) & self.STATE_MASK
+        if saved_state != self._state:
             self.get_props().new_serial()
 
 
@@ -2193,6 +2221,20 @@ class DrbdNode(GenericDrbdObject):
     def set_state(self, state):
         saved_state = self._state
         self._state = state & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
+
+
+    def set_state_flags(self, flags):
+        saved_state = self._state
+        self._state = (self._state | flags) & self.STATE_MASK
+        if saved_state != self._state:
+            self.get_props().new_serial()
+
+
+    def clear_state_flags(self, flags):
+        saved_state = self._state
+        self._state = ((self._state | flags) ^ flags) & self.STATE_MASK
         if saved_state != self._state:
             self.get_props().new_serial()
 
