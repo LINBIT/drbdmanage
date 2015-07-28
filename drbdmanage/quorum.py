@@ -185,7 +185,7 @@ class Quorum(object):
                 drbdmanage.utils.is_unset(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE)):
                 # Node has a control volume and is not ignored in quorum decisions
                 full_count += 1
-        prev_full = self._quorum_count
+        prev_full = self._quorum_full
         if full_count <= Quorum.COUNT_MAX:
             if full_count >= self._quorum_count:
                 self._quorum_full = full_count
