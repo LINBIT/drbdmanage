@@ -714,6 +714,9 @@ class DrbdManage(object):
                                       ' join the cluster')
         p_howtojoin.add_argument('node',
                                  help='Name of the node to join').completer = NodeCompleter
+        p_howtojoin.add_argument('-q', '--quiet', action="store_true",
+                                 help="If the --quiet option is used, the join command is printed "
+                                      "with a --quiet option")
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
         def LowLevelDebugCmdCompleter(prefix, **kwargs):
@@ -2126,9 +2129,14 @@ class DrbdManage(object):
         fn_rc = 1
 
         node_name = args.node
+        quiet = args.quiet
+        format = "%s"
+        if (quiet is not None) and quiet:
+            format += " --quiet"
+        format += "\n"
         self.dbus_init()
         server_rc, joinc = self._server.text_query(["joinc", node_name])
-        sys.stdout.write("%s\n" % " ".join(joinc))
+        sys.stdout.write(format % " ".join(joinc))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
