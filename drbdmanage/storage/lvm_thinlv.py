@@ -31,7 +31,6 @@ import drbdmanage.consts as consts
 import drbdmanage.exceptions as exc
 import drbdmanage.storage.lvm_exceptions as lvmexc
 import drbdmanage.utils as utils
-import drbdmanage.conf.conffile as cf
 
 
 class LvmThinLv(lvmcom.LvmCommon):
@@ -110,8 +109,17 @@ class LvmThinLv(lvmcom.LvmCommon):
         super(LvmThinLv, self).__init__()
         self.reconfigure()
 
+    def get_default_config(self):
+        return LvmThinLv.CONF_DEFAULTS.copy()
 
-    def reconfigure(self):
+    def get_config(self):
+        return self._conf
+
+    def set_config(self, config):
+        self.reconfigure(config)
+        return True
+
+    def reconfigure(self, config=None):
         """
         Reconfigures the module and reloads state information
         """
@@ -121,21 +129,10 @@ class LvmThinLv(lvmcom.LvmCommon):
             self._subproc_env["LC_ALL"] = "C"
             self._subproc_env["LANG"]   = "C"
 
-            # Load the module configuration
-            conf_loaded = None
-            try:
-                conf_loaded = self._load_conf()
-            except IOError:
-                logging.warning(
-                    "LvmThinLv: Cannot load configuration file '%s'"
-                    % (LvmThinLv.LVM_CONFFILE)
-                )
-            if conf_loaded is None:
-                self._conf = LvmThinLv.CONF_DEFAULTS
+            if config:
+                self._conf = config
             else:
-                self._conf = cf.ConfFile.conf_defaults_merge(
-                    LvmThinLv.CONF_DEFAULTS, conf_loaded
-                )
+                self._conf = LvmThinLv.CONF_DEFAULTS.copy()
 
             # Setup cached settings
             self._vg_path = utils.build_path(

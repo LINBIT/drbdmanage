@@ -30,10 +30,20 @@ class BalancedDeployer(object):
     the greatest amount of free memory
     """
 
-
     def __init__(self):
         pass
 
+    def get_default_config(self):
+        return {}
+
+    def set_config(self, config):
+        return True
+
+    def get_config(self):
+        return {}
+
+    def reconfigure(self, config):
+        return True
 
     def deploy_select(self, nodes, result, count, size_kiB, deploy_unknown):
         """

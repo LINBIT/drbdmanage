@@ -70,12 +70,11 @@ class BlockDeviceManager(object):
     _plugin = None
 
 
-    def __init__(self, plugin_name):
+    def __init__(self, plugin_name, plugin_mgr):
         """
         Creates a new instance of the BlockDeviceManager
         """
-        # self._plugin = self._plugin_import(plugin_name)
-        self._plugin = drbdmanage.utils.plugin_import(plugin_name)
+        self._plugin = plugin_mgr.get_plugin_instance(plugin_name)
         if self._plugin is None:
             logging.error(
                 "BlockDeviceManager: Import of the "
@@ -363,31 +362,6 @@ class BlockDeviceManager(object):
             "BlockDeviceManager: No storage management plugin is loaded, "
             "storage management is inoperational"
         )
-
-
-    def _plugin_import(self, path):
-        p_mod   = None
-        p_class = None
-        p_inst  = None
-        try:
-            if path is not None:
-                idx = path.rfind(".")
-                if idx != -1:
-                    p_name = path[idx + 1:]
-                    p_path = path[:idx]
-                else:
-                    p_name = path
-                    p_path = ""
-                p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
-                p_class = getattr(p_mod, p_name)
-                p_inst  = p_class()
-        except Exception as exc:
-            logging.error(
-                "BlockDeviceManager: Plugin import failed, the exception "
-                "returned by the import system is: %s"
-                % (str(exc))
-            )
-        return p_inst
 
 
 class MinorNr(object):

@@ -340,6 +340,37 @@ class DBusServer(dbus.service.Object):
             node_names, serial, filter_props, req_props
         )
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))" "a{ss}"
+    )
+    def get_config_keys(self):
+        return self._server.get_config_keys()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))" "aa{ss}"
+    )
+    def get_plugin_default_config(self):
+        return self._server.get_plugin_default_config()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))" "a{ss}"
+    )
+    def get_cluster_config(self):
+        return self._server.get_cluster_config()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="a(s(a{ss}))",
+        out_signature="a(isa(ss))"
+    )
+    def set_cluster_config(self, cfgdict):
+        return self._server.set_cluster_config(dict(cfgdict))
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,

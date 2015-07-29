@@ -25,7 +25,6 @@ import time
 import gobject
 import subprocess
 import fcntl
-import errno
 import logging
 import logging.handlers
 import re
@@ -42,13 +41,15 @@ from drbdmanage.consts import (
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE,
     SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
-    KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH
+    KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
-    build_path, extend_path, generate_secret, get_free_number, plugin_import,
+    build_path, extend_path, generate_secret, get_free_number,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
-    aux_props_selector, is_set, is_unset, key_value_string,
+    aux_props_selector, is_set, is_unset, key_value_string, load_server_conf_file,
+    filter_prohibited, filter_allowed
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
@@ -68,8 +69,10 @@ from drbdmanage.snapshots.snapshots import (
     DrbdSnapshot, DrbdSnapshotAssignment, DrbdSnapshotVolumeState
 )
 from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
-from drbdmanage.conf.conffile import ConfFile, DrbdAdmConf
+from drbdmanage.conf.conffile import DrbdAdmConf
 from drbdmanage.propscontainer import PropsContainer
+
+from drbdmanage.plugins.plugin import PluginManager
 
 
 class DrbdManageServer(object):
@@ -84,6 +87,7 @@ class DrbdManageServer(object):
     OBJ_SCONF_NAME     = "server_conf"
     OBJ_COMMON_NAME    = "common"
     OBJ_SGEN_NAME      = "serial_nr_gen"
+    OBJ_PCONF_NAME     = "plugin_conf"
 
     EVT_UTIL = "drbdsetup"
 
@@ -149,6 +153,15 @@ class DrbdManageServer(object):
         KEY_LOGLEVEL       : "INFO"
     }
 
+    # config stages
+    KEY_FROM_FILE = 'from-file'
+    KEY_FROM_CTRL_VOL = 'from-ctrl-vol'
+
+    CONF_STAGE = {
+        KEY_FROM_FILE: 0,
+        KEY_FROM_CTRL_VOL: 1,
+    }
+
     # Container for the server's objects directory
     _objects_root = None
 
@@ -180,11 +193,16 @@ class DrbdManageServer(object):
     # The hash of the currently loaded configuration
     _conf_hash = None
 
-    # Server configuration
+    # Server configuration (local cache)
     _conf      = None
+
+    # Plugin configuration
+    _plugin_conf = None
 
     # Common DRBD options
     _common    = None
+
+    _path = None
 
     # Logging
     _root_logger = None
@@ -199,13 +217,15 @@ class DrbdManageServer(object):
     _debug_out = sys.stderr
 
     # Global drbdmanage cluster configuration
-    _cluster_conf = None
+    _cluster_conf         = None
 
-    # Serial number generator
-    _serial_gen = None
+    # Change generation flag; controls updates of the serial number
+    _change_open  = False
 
     # DEBUGGING FLAGS
     dbg_events = False
+
+    _pluginmgr = None
 
 
     def __init__(self, signal_factory):
@@ -216,6 +236,8 @@ class DrbdManageServer(object):
         # ========================================
         # BEGIN -- Server initialization
         # ========================================
+
+        self._pluginmgr = PluginManager()
 
         # Determine the current node's name
         #
@@ -238,18 +260,23 @@ class DrbdManageServer(object):
                      " -- initializing on node '%s'"
                      % (DM_VERSION, self._instance_node_name))
 
+        # Set original path variable
+        try:
+            self._path = os.environ["PATH"]
+        except KeyError:
+            self._path = ""
+
         # Initialize the server's objects / datastructures
         self._init_objects()
 
         # load the server configuration file
-        self.load_server_conf()
-        # FIXME: LOAD LOCAL CONFIG (FROM FILE)
+        self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_FILE])
 
         # Reset the loglevel to the one specified in the configuration file
         self.set_loglevel()
 
         # Setup the PATH environment variable
-        extend_path(self.get_conf_value(self.KEY_EXTEND_PATH))
+        extend_path(self._path, self.get_conf_value(self.KEY_EXTEND_PATH))
 
         # DRBD manager (manages DRBD resources using drbdadm etc.)
         self._drbd_mgr = DrbdManager(self)
@@ -278,6 +305,7 @@ class DrbdManageServer(object):
         self._objects_root[DrbdManageServer.OBJ_NODES_NAME]     = {}
         self._objects_root[DrbdManageServer.OBJ_RESOURCES_NAME] = {}
         self._objects_root[DrbdManageServer.OBJ_SCONF_NAME]     = {}
+        self._objects_root[DrbdManageServer.OBJ_PCONF_NAME]     = {}
 
         cluster_conf = PropsContainer(None, 1, None)
         self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]     = cluster_conf
@@ -306,6 +334,7 @@ class DrbdManageServer(object):
         self._serial_gen   = self._objects_root[srv.OBJ_SGEN_NAME]
         self._conf         = self._objects_root[srv.OBJ_SCONF_NAME]
         self._common       = self._objects_root[srv.OBJ_COMMON_NAME]
+        self._plugin_conf  = self._objects_root[srv.OBJ_PCONF_NAME]
 
 
     def run(self):
@@ -316,12 +345,13 @@ class DrbdManageServer(object):
         """
         # Load the drbdmanage database from the control volume
         self.load_conf()
-        # FIXME: LOAD CONTROL VOLUME CONFIG
+
+        self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
 
         # Create drbdmanage objects
         #
         # Block devices manager (manages backend storage devices)
-        self._bd_mgr   = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
+        self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
 
         # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
@@ -633,56 +663,101 @@ class DrbdManageServer(object):
                               "unhandled exception encountered")
         return signal
 
-
-    def load_server_conf(self):
+    def load_server_conf(self, stage):
         """
-        Loads the server configuration file
+        Loads the server configuration
 
-        The server configuration is loaded from the server's configuration
-        file (commonly /etc/drbdmanaged.conf), and is then unified with any
+        Setting up the configuration is a two step process. In the first
+        stage we load the configuration from a file (usually
+        /etc/drbdmanaged.conf). In this file we store the minimal
+        configuration settings (e.g. to find the control volume). In stage
+        2 we then load the complete configuration from the control volume.
+
+        The server configuration is loaded and is then unified with any
         existing default values.
         Values from the configuration override default configuration values.
         Values not specified in the configuration file are inherited from
         the default configuration. Any values specified in the configuration
         file that are not known in the default configuration are discarded.
         """
-        in_file      = None
-        updated_conf = None
-        try:
-            in_file = open(SERVER_CONFFILE, "r")
-            conffile = ConfFile(in_file)
-            conf_loaded = conffile.get_conf()
-            if conf_loaded is not None:
-                updated_conf = (
-                    ConfFile.conf_defaults_merge(
-                        self.CONF_DEFAULTS, conf_loaded
-                    )
-                )
-        except IOError as ioerr:
-            if ioerr.errno == errno.EACCES:
-                logging.warning(
-                    "cannot open configuration file '%s', permission denied"
-                    % (SERVER_CONFFILE)
-                )
-            elif ioerr.errno != errno.ENOENT:
-                logging.warning(
-                    "cannot open configuration file '%s', "
-                    "error returned by the OS is: %s"
-                    % (SERVER_CONFFILE, ioerr.strerror)
-                )
-        finally:
-            sconf_key = DrbdManageServer.OBJ_SCONF_NAME
-            if updated_conf is not None:
-                self._objects_root[sconf_key] = updated_conf
-            else:
-                self._objects_root[sconf_key] = self.CONF_DEFAULTS
-            self._update_objects()
-            if in_file is not None:
-                try:
-                    in_file.close()
-                except IOError:
-                    pass
+        sconf_key = DrbdManageServer.OBJ_SCONF_NAME
+        pconf_key = DrbdManageServer.OBJ_PCONF_NAME
 
+        # ## storage plugin configuration (generic part)
+        # always start with a copy of default values
+        plugin_configs = self._pluginmgr.get_plugin_default_config()  # [] of dicts
+
+        final_plugin_config = {}
+        for plugin in plugin_configs:
+            p = plugin.copy()
+            p_name = p['name']
+            filter_prohibited(p, ('name',))
+            final_plugin_config[p_name] = p
+
+        # ## general configuration
+        # always start with a copy of default values
+        final_config = self.CONF_DEFAULTS.copy()
+
+        if stage == self.CONF_STAGE[self.KEY_FROM_CTRL_VOL]:
+            # here we assume we have access to the control volume
+            final_config = self.CONF_DEFAULTS.copy()
+
+            # cluster wide settings
+            _, props = self._get_cluster_props()
+            if props:
+                for k in props:
+                    if k in final_config:
+                        final_config[k] = props[k]
+
+            # node specific general settings
+            try:
+                props = self.get_instance_node().get_props().get_all_props(
+                    PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG])
+            except:
+                props = {}
+
+            for k in props:
+                if k in final_config:
+                    final_config[k] = props[k]
+
+            # node specific plugin settings
+            for plugin_name in self._plugin_conf.keys():
+                try:
+                    props = self.get_instance_node().get_props().get_all_props(
+                        PropsContainer.NAMESPACES['plugins'] + plugin_name)
+                except:
+                    props = {}
+
+                filter_allowed(props, self._plugin_conf[plugin_name].keys())
+                for k in props:
+                    final_plugin_config[plugin_name][k] = props[k]
+
+            # IMPORTANT: even in this stage we still want that the config file overwrites everything else.
+            stage = self.CONF_STAGE[self.KEY_FROM_FILE]
+
+        if stage == self.CONF_STAGE[self.KEY_FROM_FILE]:
+            cfg = load_server_conf_file()
+
+            for k, v in cfg['local'].items():
+                if k in final_config:
+                    final_config[k] = v
+
+            for plugin_name in cfg['plugins']:
+                for k, v in cfg['plugins'][plugin_name].items():
+                    final_plugin_config[plugin_name][k] = v
+
+        self._objects_root[sconf_key] = final_config
+        self._objects_root[pconf_key] = final_plugin_config
+
+        cur_storage_plugin = self._conf.get(self.KEY_STOR_NAME, None)
+        new_storage_plugin = final_config[self.KEY_STOR_NAME]
+        if cur_storage_plugin and cur_storage_plugin != new_storage_plugin:
+            self._bd_mgr = BlockDeviceManager(new_storage_plugin, self._pluginmgr)
+
+        self._update_objects()  # which sets self._conf and self._plugin_conf from _objects_root
+
+        self._reload_plugins()
+        # print "Stage_END", self._conf, self._plugin_conf
 
     def get_conf_value(self, key):
         """
@@ -908,6 +983,157 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    def get_config_keys(self):
+        """
+        All the configuration options drbdmanage knows about
+        """
+        fn_rc = []
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return (fn_rc, self.CONF_DEFAULTS)
+
+    def get_plugin_default_config(self):
+        """
+        All the config options for known plugins
+        returns a [{}, {}]
+        """
+        fn_rc = []
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
+        cfg = self._pluginmgr.get_plugin_default_config()
+        return (fn_rc, cfg)
+
+    def _get_cluster_props(self):
+        fn_rc = []
+        ret = {}
+        try:
+            persist = self.begin_modify_conf()
+            common = self.get_common()
+            if common is not None:
+                props_cont = common.get_props()
+
+            if props_cont is not None and persist is not None:
+                ns = PropsContainer.NAMESPACES["dmconfig"] + "cluster/"
+                ret = props_cont.get_all_props(ns)
+                add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            else:
+                add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+
+        return (fn_rc, ret)
+
+    def get_cluster_config(self):
+        """
+        All the config options in the global section. These are options that are also valid per node
+        """
+        return self._get_cluster_props()
+
+    def set_cluster_config(self, cfgdict):
+        # for persistence see create_node
+        fn_rc = []
+        persist = None
+        prohibited_settings = ('drbdctrl-vg',)
+        cfgtype = cfgdict['type'][0]['type']
+
+        try:
+            persist = self.begin_modify_conf()
+            if persist:
+                # ## CLUSTER wide configuration ([GLOBAL]) ##
+                # always a single {} (maybe empty), in a []
+                glob_dict = cfgdict['globals'][0]
+                glob_dict = filter_allowed(glob_dict, self.CONF_DEFAULTS.keys())
+                glob_dict = filter_prohibited(glob_dict, prohibited_settings)
+
+                ns = PropsContainer.NAMESPACES["dmconfig"] + "cluster/"
+                common = self.get_common()
+                if common:
+                    props = common.get_props()
+                    if props:
+                        props.merge_props(glob_dict, ns)
+                        set_props = props.get_all_props(ns)
+                        # we got all currently set properties in set_props
+                        # delete all from dict which are still valid and then delete
+                        # these items that are no more present.
+                        for k in glob_dict:
+                            del(set_props[k])
+                        props.remove_selected_props(set_props, ns)
+
+                # ## NODE specific configuration ([Node:xyz]) ##
+                all_nodes = [n for n in self._nodes.iterkeys()]
+                cfg_nodes = []
+                cfg_plugins = []
+                for n in cfgdict['nodes']:
+                    # we always get the name, but if only name, we are done
+                    node_name = n['name']
+                    node = self._nodes.get(node_name)
+                    if node:
+                        if len(n) >= 1:
+                            cfg_nodes.append(node_name)
+                        props = node.get_props()
+
+                        # options allowed in global section (but here node specific)
+                        p = n.copy()
+                        p = filter_allowed(p, self.CONF_DEFAULTS.keys())
+                        p = filter_prohibited(p, prohibited_settings)
+                        ns = PropsContainer.NAMESPACES['dmconfig']
+                        props.merge_props(p, ns)
+                        pgone = [k for k in self.CONF_DEFAULTS.keys() if k not in p]
+                        props.remove_selected_props(pgone, ns)
+
+                        # plugin settings (only allowed node specific)
+                        if cfgtype == CONF_NODE:
+                            pns = PropsContainer.NAMESPACES['plugins']
+                            for plugin in cfgdict['plugins']:
+                                p = plugin.copy()
+                                plugin_name = p['name']
+                                cfg_plugins.append(plugin_name)
+                                ns = pns + plugin_name
+                                p = filter_allowed(p, self._plugin_conf[plugin_name].keys())
+                                props.merge_props(p, ns)
+                                pgone = [k for k in self._plugin_conf[plugin_name].keys() if k not in p]
+                                props.remove_selected_props(pgone, ns)
+
+                # nodes where config sections got deleted
+                if cfgtype == CONF_GLOBAL:
+                    # remove all their CONF_DEFAULTS props
+                    cfgless_nodes = [n for n in all_nodes if n not in cfg_nodes]
+                    for name in cfgless_nodes:
+                        node = self._nodes.get(name)
+                        if node:
+                            props = node.get_props()
+                            props.remove_selected_props(self.CONF_DEFAULTS.keys(), ns)
+                elif cfgtype == CONF_NODE:
+                    cfgless_plugins = [pl for pl in self._plugin_conf.keys() if pl not in cfg_plugins]
+                    for plugin in cfgless_plugins:
+                        pns = PropsContainer.NAMESPACES['plugins'] + plugin
+                        props.remove_selected_props(props.get_all_props(pns), pns)
+
+                self.save_conf_data(persist)
+
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+
+        if len(fn_rc) == 0:
+            # at this point the cluster wide config is set and the nodes config
+            # propagate these changes to _conf:
+            self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
+        return fn_rc
 
     def create_node(self, node_name, props):
         """
@@ -1674,7 +1900,7 @@ class DrbdManageServer(object):
             if ((count != 0 and delta != 0) or count < 0):
                 add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
             else:
-                deployer = plugin_import(
+                deployer = self._pluginmgr.get_plugin_instance(
                     self.get_conf_value(self.KEY_DEPLOYER_NAME)
                 )
                 if deployer is None:
@@ -3236,6 +3462,17 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    def _reload_plugins(self):
+        # make sure the current storage and deployer plugins are loaded
+        # if the plugin is already loaded, this is a NOP
+        self._pluginmgr.get_plugin_instance(self._conf[self.KEY_DEPLOYER_NAME])
+        self._pluginmgr.get_plugin_instance(self._conf[self.KEY_STOR_NAME])
+
+        loaded_plugins = self._pluginmgr.get_loaded_plugins()
+        for plugin in loaded_plugins:
+            plugin_path = plugin[self._pluginmgr.KEY_PLUGIN_PATH]
+            plugin_name = plugin[self._pluginmgr.KEY_PLUGIN_NAME]
+            self._pluginmgr.set_plugin_config(plugin_path, self._plugin_conf[plugin_name])
 
     def load_conf_data(self, persist):
         """
@@ -3249,7 +3486,7 @@ class DrbdManageServer(object):
         persist.load(self._objects_root)
         self._update_objects()
         self._conf_hash = persist.get_stored_hash()
-
+        self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
 
     def save_conf_data(self, persist):
         """
@@ -3484,11 +3721,13 @@ class DrbdManageServer(object):
         """
         fn_rc = []
         try:
-            self.load_server_conf()
+            self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_FILE])
             self.set_loglevel()
+            extend_path(self._path, self.get_conf_value(self.KEY_EXTEND_PATH))
             fn_rc = self.load_conf()
+            self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
             self._drbd_mgr.reconfigure()
-            self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME])
+            self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except Exception as exc:

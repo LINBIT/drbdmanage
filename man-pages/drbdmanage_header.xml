@@ -47,5 +47,24 @@
   </refsect1>
 
   <refsect1>
+    <title>Configuration</title>
+	 <para>The configuration of <option>drbdmanage</option> is stored in the
+	 <option>control volume</option> of drbdmange. This has the advantage that
+	 the configuration is distributed among all nodes in the cluster without
+	 touching every node's configuration file manually. Please see
+	 <option>modify-config</option> for further details.<sbr/>
+	 In rare situations it might be nessessary to provide an initial
+	 configuration (e.g., if the drbdmanage control volume itself is stored on a
+	 non-standard LVM volume group). For these situations it is possible to
+	 provide a local configuration file, namely <option>/etc/drbdmanaged.cfg</option>.
+	 This file has to provide a <option>[LOCAL]</option> section. Values allowed
+	 in this section are: <option>drbdctrl-vg</option> and
+	 <option>extend-path</option>. It is important to note that providing a
+	 local configuration file is the exception and should only be used in very
+	 rare situations.<sbr/>
+	 </para>
+ </refsect1>
+
+  <refsect1>
       <title>Commands</title>
       <variablelist>

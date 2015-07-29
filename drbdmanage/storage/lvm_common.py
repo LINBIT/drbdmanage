@@ -4,7 +4,6 @@ import subprocess
 import logging
 import errno
 import json
-import drbdmanage.conf.conffile as cf
 import drbdmanage.utils as utils
 import drbdmanage.exceptions as exc
 import drbdmanage.storage.lvm_exceptions as lvmexc
@@ -62,40 +61,6 @@ class LvmCommon(storcore.StoragePlugin):
             raise lvmexc.LvmCheckFailedException
 
         return exists
-
-
-    def load_conf(self, filename, plugin_name):
-        """
-        Loads settings from the module configuration file
-        """
-        conf_file   = None
-        loaded_conf = None
-
-        try:
-            conf_file = open(filename, "r")
-            conf_obj  = cf.ConfFile(conf_file)
-            loaded_conf = conf_obj.get_conf()
-        except IOError as io_err:
-            if io_err.errno == errno.EACCES:
-                logging.error(
-                    plugin_name + ": Cannot open configuration file '%s': "
-                    "Permission denied"
-                    % (filename)
-                )
-            elif io_err.errno == errno.ENOENT:
-                # No configuration file, use defaults. Not an error, ignore.
-                pass
-            else:
-                logging.error(
-                    plugin_name + ": Cannot open configuration file '%s', "
-                    "error message from the OS: %s"
-                    % (filename, io_err.strerror)
-                )
-        finally:
-            if conf_file is not None:
-                conf_file.close()
-
-        return loaded_conf
 
 
     def load_state(self, state_filename, plugin_name):

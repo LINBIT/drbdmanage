@@ -42,24 +42,25 @@ import drbdmanage.argcomplete as argcomplete
 import gobject
 
 from drbdmanage.consts import (
-    SERVER_CONFFILE, KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
+    KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
-    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH
+    KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
+    CONF_NODE, CONF_GLOBAL
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
-    build_path, bool_to_string, map_val_or_dflt, rangecheck, ssh_exec
+    build_path, bool_to_string, map_val_or_dflt, rangecheck, ssh_exec, check_output,
+    load_server_conf_file, filter_prohibited
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
     COLOR_DARKPINK, COLOR_TEAL, COLOR_GREEN, COLOR_YELLOW
 )
-from drbdmanage.conf.conffile import ConfFile
 from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
@@ -76,6 +77,8 @@ from drbdmanage.drbd.views import GenericView
 from drbdmanage.snapshots.views import DrbdSnapshotAssignmentView
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.defaultip import default_ip
+
+from drbdmanage.propscontainer import Props
 
 
 class DrbdManage(object):
@@ -784,14 +787,14 @@ class DrbdManage(object):
                 return ['[]', '{}']
             return []
         p_lowlevel_debug.add_argument("json",
-                                  help="JSON to deserialize",
-                                  nargs="*").completer = LowLevelDebugJsonCompleter
+                                      help="JSON to deserialize",
+                                      nargs="*").completer = LowLevelDebugJsonCompleter
         p_lowlevel_debug.set_defaults(func=self.cmd_lowlevel_debug)
 
         # server-version
         p_server_version = subp.add_parser('server-version',
                                            description='Queries version information from the '
-                                               'drbdmanage server')
+                                           'drbdmanage server')
         p_server_version.set_defaults(func=self.cmd_server_version)
 
         # query-conf
@@ -914,6 +917,16 @@ class DrbdManage(object):
         #                    help='Name of the volume to modify').completer = ResVolCompleter
         # p_pdo.set_defaults(optsobj=pdo)
         # p_pdo.set_defaults(func=self.cmd_peer_device_options)
+
+        # edit config
+        p_editconf = subp.add_parser('modify-config',
+                                     description='Modify drbdmanage configuration',
+                                     aliases=['edit-config'])
+        # p_editconf.add_argument('config', choices=('drbdmanage',))
+        p_editconf.add_argument('--node', '-n',
+                                help='Name of the node. This enables node specific options '
+                                '(e.g. plugin settings)').completer = NodeCompleter
+        p_editconf.set_defaults(func=self.cmd_edit_config)
 
         argcomplete.autocomplete(parser)
 
@@ -2344,7 +2357,7 @@ or the drbdmanage server.
         """
         fn_rc = 1
 
-        server_conf = self.load_server_conf()
+        server_conf = load_server_conf_file()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         try:
@@ -2435,7 +2448,7 @@ Confirm:
                     # both is not considered an error here
                     pass
             try:
-                server_conf = self.load_server_conf()
+                server_conf = load_server_conf_file()
                 drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
                 conf_path = self._get_conf_path(server_conf)
                 self._init_join_cleanup(drbdctrl_vg, conf_path)
@@ -2453,7 +2466,7 @@ Confirm:
         """
         fn_rc = 1
 
-        server_conf = self.load_server_conf()
+        server_conf = load_server_conf_file()
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         # Initialization of the usermode helper restore delay
@@ -2739,7 +2752,7 @@ Confirm:
 
     def _create_drbdctrl(self, node_id, server_conf):
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
-        conf_path   = self._get_conf_path(server_conf)
+        conf_path = self._get_conf_path(server_conf)
 
         drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME)
 
@@ -2790,22 +2803,10 @@ Confirm:
         # ========================================
         # Set up the path to the drbdctrl LV
         # ========================================
-        if server_conf is not None:
-            drbdctrl_vg = map_val_or_dflt(
-                server_conf, KEY_DRBDCTRL_VG, DEFAULT_VG
-            )
-        else:
-            drbdctrl_vg = DEFAULT_VG
-        return drbdctrl_vg
+        return server_conf.get(KEY_DRBDCTRL_VG, DEFAULT_VG)
 
     def _get_conf_path(self, server_conf):
-        if server_conf is not None:
-            conf_path = map_val_or_dflt(
-                server_conf, KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH
-            )
-        else:
-            conf_path = DEFAULT_DRBD_CONFPATH
-        return conf_path
+        return server_conf.get(KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH)
 
     def _list_rc_entries(self, server_rc):
         """
@@ -2963,6 +2964,169 @@ Confirm:
         newopts["type"] = "peerdisko"
 
         return self._set_drbdsetup_props(newopts)
+
+    def cmd_edit_config(self, args):
+        import ConfigParser
+        cfg = ConfigParser.RawConfigParser()
+
+        self.dbus_init()
+
+        if args.node:
+            cfgtype = CONF_NODE
+            server_rc, plugins = self._server.get_plugin_default_config()
+            plugin_names = [p['name'] for p in plugins]
+        else:
+            cfgtype = CONF_GLOBAL
+
+        # get all known config keys
+        server_rc, config_keys = self._server.get_config_keys()
+
+        # setting the drbdctrl-vg here is not allowed
+        # only allowed via the config file
+        prohibited = ('drbdctrl-vg',)
+        config_keys = filter_prohibited(config_keys, prohibited)
+
+        # get all config options that are set cluster wide (aka GLOBAL)
+        server_rc, cluster_config = self._server.get_cluster_config()
+
+        cfg.add_section('GLOBAL')
+        for k, v in cluster_config.items():
+            if k in config_keys:
+                cfg.set('GLOBAL', k, v)
+
+        server_rc, node_list = self._get_nodes()
+
+        ns = Props.NAMESPACES[Props.KEY_DMCONFIG]
+        pns = Props.NAMESPACES[Props.KEY_PLUGINS]
+
+        node_names = []
+        for node_entry in node_list:
+            node_name, properties = node_entry
+            if cfgtype == CONF_NODE and node_name != args.node:
+                continue
+            node_names.append(node_name)
+
+            properties = Props(properties)
+            cur_props = properties.get_all_props(ns)
+            if len(cur_props) > 0 or cfgtype == CONF_NODE:
+                secname = 'Node:' + node_name
+                cfg.add_section(secname)
+                for k, v in cur_props.items():
+                    if k in config_keys.keys():
+                        cfg.set(secname, k, v)
+
+            cur_props = properties.get_all_props(pns)
+            if cfgtype == CONF_NODE and len(cur_props) > 0:
+                # for simplicity in the for loop, because we access the nodes properties, but executed
+                # exactly once.
+
+                for plugin in plugins:
+                    plugin_name = plugin['name']
+                    current_pns = pns + plugin_name
+                    plugin_props = properties.get_all_props(current_pns)
+                    if len(plugin_props) > 0:
+                        secname = 'Plugin:' + plugin_name
+                        cfg.add_section(secname)
+                        for k, v in plugin_props.items():
+                            cfg.set(secname, k, v)
+
+        import tempfile
+        import os
+        import shutil
+
+        tmpf = tempfile.mkstemp(suffix='.cfg')[1]
+        orig = tempfile.mkstemp(suffix='.cfg')[1]
+
+        with open(tmpf, 'wb') as configfile:
+            cfg.write(configfile)
+            hdr = 'Options you can set with their default value in the GLOBAL section or per Node:'
+            configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
+            for k, v in config_keys.items():
+                configfile.write('# %s = %s\n' % (k, v))
+            configfile.write('\n')
+
+            if cfgtype == CONF_NODE:
+                hdr = 'Plugin options you can set with their default value:'
+                configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
+                for plugin in plugins:
+                    secname = '# [Plugin:' + plugin['name'] + ']'
+                    configfile.write(secname + '\n')
+                    for o in plugin:
+                        if o != 'name':
+                            configfile.write('# ' + o + ' = ' + plugin[o] + '\n')
+                    configfile.write('\n')
+
+            hdr = 'Nodes available in this view:'
+            configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
+            configfile.write('# %s\n' % (', '.join(node_names)))
+            configfile.write('# Example: [Node:nodeA]\n')
+            configfile.write('\n')
+
+            configfile.write('# For further information please refere to drbdmanage.cfg(8)')
+
+        shutil.copyfile(tmpf, orig)
+
+        import subprocess
+        editor = os.getenv('EDITOR', 'vi')
+        before = os.stat(tmpf).st_mtime
+        try:
+            subprocess.call([editor, tmpf])
+        except:
+            sys.stderr.write('Could not load editor, your changes will not be saved.\n')
+            sys.exit(1)
+        after = os.stat(tmpf).st_mtime
+        if before == after:
+            print "Nothing to save, bye"
+            sys.exit(0)
+
+        try:
+            # recreate the cfg object, otherwise read() reads old values, no
+            # matter if you close the file or not
+            cfg = ConfigParser.RawConfigParser()
+            cfg.read(tmpf)
+        except:
+            sys.stderr.write('Could not parse configuration, your changes will not be saved.\n')
+            sys.exit(1)
+
+        # parse back to dict, while keeping it flat
+        cfgdict = {'nodes': [], 'globals': [], 'groups': [],
+                   'plugins': [], 'type': [{'type': cfgtype}]}
+
+        for section in cfg.sections():
+            if section.startswith('Node:'):
+                name = section.split(':')[1]
+                if name in node_names:
+                    e = dict(cfg.items(section) + [('name', name)])
+                    e = filter_prohibited(e, prohibited)
+                    cfgdict['nodes'].append(e)
+                else:
+                    sys.stderr.write('%s is not a valid node name. '
+                                     'Configuration for this node ignored\n' % (name))
+            elif section.startswith('Plugin:') and cfgtype == CONF_NODE:
+                name = section.split(':')[1]
+                if name in plugin_names:
+                    e = dict(cfg.items(section) + [('name', name)])
+                    cfgdict['plugins'].append(e)
+                else:
+                    sys.stderr.write('%s is not a valid plugin name. '
+                                     'Configuration for this plugin ignored\n' % (name))
+            elif section.startswith('GLOBAL'):
+                e = dict(cfg.items(section))
+                e = filter_prohibited(e, prohibited)
+                cfgdict['globals'].append(e)
+
+        # set at least empty node sections, this might have happend if the user deleted the whole [Node:]
+        # section
+        if len(cfgdict['nodes']) == 0:
+            cfgdict['nodes'] = [dict(('name', node_name) for node_name in node_names)]
+        # print cfgdict['nodes'], len(cfgdict['nodes'])
+        # print cfgdict['globals']
+        # print cfgdict['plugins']
+        # print cfgdict['sites']
+
+        server_rc = self._server.set_cluster_config(cfgdict)
+
+        return server_rc
 
     def user_confirm(self, question):
         """
@@ -3123,32 +3287,6 @@ Confirm:
         sys.stdout.write("empty drbdmanage control volume initialized.\n")
 
         return fn_rc
-
-    def load_server_conf(self):
-        in_file = None
-        conf_loaded = None
-        try:
-            in_file = open(SERVER_CONFFILE, "r")
-            conffile = ConfFile(in_file)
-            conf_loaded = conffile.get_conf()
-        except IOError as ioerr:
-            sys.stderr.write("No server configuration file loaded:\n")
-            if ioerr.errno == errno.EACCES:
-                sys.stderr.write(
-                    "Cannot open configuration file '%s', "
-                    "permission denied\n"
-                    % (SERVER_CONFFILE)
-                )
-            elif ioerr.errno != errno.ENOENT:
-                sys.stderr.write(
-                    "Cannot open configuration file '%s', "
-                    "error returned by the OS is: %s\n"
-                    % (SERVER_CONFFILE, ioerr.strerror)
-                )
-        finally:
-            if in_file is not None:
-                in_file.close()
-        return conf_loaded
 
     """
     Unit names are lower-case; functions using the lookup table should

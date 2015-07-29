@@ -162,10 +162,7 @@ class BuildManCommand(Command):
 def gen_data_files():
     data_files = [("/etc/drbd.d", ["conf/drbdctrl.res_template",
                                    "conf/drbdmanage-resources.res"]),
-                  ("/etc", ["conf/drbdmanaged.conf",
-                            "conf/drbdmanaged-lvm.conf",
-                            "conf/drbdmanaged-lvm-thinpool.conf",
-                            "conf/drbdmanaged-lvm-thinlv.conf"]),
+                  ("/etc", ["conf/drbdmanaged.cfg"]),
                   ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
                   ("/usr/share/dbus-1/system-services",
                    ["conf/org.drbd.drbdmanaged.service"]),
@@ -182,13 +179,12 @@ setup(
     name="drbdmanage",
     version=get_version(),
     description="DRBD distributed resource management utility",
-    long_description=
-"Drbdmanage is a daemon and a command line utility that manages DRBD\n" +
-"replicated LVM volumes across a group of machines.\n" +
-"It maintains DRBD configuration an the participating machines. It\n" +
-"creates/deletes the backing LVM volumes. It automatically places\n" +
-"the backing LVM volumes among the participating machines.",
-    author="Robert Altnoeder",
+    long_description="Drbdmanage is a daemon and a command line utility that manages DRBD\n" +
+    "replicated LVM volumes across a group of machines.\n" +
+    "It maintains DRBD configuration an the participating machines. It\n" +
+    "creates/deletes the backing LVM volumes. It automatically places\n" +
+    "the backing LVM volumes among the participating machines.",
+    author="Robert Altnoeder <robert.altnoeder@linbit.com>, Roland Kammerer <roland.kammerer@linbit.com>",
     author_email="robert.altnoeder@linbit.com",
     maintainer="LINBIT HA Solutions GmbH",
     maintainer_email="drbd-dev@lists.linbit.com",
@@ -201,7 +197,8 @@ setup(
         "drbdmanage.storage",
         "drbdmanage.snapshots",
         "drbdmanage.argparse",
-        "drbdmanage.argcomplete"],
+        "drbdmanage.argcomplete",
+        "drbdmanage.plugins"],
     py_modules=["drbdmanage_server", "drbdmanage_client"],
     scripts=["scripts/drbdmanage", "scripts/dbus-drbdmanaged-service"],
     data_files=gen_data_files(),

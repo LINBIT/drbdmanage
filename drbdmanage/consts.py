@@ -70,7 +70,7 @@ DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
 DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
 
-SERVER_CONFFILE     = "/etc/drbdmanaged.conf"
+SERVER_CONFFILE     = "/etc/drbdmanaged.cfg"
 KEY_DRBD_CONFPATH = "drbd-conf-path"
 DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
 
@@ -113,3 +113,7 @@ RES_PORT_NR_AUTO    = -1
 RES_PORT_NR_ERROR   = -2
 
 TQ_GET_PATH         = "get_path"
+
+CONF_GLOBAL = 'global'
+CONF_NODE = 'node'
+PLUGIN_PREFIX = 'Plugin:'

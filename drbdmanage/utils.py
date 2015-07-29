@@ -30,7 +30,9 @@ import operator
 import subprocess
 import drbdmanage.consts as consts
 import logging
+import ConfigParser
 from drbdmanage.exceptions import SyntaxException
+from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -275,6 +277,48 @@ def rangecheck(i, j):
     return range
 
 
+def load_server_conf_file():
+    """
+    Try to load the server configuration.
+    """
+    import errno
+
+    cfgdict = {'local': {}, 'plugins': {}}
+
+    try:
+        cfg = ConfigParser.RawConfigParser()
+        cfg.read(SERVER_CONFFILE)
+        for section in cfg.sections():
+            if section.startswith('LOCAL'):
+                in_file_cfg = dict(cfg.items(section))
+                if not cfg.has_option(section, 'force'):
+                    final_config = filter_allowed(in_file_cfg.copy(), ('drbdctrl-vg', 'extend-path'))
+                    ignored = [k for k in in_file_cfg if k not in final_config]
+                    for k in ignored:
+                        logging.warning('Ignoring %s in configuration file' % k)
+                else:
+                    final_config = in_file_cfg
+
+                cfgdict['local'] = final_config
+
+            elif section.startswith(PLUGIN_PREFIX):
+                cfgdict['plugins'][section[len(PLUGIN_PREFIX):]] = dict(cfg.items(section))
+    except IOError as ioerr:
+        if ioerr.errno == errno.EACCES:
+            logging.warning(
+                "cannot open configuration file '%s', permission denied"
+                % (SERVER_CONFFILE)
+            )
+        elif ioerr.errno != errno.ENOENT:
+            logging.warning(
+                "cannot open configuration file '%s', "
+                "error returned by the OS is: %s"
+                % (SERVER_CONFFILE, ioerr.strerror)
+            )
+
+    return cfgdict
+
+
 class DrbdSetupOpts():
     def __init__(self, command):
         import sys
@@ -480,34 +524,7 @@ def build_path(prefix, filename):
     return full_path
 
 
-def plugin_import(path):
-    """
-    Imports a plugin
-
-    @param   path: Python path specification
-    @return: new instance of the plugin; None on error
-    """
-    p_mod   = None
-    p_class = None
-    p_inst  = None
-    try:
-        if path is not None:
-            idx = path.rfind(".")
-            if idx != -1:
-                p_name = path[idx + 1:]
-                p_path = path[:idx]
-            else:
-                p_name = path
-                p_path = ""
-            p_mod   = __import__(p_path, globals(), locals(), [p_name], -1)
-            p_class = getattr(p_mod, p_name)
-            p_inst  = p_class()
-    except Exception:
-        pass
-    return p_inst
-
-
-def extend_path(ext_path):
+def extend_path(orig_path, ext_path):
     """
     Extends the PATH environment variable exported to subprocesses
 
@@ -520,21 +537,14 @@ def extend_path(ext_path):
     yet, it appends each directory stated in ext_path to PATH in the order
     of occurrence in ext_path.
     """
-    path = ""
-    sep  = ":"
-    try:
-        path = os.environ["PATH"]
-    except KeyError:
-        pass
-    path_items = path.split(sep)
+    sep = ":"
+    path_items = orig_path.split(sep)
     ext_path_items = ext_path.split(sep)
-    for item in ext_path_items:
-        if item not in path_items:
-            path_items.append(item)
-    path = sep.join(path_items)
+
+    path = [p for p in ext_path_items if p not in path_items] + path_items
     # this will implicitly update the actual PATH environment variable
     # by means of a call to putenv() according to python documentation
-    os.environ["PATH"] = path
+    os.environ["PATH"] = sep.join(path)
 
 
 def add_rc_entry(fn_rc, err_code, err_msg, *args):
@@ -707,6 +717,19 @@ def is_all_unset(state, flags):
     """
     return (True if (state & flags) == 0 else False)
 
+
+def filter_prohibited(to_filter, prohibited):
+    for k in prohibited:
+        if k in to_filter:
+            del(to_filter[k])
+    return to_filter
+
+
+def filter_allowed(to_filter, allowed):
+    for k in to_filter.keys():
+        if k not in allowed:
+            del(to_filter[k])
+    return to_filter
 
 # Function name aliases
 is_set   = is_all_set
