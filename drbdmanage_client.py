@@ -262,7 +262,8 @@ class DrbdManage(object):
                               help='If present, then the resource entry and all associated assignment '
                               "entries are removed from drbdmanage's data tables immediately, without "
                               'taking any action on the cluster nodes that have the resource deployed.')
-        p_rm_res.add_argument('name',
+        p_rm_res.add_argument('names',
+                              nargs="+",
                               help='Name of the resource to delete').completer = ResourceCompleter
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
 
@@ -1213,23 +1214,25 @@ class DrbdManage(object):
     def cmd_remove_resource(self, args):
         fn_rc = 1
 
-        res_name = args.name
         force = args.force
         quiet = args.quiet
-        if not quiet:
-            quiet = self.user_confirm(
-                "You are going to remove a resource and all of its "
-                "volumes from all nodes of the cluster.\n"
-                "Please confirm:"
-            )
-        if quiet:
-            self.dbus_init()
-            server_rc = self._server.remove_resource(
-                dbus.String(res_name), dbus.Boolean(force)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        else:
-            fn_rc = 0
+        fn_rc = 0
+        go = 1
+        self.dbus_init()
+        for res_name in args.names:
+            if not quiet:
+                go = self.user_confirm(
+                    "You are going to remove the resource '%s' and all of its "
+                    "volumes from all nodes of the cluster.\n"
+                    "Please confirm:"
+                )
+            if go:
+                server_rc = self._server.remove_resource(
+                    dbus.String(res_name), dbus.Boolean(force)
+                )
+                fn_rc = self._list_rc_entries(server_rc)
+                if fn_rc != 0:
+                    break
 
         return fn_rc
 
