@@ -217,7 +217,7 @@ class DrbdManage(object):
                                help='The node entry and all associated assignment entries are removed from '
                                "drbdmanage's data tables immediately, without taking any action on the "
                                'cluster node that the node entry refers to.')
-        p_rm_node.add_argument('name', help='Name of the node to remove').completer = NodeCompleter
+        p_rm_node.add_argument('name', nargs="+", help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
         # new-resource
@@ -237,6 +237,11 @@ class DrbdManage(object):
             for r in res_list:
                 name, _ = r
                 possible.add(name)
+
+            if not prefix or prefix == '':
+                return possible
+            else:
+                return [res for res in possible if res.startswith(prefix)]
 
             return possible
 
@@ -262,7 +267,7 @@ class DrbdManage(object):
                               help='If present, then the resource entry and all associated assignment '
                               "entries are removed from drbdmanage's data tables immediately, without "
                               'taking any action on the cluster nodes that have the resource deployed.')
-        p_rm_res.add_argument('names',
+        p_rm_res.add_argument('name',
                               nargs="+",
                               help='Name of the resource to delete').completer = ResourceCompleter
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
@@ -399,7 +404,7 @@ class DrbdManage(object):
                               help='If specified, drbdmanage will issue a "drbdadm -- --discard-my-data" '
                               'connect after the resource has been started.')
         p_assign.add_argument('resource').completer = ResourceCompleter
-        p_assign.add_argument('node').completer = NodeCompleter
+        p_assign.add_argument('node', nargs="+").completer = NodeCompleter
         p_assign.set_defaults(func=self.cmd_assign)
 
         # free space
@@ -494,7 +499,7 @@ class DrbdManage(object):
                                 'data tables immediately, without taking any action on the node where '
                                 'the resource is been deployed.')
         p_unassign.add_argument('resource').completer = ResourceCompleter
-        p_unassign.add_argument('node').completer = NodeCompleter
+        p_unassign.add_argument('node', nargs="+").completer = NodeCompleter
         p_unassign.set_defaults(func=self.cmd_unassign)
 
         # new-snapshot
@@ -531,7 +536,7 @@ class DrbdManage(object):
                                    description='Remove LVM snapshot of a resource')
         p_rmsnap.add_argument('-f', '--force', action="store_true")
         p_rmsnap.add_argument('resource', help='Name of the resource').completer = ResourceCompleter
-        p_rmsnap.add_argument('snapshot', help='Name of the snapshot').completer = SnapsCompleter
+        p_rmsnap.add_argument('snapshot', nargs="+", help='Name of the snapshot').completer = SnapsCompleter
         p_rmsnap.set_defaults(func=self.cmd_remove_snapshot)
 
         # remove-snapshot-assignment
@@ -828,18 +833,6 @@ class DrbdManage(object):
         p_debug.add_argument('cmd')
         p_debug.set_defaults(func=self.cmd_debug)
 
-        # drbdsetup commands
-        def ResourceCompleter(prefix, **kwargs):
-            server_rc, res_list = self.__list_resources(False)
-            possible = set()
-            for r in res_list:
-                name, _ = r
-                possible.add(name)
-
-            if not prefix or prefix == '':
-                return possible
-            else:
-                return [res for res in possible if res.startswith(prefix)]
 
         def ResVolCompleter(prefix, parsed_args, **kwargs):
             server_rc, res_list = self.__list_resources(True)
@@ -925,6 +918,7 @@ class DrbdManage(object):
         # "remove), therefore prefer one of them to group commands for the
         # "list" command
         for cmds in cmds_sorted:
+            idx = 0
             found = False
             for idx, cmd in enumerate(cmds):
                 if cmd.startswith("add-") or cmd.startswith("remove-"):
@@ -1189,50 +1183,63 @@ class DrbdManage(object):
         return fn_rc
 
     def cmd_remove_node(self, args):
-        fn_rc = 1
+        fn_rc = 0
 
-        node_name = args.name
         force = args.force
         quiet = args.quiet
-        if not quiet:
-            quiet = self.user_confirm(
-                "You are going to remove a node from the cluster. "
-                "This will remove all resources from the node.\n"
-                "Please confirm:"
-            )
-        if quiet:
-            self.dbus_init()
-            server_rc = self._server.remove_node(
-                dbus.String(node_name), dbus.Boolean(force)
-            )
-            fn_rc = self._list_rc_entries(server_rc)
-        else:
-            fn_rc = 0
+        confirmed = True
+        self.dbus_init()
+        display_names = (len(args.name) > 1)
+        for node_name in args.name:
+            if not quiet:
+                confirmed = self.user_confirm(
+                    "You are going to remove the node '%s' from the cluster. "
+                    "This will remove all resources from the node.\n"
+                    "Please confirm:"
+                    % (node_name)
+                )
+            if confirmed:
+                self.dbus_init()
+                server_rc = self._server.remove_node(
+                    dbus.String(node_name), dbus.Boolean(force)
+                )
+                if display_names:
+                    sys.stdout.write("Removing node '%s':\n" % (node_name))
+                item_rc = self._list_rc_entries(server_rc)
+                if display_names:
+                    sys.stdout.write("\n")
+                if item_rc != 0:
+                    fn_rc = 1
 
         return fn_rc
 
     def cmd_remove_resource(self, args):
-        fn_rc = 1
+        fn_rc = 0
 
         force = args.force
         quiet = args.quiet
-        fn_rc = 0
-        go = 1
+        confirmed = True
         self.dbus_init()
-        for res_name in args.names:
+        display_names = (len(args.name) > 1)
+        for res_name in args.name:
             if not quiet:
-                go = self.user_confirm(
+                confirmed = self.user_confirm(
                     "You are going to remove the resource '%s' and all of its "
                     "volumes from all nodes of the cluster.\n"
                     "Please confirm:"
+                    % (res_name)
                 )
-            if go:
+            if confirmed:
                 server_rc = self._server.remove_resource(
                     dbus.String(res_name), dbus.Boolean(force)
                 )
-                fn_rc = self._list_rc_entries(server_rc)
-                if fn_rc != 0:
-                    break
+                if display_names:
+                    sys.stdout.write("Removing resource '%s':\n" % (res_name))
+                item_rc = self._list_rc_entries(server_rc)
+                if display_names:
+                    sys.stdout.write("\n")
+                if item_rc != 0:
+                    fn_rc = 1
 
         return fn_rc
 
@@ -1362,9 +1369,8 @@ class DrbdManage(object):
         return fn_rc
 
     def cmd_assign(self, args):
-        fn_rc = 1
+        fn_rc = 0
 
-        node_name = args.node
         res_name = args.resource
 
         client = args.client
@@ -1398,10 +1404,19 @@ class DrbdManage(object):
         props[FLAG_CONNECT] = bool_to_string(connect)
 
         self.dbus_init()
-        server_rc = self._server.assign(
-            dbus.String(node_name), dbus.String(res_name), props
-        )
-        fn_rc = self._list_rc_entries(server_rc)
+
+        display_names = (len(args.node) > 1)
+        for node_name in args.node:
+            if display_names:
+                sys.stdout.write("Assigning to node '%s':\n" % (node_name))
+            server_rc = self._server.assign(
+                dbus.String(node_name), dbus.String(res_name), props
+            )
+            item_rc = self._list_rc_entries(server_rc)
+            if display_names:
+                sys.stdout.write("\n")
+            if item_rc != 0:
+                fn_rc = 1
 
         return fn_rc
 
@@ -1503,16 +1518,25 @@ class DrbdManage(object):
         return fn_rc
 
     def cmd_unassign(self, args):
-        fn_rc = 1
+        fn_rc = 0
 
-        node_name = args.node
         res_name = args.resource
         force = args.force
         # quiet = args.quiet
         # TODO: implement quiet
+
         self.dbus_init()
-        server_rc = self._server.unassign(node_name, res_name, force)
-        fn_rc = self._list_rc_entries(server_rc)
+
+        display_names = (len(args.node) > 1)
+        for node_name in args.node:
+            if display_names:
+                sys.stdout.write("Unassigning from node '%s':\n" % (node_name))
+            server_rc = self._server.unassign(node_name, res_name, force)
+            item_rc = self._list_rc_entries(server_rc)
+            if display_names:
+                sys.stdout.write("\n")
+            if item_rc != 0:
+                fn_rc = 1
 
         return fn_rc
 
@@ -1535,17 +1559,24 @@ class DrbdManage(object):
         return fn_rc
 
     def cmd_remove_snapshot(self, args):
-        fn_rc = 1
+        fn_rc = 0
 
         res_name = args.resource
-        snaps_name = args.snapshot
         force = args.force
 
         self.dbus_init()
-        server_rc = self._server.remove_snapshot(
-            dbus.String(res_name), dbus.String(snaps_name), force
-        )
-        fn_rc = self._list_rc_entries(server_rc)
+        display_names = (len(args.snapshot) > 1)
+        for snaps_name in args.snapshot:
+            if display_names:
+                sys.stdout.write("Removing snapshot '%s':\n" % (snaps_name))
+            server_rc = self._server.remove_snapshot(
+                dbus.String(res_name), dbus.String(snaps_name), force
+            )
+            item_rc = self._list_rc_entries(server_rc)
+            if display_names:
+                sys.stdout.write("\n")
+            if item_rc != 0:
+                fn_rc = 1
 
         return fn_rc
 
