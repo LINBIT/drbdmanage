@@ -51,7 +51,7 @@ class CheckUpToDate(Command):
                 if version not in firstline:
                     # returning false is not promoted
                     sys.exit(1)
-        except:
+        except IOError:
             # probably a release tarball without the debian directory but with Makefile
             return True
 
