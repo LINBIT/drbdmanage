@@ -2552,10 +2552,12 @@ class DrbdManageServer(object):
             if serial > 0:
                 selected_res = serial_filter(serial, selected_res)
 
+            props_filter_flag = True if filter_props is not None and len(filter_props) > 0 else False
             res_list = []
             for res in selected_res:
                 selected_vol = res.iterate_volumes()
-                if filter_props is not None and len(filter_props) > 0:
+                if props_filter_flag:
+                    skip_empty = True
                     selected_vol = props_filter(
                         selected_vol, filter_props
                     )
@@ -2566,11 +2568,12 @@ class DrbdManageServer(object):
                 for vol in selected_vol:
                     vol_entry = [ vol.get_id(), vol.get_properties(req_props) ]
                     vol_list.append(vol_entry)
-                res_entry = [
-                    res.get_name(),
-                    res.get_properties(req_props), vol_list
-                ]
-                res_list.append(res_entry)
+                if (not props_filter_flag) or len(vol_list) > 0:
+                    res_entry = [
+                        res.get_name(),
+                        res.get_properties(req_props), vol_list
+                    ]
+                    res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             return fn_rc, res_list
         except Exception as exc:
