@@ -647,10 +647,10 @@ class DrbdManageServer(object):
                                         # This node does not have a quorum, skip saving
                                         pass
                                     except PersistenceException:
-                                        # FIXME: Should this problem be logged?
-                                        #        The other functions don't log, but they
-                                        #        report the problem back to a client
-                                        pass
+                                        logging.warning(
+                                            "Attempt to save updated quorum membership information to "
+                                            "the control volume failed"
+                                        )
                                     finally:
                                         self.end_modify_conf(persist)
                     except KeyError:
