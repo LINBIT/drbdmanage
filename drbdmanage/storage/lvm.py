@@ -19,27 +19,22 @@
 """
 
 import os
-import sys
 import time
 import json
-import errno
 import logging
 import subprocess
-import drbdmanage.storage.storagecore
+import drbdmanage.storage.storagecore as storcore
 import drbdmanage.storage.persistence as storpers
+import drbdmanage.storage.lvm_common as lvmcom
 
-from drbdmanage.consts import DEFAULT_VG
-from drbdmanage.exceptions import PersistenceException
-from drbdmanage.exceptions import DM_ENOENT, DM_ESTORAGE, DM_SUCCESS, DM_DEBUG
-from drbdmanage.utils import DataHash
-from drbdmanage.utils import (build_path, read_lines)
-from drbdmanage.conf.conffile import ConfFile
-
-# from drbdmanage.storage.storagecore import StoragePlugin
+import drbdmanage.consts as consts
+import drbdmanage.exceptions as exc
+import drbdmanage.storage.lvm_exceptions as lvmexc
+import drbdmanage.utils as utils
+import drbdmanage.conf.conffile as cf
 
 
-#class LVM(drbdmanage.storage.storagecore.StoragePlugin):
-class LVM(object):
+class Lvm(lvmcom.LvmCommon):
 
     """
     LVM logical volume backing store plugin for the drbdmanage server
@@ -49,77 +44,120 @@ class LVM(object):
     logical volume manager (LVM).
     """
 
-    KEY_DEV_PATH  = "dev-path"
-    KEY_VG_NAME   = "volume-group"
-    KEY_LVM_PATH  = "lvm-path"
+    # Configuration file keys
+    KEY_DEV_PATH = "dev-path"
+    KEY_VG_NAME  = "volume-group"
+    KEY_LVM_PATH = "lvm-path"
 
-    LVM_CONFFILE = "/etc/drbdmanaged-lvm.conf"
-    LVM_SAVEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
+    # Paths to configuration and state files of this module
+    LVM_CONFFILE  = "/etc/drbdmanaged-lvm.conf"
+    LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
 
-    LVM_CREATE   = "lvcreate"
-    LVM_REMOVE   = "lvremove"
-    LVM_LVS      = "lvs"
-    LVM_VGS      = "vgs"
-
-    # LV exists error code
-    LVM_EEXIST   = 5
+    # Command names of LVM utilities
+    LVM_CREATE = "lvcreate"
+    LVM_REMOVE = "lvremove"
+    LVM_LVS    = "lvs"
+    LVM_VGS    = "vgs"
 
     # lvs exit code if the LV was not found
     LVM_LVS_ENOENT = 5
 
-    # Delay (in seconds) for lvcreate/lvremove retries
+    # Delay (float, in seconds) for lvcreate/lvremove retries
     RETRY_DELAY = 1
 
     # Maximum number of retries
     MAX_RETRIES = 2
 
+    # Module configuration defaults
     CONF_DEFAULTS = {
-      KEY_DEV_PATH : "/dev",
-      KEY_VG_NAME  : DEFAULT_VG,
-      KEY_LVM_PATH : "/sbin"
+        KEY_DEV_PATH: "/dev/",
+        KEY_VG_NAME:  consts.DEFAULT_VG,
+        KEY_LVM_PATH: "/sbin"
     }
 
-    _lvs  = None
-    _conf = None
+    # Volumes (LVM logical volumes) managed by this module
+    _volumes  = None
+
+    # Loaded module configuration
+    _conf     = None
+
+    # Cached settings
+    # Set during initialization
+    _vg_path     = None
+    _cmd_create  = None
+    _cmd_remove  = None
+    _cmd_lvs     = None
+    _cmd_vgs     = None
+    _subproc_env = None
 
 
     def __init__(self):
-        super(LVM, self).__init__()
+        """
+        Initializes a new instance
+        """
+        super(Lvm, self).__init__()
+        self.reconfigure()
+
+
+    def reconfigure(self):
+        """
+        Reconfigures the module and reloads state information
+        """
         try:
-            self._lvs   = {}
+            # Setup the environment for subprocesses
+            self._subproc_env = dict(os.environ.items())
+            self._subproc_env["LC_ALL"] = "C"
+            self._subproc_env["LANG"]   = "C"
+
+            # Load the module configuration
             conf_loaded = None
             try:
-                self.load_state()
-            except PersistenceException:
-                logging.warning(
-                    "LVM plugin: Cannot load state file '%s'"
-                    % (self.LVM_SAVEFILE)
-                )
-            try:
-                conf_loaded = self.load_conf()
+                conf_loaded = self._load_conf()
             except IOError:
                 logging.warning(
-                    "LVM plugin: Cannot load configuration file '%s'"
-                    % (self.LVM_CONFFILE)
+                    "Lvm: Cannot load configuration file '%s'"
+                    % (Lvm.LVM_CONFFILE)
                 )
             if conf_loaded is None:
-                self._conf = self.CONF_DEFAULTS
+                self._conf = Lvm.CONF_DEFAULTS
             else:
-                self._conf = ConfFile.conf_defaults_merge(
-                    self.CONF_DEFAULTS, conf_loaded
+                self._conf = cf.ConfFile.conf_defaults_merge(
+                    Lvm.CONF_DEFAULTS, conf_loaded
                 )
-        except Exception as exc:
-            logging.error(
-                "LVM plugin: initialization failed, unhandled exception: %s"
-                % (str(exc))
+
+            # Setup cached settings
+            self._vg_path = utils.build_path(
+                self._conf[Lvm.KEY_DEV_PATH],
+                self._conf[Lvm.KEY_VG_NAME]
+            ) + "/"
+            self._cmd_create = utils.build_path(
+                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_CREATE
+            )
+            self._cmd_remove = utils.build_path(
+                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_REMOVE
+            )
+            self._cmd_lvs    = utils.build_path(
+                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_LVS
+            )
+            self._cmd_vgs    = utils.build_path(
+                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_VGS
             )
 
-
-    def _subproc_env(self):
-        env = dict(os.environ.items())
-        env['LC_ALL'] = 'C'
-        env['LANG']   = 'C'
-        return env
+            # Load the saved state
+            self._volumes = self._load_state()
+        except exc.PersistenceException as pers_exc:
+            logging.warning(
+                "Lvm plugin: Cannot load state file '%s'"
+                % (Lvm.LVM_STATEFILE)
+            )
+            raise pers_exc
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: initialization failed, unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
+            # Re-raise
+            raise unhandled_exc
 
 
     def create_blockdevice(self, name, vol_id, size):
@@ -136,28 +174,59 @@ class LVM(object):
         @rtype:  BlockDevice object; None if the allocation fails
         """
         blockdev = None
-        storcore = drbdmanage.storage.storagecore
-        lv_name = self._lv_name(name, vol_id)
-        try:
-            tries = 0
-            while tries < LVM.MAX_RETRIES:
-                try:
-                    # Check whether an LV with that name exists already
-                    lv_exists = self._check_lv_exists(lv_name)
-                    if lv_exists:
-                        # LV exists, maybe from an earlier attempt at creating
-                        # the volume. Remove existing LV and recreate it.
-                        logging.warning(
-                            "LVM plugin: Attempt %d of %d: "
-                            "LV '%s' exists already, attempting to "
-                            "remove and recreate the LV"
-                            % (tries + 1, LVM.MAX_RETRIES, lv_name)
-                        )
-                        self._remove_lv(lv_name)
+        lv_name = self.lv_name(name, vol_id)
 
-                    # Proceed with creating the LV
+        try:
+            # Remove any existing LV
+            tries = 0
+            # Check whether an LV with that name exists already
+            lv_exists = self._check_lv_exists(lv_name)
+            if lv_exists:
+                if self._volumes.get(lv_name) is None:
+                    # Unknown LV, possibly user-generated and not managed
+                    # by drbdmanage. Abort.
+                    raise lvmexc.LvmUnmanagedVolumeException
+                logging.warning(
+                    "Lvm: LV '%s' exists already, attempting to remove it."
+                    % (lv_name)
+                )
+            while lv_exists and tries < Lvm.MAX_RETRIES:
+                if tries > 0:
+                    try:
+                        time.sleep(Lvm.RETRY_DELAY)
+                    except OSError:
+                        pass
+
+                # LV exists, maybe from an earlier attempt at creating
+                # the volume. Remove existing LV and recreate it.
+                logging.warning(
+                    "Lvm: Attempt %d of %d: "
+                    "Removal of LV '%s' failed."
+                    % (tries + 1, Lvm.MAX_RETRIES, lv_name)
+                )
+                self._remove_lv(lv_name)
+                # Check whether the removal was successful
+                lv_exists = self._check_lv_exists(lv_name)
+                if not lv_exists:
+                    try:
+                        del self._volumes[lv_name]
+                    except KeyError:
+                        pass
+                    self._save_state(self._volumes)
+                tries += 1
+
+            # Create the LV, unless the removal of any existing LV under
+            # the specified name was unsuccessful
+            if not lv_exists:
+                tries = 0
+                while blockdev is None and tries < Lvm.MAX_RETRIES:
+                    if tries > 0:
+                        try:
+                            time.sleep(Lvm.RETRY_DELAY)
+                        except OSError:
+                            pass
+
                     self._create_lv(lv_name, size)
-                    # Check whether the LV was actually created
                     lv_exists = self._check_lv_exists(lv_name)
                     if lv_exists:
                         # LVM reports that the LV exists, create the
@@ -166,31 +235,58 @@ class LVM(object):
                         # persistent data structures
                         blockdev = storcore.BlockDevice(
                             lv_name, size,
-                            self._lv_path_prefix() + lv_name
+                            self._vg_path + lv_name
                         )
-                        self._lvs[lv_name] = blockdev
-                        self.save_state()
-                        break
+                        self._volumes[lv_name] = blockdev
+                        self._save_state(self._volumes)
                     else:
                         logging.error(
-                            "LVM plugin: Attempt %d of %d: "
+                            "Lvm: Attempt %d of %d: "
                             "Creation of LV '%s' failed."
-                            % (tries + 1, LVM.MAX_RETRIES, lv_name)
+                            % (tries + 1, Lvm.MAX_RETRIES, lv_name)
                         )
-                except LVMException:
-                    # Check for existing LVs failed, retry
-                    logging.error(
-                        "LVM plugin: Unable to retrieve the list "
-                        "of existing LVs"
-                    )
+                    tries += 1
+            else:
+                logging.error(
+                    "Lvm: Removal of an existing LV '%s' failed, aborting "
+                    "creation of the LV"
+                    % (lv_name)
+                )
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+            # Unable to run one of the LVM commands
+            # The error is reported by the corresponding function
+            #
+            # Abort
+            pass
+        except exc.PersistenceException:
+            # save_state() failed
+            # If the LV was created, attempt to roll back
+            if blockdev is not None:
+                try:
+                    self._remove_lv(lv_name)
+                except lvmexc.LvmException:
                     pass
-                tries += 1
-        except Exception as exc:
+                try:
+                    lv_exists = self._check_lv_exists(lv_name)
+                    if not lv_exists:
+                        blockdev = None
+                        del self._volumes[lv_name]
+                except (lvmexc.LvmCheckFailedException, KeyError):
+                    pass
+        except lvmexc.LvmUnmanagedVolumeException:
+            # Collision with a volume not managed by drbdmanage
             logging.error(
-                "LVM plugin: Block device creation failed, "
-                "unhandled exception: %s"
-                % (str(exc))
+                "Lvm: LV '%s' exists already, but is unknown to "
+                "drbdmanage's storage subsystem. Aborting."
+                % (lv_name)
             )
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: Block device creation failed, "
+                "unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
+
         return blockdev
 
 
@@ -202,50 +298,71 @@ class LVM(object):
         @type    blockdevice: BlockDevice object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        fn_rc = DM_ESTORAGE
-        tries = 0
+        fn_rc = exc.DM_ESTORAGE
         lv_name = blockdevice.get_name()
-        while tries < LVM.MAX_RETRIES:
-            # Attempt to remove the LV
-            self._remove_lv(lv_name)
-            # Check whether the LV is still there
-            try:
-                lv_exists = self._check_lv_exists(lv_name)
-                if lv_exists:
-                    # LV still exists, removal failed
-                    logging.warning(
-                        "LVM plugin: Attempt %d of %d: "
-                        "Unable to remove LV '%s'"
-                        % (tries + 1, LVM.MAX_RETRIES, lv_name)
-                    )
-                else:
-                    # LV removal successful
-                    try:
-                        del self._lvs[blockdevice.get_name()]
-                    except KeyError:
-                        # Being unable to remove an element that is not there
-                        # in the first place is irrelevant, ignore error
-                        pass
-                    self.save_state()
-                    fn_rc = DM_SUCCESS
-                    break
-            except LVMException:
-                # Check for existing LVs failed, retry
-                logging.error(
-                    "LVM plugin: Unable to retrieve the list "
-                    "of existing LVs"
-                )
-                pass
-            tries += 1
+
+        try:
+            if self._volumes.get(lv_name) is not None:
+                tries = 0
+                lv_exists = self._check_lv_exists
+                while lv_exists and tries < Lvm.MAX_RETRIES:
+                    if tries > 0:
+                        try:
+                            time.sleep(Lvm.RETRY_DELAY)
+                        except OSError:
+                            pass
+
+                    self._remove_lv(lv_name)
+                    # Check whether the removal was successful
+                    lv_exists = self._check_lv_exists(lv_name)
+                    if not lv_exists:
+                        # Removal successful. Any potential further errors,
+                        # e.g. with saving the state, can be corrected later.
+                        fn_rc = exc.DM_SUCCESS
+                        try:
+                            del self._volumes[lv_name]
+                        except KeyError:
+                            pass
+                        self._save_state(self._volumes)
+                    else:
+                        logging.warning(
+                            "Lvm: Attempt %d of %d: "
+                            "Removal of LV '%s' failed"
+                            % (tries + 1, Lvm.MAX_RETRIES, lv_name)
+                        )
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+            # Unable to run one of the LVM commands
+            # The error is reported by the corresponding function
+            #
+            # Abort
+            pass
+        except lvmexc.LvmUnmanagedVolumeException:
+            # FIXME: this exception does not seem to be thrown anywhere?
+            #
+            # Collision with a volume not managed by drbdmanage
+            logging.error(
+                "Lvm: LV '%s' exists, but is unknown to "
+                "drbdmanage's storage subsystem. Aborting removal."
+            )
+        except exc.PersistenceException:
+            # save_state() failed
+            # If the module has an LV listed although it has actually been
+            # removed successfully, then that can easily be corrected later
+            pass
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: Removal of a block device failed, "
+                "unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
+
+        if fn_rc != exc.DM_SUCCESS:
+            logging.error(
+                "Lvm: Removal of LV '%s' failed"
+                % (lv_name)
+            )
+
         return fn_rc
-
-
-    def create_snapshot(self, name, vol_id, src_bd_name):
-        raise NotImplementedError
-
-
-    def remove_snapshot(self, blockdev):
-        raise NotImplementedError
 
 
     def get_blockdevice(self, bd_name):
@@ -260,7 +377,7 @@ class LVM(object):
         """
         blockdev = None
         try:
-            blockdev = self._lvs[bd_name]
+            blockdev = self._volumes[bd_name]
         except KeyError:
             pass
         return blockdev
@@ -273,7 +390,7 @@ class LVM(object):
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
-        return DM_SUCCESS
+        return exc.DM_SUCCESS
 
 
     def down_blockdevice(self, blockdev):
@@ -283,7 +400,7 @@ class LVM(object):
         @param blockdevice: the block device to deactivate
         @type  blockdevice: BlockDevice object
         """
-        return DM_SUCCESS
+        return exc.DM_SUCCESS
 
 
     def update_pool(self, node):
@@ -298,41 +415,50 @@ class LVM(object):
         @type    node: DrbdNode object
         @return: standard return code (see drbdmanage.exceptions)
         """
-        fn_rc    = DM_ESTORAGE
-        poolsize = -1
-        poolfree = -1
+        fn_rc     = exc.DM_ESTORAGE
+        pool_size = -1
+        pool_free = -1
 
-        vgs = self._lv_command_path(self.LVM_VGS)
         lvm_proc = None
-
         try:
+            exec_args = [
+                self._cmd_vgs, "--noheadings", "--nosuffix",
+                "--units", "k", "--separator", ",",
+                "--options", "vg_size,vg_free",
+                self._conf[Lvm.KEY_VG_NAME]
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             lvm_proc = subprocess.Popen(
-                [vgs, "--noheadings", "--nosuffix", "--units", "k",
-                 "--separator", ",", "--options", "vg_size,vg_free",
-                 self._conf[self.KEY_VG_NAME]],
-                env=self._subproc_env(),
-                stdout=subprocess.PIPE, close_fds=True
+                exec_args,
+                env=self._subproc_env, stdout=subprocess.PIPE,
+                close_fds=True
             )
-            pool_str = lvm_proc.stdout.readline()
-            if pool_str is not None:
-                pool_str = pool_str.strip()
-                idx = pool_str.find(",")
-                if idx != -1:
-                    size_str = pool_str[:idx]
-                    free_str = pool_str[idx + 1:]
-                    idx = size_str.find(".")
-                    if idx != -1:
-                        size_str = size_str[:idx]
-                    idx = free_str.find(".")
-                    if idx != -1:
-                        free_str = free_str[:idx]
-                    try:
-                        poolsize = long(size_str)
-                        poolfree = long(free_str)
-                    except ValueError:
-                        poolsize = -1
-                        poolfree = -1
-                    fn_rc = DM_SUCCESS
+            pool_data = lvm_proc.stdout.readline()
+            if len(pool_data) > 0:
+                pool_data.strip()
+                try:
+                    size_data, free_data = pool_data.split(",")
+                    size_data = self.discard_fraction(size_data)
+                    free_data = self.discard_fraction(free_data)
+
+                    # Parse values and assign them in two steps, so that
+                    # either both values or none of them will be assigned,
+                    # depending on whether parsing succeeds or not
+                    size_value = long(size_data)
+                    free_value = long(free_data)
+
+                    # Assign values after successful parsing
+                    pool_size = size_value
+                    pool_free = free_value
+                    fn_rc = exc.DM_SUCCESS
+                except ValueError:
+                    pass
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: Retrieving storage pool information failed, "
+                "unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
         finally:
             if lvm_proc is not None:
                 try:
@@ -340,181 +466,113 @@ class LVM(object):
                 except Exception:
                     pass
                 lvm_proc.wait()
-        return (fn_rc, poolsize, poolfree)
+
+        return (fn_rc, pool_size, pool_free)
 
 
-    def _create_lv(self, name, size):
-        lvcreate = self._lv_command_path(self.LVM_CREATE)
-
-        lvm_proc = subprocess.Popen(
-            [lvcreate, "-n", name, "-L", str(size) + "k",
-             self._conf[self.KEY_VG_NAME]],
-            0, lvcreate,
-            env=self._subproc_env(), close_fds=True
-          )
-        fn_rc = lvm_proc.wait()
-        return fn_rc
-
-
-    def _remove_lv(self, name):
-        lvremove = self._lv_command_path(self.LVM_REMOVE)
-
-        lvm_proc = subprocess.Popen(
-            [lvremove, "--force", self._conf[self.KEY_VG_NAME] + "/" + name],
-            0, lvremove,
-            env=self._subproc_env(), close_fds=True
-        )
-        fn_rc = lvm_proc.wait()
-        if fn_rc != 0:
-            time.sleep(LVM.RETRY_DELAY)
-        return fn_rc
-
-
-    def _lv_command_path(self, cmd):
-        return build_path(self._conf[self.KEY_LVM_PATH], cmd)
-
-
-    def _lv_name(self, name, vol_id):
-        return ("%s_%.2d" % (name, vol_id))
-
-
-    def _lv_path_prefix(self):
-        vg_name  = self._conf[self.KEY_VG_NAME]
-        dev_path = self._conf[self.KEY_DEV_PATH]
-        return build_path(dev_path, vg_name) + "/"
-
-
-    def _check_lv_exists(self, name):
-        # Check whether an LVM logical volume exists
-        #
-        # @returns: True if the LV exists, False if the LV does not exist
-        # Throws an LVMException if the check itself fails
-        lvcheck = self._lv_command_path(self.LVM_LVS)
-
-        exists = False
-
+    def _create_lv(self, lv_name, size):
+        """
+        Creates an LVM logical volume
+        """
         try:
-            lvm_proc = subprocess.Popen(
-                [
-                    lvcheck, "--noheadings", "--options", "lv_name",
-                    self._conf[self.KEY_VG_NAME] + "/" + name
-                ],
-                0, lvcheck,
-                env=self._subproc_env(), stdout=subprocess.PIPE,
-                close_fds=True
+            exec_args = [
+                self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
+                self._conf[Lvm.KEY_VG_NAME]
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+            subprocess.call(
+                exec_args,
+                0, self._cmd_create,
+                env=self._subproc_env, close_fds=True
             )
-            lventry = lvm_proc.stdout.readline()
-            if len(lventry) > 0:
-                lventry = lventry[:-1].strip()
-                if lventry == name:
-                    exists = True
-            lvm_rc = lvm_proc.wait()
-            # lvs exits with exit code 5 if the LV was not found
-            if lvm_rc != 0 and lvm_rc != self.LVM_LVS_ENOENT:
-                raise LVMException
-        except OSError:
-            raise LVMException
-
-        return exists
-
-
-    def load_conf(self):
-        in_file = None
-        conf = None
-        try:
-            in_file = open(self.LVM_CONFFILE, "r")
-            conffile = ConfFile(in_file)
-            conf = conffile.get_conf()
-        except IOError as ioerr:
-            if ioerr.errno == errno.EACCES:
-                logging.error(
-                    "LVM plugin: cannot open configuration file "
-                    "'%s': Permission denied"
-                    % (self.LVM_CONFFILE)
-                )
-            elif ioerr.errno != errno.ENOENT:
-                logging.error(
-                    "LVM plugin: cannot open configuration file "
-                    "'%s', error returned by the OS is: %s"
-                    % (self.LVM_CONFFILE, ioerr.strerror)
-                )
-        finally:
-            if in_file is not None:
-                in_file.close()
-        return conf
-
-
-    def load_state(self):
-        in_file = None
-        try:
-            stored_hash = None
-            in_file = open(self.LVM_SAVEFILE, "r")
-            offset = 0
-            for line in read_lines(in_file):
-                if line.startswith("sig:"):
-                    stored_hash = line[4:]
-                    if stored_hash.endswith("\n"):
-                        stored_hash = stored_hash[:len(stored_hash) - 1]
-                    break
-                else:
-                    offset = in_file.tell()
-            in_file.seek(0)
-            if offset != 0:
-                load_data = in_file.read(offset)
-            else:
-                load_data = in_file.read()
-            if stored_hash is not None:
-                data_hash = DataHash()
-                data_hash.update(load_data)
-                computed_hash = data_hash.get_hex_hash()
-                if computed_hash != stored_hash:
-                    logging.warning(
-                        "LVM plugin: state data does not match its signature"
-                    )
-            lvm_con = json.loads(load_data)
-            for properties in lvm_con.itervalues():
-                blockdev = storpers.BlockDevicePersistence.load(properties)
-                if blockdev is not None:
-                    self._lvs[blockdev.get_name()] = blockdev
-        except Exception:
-            raise PersistenceException
-        finally:
-            if in_file is not None:
-                in_file.close()
-
-
-    def save_state(self):
-        lvm_con = {}
-        for blockdev in self._lvs.itervalues():
-            bd_persist = storpers.BlockDevicePersistence(blockdev)
-            bd_persist.save(lvm_con)
-        out_file = None
-        try:
-            out_file = open(self.LVM_SAVEFILE, "w")
-            data_hash = DataHash()
-            save_data = json.dumps(lvm_con, indent=4, sort_keys=True) + "\n"
-            data_hash.update(save_data)
-            out_file.write(save_data)
-            out_file.write("sig:" + data_hash.get_hex_hash() + "\n")
-        except Exception as exc:
+        except OSError as os_err:
             logging.error(
-                "LVM plugin: saving state data failed, unhandled exception: %s"
-                % str(exc)
+                "Lvm: LV creation failed, unable to run "
+                "external program '%s', error message from the OS: %s"
+                % (self._cmd_create, str(os_err))
             )
-            raise PersistenceException
+            raise lvmexc.LvmException
+
+
+    def _remove_lv(self, lv_name):
+        """
+        Removes an LVM logical volume
+        """
+        self.remove_lv(lv_name, self._conf[Lvm.KEY_VG_NAME],
+                       self._cmd_remove, self._subproc_env, "Lvm")
+
+
+    def _check_lv_exists(self, lv_name):
+        """
+        Check whether an LVM logical volume exists
+
+        @returns: True if the LV exists, False if the LV does not exist
+        Throws an LvmCheckFailedException if the check itself fails
+        """
+        return self.check_lv_exists(
+            lv_name, self._conf[Lvm.KEY_VG_NAME],
+            self._cmd_lvs, self._subproc_env, "Lvm"
+        )
+
+
+    def _load_state(self):
+        """
+        Load the saved state of this module's managed logical volumes
+        """
+        return self.load_state(Lvm.LVM_STATEFILE, "Lvm")
+
+
+    def _save_state(self, save_objects):
+        """
+        Save the state of this module's managed logical volumes
+        """
+        state_file = None
+        try:
+            save_bd_properties = {}
+            for blockdev in save_objects.itervalues():
+                bd_persist = storpers.BlockDevicePersistence(blockdev)
+                bd_persist.save(save_bd_properties)
+            try:
+                state_file = open(Lvm.LVM_STATEFILE, "w")
+                data_hash = utils.DataHash()
+                save_data = json.dumps(
+                    save_bd_properties, indent=4, sort_keys=True
+                )
+                save_data += "\n"
+                data_hash.update(save_data)
+                state_file.write(save_data)
+                state_file.write("sig:%s\n" % (data_hash.get_hex_hash()))
+            except IOError as io_err:
+                logging.error(
+                    "Lvm: Saving to the state file '%s' failed due to an "
+                    "I/O error, error message from the OS: %s"
+                    % (Lvm.LVM_STATEFILE, str(io_err))
+                )
+                raise exc.PersistenceException
+            except OSError as os_err:
+                logging.error(
+                    "Lvm: Saving to the state file '%s' failed, "
+                    "error message from the OS: %s"
+                    % (Lvm.LVM_STATEFILE, str(os_err))
+                )
+                raise exc.PersistenceException
+        except exc.PersistenceException as pers_exc:
+            # re-raise
+            raise pers_exc
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: Saving to the state file '%s' failed, "
+                "unhandled exception: %s"
+                % (Lvm.LVM_STATEFILE, str(unhandled_exc))
+            )
+            raise exc.PersistenceException
         finally:
-            if out_file is not None:
-                out_file.close()
+            if state_file is not None:
+                state_file.close()
 
 
-    def reconfigure(self):
+    def _load_conf(self):
         """
-        Reconfigures the storage plugin
+        Loads settings from the module configuration file
         """
-        pass
-
-
-class LVMException(Exception):
-
-    def __init__(self):
-        super(LVMException, self).__init__()
+        return self.load_conf(Lvm.LVM_CONFFILE, "Lvm")

@@ -225,7 +225,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 if self._volumes.get(lv_name) is None:
                     # Unknown LV, possibly user-generated and not managed
                     # by drbdmanage. Abort.
-                    raise lvmexc.LvmNgUnmanagedVolumeException
+                    raise lvmexc.LvmUnmanagedVolumeException
                 logging.warning(
                     "LvmThinLv: LV '%s' exists already, attempting "
                     "to remove it."
@@ -293,7 +293,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                     "creation of the LV"
                     % (lv_name)
                 )
-        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
@@ -305,16 +305,16 @@ class LvmThinLv(lvmcom.LvmCommon):
             if blockdev is not None:
                 try:
                     self._remove_lv(lv_name)
-                except lvmexc.LvmNgException:
+                except lvmexc.LvmException:
                     pass
                 try:
                     lv_exists = self._check_lv_exists(lv_name)
                     if not lv_exists:
                         blockdev = None
                         del self._volumes[lv_name]
-                except (lvmexc.LvmNgCheckFailedException, KeyError):
+                except (lvmexc.LvmCheckFailedException, KeyError):
                     pass
-        except lvmexc.LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinLv: LV '%s' exists already, but is unknown to "
@@ -371,13 +371,13 @@ class LvmThinLv(lvmcom.LvmCommon):
                             "Removal of LV '%s' failed"
                             % (tries + 1, LvmThinLv.MAX_RETRIES, lv_name)
                         )
-        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except lvmexc.LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmUnmanagedVolumeException:
             # FIXME: this exception does not seem to be thrown anywhere?
             #
             # Collision with a volume not managed by drbdmanage
@@ -522,7 +522,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                     "from the OS: %s"
                     % (self._cmd_vgchange, str(os_err))
                 )
-                raise lvmexc.LvmNgException
+                raise lvmexc.LvmException
 
             try:
                 exec_args = [
@@ -544,10 +544,10 @@ class LvmThinLv(lvmcom.LvmCommon):
                     "external program '%s', error message from the OS: %s"
                     % (self._cmd_lvchange, str(os_err))
                 )
-                raise lvmexc.LvmNgException
+                raise lvmexc.LvmException
             if vg_activated and lv_activated:
                 fn_rc = exc.DM_SUCCESS
-        except lvmexc.LvmNgException:
+        except lvmexc.LvmException:
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
@@ -680,7 +680,7 @@ class LvmThinLv(lvmcom.LvmCommon):
         Check whether an LVM logical volume exists
 
         @returns: True if the LV exists, False if the LV does not exist
-        Throws an LvmNgCheckFailedException if the check itself fails
+        Throws an LvmCheckFailedException if the check itself fails
         """
         return self.check_lv_exists(
             lv_name, self._conf[LvmThinLv.KEY_VG_NAME],
@@ -710,7 +710,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmNgException
+            raise lvmexc.LvmException
 
 
     def _create_snapshot(self, snaps_name, lv_name):
@@ -735,7 +735,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmNgException
+            raise lvmexc.LvmException
 
 
     def _remove_lv(self, lv_name):
@@ -789,13 +789,13 @@ class LvmThinLv(lvmcom.LvmCommon):
                         "Creation of snapshot volume '%s' failed."
                         % (tries + 1, LvmThinLv.MAX_RETRIES, vol_name)
                     )
-        except (lvmexc.LvmNgCheckFailedException, lvmexc.LvmNgException):
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except lvmexc.LvmNgUnmanagedVolumeException:
+        except lvmexc.LvmUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinLv: LV '%s' exists already, but is unknown to "
@@ -809,7 +809,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 vol_name   = blockdev.get_name()
                 try:
                     self._remove_lv(vol_name)
-                except lvmexc.LvmNgException:
+                except lvmexc.LvmException:
                     pass
                 try:
                     vol_exists = self._check_lv_exists(vol_name)
@@ -819,7 +819,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                             del self._volumes[vol_name]
                         except KeyError:
                             pass
-                except lvmexc.LvmNgCheckFailedException:
+                except lvmexc.LvmCheckFailedException:
                     pass
         except Exception as unhandled_exc:
             logging.error(

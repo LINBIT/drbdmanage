@@ -133,7 +133,7 @@ class DrbdManageServer(object):
 
     # defaults
     CONF_DEFAULTS = {
-        KEY_STOR_NAME      : "drbdmanage.storage.lvm.LVM",
+        KEY_STOR_NAME      : "drbdmanage.storage.lvm.Lvm",
         KEY_DEPLOYER_NAME  : "drbdmanage.deployers.BalancedDeployer",
         KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
         KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),

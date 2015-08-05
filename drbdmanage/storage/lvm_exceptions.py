@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-class LvmNgCheckFailedException(Exception):
+class LvmCheckFailedException(Exception):
 
     """
     Indicates failure to check for existing logical volumes.
@@ -8,25 +8,25 @@ class LvmNgCheckFailedException(Exception):
     """
 
     def __init__(self):
-        super(LvmNgCheckFailedException, self).__init__()
+        super(LvmCheckFailedException, self).__init__()
 
 
-class LvmNgException(Exception):
+class LvmException(Exception):
 
     """
-    Indicates failure during the execution of LvmNg internal functions.
+    Indicates failure during the execution of Lvm internal functions.
     Not to be exposed to other parts of drbdmanage.
     """
 
     def __init__(self):
-        super(LvmNgException, self).__init__()
+        super(LvmException, self).__init__()
 
 
-class LvmNgUnmanagedVolumeException(Exception):
+class LvmUnmanagedVolumeException(Exception):
 
     """
     Indicates the attempt to operate on a volume not managed by drbdmanage
     """
 
     def __init__(self):
-        super(LvmNgUnmanagedVolumeException, self).__init__()
+        super(LvmUnmanagedVolumeException, self).__init__()

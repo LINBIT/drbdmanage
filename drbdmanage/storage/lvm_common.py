@@ -29,7 +29,7 @@ class LvmCommon(storcore.StoragePlugin):
         Check whether an LVM logical volume exists
 
         @returns: True if the LV exists, False if the LV does not exist
-        Throws an LvmNgCheckFailedException if the check itself fails
+        Throws an LvmCheckFailedException if the check itself fails
         """
         exists = False
 
@@ -54,12 +54,12 @@ class LvmCommon(storcore.StoragePlugin):
             # LVM's "lvs" utility exits with exit code 5 if the
             # LV was not found
             if lvm_rc != 0 and lvm_rc != LvmCommon.LVM_LVS_ENOENT:
-                raise lvmexc.LvmNgCheckFailedException
+                raise lvmexc.LvmCheckFailedException
         except OSError:
             logging.error(
                 plugin_name + ": Unable to retrieve the list of existing LVs"
             )
-            raise lvmexc.LvmNgCheckFailedException
+            raise lvmexc.LvmCheckFailedException
 
         return exists
 
@@ -211,7 +211,7 @@ class LvmCommon(storcore.StoragePlugin):
                 "external program '%s', error message from the OS: %s"
                 % (cmd_remove, str(os_err))
             )
-            raise lvmexc.LvmNgException
+            raise lvmexc.LvmException
 
 
     def discard_fraction(self, text):
