@@ -29,6 +29,7 @@ import traceback
 import drbdmanage.server
 import drbdmanage.consts
 import drbdmanage.snapshots.persistence as snapspers
+import drbdmanage.propscontainer as propscon
 
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.utils import DataHash
@@ -251,6 +252,8 @@ class PersistenceImpl(object):
                     p_assignment.save(p_assg_con)
 
                 # Prepare common DRBD options container
+                # TODO: This can probably be simplified by saving
+                #       only the PropsContainer
                 p_common = DrbdCommonPersistence(common)
                 p_common.save(p_common_con)
 
@@ -291,7 +294,7 @@ class PersistenceImpl(object):
                 self._align_zero_fill()
 
                 cconf_off = self._file.tell()
-                save_data = self._container_to_json(cluster_conf)
+                save_data = self._container_to_json(cluster_conf.get_all_props())
                 self._file.write(save_data)
                 data_hash.update(save_data)
                 cconf_len = self._file.tell() - cconf_off
@@ -668,9 +671,10 @@ class PersistenceImpl(object):
 
                 # Load the cluster configuration
                 cconf_key = drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME
-                cluster_conf = objects_root[cconf_key]
-                cluster_conf.clear()
-                cluster_conf.update(cconf_con)
+                cluster_conf = propscon.PropsContainer(None, None, cconf_con)
+                serial_gen = cluster_conf.new_serial_gen()
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_SGEN_NAME] = serial_gen
+                objects_root[cconf_key] = cluster_conf
 
                 # Load the common DRBD setup options object from data tables
                 if common_con is not None:

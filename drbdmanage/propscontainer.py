@@ -25,8 +25,8 @@ class PropsContainer(object):
         """
         Initializes a new properties container
         """
-        self._get_serial = get_serial_fn
         self._props = {}
+        self._get_serial = get_serial_fn
 
         # Load initial properties, if present
         if ins_props is not None:
@@ -50,7 +50,10 @@ class PropsContainer(object):
                 except ValueError:
                     pass
             if checked_serial is None:
-                self._props[consts.SERIAL] = str(self._get_serial())
+                if self._get_serial is not None:
+                    self._props[consts.SERIAL] = str(self._get_serial())
+                else:
+                    self._props[consts.SERIAL] = str(1)
 
 
     def _normalize_namespace(self, namespace):
@@ -232,4 +235,64 @@ class PropsContainer(object):
         number, therefor an explicit call of this function for marking
         changes of the container's data is unnecessary.
         """
-        self._props[consts.SERIAL] = str(self._get_serial())
+        serial = self._get_serial()
+        self._props[consts.SERIAL] = str(serial)
+        return serial
+
+
+    def new_serial_gen(self):
+        """
+        Creates a new instance of the SerialNrGen class
+
+        The new instance of the serial number generator can be used
+        to create one new serial number per change generation for
+        this PropsContainer
+        """
+        serial_gen = SerialGen(self._props)
+        self._get_serial = serial_gen.get_serial
+        return serial_gen
+
+
+class SerialGen(object):
+
+    _props_store = None
+    _change_open = False
+
+    def __init__(self, props_store_ref):
+        """
+        Initializes the serial number generator
+        """
+        self._props_store = props_store_ref
+
+
+    def get_serial(self):
+        """
+        Returns a serial number for configuration changes
+
+        Upon the first call of this function in a sequence of changes, a
+        new serial number is generated and returned. Upon subsequent calls,
+        the same serial number is returned until the change generation is
+        closed by calling close_serial().
+        """
+        serial = 0
+        try:
+            serial_str = self._props_store[consts.SERIAL]
+            if serial_str is not None:
+                serial = int(serial_str)
+        except TypeError:
+            pass
+        if not self._change_open:
+            self._change_open = True
+            serial += 1
+        return serial
+
+
+    def close_serial(self):
+        """
+        Closes the current generation of configuration changes
+
+        After a generation of configuration changes has been closed,
+        the next call of get_serial() will open a new change generation and
+        will return a new serial number.
+        """
+        self._change_open = False

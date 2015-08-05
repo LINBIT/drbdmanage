@@ -83,6 +83,7 @@ class DrbdManageServer(object):
     OBJ_CCONF_NAME     = "cluster_conf"
     OBJ_SCONF_NAME     = "server_conf"
     OBJ_COMMON_NAME    = "common"
+    OBJ_SGEN_NAME      = "serial_nr_gen"
 
     EVT_UTIL = "drbdsetup"
 
@@ -198,10 +199,10 @@ class DrbdManageServer(object):
     _debug_out = sys.stderr
 
     # Global drbdmanage cluster configuration
-    _cluster_conf         = None
+    _cluster_conf = None
 
-    # Change generation flag; controls updates of the serial number
-    _change_open  = False
+    # Serial number generator
+    _serial_gen = None
 
     # DEBUGGING FLAGS
     dbg_events = False
@@ -276,14 +277,14 @@ class DrbdManageServer(object):
 
         self._objects_root[DrbdManageServer.OBJ_NODES_NAME]     = {}
         self._objects_root[DrbdManageServer.OBJ_RESOURCES_NAME] = {}
-        self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]     = {}
         self._objects_root[DrbdManageServer.OBJ_SCONF_NAME]     = {}
 
-        cconf = self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]
-        cconf[SERIAL] = str(1)
+        cluster_conf = PropsContainer(None, 1, None)
+        self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]     = cluster_conf
+        self._objects_root[DrbdManageServer.OBJ_SGEN_NAME]      = cluster_conf.new_serial_gen()
 
         self._objects_root[DrbdManageServer.OBJ_COMMON_NAME] = (
-            DrbdCommon(self.get_serial, cconf[SERIAL], None)
+            DrbdCommon(self.get_serial, cluster_conf.get_prop(SERIAL), None)
         )
 
         self._update_objects()
@@ -302,6 +303,7 @@ class DrbdManageServer(object):
         self._nodes        = self._objects_root[srv.OBJ_NODES_NAME]
         self._resources    = self._objects_root[srv.OBJ_RESOURCES_NAME]
         self._cluster_conf = self._objects_root[srv.OBJ_CCONF_NAME]
+        self._serial_gen   = self._objects_root[srv.OBJ_SGEN_NAME]
         self._conf         = self._objects_root[srv.OBJ_SCONF_NAME]
         self._common       = self._objects_root[srv.OBJ_COMMON_NAME]
 
@@ -703,7 +705,7 @@ class DrbdManageServer(object):
         """
         Retrieves a value from the replicated cluster configuration
         """
-        return self._cluster_conf.get(key)
+        return self._cluster_conf.get_prop(key)
 
 
     def peek_serial(self):
@@ -713,29 +715,26 @@ class DrbdManageServer(object):
         Returns the current serial number, whether or not it is still in use
         for changes.
         """
-        serial_str = self._cluster_conf.get(SERIAL)
-        if serial_str is None:
-            serial = 0
-        else:
-            try:
-                serial = long(serial_str)
-            except TypeError:
-                # FIXME: a better solution would be to find the greatest
-                #        serial number set on any object in the
-                #        configuration, and then to increase that number
-                #        and use it as the new serial number of the cluster
-                #        configuration.
-                #        Another possibility would be to reset the serial
-                #        number on
-                #        all objects to 0 and then set a serial of 1 here.
-                #        The current workaround merely keeps the system
-                #        running, but the serial numbers are totally messed
-                #        up if this happens.
-                logging.error(
-                    "Unparseable serial number in the cluster "
-                    "configuration, setting serial=0 to recover"
-                )
-                serial = 0
+        serial = 0
+        serial_str = self._cluster_conf.get_prop(SERIAL)
+        try:
+            serial = int(serial_str)
+        except TypeError:
+            # FIXME: a better solution would be to find the greatest
+            #        serial number set on any object in the
+            #        configuration, and then to increase that number
+            #        and use it as the new serial number of the cluster
+            #        configuration.
+            #        Another possibility would be to reset the serial
+            #        number on
+            #        all objects to 0 and then set a serial of 1 here.
+            #        The current workaround merely keeps the system
+            #        running, but the serial numbers are totally messed
+            #        up if this happens.
+            logging.error(
+                "Unparseable serial number in the cluster "
+                "configuration, setting serial=0 to recover"
+            )
         return serial
 
 
@@ -748,12 +747,7 @@ class DrbdManageServer(object):
         the same serial number is returned until the change generation is
         closed by calling close_serial().
         """
-        serial = self.peek_serial()
-        if self._change_open == False:
-            self._change_open = True
-            serial += 1
-            self._cluster_conf[SERIAL] = str(serial)
-        return serial
+        return self._cluster_conf.new_serial()
 
 
     def close_serial(self):
@@ -764,7 +758,7 @@ class DrbdManageServer(object):
         the next call of get_serial() will open a new change generation and
         will return a new serial number.
         """
-        self._change_open = False
+        self._serial_gen.close_serial()
 
 
     def get_drbd_mgr(self):
@@ -4484,7 +4478,7 @@ class DrbdManageServer(object):
     def _debug_list_cluster_conf(self, args):
         title = "list: cluster configuration"
         self._debug_section_begin(title)
-        self._debug_list_conf(args, self._cluster_conf)
+        self._debug_list_props_container(args, self._cluster_conf)
         self._debug_section_end(title)
         return 0
 
@@ -4513,6 +4507,25 @@ class DrbdManageServer(object):
                     self._debug_out.write(keyval_format % (key, val))
                 else:
                     self._debug_out.write(val_unset_format % (key))
+
+
+    def _debug_list_props_container(self, args, conf):
+        keyval_format    = "%-30s = %s\n"
+        key_unset_format = "Key '%s' not found\n"
+        key = None
+        try:
+            key = args.pop(0)
+        except IndexError:
+            pass
+        if key is not None:
+            val = conf.get_prop(key)
+            if val is not None:
+                self._debug_out.write(keyval_format % (key, val))
+            else:
+                self._debug_out.write(key_unset_format % (key))
+        else:
+            for (key, val) in conf.iteritems():
+                self._debug_out.write(keyval_format % (key, val))
 
 
     def _debug_dump_node(self, node):
