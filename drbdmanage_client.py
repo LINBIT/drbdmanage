@@ -1783,8 +1783,9 @@ class DrbdManage(object):
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
-        t.showSeparators(args.separators)
-        t.show()
+        if not machine_readable:
+            t.showSeparators(args.separators)
+            t.show()
         return 0
 
     def cmd_list_resources(self, args):
@@ -2004,8 +2005,9 @@ class DrbdManage(object):
                 else:
                     t.addRow([res_name, snaps_name, "n/a"])
 
-        t.showSeparators(args.separators)
-        t.show()
+        if not machine_readable:
+            t.showSeparators(args.separators)
+            t.show()
         return 0
 
     def cmd_list_snapshot_assignments(self, args):
@@ -2070,8 +2072,9 @@ class DrbdManage(object):
                     else:
                         t.addRow(row_data, color=color(level_color))
 
-        t.showSeparators(args.separators)
-        t.show()
+        if not machine_readable:
+            t.showSeparators(args.separators)
+            t.show()
         return 0
 
     def cmd_list_assignments(self, args):
@@ -2168,9 +2171,10 @@ class DrbdManage(object):
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
-        t.showSeparators(args.separators)
-        # t.show(overwrite=True)
-        t.show()
+        if not machine_readable:
+            t.showSeparators(args.separators)
+            # t.show(overwrite=True)
+            t.show()
         return 0
 
     def cmd_export_conf(self, args):
