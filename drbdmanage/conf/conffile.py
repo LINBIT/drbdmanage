@@ -81,6 +81,9 @@ class DrbdAdmConf(object):
             common = self.objects_root["common"]
             if common:
                 diskopts = self._get_setup_props(common, "/disko/")
+                peerdiskopts = self._get_setup_props(common, "/peerdisko/")
+                for k, v in peerdiskopts.items():
+                    diskopts[k] = v
                 netopts = self._get_setup_props(common, "/neto/")
                 if globalstream:
                     globalstream.write('common {\n')
@@ -125,6 +128,9 @@ class DrbdAdmConf(object):
 
             # begin resource/disk options
             diskopts = self._get_setup_props(resource, "/disko/")
+            peerdiskopts = self._get_setup_props(resource, "/peerdisko/")
+            for k, v in peerdiskopts.items():
+                diskopts[k] = v
             self._write_section('disk', stream, diskopts, 1)
             # end resource/disk options
 
@@ -176,6 +182,9 @@ class DrbdAdmConf(object):
                                 )
                                 if not diskless:
                                     diskopts = self._get_setup_props(volume, "/disko/")
+                                    peerdiskopts = self._get_setup_props(volume, "/peerdisko/")
+                                    for k, v in peerdiskopts.items():
+                                        diskopts[k] = v
                                     diskopts['size'] = str(volume.get_size_kiB()) + 'k'
                                     self._write_section('disk', stream, diskopts, 4)
                                     # end volume/disk options

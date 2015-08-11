@@ -888,7 +888,20 @@ class DrbdManage(object):
         p_do.add_argument('--volume',
                           help='Name of the volume to modify').completer = ResVolCompleter
         p_do.set_defaults(optsobj=do)
+        p_do.set_defaults(type="disko")
         p_do.set_defaults(func=self.cmd_disk_options)
+
+        # peer-device-options (shares func with disk-options)
+        pdo = DrbdSetupOpts('peer-device-options')
+        p_pdo = pdo.genArgParseSubcommand(subp)
+        p_pdo.add_argument('--common', action="store_true")
+        p_pdo.add_argument('--resource',
+                           help='Name of the resource to modify').completer = ResourceCompleter
+        p_pdo.add_argument('--volume',
+                           help='Name of the volume to modify').completer = ResVolCompleter
+        p_pdo.set_defaults(optsobj=pdo)
+        p_pdo.set_defaults(type="peerdisko")
+        p_pdo.set_defaults(func=self.cmd_disk_options)
 
         # resource-options
         ro = DrbdSetupOpts('resource-options')
@@ -898,6 +911,9 @@ class DrbdManage(object):
         p_ro.set_defaults(func=self.cmd_res_options)
 
         # net-options
+        # TODO: not allowed to set per connection, drbdmanage currently has no notion of a
+        # connection in its object model.
+        #
         no = DrbdSetupOpts('net-options')
         p_no = no.genArgParseSubcommand(subp)
         p_no.add_argument('--common', action="store_true")
@@ -905,18 +921,6 @@ class DrbdManage(object):
                           help='Name of the resource to modify').completer = ResourceCompleter
         p_no.set_defaults(optsobj=no)
         p_no.set_defaults(func=self.cmd_net_options)
-
-        # peer-device-options
-        # TODO: not allowed, drbdmanage currently has no notion of a
-        # connection in its object model.
-        #
-        # pdo = DrbdSetupOpts('peer-device-options')
-        # p_pdo = pdo.genArgParseSubcommand(subp)
-        # p_pdo.add_argument('--common', action="store_true")
-        # p_pdo.add_argument('--volume',
-        #                    help='Name of the volume to modify').completer = ResVolCompleter
-        # p_pdo.set_defaults(optsobj=pdo)
-        # p_pdo.set_defaults(func=self.cmd_peer_device_options)
 
         # edit config
         p_editconf = subp.add_parser('modify-config',
@@ -2929,7 +2933,7 @@ Confirm:
             return fn_rc
 
         newopts["target"] = target
-        newopts["type"] = "disko"
+        newopts["type"] = args.type
 
         return self._set_drbdsetup_props(newopts)
 
@@ -2944,24 +2948,6 @@ Confirm:
 
         newopts["target"] = target
         newopts["type"] = "neto"
-
-        return self._set_drbdsetup_props(newopts)
-
-    def cmd_peer_device_options(self, args):
-        # TODO: currently unsupported, see comment in parser section
-        fn_rc = 1
-        newopts = args.optsobj.filterNew(args)
-        target = "volume"
-
-        if not newopts:
-            sys.stderr.write('No new options found\n')
-            return fn_rc
-        if target == "volume" and newopts["volume"].find('/') == -1:
-            sys.stderr.write('You have to specify the volume as: res/vol\n')
-            return fn_rc
-
-        newopts["target"] = target
-        newopts["type"] = "peerdisko"
 
         return self._set_drbdsetup_props(newopts)
 
