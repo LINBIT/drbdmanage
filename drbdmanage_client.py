@@ -2330,12 +2330,12 @@ class DrbdManage(object):
                 )
                 fn_rc = 0
         except dbus.exceptions.DBusException:
-            sys.stderr.write(
-                "D-Bus connection FAILED -- the D-Bus server may have "
-                "been unable to activate\nthe drbdmanage service.\n"
-                "Review the syslog for error messages logged by the "
-                "D-Bus server\nor the drbdmanage server\n"
-            )
+            sys.stderr.write("""
+D-Bus connection FAILED -- the D-Bus server may have been unable to activate
+the drbdmanage service.
+Review the syslog for error messages logged by the D-Bus server
+or the drbdmanage server.
+""")
         return fn_rc
 
     def cmd_init(self, args):
@@ -2366,18 +2366,15 @@ class DrbdManage(object):
             # END Setup drbdctrl resource properties
 
             if not quiet:
-                quiet = self.user_confirm(
-                    "You are going to initalize a new drbdmanage cluster.\n"
-                    "CAUTION! Note that:\n"
-                    "  * Any previous drbdmanage cluster information may be "
-                    "removed\n"
-                    "  * Any remaining resources managed by a previous "
-                    "drbdmanage installation\n"
-                    "    that still exist on this system will no longer be "
-                    "managed by drbdmanage\n"
-                    "\n"
-                    "Confirm:\n"
-                )
+                quiet = self.user_confirm("""
+You are going to initalize a new drbdmanage cluster.
+CAUTION! Note that:
+  * Any previous drbdmanage cluster information may be removed
+  * Any remaining resources managed by a previous drbdmanage installation
+    that still exist on this system will no longer be managed by drbdmanage
+
+Confirm:
+""")
             if quiet:
                 drbdctrl_blockdev = self._create_drbdctrl("0", server_conf)
                 self._ext_command(
@@ -2417,20 +2414,16 @@ class DrbdManage(object):
         shutdown = args.shutdown
 
         if not quiet:
-            quiet = self.user_confirm(
-                "You are going to remove the drbdmanage server from "
-                "this node.\n"
-                "CAUTION! Note that:\n"
-                "  * All temporary configuration files for resources "
-                "managed by drbdmanage\n"
-                "    will be removed\n"
-                "  * Any remaining resources managed by this "
-                "drbdmanage installation\n"
-                "    that still exist on this system will no longer be "
-                "managed by drbdmanage\n"
-                "\n"
-                "Confirm:\n"
-            )
+            quiet = self.user_confirm("""
+You are going to remove the drbdmanage server from this node.
+CAUTION! Note that:
+  * All temporary configuration files for resources managed by drbdmanage
+    will be removed
+  * Any remaining resources managed by this drbdmanage installation
+    that still exist on this system will no longer be managed by drbdmanage
+
+Confirm:
+""")
         if quiet:
             if shutdown:
                 try:
