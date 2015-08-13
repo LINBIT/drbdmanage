@@ -74,6 +74,9 @@ SERVER_CONFFILE     = "/etc/drbdmanaged.cfg"
 KEY_DRBD_CONFPATH = "drbd-conf-path"
 DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
 
+# additional configuration keys
+KEY_SITE = 'site'
+
 # auxiliary property prefix
 AUX_PROP_PREFIX     = "aux:"
 

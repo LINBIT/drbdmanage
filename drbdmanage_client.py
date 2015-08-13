@@ -48,7 +48,7 @@ from drbdmanage.consts import (
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
-    CONF_NODE, CONF_GLOBAL
+    CONF_NODE, CONF_GLOBAL, KEY_SITE
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -2975,10 +2975,20 @@ Confirm:
         # get all config options that are set cluster wide (aka GLOBAL)
         server_rc, cluster_config = self._server.get_cluster_config()
 
+        # get all site configuration
+        server_rc, site_config = self._server.get_site_config()
+
         cfg.add_section('GLOBAL')
         for k, v in cluster_config.items():
             if k in config_keys:
                 cfg.set('GLOBAL', k, v)
+
+        for site in site_config:
+            site_name = 'Site:' + site['name']
+            cfg.add_section(site_name)
+            for k, v in site.items():
+                if k in config_keys:
+                    cfg.set(site_name, k, v)
 
         server_rc, node_list = self._get_nodes()
 
@@ -2998,7 +3008,7 @@ Confirm:
                 secname = 'Node:' + node_name
                 cfg.add_section(secname)
                 for k, v in cur_props.items():
-                    if k in config_keys.keys():
+                    if k in config_keys.keys() + [KEY_SITE]:
                         cfg.set(secname, k, v)
 
             cur_props = properties.get_all_props(pns)
@@ -3025,7 +3035,7 @@ Confirm:
 
         with open(tmpf, 'wb') as configfile:
             cfg.write(configfile)
-            hdr = 'Options you can set with their default value in the GLOBAL section or per Node:'
+            hdr = 'Options you can set with their default value in the GLOBAL section, per Site, or per Node:'
             configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
             for k, v in config_keys.items():
                 configfile.write('# %s = %s\n' % (k, v))
@@ -3045,6 +3055,7 @@ Confirm:
             hdr = 'Nodes available in this view:'
             configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
             configfile.write('# %s\n' % (', '.join(node_names)))
+            configfile.write('# You can also specify the keyword "%s" in node sections\n' % (KEY_SITE))
             configfile.write('# Example: [Node:nodeA]\n')
             configfile.write('\n')
 
@@ -3075,7 +3086,7 @@ Confirm:
             sys.exit(1)
 
         # parse back to dict, while keeping it flat
-        cfgdict = {'nodes': [], 'globals': [], 'groups': [],
+        cfgdict = {'nodes': [], 'globals': [], 'sites': [],
                    'plugins': [], 'type': [{'type': cfgtype}]}
 
         for section in cfg.sections():
@@ -3088,6 +3099,11 @@ Confirm:
                 else:
                     sys.stderr.write('%s is not a valid node name. '
                                      'Configuration for this node ignored\n' % (name))
+            elif section.startswith('Site:'):
+                name = section.split(':')[1]
+                e = dict(cfg.items(section) + [('name', name)])
+                e = filter_prohibited(e, prohibited)
+                cfgdict['sites'].append(e)
             elif section.startswith('Plugin:') and cfgtype == CONF_NODE:
                 name = section.split(':')[1]
                 if name in plugin_names:
@@ -3108,6 +3124,7 @@ Confirm:
         # print cfgdict['nodes'], len(cfgdict['nodes'])
         # print cfgdict['globals']
         # print cfgdict['plugins']
+        # print cfgdict['sites']
         # print cfgdict['sites']
 
         server_rc = self._server.set_cluster_config(cfgdict)

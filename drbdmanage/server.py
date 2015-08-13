@@ -42,7 +42,7 @@ from drbdmanage.consts import (
     SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -711,14 +711,20 @@ class DrbdManageServer(object):
 
             # node specific general settings
             try:
-                props = self.get_instance_node().get_props().get_all_props(
+                node_props = self.get_instance_node().get_props().get_all_props(
                     PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG])
             except:
-                props = {}
+                node_props = {}
 
-            for k in props:
+            if KEY_SITE in node_props:
+                site_props = self._get_site_props(node_props[KEY_SITE])
+                for k, v in site_props.items():
+                    if k in final_config:
+                        final_config[k] = v
+
+            for k in node_props:
                 if k in final_config:
-                    final_config[k] = props[k]
+                    final_config[k] = node_props[k]
 
             # node specific plugin settings
             for plugin_name in self._plugin_conf.keys():
@@ -1004,6 +1010,7 @@ class DrbdManageServer(object):
         cfg = self._pluginmgr.get_plugin_default_config()
         return (fn_rc, cfg)
 
+    # TODO RCK: does the getter really need _modify_conf()?
     def _get_cluster_props(self):
         fn_rc = []
         ret = {}
@@ -1036,12 +1043,65 @@ class DrbdManageServer(object):
         """
         return self._get_cluster_props()
 
+    def _get_all_sites(self, props_cont):
+        ns = PropsContainer.NAMESPACES["dmconfig"] + "site/"
+        sites = props_cont.get_all_props(ns)
+        return set([k.partition('/')[0] for k in sites.keys()])
+
+    def _get_site_props(self, site):
+        props_cont = None
+        common = self.get_common()
+
+        if common is not None:
+            props_cont = common.get_props()
+
+        if props_cont is not None:
+            ns = PropsContainer.NAMESPACES["dmconfig"] + "site/" + site
+            site_props = props_cont.get_all_props(ns)
+
+        if len(site_props) > 0:
+            return site_props
+        else:
+            return None
+
+    def get_site_config(self):
+        fn_rc = []
+        ret = []
+        props_cont = None
+        common = self.get_common()
+
+        if common is not None:
+            props_cont = common.get_props()
+
+        if props_cont is not None:
+            sites = self._get_all_sites(props_cont)
+            for s in sites:
+                site_props = self._get_site_props(s)
+                site_props['name'] = s
+                ret.append(site_props)
+
+        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return (fn_rc, ret)
+
     def set_cluster_config(self, cfgdict):
         # for persistence see create_node
         fn_rc = []
         persist = None
         prohibited_settings = ('drbdctrl-vg',)
         cfgtype = cfgdict['type'][0]['type']
+
+        def _set_del_rest(props, cfg, ns):
+            """
+            merge options from cfg und delete other settings that were set from ns
+            """
+            props.merge_props(cfg, ns)
+            set_props = props.get_all_props(ns)
+            # we got all currently set properties in set_props
+            # delete all from dict which are still valid and then delete
+            # these items that are no more present.
+            for k in cfg:
+                del(set_props[k])
+            props.remove_selected_props(set_props, ns)
 
         try:
             persist = self.begin_modify_conf()
@@ -1054,22 +1114,37 @@ class DrbdManageServer(object):
 
                 ns = PropsContainer.NAMESPACES["dmconfig"] + "cluster/"
                 common = self.get_common()
+                props = None
                 if common:
                     props = common.get_props()
                     if props:
-                        props.merge_props(glob_dict, ns)
-                        set_props = props.get_all_props(ns)
-                        # we got all currently set properties in set_props
-                        # delete all from dict which are still valid and then delete
-                        # these items that are no more present.
-                        for k in glob_dict:
-                            del(set_props[k])
-                        props.remove_selected_props(set_props, ns)
+                        _set_del_rest(props, glob_dict, ns)
+
+                # ## SITE specific configuration ([Site:xyz]) ##
+                ns = PropsContainer.NAMESPACES["dmconfig"] + "site/"
+                all_sites = self._get_all_sites(props)
+                cfg_sites = []
+                for s in cfgdict['sites']:
+                    c = s.copy()
+                    site_name = c['name']
+                    cfg_sites.append(site_name)
+                    c = filter_allowed(c, self.CONF_DEFAULTS.keys())
+                    c = filter_prohibited(c, prohibited_settings)
+                    sns = ns + site_name
+                    # here we can recycle props, as it uses the same props as GLOBAL
+                    _set_del_rest(props, c, sns)
+
+                # sites without a config
+                cfgless_sites = [s for s in all_sites if s not in cfg_sites]
+                for site_name in cfgless_sites:
+                    sns = ns + site_name
+                    props.remove_selected_props(props.get_all_props(sns), sns)
 
                 # ## NODE specific configuration ([Node:xyz]) ##
                 all_nodes = [n for n in self._nodes.iterkeys()]
                 cfg_nodes = []
                 cfg_plugins = []
+                allowed_node_props = self.CONF_DEFAULTS.keys() + [KEY_SITE]
                 for n in cfgdict['nodes']:
                     # we always get the name, but if only name, we are done
                     node_name = n['name']
@@ -1081,11 +1156,11 @@ class DrbdManageServer(object):
 
                         # options allowed in global section (but here node specific)
                         p = n.copy()
-                        p = filter_allowed(p, self.CONF_DEFAULTS.keys())
+                        p = filter_allowed(p, allowed_node_props)
                         p = filter_prohibited(p, prohibited_settings)
                         ns = PropsContainer.NAMESPACES['dmconfig']
                         props.merge_props(p, ns)
-                        pgone = [k for k in self.CONF_DEFAULTS.keys() if k not in p]
+                        pgone = [k for k in allowed_node_props if k not in p]
                         props.remove_selected_props(pgone, ns)
 
                         # plugin settings (only allowed node specific)
@@ -1109,7 +1184,7 @@ class DrbdManageServer(object):
                         node = self._nodes.get(name)
                         if node:
                             props = node.get_props()
-                            props.remove_selected_props(self.CONF_DEFAULTS.keys(), ns)
+                            props.remove_selected_props(allowed_node_props, ns)
                 elif cfgtype == CONF_NODE:
                     cfgless_plugins = [pl for pl in self._plugin_conf.keys() if pl not in cfg_plugins]
                     for plugin in cfgless_plugins:
