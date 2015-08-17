@@ -76,6 +76,7 @@ from drbdmanage.drbd.views import DrbdVolumeStateView
 from drbdmanage.drbd.views import GenericView
 from drbdmanage.snapshots.views import DrbdSnapshotAssignmentView
 from drbdmanage.storage.storagecore import MinorNr
+from drbdmanage.storage.header import gen_header
 from drbdmanage.defaultip import default_ip
 
 from drbdmanage.propscontainer import Props
@@ -3253,6 +3254,9 @@ Confirm:
             drbdctrl = open(drbdctrl_file, "rb+")
             zeroblk = bytearray('\0' * blksz)
             pos = 0
+            h = gen_header()
+            drbdctrl.write(h)
+            pos += 1
             while pos < init_blks:
                 drbdctrl.write(zeroblk)
                 pos += 1
