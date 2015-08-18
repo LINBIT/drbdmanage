@@ -39,7 +39,7 @@ from drbdmanage.consts import (
     DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE,
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY,
     SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
@@ -1335,11 +1335,21 @@ class DrbdManageServer(object):
                     node_storage = string_to_bool(props[FLAG_STORAGE])
                 except (KeyError, ValueError):
                     pass
+                node_standby = False
+                try:
+                    node_standby = string_to_bool(props[FLAG_STANDBY])
+                except (KeyError, ValueError):
+                    pass
                 node_state = 0
                 if node_drbdctrl:
                     node_state |= DrbdNode.FLAG_DRBDCTRL
                 if node_storage:
                     node_state |= DrbdNode.FLAG_STORAGE
+                if node_standby:
+                    node_state |= DrbdNode.FLAG_STANDBY
+                # Ignore the quorum vote of newly added nodes until
+                # the nodes join for the first time
+                node_state |= DrbdNode.FLAG_QIGNORE
                 try:
                     if addr is not None and addrfam is not None:
                         node = None
