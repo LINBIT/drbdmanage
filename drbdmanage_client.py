@@ -2362,7 +2362,7 @@ or the drbdmanage server.
         """
         fn_rc = 1
 
-        server_conf = load_server_conf_file()
+        server_conf = load_server_conf_file(localonly=True)
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         try:
@@ -2453,7 +2453,7 @@ Confirm:
                     # both is not considered an error here
                     pass
             try:
-                server_conf = load_server_conf_file()
+                server_conf = load_server_conf_file(localonly=True)
                 drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
                 conf_path = self._get_conf_path(server_conf)
                 self._init_join_cleanup(drbdctrl_vg, conf_path)
@@ -2471,7 +2471,7 @@ Confirm:
         """
         fn_rc = 1
 
-        server_conf = load_server_conf_file()
+        server_conf = load_server_conf_file(localonly=True)
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
 
         # Initialization of the usermode helper restore delay

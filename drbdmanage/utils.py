@@ -277,7 +277,7 @@ def rangecheck(i, j):
     return range
 
 
-def load_server_conf_file():
+def load_server_conf_file(localonly=False):
     """
     Try to load the server configuration.
     """
@@ -316,7 +316,10 @@ def load_server_conf_file():
                 % (SERVER_CONFFILE, ioerr.strerror)
             )
 
-    return cfgdict
+    if localonly:
+        return cfgdict['local']
+    else:
+        return cfgdict
 
 
 class DrbdSetupOpts():
