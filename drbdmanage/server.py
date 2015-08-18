@@ -3719,7 +3719,7 @@ class DrbdManageServer(object):
         return ret_persist
 
 
-    def begin_modify_conf(self):
+    def begin_modify_conf(self, override_quorum=False):
         """
         Opens the configuration on persistent storage for writing,
         implicitly locking out all other nodes, and reloads the configuration
@@ -3731,7 +3731,7 @@ class DrbdManageServer(object):
         """
         ret_persist = None
         persist     = None
-        if self._quorum.is_present():
+        if self._quorum.is_present() or override_quorum:
             try:
                 persist = drbdmanage.drbd.persistence.persistence_impl(self)
                 if persist.open(True):
@@ -3975,7 +3975,7 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         try:
-            persist = self.begin_modify_conf()
+            persist = self.begin_modify_conf(override_quorum=True)
 
             if persist is not None:
                 # TODO: there should probably be library functions for evaluating
