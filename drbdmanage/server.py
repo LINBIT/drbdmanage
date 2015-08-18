@@ -1348,8 +1348,10 @@ class DrbdManageServer(object):
                 if node_standby:
                     node_state |= DrbdNode.FLAG_STANDBY
                 # Ignore the quorum vote of newly added nodes until
-                # the nodes join for the first time
-                node_state |= DrbdNode.FLAG_QIGNORE
+                # the nodes join for the first time, unless this is
+                # the first node initializing the drbdmanage cluster
+                if not initial:
+                    node_state |= DrbdNode.FLAG_QIGNORE
                 try:
                     if addr is not None and addrfam is not None:
                         node = None
