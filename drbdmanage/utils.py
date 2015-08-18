@@ -32,7 +32,7 @@ import drbdmanage.consts as consts
 import logging
 import ConfigParser
 from drbdmanage.exceptions import SyntaxException
-from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX)
+from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH, KEY_DRBDCTRL_VG)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -292,7 +292,9 @@ def load_server_conf_file(localonly=False):
             if section.startswith('LOCAL'):
                 in_file_cfg = dict(cfg.items(section))
                 if not cfg.has_option(section, 'force'):
-                    final_config = filter_allowed(in_file_cfg.copy(), ('drbdctrl-vg', 'extend-path'))
+                    final_config = filter_allowed(in_file_cfg.copy(), (KEY_DRBDCTRL_VG,
+                                                                       'extend-path',
+                                                                       KEY_DRBD_CONFPATH))
                     ignored = [k for k in in_file_cfg if k not in final_config]
                     for k in ignored:
                         logging.warning('Ignoring %s in configuration file' % k)
