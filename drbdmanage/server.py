@@ -1014,6 +1014,7 @@ class DrbdManageServer(object):
     def _get_cluster_props(self):
         fn_rc = []
         ret = {}
+        persist = None
         try:
             persist = self.begin_modify_conf()
             common = self.get_common()
