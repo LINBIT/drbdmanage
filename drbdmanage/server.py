@@ -39,7 +39,7 @@ from drbdmanage.consts import (
     DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY,
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY, FLAG_QIGNORE,
     SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
@@ -3766,6 +3766,45 @@ class DrbdManageServer(object):
             self.close_serial()
         except Exception:
             pass
+
+
+    def quorum_control(self, node_name, props, override_quorum_flag):
+        """
+        Sets quorum parameters on drbdmanage nodes
+        """
+        fn_rc   = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf(override_quorum=override_quorum_flag)
+            if persist is not None:
+                node = self.get_node(node_name)
+                if node is not None:
+                    try:
+                        qignore_field = props[FLAG_QIGNORE]
+                        qignore_flag = string_to_bool(qignore_field)
+                        if qignore_flag:
+                            node.set_state_flags(DrbdNode.FLAG_QIGNORE)
+                        else:
+                            node.clear_state_flags(DrbdNode.FLAG_QIGNORE)
+                        self._quorum.readjust_full_member_count()
+                        self.save_conf_data(persist)
+                    except KeyError, ValueError:
+                        pass
+                else:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except Exception as exc:
+            DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
 
 
     # TODO: more precise error handling

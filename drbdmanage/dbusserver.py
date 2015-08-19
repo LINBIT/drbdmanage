@@ -535,6 +535,18 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="sa{ss}b",
+        out_signature="a(isa(ss))"
+    )
+    def quorum_control(self, node_name, props, override_quorum):
+        """
+        D-Bus interface for DrbdManageServer.quorum_control(...)
+        """
+        return self._server.quorum_control(node_name, props, override_quorum)
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="",
         out_signature="a(isa(ss))"
     )

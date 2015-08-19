@@ -46,9 +46,9 @@ from drbdmanage.consts import (
     DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
-    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT,
+    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
-    CONF_NODE, CONF_GLOBAL, KEY_SITE
+    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -253,6 +253,26 @@ class DrbdManage(object):
                                'cluster node that the node entry refers to.')
         p_rm_node.add_argument('name', nargs="+", help='Name of the node to remove').completer = NodeCompleter
         p_rm_node.set_defaults(func=self.cmd_remove_node)
+
+        # Quorum control, completion of the action parameter
+        def QuorumActionCompleter(prefix, **kwargs):
+            possible = ["ignore", "unignore"]
+            if prefix is not None and prefix != "":
+                possible = [item for item in possible if possible.startswith(prefix)]
+            return possible
+
+        p_quorum = subp.add_parser("quorum-control",
+                                   aliases=["qc"],
+                                   description="Sets quorum parameters on drbdmanage cluster nodes")
+        p_quorum.add_argument('-o', '--override', action="store_true",
+                              help="Override change protection in a partition without quorum")
+        p_quorum.add_argument(
+            "action", help="The action to perform on the affected nodes"
+        ).completer = QuorumActionCompleter
+        p_quorum.add_argument(
+            "name", nargs="+", help="Name of the affected node or nodes"
+        ).completer = NodeCompleter
+        p_quorum.set_defaults(func=self.cmd_quorum_control)
 
         # new-resource
         p_new_res = subp.add_parser('add-resource',
@@ -1599,6 +1619,38 @@ class DrbdManage(object):
                 fn_rc = 1
 
         return fn_rc
+
+
+    def cmd_quorum_control(self, args):
+        fn_rc = 0
+
+        override = args.override
+        action   = args.action
+        display_names = (len(args.name))
+
+        # TODO: handle invalid actions
+        qignore_field = BOOL_FALSE
+        if action == "ignore":
+            qignore_field = BOOL_TRUE
+
+        props = dbus.Dictionary(signature="ss")
+        props[FLAG_QIGNORE] = qignore_field
+
+        self.dbus_init()
+        for node_name in args.name:
+            if display_names:
+                sys.stdout.write("Modifying quorum state of node '%s':\n" % (node_name))
+            server_rc = self._server.quorum_control(
+                dbus.String(node_name), props, dbus.Boolean(override)
+            )
+            item_rc = self._list_rc_entries(server_rc)
+            if item_rc != 0:
+                fn_rc = 1
+            if display_names:
+                sys.stdout.write("\n")
+
+        return fn_rc
+
 
     def cmd_new_snapshot(self, args):
         fn_rc = 1
