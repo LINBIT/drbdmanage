@@ -1010,33 +1010,26 @@ class DrbdManageServer(object):
         cfg = self._pluginmgr.get_plugin_default_config()
         return (fn_rc, cfg)
 
-    # TODO RCK: does the getter really need _modify_conf()?
+
     def _get_cluster_props(self):
         fn_rc = []
         ret = {}
-        persist = None
         try:
-            persist = self.begin_modify_conf()
             common = self.get_common()
             if common is not None:
                 props_cont = common.get_props()
-
-            if props_cont is not None and persist is not None:
                 ns = PropsContainer.NAMESPACES["dmconfig"] + "cluster/"
                 ret = props_cont.get_all_props(ns)
-                add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             else:
-                add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-
-            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+                # The common object should always be present, if it is not,
+                # indicate a programming error
+                raise DebugException
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
-        finally:
-            self.end_modify_conf(persist)
-
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, ret)
+
 
     def get_cluster_config(self):
         """
