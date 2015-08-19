@@ -342,7 +342,11 @@ class DrbdNodeView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL,
          consts.FLAG_DRBDCTRL,   None ,  None],
         [consts.TSTATE_PREFIX + consts.FLAG_STORAGE,
-         consts.FLAG_STORAGE,    None,   None]
+         consts.FLAG_STORAGE,    None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_QIGNORE,
+         consts.FLAG_QIGNORE,    None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_STANDBY,
+         consts.FLAG_STANDBY,    None,   None]
     ]
 
     # Human readable texts for target state flags
@@ -356,7 +360,11 @@ class DrbdNodeView(GenericView):
         [consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL,
          "C",     "-",    "?"],
         [consts.TSTATE_PREFIX + consts.FLAG_STORAGE,
-         "S",     "-",    "?"]
+         "S",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_STANDBY,
+         "X",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_QIGNORE,
+         "Q",     "-",    "?"]
     ]
 
 
@@ -390,6 +398,12 @@ class DrbdNodeView(GenericView):
         s_storage = utils.string_to_bool(
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_STORAGE)
         )
+        s_standby = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_STANDBY)
+        )
+        s_qignore = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_QIGNORE)
+        )
 
         if s_remove:
             self.add_pending_text("remove")
@@ -405,6 +419,12 @@ class DrbdNodeView(GenericView):
                 self.add_state_text("satellite node")
             if not s_storage:
                 self.add_state_text("no storage")
+            if s_standby:
+                self.raise_level(GenericView.STATE_WARN)
+                self.add_state_text("standby")
+            if s_qignore:
+                self.raise_level(GenericView.STATE_WARN)
+                self.add_state_text("ignore quorum vote")
 
         return self.get_level(), self.format_state_info()
 
