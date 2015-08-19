@@ -198,7 +198,7 @@ class PersistenceImpl(object):
                 time.sleep(secs)
         if not fail_ctr < self.MAX_FAIL_COUNT:
             logging.error(
-                "cannot open control volume '%s' "
+                "Cannot open the control volume '%s' "
                 "(%d failed attempts)"
                 % (self.CONF_FILE, self.MAX_FAIL_COUNT)
             )

@@ -3735,24 +3735,57 @@ class DrbdManageServer(object):
         """
         ret_persist = None
         persist     = None
-        if self._quorum.is_present() or override_quorum:
+        try:
+            persist = drbdmanage.drbd.persistence.persistence_impl(self)
+        except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logging.error(
+                "Cannot instantiate the persistence layer, "
+                "unhandled exception: %s"
+                % str(exc)
+            )
+            logging.debug("Stack trace:\n%s" % str(exc_tb))
+        if persist is not None:
+            accessible = False
+            modifiable = self._quorum.is_present() or override_quorum
             try:
-                persist = drbdmanage.drbd.persistence.persistence_impl(self)
-                if persist.open(True):
-                    if not self.hashes_match(persist.get_stored_hash()):
-                        self.load_conf_data(persist)
-                    ret_persist = persist
+                accessible = persist.open(modifiable)
             except Exception as exc:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
+                access_mode = "modification" if modifiable else "reading"
                 logging.error(
-                    "cannot open the control volume for modification, "
+                    "Cannot open the control volume for %s, "
                     "unhandled exception: %s"
-                    % str(exc)
+                    % (access_mode, str(exc))
                 )
                 logging.debug("Stack trace:\n%s" % str(exc_tb))
                 persist.close()
-        else:
-            raise QuorumException
+            if accessible:
+                try:
+                    if not self.hashes_match(persist.get_stored_hash()):
+                        self.load_conf_data(persist)
+                    if modifiable:
+                        # if the configuration was opened for modification,
+                        # return the persistence object
+                        ret_persist = persist
+                    else:
+                        # if the configuration was opened only for reading,
+                        # no modifiable persistence object can be returned,
+                        # and the configuration reload is finished;
+                        # close the persistence object and fail
+                        persist.close()
+                except Exception as exc:
+                    exc_type, exc_obj, exc_tb = sys.exc_info()
+                    access_mode = "modification" if modifiable else "reading"
+                    logging.error(
+                        "Cannot read data from the control volume "
+                        "unhandled exception: %s"
+                        % (str(exc))
+                    )
+                    logging.debug("Stack trace:\n%s" % str(exc_tb))
+                    persist.close()
+                if not modifiable:
+                    raise QuorumException
         return ret_persist
 
 
