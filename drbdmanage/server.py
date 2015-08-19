@@ -2526,6 +2526,8 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3974,7 +3976,7 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         try:
-            persist = self.begin_modify_conf()
+            persist = self.begin_modify_conf(override_quorum=True)
 
             # clear the configuration
             srv = DrbdManageServer
