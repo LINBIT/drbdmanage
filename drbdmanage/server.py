@@ -422,6 +422,15 @@ class DrbdManageServer(object):
                     fcntl.F_SETFL,
                     fcntl.F_GETFL | os.O_NONBLOCK)
         self._reader = NioLineReader(self._evt_file)
+
+        # TODO: wait for the "exists -" line from drbdsetup events2,
+        #       probably either here or somewhere in run();
+        #       Lines can be requested from NioLineReader in a loop,
+        #       if no more lines are available before the "exists -"
+        #       line has been read, the file descriptor must be
+        #       polled for the availability of more data before
+        #       continuing to read from the NioLineReader.
+        
         # detect readable data on the pipe
         self._evt_in_h = gobject.io_add_watch(
             self._evt_file.fileno(),
@@ -596,63 +605,62 @@ class DrbdManageServer(object):
     def _drbd_event_change_trigger(self, evt_type, evt_source, line_data):
         changed = False
         try:
-            if (evt_type == self.EVT_TYPE_CHANGE and
-                line_data[self.EVT_ARG_NAME] == DRBDCTRL_RES_NAME):
+            if line_data[DrbdManageServer.EVT_ARG_NAME] == DRBDCTRL_RES_NAME:
+                if (evt_type == self.EVT_TYPE_CHANGE and
+                    evt_source == self.EVT_SRC_CON):
                     # Check: role change to Secondary
                     try:
-                        role = line_data[self.EVT_ARG_ROLE]
-                        if (evt_source == self.EVT_SRC_CON and
-                            role == self.EVT_ROLE_SECONDARY):
-                                changed = True
-                                if self.dbg_events:
-                                    logging.debug(
-                                        "event change trigger role:Secondary"
-                                    )
+                        if line_data[self.EVT_ARG_ROLE] == self.EVT_ROLE_SECONDARY:
+                            changed = True
+                            if self.dbg_events:
+                                logging.debug(
+                                    "event change trigger role:Secondary"
+                                )
                     except KeyError:
                         # Ignore: Not a role change
                         pass
 
-                    # Check: replication change to SyncTarget
+                if evt_source == DrbdManageServer.EVT_SRC_PEERDEV:
+                    # Check: replication mode SyncTarget
                     try:
                         replication = line_data[self.EVT_ARG_REPL]
-                        if evt_source == self.EVT_SRC_PEERDEV:
-                            if replication == self.EVT_REPL_SYNCTARGET:
-                                changed = True
-                                if self.dbg_events:
-                                    logging.debug(
-                                        "event change trigger "
-                                        "replication:SyncTarget"
-                                    )
-                            elif replication == self.EVT_REPL_OFF:
-                                # FIXME: Experimental: Quorum: May have lost a node
-                                node_name = line_data[self.EVT_CONN_NAME]
-                                self._quorum.node_left(node_name)
-                            elif replication == self.EVT_REPL_ON:
-                                # FIXME: Experimental: Quorum: Node may have joined
-                                node_name = line_data[self.EVT_CONN_NAME]
-                                change_quorum = self._quorum.node_joined(node_name)
-                                if change_quorum:
-                                    persist = None
-                                    try:
-                                        persist = self.begin_modify_conf()
-                                        if persist is not None:
-                                            # Unset QIGNORE status on connected nodes
-                                            self._quorum.readjust_qignore_flags()
-                                            self.save_conf_data(persist)
-                                        else:
-                                            # FIXME: Logging? See also the
-                                            #        PersistenceException below
-                                            pass
-                                    except QuorumException:
-                                        # This node does not have a quorum, skip saving
+                        if replication == self.EVT_REPL_SYNCTARGET:
+                            changed = True
+                            if self.dbg_events:
+                                logging.debug(
+                                    "event change trigger "
+                                    "replication:SyncTarget"
+                                )
+                        elif replication == self.EVT_REPL_OFF:
+                            # FIXME: Experimental: Quorum: May have lost a node
+                            node_name = line_data[self.EVT_CONN_NAME]
+                            self._quorum.node_left(node_name)
+                        elif replication == self.EVT_REPL_ON:
+                            # FIXME: Experimental: Quorum: Node may have joined
+                            node_name = line_data[self.EVT_CONN_NAME]
+                            change_quorum = self._quorum.node_joined(node_name)
+                            if change_quorum:
+                                persist = None
+                                try:
+                                    persist = self.begin_modify_conf()
+                                    if persist is not None:
+                                        # Unset QIGNORE status on connected nodes
+                                        self._quorum.readjust_qignore_flags()
+                                        self.save_conf_data(persist)
+                                    else:
+                                        # FIXME: Logging? See also the
+                                        #        PersistenceException below
                                         pass
-                                    except PersistenceException:
-                                        logging.warning(
-                                            "Attempt to save updated quorum membership information to "
-                                            "the control volume failed"
-                                        )
-                                    finally:
-                                        self.end_modify_conf(persist)
+                                except QuorumException:
+                                    # This node does not have a quorum, skip saving
+                                    pass
+                                except PersistenceException:
+                                    logging.warning(
+                                        "Attempt to save updated quorum membership information to "
+                                        "the control volume failed"
+                                    )
+                                finally:
+                                    self.end_modify_conf(persist)
                     except KeyError:
                         # Ignore: Not a replication change or
                         #         replication on/off change without a conn-name argument
