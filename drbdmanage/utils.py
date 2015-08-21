@@ -805,6 +805,13 @@ class NioLineReader(object):
         self._lines    = []
 
 
+    def get_file(self):
+        """
+        Returns the file/stream this NioReader instance is connected to
+        """
+        return self._file
+
+
     def readline(self):
         """
         Return the next line of text if one is available and buffer any

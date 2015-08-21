@@ -1,3 +1,4 @@
+import select
 #!/usr/bin/env python2
 """
     drbdmanage - management of distributed DRBD9 resources
@@ -17,6 +18,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+import select
 
 import sys
 import os
@@ -25,6 +27,7 @@ import time
 import gobject
 import subprocess
 import fcntl
+import select
 import logging
 import logging.handlers
 import re
@@ -381,6 +384,10 @@ class DrbdManageServer(object):
                              "aborting startup")
             exit(1)
 
+        # Wait for drbdsetup to finish reporting the initial DRBD status
+        # Read the status report and setup quorum
+        self._drbd_event_initial_status()
+
         # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
         if inst_node is not None:
@@ -430,7 +437,7 @@ class DrbdManageServer(object):
         #       line has been read, the file descriptor must be
         #       polled for the availability of more data before
         #       continuing to read from the NioLineReader.
-        
+
         # detect readable data on the pipe
         self._evt_in_h = gobject.io_add_watch(
             self._evt_file.fileno(),
@@ -577,29 +584,69 @@ class DrbdManageServer(object):
                 if self.dbg_events:
                     logging.debug("received event line: %s" % line)
                 sys.stderr.flush()
-                if not changed:
-                    match = self._evt_pat.match(line)
-                    if match is not None:
-                        # try to parse args
-                        # TODO: maybe this pattern can be pre-compiled, too?
-                        line_data = dict(
-                            re.findall('([\w-]+):(\S+)', match.group('attrs'))
-                        )
+                match = self._evt_pat.match(line)
+                if match is not None:
+                    # try to parse args
+                    line_data, evt_type, evt_source = self._drbd_event_split(match)
 
-                        evt_type   = match.group('type')
-                        evt_source = match.group('source')
-
-                        # Detect potential changes of the data on the
-                        # control volume
-                        changed = self._drbd_event_change_trigger(
-                            evt_type, evt_source, line_data
-                        )
+                    # Detect potential changes of the data on the
+                    # control volume
+                    if self._drbd_event_change_trigger(evt_type, evt_source, line_data):
+                        changed = True
             else:
                 break
         if changed:
             self._drbd_mgr.run(False, False)
         # True = GMainLoop shall not unregister this event handler
         return True
+
+
+    def _drbd_event_initial_status(self):
+        """
+        Reads the initial DRBD status
+        """
+        logging.info("Reading initial DRBD control volume status")
+        try:
+            while True:
+                line = self._reader.readline()
+                if line is not None:
+                    if line.startswith("exists -"):
+                        break
+                    else:
+                        match = self._evt_pat.match(line)
+                        if match is not None:
+                            # try to parse args
+                            line_data, evt_type, evt_source = self._drbd_event_split(match)
+
+                            # Detect Quorum changes, etc.
+                            self._drbd_event_change_trigger(evt_type, evt_source, line_data)
+                else:
+                    # poll for more data
+                    poll = select.poll()
+                    poll.register(self._reader.get_file().fileno())
+                    fd_list = poll.poll()
+                    if len(fd_list) >= 1:
+                        fd, event = fd_list[0]
+                        if ((event & select.POLLERR) != 0 or (event & select.POLLNVAL) != 0 or
+                            (event & select.POLLHUP) != 0):
+                            logging.warning("failed to determine the current status "
+                                            "of the control volume")
+                            break
+        except IOError:
+            logging.warning("drbdsetup events tracing failed while reading the current "
+                            "status of the control volume")
+        logging.info("Finished reading initial DRBD control volume status")
+
+
+    def _drbd_event_split(self, match):
+        """
+        Returns fields, event type and event source of a drbd event line
+        """
+        # TODO: maybe this pattern can be pre-compiled, too?
+        line_data = dict(re.findall('([\w-]+):(\S+)', match.group('attrs')))
+        evt_type   = match.group('type')
+        evt_source = match.group('source')
+        return line_data, evt_type, evt_source
 
 
     def _drbd_event_change_trigger(self, evt_type, evt_source, line_data):
