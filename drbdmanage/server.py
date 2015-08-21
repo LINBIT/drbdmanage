@@ -43,10 +43,10 @@ from drbdmanage.consts import (
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY, FLAG_QIGNORE,
-    SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
+    IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -2963,10 +2963,17 @@ class DrbdManageServer(object):
             if filter_props is not None and len(filter_props) > 0:
                 selected_nodes = props_filter(selected_nodes, filter_props)
 
+            instance_node = self.get_instance_node()
             for node in selected_nodes:
+                node_props = node.get_properties(req_props)
+                # Indicate if a node with a control volume is not connected/replicating
+
+                if node is not instance_node and is_set(node.get_state(), DrbdNode.FLAG_DRBDCTRL):
+                    if not self._quorum.is_active_member_node(node.get_name()):
+                        node_props[IND_NODE_OFFLINE] = BOOL_TRUE
                 node_entry = [
                     node.get_name(),
-                    node.get_properties(req_props)
+                    node_props
                 ]
                 node_list.append(node_entry)
                 add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))

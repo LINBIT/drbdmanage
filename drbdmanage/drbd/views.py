@@ -404,11 +404,28 @@ class DrbdNodeView(GenericView):
         s_qignore = utils.string_to_bool(
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_QIGNORE)
         )
+        i_offline = False
+        i_offline_str = self.get_property(consts.IND_NODE_OFFLINE)
+        if i_offline_str is not None:
+            i_offline = utils.string_to_bool(i_offline_str)
 
         if s_remove:
             self.add_pending_text("remove")
             self.raise_level(GenericView.STATE_ALERT)
         else:
+            if i_offline:
+                if s_qignore:
+                    self.raise_level(GenericView.STATE_WARN)
+                    self.add_state_text("offline/quorum vote ignored")
+                else:
+                    self.raise_level(GenericView.STATE_ALERT)
+                    self.add_state_text("OFFLINE")
+            else:
+                # Online, but quorum vote ignored; this should be resolved
+                # automatically by the server
+                if s_qignore:
+                    self.raise_level(GenericView.STATE_WARN)
+                    self.add_state_text("online/quorum vote ignored")
             if s_update:
                 self.add_pending_text("adjust connections")
                 self.raise_level(GenericView.STATE_ALERT)
@@ -422,9 +439,6 @@ class DrbdNodeView(GenericView):
             if s_standby:
                 self.raise_level(GenericView.STATE_WARN)
                 self.add_state_text("standby")
-            if s_qignore:
-                self.raise_level(GenericView.STATE_WARN)
-                self.add_state_text("ignore quorum vote")
 
         return self.get_level(), self.format_state_info()
 
