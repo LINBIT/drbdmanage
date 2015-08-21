@@ -932,6 +932,18 @@ class DrbdManage(object):
                                 help='Name of the node. This enables node specific options '
                                 '(e.g. plugin settings)').completer = NodeCompleter
         p_editconf.set_defaults(func=self.cmd_edit_config)
+        p_editconf.set_defaults(type="edit")
+
+        # export config
+        p_exportconf = subp.add_parser('export-config',
+                                       description='Export drbdmanage configuration',
+                                       aliases=['cat-config'])
+        p_exportconf.add_argument('--node', '-n',
+                                  help='Name of the node.').completer = NodeCompleter
+        p_exportconf.add_argument('--file', '-f',
+                                  help='File to save configuration')
+        p_exportconf.set_defaults(func=self.cmd_edit_config)
+        p_exportconf.set_defaults(type="export")
 
         argcomplete.autocomplete(parser)
 
@@ -3060,18 +3072,29 @@ Confirm:
             configfile.write('# Example: [Node:nodeA]\n')
             configfile.write('\n')
 
-            configfile.write('# For further information please refere to drbdmanage.cfg(8)')
+            configfile.write('# For further information please refere to drbdmanage.cfg(8)\n')
 
         shutil.copyfile(tmpf, orig)
 
         import subprocess
-        editor = os.getenv('EDITOR', 'vi')
+        if args.type == 'export':
+            prog = 'cat'
+            if args.file:
+                shutil.copyfile(tmpf, args.file)
+                sys.exit(0)
+        else:
+            prog = os.getenv('EDITOR', 'vi')
+
         before = os.stat(tmpf).st_mtime
         try:
-            subprocess.call([editor, tmpf])
+            subprocess.call([prog, tmpf])
         except:
-            sys.stderr.write('Could not load editor, your changes will not be saved.\n')
+            sys.stderr.write('Could not load %s, your changes will not be saved.\n' % (prog))
             sys.exit(1)
+
+        if args.type == 'export':
+            sys.exit(0)
+
         after = os.stat(tmpf).st_mtime
         if before == after:
             print "Nothing to save, bye"
