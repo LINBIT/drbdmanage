@@ -1045,6 +1045,7 @@ class DrbdManageServer(object):
     def _get_site_props(self, site):
         props_cont = None
         common = self.get_common()
+        site_props = {}
 
         if common is not None:
             props_cont = common.get_props()
@@ -1053,10 +1054,7 @@ class DrbdManageServer(object):
             ns = PropsContainer.NAMESPACES["dmconfig"] + "site/" + site
             site_props = props_cont.get_all_props(ns)
 
-        if len(site_props) > 0:
-            return site_props
-        else:
-            return None
+        return site_props
 
     def get_site_config(self):
         fn_rc = []
