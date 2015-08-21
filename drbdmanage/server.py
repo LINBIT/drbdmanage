@@ -693,6 +693,7 @@ class DrbdManageServer(object):
                                     if persist is not None:
                                         # Unset QIGNORE status on connected nodes
                                         self._quorum.readjust_qignore_flags()
+                                        self._quorum.readjust_full_member_count()
                                         self.save_conf_data(persist)
                                     else:
                                         # FIXME: Logging? See also the
