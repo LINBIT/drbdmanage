@@ -107,6 +107,8 @@ FLAG_UPD_CONFIG     = "upd_config"
 FLAG_STANDBY        = "standby"
 FLAG_QIGNORE        = "qignore"
 
+IND_NODE_OFFLINE    = "node_offline"
+
 # volume states:
 FLAG_ATTACH         = "attach"
 
