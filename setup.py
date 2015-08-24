@@ -198,6 +198,7 @@ setup(
         "drbdmanage.snapshots",
         "drbdmanage.argparse",
         "drbdmanage.argcomplete",
+        "drbdmanage.importlib",
         "drbdmanage.plugins"],
     py_modules=["drbdmanage_server", "drbdmanage_client"],
     scripts=["scripts/drbdmanage", "scripts/dbus-drbdmanaged-service"],

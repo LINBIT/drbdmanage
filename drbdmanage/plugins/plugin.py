@@ -18,7 +18,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import importlib
+try:
+    import importlib
+except ImportError:
+    import drbdmanage.importlib as importlib
 
 
 class PluginManager():
