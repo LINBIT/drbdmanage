@@ -682,6 +682,7 @@ class DrbdManageServer(object):
                             # FIXME: Experimental: Quorum: May have lost a node
                             node_name = line_data[self.EVT_CONN_NAME]
                             self._quorum.node_left(node_name)
+                            self._quorum.readjust_full_member_count()
                         elif replication == self.EVT_REPL_ON:
                             # FIXME: Experimental: Quorum: Node may have joined
                             node_name = line_data[self.EVT_CONN_NAME]
