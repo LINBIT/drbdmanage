@@ -1,7 +1,87 @@
 drbdmanage (0.49-1) experimental; urgency=medium
 
-  * New experimental version
-  * Experimental control volume quorum implementation
+  [ Roland Kammerer ]
+  * setupopts: Fixed bug in write_excerpt()
+  * prepared drbdmanage version 0.43.1
+  * Added a git hash and changed files on server errors
+  * Added Makefile to MANIFEST.in
+  * build: Fixed bad combination of Makefile without debian dir
+  * build: Added 'debrelease' Makefile target
+  * client: Improved help text
+  * man-pages: Autogenerate drbdmanage overview page
+  * Makefile: Clean debian directory before tar-ing it
+  * py2py3: Changed shebang to python2
+  * Fixed 'make up2date', updated Debian version
+  * Switched to NG plugins as default.
+  * client: Fixed machine readable output
+  * Provide modify-config command and API
+  * client: Enabled peer-device-options
+  * Added initial site concept
+  * debian: removed obsolete patches
+  * debian: added watch file
+  * client: Fixed loading of local configuration
+  * local config: also allow drbd-conf-path
+  * server: fixed NoneType bug in _get_site_props()
+  * client: added export-config
+  * plugins: Provide importlib fallback for py 2.6
+
+  [ Robert Altnoeder ]
+  * Removed the static "protocol C" statement
+  * Do not skip resources without any volumes in list_volumes() output
+  * Re-enabled lowlevel-debug command
+  * Included the consts_githash.py module in the .gitignore file
+  * Made preparations for a "server-version" command
+  * Added exception superclass DrbdManageException
+  * corrected variable names in TQ_version()
+  * drbdmanage/server.py fixes: modify_resource(), various imports,
+  * PropsContainer: Inserted more descriptive constant and variable names
+  * added a --quiet parameter to the howto-join command
+  * allow multiple name arguments, minor fixes
+  * Do not list resources without any matching volumes when filtering
+  * Added DBus signal subscription capability to the drbdmanage client
+  * Added class DBusSignal to the drbdmanage/dbusserver module
+  * drbdmanage server: Added assignment signals
+  * drbdmanage server: added snapshot assignment signals
+  * drbdmanage server: added signal triggers for assignments
+  * DBusSignal: more flexible DBus path creation
+  * drbdmanage server: split startup procedure; required for signals
+  * Added change notifications (signals) for objects on remote nodes
+  * Version number changed to 0.48
+  * Modified startup order
+  * Cluster-wide configuration and serial number generation changes
+  * Fix for 'variable referenced before assignment' in _get_cluster_props()
+  * Fixed _get_cluster_props(): removed persistence access, fixed error handling
+  * drbdmanage server: added experimental quorum tracking
+  * drbdmanage server: prevent changes in absence of a quorum
+  * Quorum: Added quorum node query and getter/setter methods
+  * New DrbdNode flags, readjustment of the quorum data
+  * set_full_member_count(): count must be greater than number of active members
+  * added set_state_flags()/clear_state_flags()
+  * added adjustment of the expected number of quorum nodes
+  * Quorum changes logging bugfix
+  * Added logging if saving updated quorum membership information fails
+  * handle standby/qignore flags when creating new nodes
+  * begin_modify_conf(): added a flag for overriding the quorum
+  * Do not set qignore on the node initializing the cluster (drbdmanage init)
+  * Added quorum control API (for adjusting expected nodes count)
+  * Added views for the new DrbdNode standby and qignore flags
+  * Added missing QuorumException handling to detach()
+  * Improved begin_modify_conf(): Always attempt to load the configuration
+  * Modified quorum handling in DrbdManager
+  * Read the current replication status of the control volume upon startup
+  * Read the initial status of the control volume during startup
+  * Show offline nodes with a control volume in the node list
+  * Quorum: readjust the full member count when a node rejoins
+  * Added missing constant IND_NODE_OFFLINE
+  * drbdmanage version 0.49
+
+  [ Philipp Marek ]
+  * Provide a function name completer for lowlevel_debug, too.
+  * Allow multiple names on the "delete-resource" command line.
+  * Put longer texts in """...""" quotes.
+  * Added libblkid parsable header
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 25 Aug 2015 10:14:43 +0200
 
 drbdmanage (0.48-1) experimental; urgency=medium
 
