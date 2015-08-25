@@ -72,6 +72,7 @@ class Table():
         self.groups = []
         self.header = []
         self.table = []
+        self.coloroverride = []
         self.view = None
         self.showseps = False
 
@@ -97,12 +98,20 @@ class Table():
             raise SyntaxException("Not allowed to define rows before columns")
         if len(row) != len(self.header):
             raise SyntaxException("Row len does not match headers")
-        for idx, c in enumerate(row):
-            if type(c) == type(tuple()) and not self.header[idx]['color']:
-                raise SyntaxException("Color tuple for this row not allowed "
-                                      "to have colors")
+
+        coloroverride = [None] * len(row)
+        for idx, c in enumerate(row[:]):
+            if isinstance(c, tuple):
+                if not self.header[idx]['color']:
+                    raise SyntaxException("Color tuple for this row not allowed "
+                                          "to have colors")
+                else:
+                    color, text = c
+                    row[idx] = text
+                    coloroverride[idx] = color
 
         self.table.append(row)
+        self.coloroverride.append(coloroverride)
 
     def addSeparator(self):
         self.table.append([None])
@@ -136,6 +145,8 @@ class Table():
                 self.header.pop(pidx)
                 for row in self.table:
                     row.pop(pidx)
+                for row in self.coloroverride:
+                    row.pop(pidx)
 
         columnmax = [0] * len(self.header)
         term_width, _ = get_terminal_size()
@@ -154,7 +165,18 @@ class Table():
                         row[idx] = int(row[idx])
                     except ValueError:
                         pass
+            orig_table = self.table[:]
+            orig_coloroverride = self.coloroverride[:]
+            tidx_used = set()
             self.table.sort(key=operator.itemgetter(*group_bys))
+
+            # restore color overrides after sort
+            for oidx, orow in enumerate(orig_table):
+                for tidx, trow in enumerate(self.table):
+                    if orow == trow and oidx != tidx and tidx not in tidx_used:
+                        tidx_used.add(tidx)
+                        self.coloroverride[tidx] = orig_coloroverride[oidx]
+                        break
 
             lstlen = len(self.table)
             seps = set()
@@ -177,15 +199,22 @@ class Table():
 
         # calc max width per column and set final strings (with color codes)
         self.table.insert(0, [h.replace('_', ' ') for h in hdrnames])
+        ridx = 0
+        self.coloroverride.insert(0, [None] * len(self.header))
+
         for row in self.table:
             if not row[0]:
                 continue
             for idx, col in enumerate(self.header):
                 row[idx] = str(row[idx])
                 if col['color']:
-                    color = col["color"]
+                    if self.coloroverride[ridx][idx]:
+                        color = self.coloroverride[ridx][idx]
+                    else:
+                        color = col["color"]
                     row[idx] = color + row[idx] + COLOR_NONE
                 columnmax[idx] = max(len(row[idx]), columnmax[idx])
+            ridx += 1
 
         for h in self.header:
             if h['color']:
