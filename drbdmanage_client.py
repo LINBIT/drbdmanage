@@ -1994,12 +1994,9 @@ class DrbdManage(object):
                                 level_color = self._level_color(level)
                                 row_data = [
                                     res_name, str(vol_view.get_id()),
-                                    size_MiB_str, v_minor, v_port, state_text
+                                    size_MiB_str, v_minor, v_port, (level_color, state_text)
                                 ]
-                                if level == GenericView.STATE_NORM:
-                                    t.addRow(row_data)
-                                else:
-                                    t.addRow(row_data, color=color(level_color))
+                                t.addRow(row_data)
                             else:
                                 # machine readable output of the volume description
                                 sys.stdout.write(
@@ -2144,12 +2141,9 @@ class DrbdManage(object):
                     level, state_text = snaps_assg.state_info()
                     level_color = self._level_color(level)
                     row_data = [
-                        res_name, snaps_name, node_name, state_text
+                        res_name, snaps_name, node_name, (level_color, state_text)
                     ]
-                    if level == GenericView.STATE_NORM:
-                        t.addRow(row_data)
-                    else:
-                        t.addRow(row_data, color=color(level_color))
+                    t.addRow(row_data)
 
         if not machine_readable:
             t.showSeparators(args.separators)
@@ -2212,12 +2206,9 @@ class DrbdManage(object):
                     level, state_text = view.state_info()
                     level_color = self._level_color(level)
                     row_data = [
-                        node_name, res_name, "*", "*", "*", state_text
+                        node_name, res_name, "*", "*", "*", (level_color, state_text)
                     ]
-                    if level == GenericView.STATE_NORM:
-                        t.addRow(row_data)
-                    else:
-                        t.addRow(row_data, color=color(level_color))
+                    t.addRow(row_data)
 
                     for vol_state in vol_state_list:
                         vol_id, properties = vol_state
@@ -2233,15 +2224,9 @@ class DrbdManage(object):
                             )
                             v_row_data = [
                                 node_name, res_name, vol_id,
-                                v_bdev, v_node_id, v_state_text
+                                v_bdev, v_node_id, (v_level_color, v_state_text)
                             ]
-                            if v_level == GenericView.STATE_NORM:
-                                t.addRow(v_row_data)
-                            else:
-                                t.addRow(
-                                    v_row_data,
-                                    color=color(v_level_color)
-                                )
+                            t.addRow(v_row_data)
                 else:
                     sys.stdout.write(
                         "%s,%s,%s,%s,%s\n"
