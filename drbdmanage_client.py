@@ -1789,7 +1789,7 @@ class DrbdManage(object):
         t.addColumn("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
         t.addColumn("Family", just_txt='>')
         t.addColumn("IP", just_txt='>')
-        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Name", "Pool_Size", "Pool_Free", "State"]
@@ -1844,12 +1844,9 @@ class DrbdManage(object):
                     level_color = self._level_color(level)
                     row_data = [
                         node_name, poolsize_text, poolfree_text,
-                        "ipv" + v_af, v_addr, state_text
+                        "ipv" + v_af, v_addr, (level_color, state_text)
                     ]
-                    if level == GenericView.STATE_NORM:
-                        t.addRow(row_data)
-                    else:
-                        t.addRow(row_data, color=color(level_color))
+                    t.addRow(row_data)
                 else:
                     v_psize = self._property_text(
                         view.get_property(NODE_POOLSIZE))
@@ -1939,7 +1936,7 @@ class DrbdManage(object):
             t.addColumn("Size", color=color(COLOR_BROWN), just_txt='>')
             t.addColumn("Minor", color=color(COLOR_BROWN), just_txt='>')
         t.addColumn("Port", just_txt='>')
-        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Name", "State"]
@@ -2072,7 +2069,7 @@ class DrbdManage(object):
 
         t.addColumn("Resource", color=color(COLOR_DARKGREEN))
         t.addColumn("Name", color=color(COLOR_DARKPINK))
-        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         t.setGroupBy(groupby)
 
@@ -2125,7 +2122,7 @@ class DrbdManage(object):
         t.addColumn("Resource", color=color(COLOR_DARKGREEN))
         t.addColumn("Name", color=color(COLOR_DARKPINK))
         t.addColumn("Node", color=color(COLOR_TEAL))
-        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         t.setGroupBy(groupby)
 
@@ -2193,7 +2190,7 @@ class DrbdManage(object):
         t.addColumn("Vol_ID", color=color(COLOR_DARKPINK), just_txt='>')
         t.addColumn("Blockdevice")
         t.addColumn("Node_ID", just_txt='>')
-        t.addColumn("State", color=color(COLOR_GREEN), just_txt='>', just_col='>')
+        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Node", "Resource", "Vol_ID", "State"]
@@ -2922,7 +2919,7 @@ Confirm:
         """
         level_color = COLOR_RED
         if level == GenericView.STATE_NORM:
-            level_color = COLOR_GREEN
+            level_color = COLOR_DARKGREEN
         elif level == GenericView.STATE_WARN:
             level_color = COLOR_YELLOW
         return level_color
