@@ -477,6 +477,9 @@ class DrbdSetupOpts():
             max_ = int(self.config[opt]['max'])
             return checkrange(val, min_, max_)
 
+    def get_options(self):
+        return self.config
+
 
 def get_free_number(min_nr, max_nr, nr_list):
     """

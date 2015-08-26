@@ -177,7 +177,7 @@ class DrbdManager(object):
 
     def _get_global_conf(self):
         global_path = os.path.join(self._server._conf[consts.KEY_DRBD_CONFPATH],
-                                   'drbdmanage_global_common.conf')
+                                   consts.FILE_GLOBAL_COMMON_CONF)
         global_conf = open(global_path, "w")
         return global_conf
 

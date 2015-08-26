@@ -48,7 +48,7 @@ from drbdmanage.consts import (
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
-    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE
+    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -942,6 +942,18 @@ class DrbdManage(object):
                           help='Name of the resource to modify').completer = ResourceCompleter
         p_no.set_defaults(optsobj=no)
         p_no.set_defaults(func=self.cmd_net_options)
+
+        # list-options
+        p_listopts = subp.add_parser('list-options',
+                                     description='List drbd options set',
+                                     aliases=['show-options'])
+        p_listopts.add_argument('resource',
+                                help='Name of the resource to show').completer = ResourceCompleter
+        p_listopts.set_defaults(func=self.cmd_list_options)
+        p_listopts.set_defaults(doobj=do)
+        p_listopts.set_defaults(noobj=no)
+        p_listopts.set_defaults(roobj=ro)
+        p_listopts.set_defaults(pdoobj=pdo)
 
         # edit config
         p_editconf = subp.add_parser('modify-config',
@@ -2997,6 +3009,61 @@ Confirm:
         newopts["type"] = "neto"
 
         return self._set_drbdsetup_props(newopts)
+
+    def cmd_list_options(self, args):
+        net_options = args.noobj.get_options()
+        disk_options = args.doobj.get_options()
+        peer_device_options = args.pdoobj.get_options()
+        resource_options = args.roobj.get_options()
+
+        # filter net-options drbdmange sets unconditionally.
+        net_options = filter_prohibited(net_options, ('shared-secret', 'cram-hmac-alg'))
+
+        colors = {
+            'net-options': self.color(COLOR_TEAL),
+            'disk-options': self.color(COLOR_BROWN),
+            'peer-device-options': self.color(COLOR_GREEN),
+            'resource-options': self.color(COLOR_DARKPINK),
+        }
+
+        self.dbus_init()
+        ret, conf = self._server.get_selected_config_values([KEY_DRBD_CONFPATH])
+
+        res_file = 'drbdmanage_' + args.resource + '.res'
+        conf_path = self._get_conf_path(conf)
+        res_file = os.path.join(conf_path, res_file)
+        common_file = os.path.join(conf_path, FILE_GLOBAL_COMMON_CONF)
+
+        def highlight(option_type, color, found):
+            if found:
+                return True
+            for o in option_type:
+                if line.find(o) != -1:
+                    print color + line + COLOR_NONE,
+                    return True
+            return False
+
+        for res_f in (common_file, res_file):
+            print res_f + ':'
+            with open(res_f) as f:
+                for line in f:
+                    if line.find('{') != -1 or line.find('}') != -1:
+                        print line,
+                        continue
+
+                    found = highlight(net_options, colors['net-options'], False)
+                    found = highlight(disk_options, colors['disk-options'], found)
+                    found = highlight(peer_device_options, colors['peer-device-options'], found)
+                    found = highlight(resource_options, colors['resource-options'], found)
+                    if not found:
+                        print line,
+            print
+
+        print 'Legend:',
+        for k, v in colors.items():
+            print v + k + COLOR_NONE,
+        print '\n\nNote: Do not directly edit these auto-generated files as they will be overwritten.'
+        print 'Use the according drbdmange sub-commands to set/unset options.'
 
     def cmd_edit_config(self, args):
         import ConfigParser

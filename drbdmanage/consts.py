@@ -73,6 +73,7 @@ DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
 SERVER_CONFFILE     = "/etc/drbdmanaged.cfg"
 KEY_DRBD_CONFPATH = "drbd-conf-path"
 DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
+FILE_GLOBAL_COMMON_CONF = "drbdmanage_global_common.conf"
 
 # additional configuration keys
 KEY_SITE = 'site'

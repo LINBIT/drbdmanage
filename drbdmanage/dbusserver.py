@@ -366,6 +366,14 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="as",
+        out_signature="a(isa(ss))" "a{ss}"
+    )
+    def get_selected_config_values(self, keys):
+        return self._server.get_selected_config_values(keys)
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="",
         out_signature="a(isa(ss))" "aa{ss}"
     )

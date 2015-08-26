@@ -46,7 +46,7 @@ from drbdmanage.consts import (
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -1154,6 +1154,13 @@ class DrbdManageServer(object):
         All the config options in the global section. These are options that are also valid per node
         """
         return self._get_cluster_props()
+
+    def get_selected_config_values(self, keys):
+        fn_rc = []
+        ret = dict([(k, v) for k, v in self._conf.items() if k in keys])
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return (fn_rc, ret)
 
     def _get_all_sites(self, props_cont):
         ns = PropsContainer.NAMESPACES["dmconfig"] + "site/"
@@ -3964,7 +3971,7 @@ class DrbdManageServer(object):
         file_path += "drbdmanage_" + resource.get_name() + ".res"
 
         global_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
-                                   'drbdmanage_global_common.conf')
+                                   FILE_GLOBAL_COMMON_CONF)
         assg_conf = None
         global_conf = None
         try:
