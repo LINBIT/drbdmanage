@@ -3039,7 +3039,7 @@ Confirm:
                 return True
             for o in option_type:
                 if line.find(o) != -1:
-                    print color + line + COLOR_NONE,
+                    print color + line.rstrip() + COLOR_NONE
                     return True
             return False
 
