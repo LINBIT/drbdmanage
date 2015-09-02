@@ -46,7 +46,7 @@ from drbdmanage.consts import (
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -798,6 +798,7 @@ class DrbdManageServer(object):
             p_name = p['name']
             filter_prohibited(p, ('name',))
             final_plugin_config[p_name] = p
+        plugin_vg_overwrite = dict([(plugin['name'], False) for plugin in plugin_configs])
 
         # ## general configuration
         # always start with a copy of default values
@@ -842,6 +843,8 @@ class DrbdManageServer(object):
                 filter_allowed(props, self._plugin_conf[plugin_name].keys())
                 for k in props:
                     final_plugin_config[plugin_name][k] = props[k]
+                    if k == KEY_VG_NAME:
+                        plugin_vg_overwrite[plugin_name] = True
 
             # IMPORTANT: even in this stage we still want that the config file overwrites everything else.
             stage = self.CONF_STAGE[self.KEY_FROM_FILE]
@@ -856,6 +859,14 @@ class DrbdManageServer(object):
             for plugin_name in cfg['plugins']:
                 for k, v in cfg['plugins'][plugin_name].items():
                     final_plugin_config[plugin_name][k] = v
+                    if k == KEY_VG_NAME:
+                        plugin_vg_overwrite[plugin_name] = True
+
+        # check where ctrlvol != default and plugin vg has no special settings
+        drbdctrl_vg = final_config[KEY_DRBDCTRL_VG]
+        if drbdctrl_vg != self.CONF_DEFAULTS[KEY_DRBDCTRL_VG]:
+            for plugin_name in [k for k, v in plugin_vg_overwrite.items() if not v]:
+                final_plugin_config[plugin_name][KEY_VG_NAME] = drbdctrl_vg
 
         self._objects_root[sconf_key] = final_config
         self._objects_root[pconf_key] = final_plugin_config

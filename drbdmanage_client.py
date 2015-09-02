@@ -48,7 +48,7 @@ from drbdmanage.consts import (
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
-    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF
+    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -3083,7 +3083,7 @@ Confirm:
 
         # setting the drbdctrl-vg here is not allowed
         # only allowed via the config file
-        prohibited = ('drbdctrl-vg',)
+        prohibited = (KEY_DRBDCTRL_VG,)
         config_keys = filter_prohibited(config_keys, prohibited)
 
         # get all config options that are set cluster wide (aka GLOBAL)
@@ -3162,8 +3162,13 @@ Confirm:
                     secname = '# [Plugin:' + plugin['name'] + ']'
                     configfile.write(secname + '\n')
                     for o in plugin:
-                        if o != 'name':
-                            configfile.write('# ' + o + ' = ' + plugin[o] + '\n')
+                        if o == 'name':
+                            continue
+                        cfgstr = '# ' + o + ' = ' + plugin[o]
+                        if o == KEY_VG_NAME:
+                            cfgstr += ' # or the value of %s if it is set and %s is unset' % (KEY_DRBDCTRL_VG,
+                                                                                              KEY_VG_NAME)
+                        configfile.write(cfgstr + '\n')
                     configfile.write('\n')
 
             hdr = 'Nodes available in this view:'

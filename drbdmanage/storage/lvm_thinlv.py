@@ -45,7 +45,6 @@ class LvmThinLv(lvmcom.LvmCommon):
 
     # Configuration file keys
     KEY_DEV_PATH   = "dev-path"
-    KEY_VG_NAME    = "volume-group"
     KEY_LVM_PATH   = "lvm-path"
     KEY_POOL_NAME  = "pool-name"
 
@@ -73,7 +72,7 @@ class LvmThinLv(lvmcom.LvmCommon):
     # Module configuration defaults
     CONF_DEFAULTS = {
         KEY_DEV_PATH:   "/dev/",
-        KEY_VG_NAME:    consts.DEFAULT_VG,
+        consts.KEY_VG_NAME:    consts.DEFAULT_VG,
         KEY_LVM_PATH:   "/sbin",
         KEY_POOL_NAME:  "drbdthinpool"
     }
@@ -137,7 +136,7 @@ class LvmThinLv(lvmcom.LvmCommon):
             # Setup cached settings
             self._vg_path = utils.build_path(
                 self._conf[LvmThinLv.KEY_DEV_PATH],
-                self._conf[LvmThinLv.KEY_VG_NAME]
+                self._conf[consts.KEY_VG_NAME]
             ) + "/"
             self._cmd_create = utils.build_path(
                 self._conf[LvmThinLv.KEY_LVM_PATH],
@@ -502,7 +501,7 @@ class LvmThinLv(lvmcom.LvmCommon):
             try:
                 exec_args = [
                     self._cmd_vgchange, "-ay",
-                    self._conf[LvmThinLv.KEY_VG_NAME],
+                    self._conf[consts.KEY_VG_NAME],
                 ]
                 utils.debug_log_exec_args(self.__class__.__name__, exec_args)
                 lvm_rc = subprocess.call(
@@ -524,7 +523,7 @@ class LvmThinLv(lvmcom.LvmCommon):
             try:
                 exec_args = [
                     self._cmd_lvchange, "-ay", "-kn", "-K",
-                    self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                    self._conf[consts.KEY_VG_NAME] + "/" +
                     lv_name
                 ]
                 utils.debug_log_exec_args(self.__class__.__name__, exec_args)
@@ -593,7 +592,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 "--units", "k", "--separator", ",",
                 "--options",
                 "size,data_percent,metadata_percent,snap_percent",
-                self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                self._conf[consts.KEY_VG_NAME] + "/" +
                 self._conf[LvmThinLv.KEY_POOL_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
@@ -680,7 +679,7 @@ class LvmThinLv(lvmcom.LvmCommon):
         Throws an LvmCheckFailedException if the check itself fails
         """
         return self.check_lv_exists(
-            lv_name, self._conf[LvmThinLv.KEY_VG_NAME],
+            lv_name, self._conf[consts.KEY_VG_NAME],
             self._cmd_lvs, self._subproc_env, "LvmThinLv"
         )
 
@@ -693,7 +692,7 @@ class LvmThinLv(lvmcom.LvmCommon):
             exec_args = [
                 self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
                 "--thinpool", self._conf[LvmThinLv.KEY_POOL_NAME],
-                self._conf[LvmThinLv.KEY_VG_NAME]
+                self._conf[consts.KEY_VG_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
@@ -717,7 +716,7 @@ class LvmThinLv(lvmcom.LvmCommon):
         try:
             exec_args = [
                 self._cmd_create, "-s",
-                self._conf[LvmThinLv.KEY_VG_NAME] + "/" +
+                self._conf[consts.KEY_VG_NAME] + "/" +
                 lv_name, "-n", snaps_name
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
@@ -739,7 +738,7 @@ class LvmThinLv(lvmcom.LvmCommon):
         """
         Removes an LVM logical volume
         """
-        self.remove_lv(lv_name, self._conf[LvmThinLv.KEY_VG_NAME],
+        self.remove_lv(lv_name, self._conf[consts.KEY_VG_NAME],
                        self._cmd_remove, self._subproc_env, "LvmThinLv")
 
 

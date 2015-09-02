@@ -45,7 +45,6 @@ class Lvm(lvmcom.LvmCommon):
 
     # Configuration file keys
     KEY_DEV_PATH = "dev-path"
-    KEY_VG_NAME  = "volume-group"
     KEY_LVM_PATH = "lvm-path"
 
     # Paths to configuration and state files of this module
@@ -70,7 +69,7 @@ class Lvm(lvmcom.LvmCommon):
     # Module configuration defaults
     CONF_DEFAULTS = {
         KEY_DEV_PATH: "/dev/",
-        KEY_VG_NAME:  consts.DEFAULT_VG,
+        consts.KEY_VG_NAME:  consts.DEFAULT_VG,
         KEY_LVM_PATH: "/sbin"
     }
 
@@ -126,7 +125,7 @@ class Lvm(lvmcom.LvmCommon):
             # Setup cached settings
             self._vg_path = utils.build_path(
                 self._conf[Lvm.KEY_DEV_PATH],
-                self._conf[Lvm.KEY_VG_NAME]
+                self._conf[consts.KEY_VG_NAME]
             ) + "/"
             self._cmd_create = utils.build_path(
                 self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_CREATE
@@ -423,7 +422,7 @@ class Lvm(lvmcom.LvmCommon):
                 self._cmd_vgs, "--noheadings", "--nosuffix",
                 "--units", "k", "--separator", ",",
                 "--options", "vg_size,vg_free",
-                self._conf[Lvm.KEY_VG_NAME]
+                self._conf[consts.KEY_VG_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             lvm_proc = subprocess.Popen(
@@ -475,7 +474,7 @@ class Lvm(lvmcom.LvmCommon):
         try:
             exec_args = [
                 self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
-                self._conf[Lvm.KEY_VG_NAME]
+                self._conf[consts.KEY_VG_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
@@ -496,7 +495,7 @@ class Lvm(lvmcom.LvmCommon):
         """
         Removes an LVM logical volume
         """
-        self.remove_lv(lv_name, self._conf[Lvm.KEY_VG_NAME],
+        self.remove_lv(lv_name, self._conf[consts.KEY_VG_NAME],
                        self._cmd_remove, self._subproc_env, "Lvm")
 
 
@@ -508,7 +507,7 @@ class Lvm(lvmcom.LvmCommon):
         Throws an LvmCheckFailedException if the check itself fails
         """
         return self.check_lv_exists(
-            lv_name, self._conf[Lvm.KEY_VG_NAME],
+            lv_name, self._conf[consts.KEY_VG_NAME],
             self._cmd_lvs, self._subproc_env, "Lvm"
         )
 

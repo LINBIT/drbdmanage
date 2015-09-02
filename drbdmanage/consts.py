@@ -64,6 +64,7 @@ SNAPS_NAME_MAXLEN   = 48
 DRBDCTRL_DEFAULT_PORT = 6999
 
 KEY_DRBDCTRL_VG     = "drbdctrl-vg"
+KEY_VG_NAME         = "volume-group"
 DRBDCTRL_RES_NAME   = ".drbdctrl"
 DRBDCTRL_RES_FILE   = "drbdctrl.res"
 DRBDCTRL_DEV        = "/dev/drbd0"
