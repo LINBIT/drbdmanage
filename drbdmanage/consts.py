@@ -76,6 +76,9 @@ KEY_DRBD_CONFPATH = "drbd-conf-path"
 DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
 FILE_GLOBAL_COMMON_CONF = "drbdmanage_global_common.conf"
 
+# server instance
+KEY_SERVER_INSTANCE = "serverinstance"
+
 # additional configuration keys
 KEY_SITE = 'site'
 

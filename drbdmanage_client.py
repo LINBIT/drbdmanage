@@ -940,6 +940,8 @@ class DrbdManage(object):
         p_no.add_argument('--common', action="store_true")
         p_no.add_argument('--resource',
                           help='Name of the resource to modify').completer = ResourceCompleter
+        p_no.add_argument('--sites',
+                          help='Set net options between sites (SiteA:SiteB)')
         p_no.set_defaults(optsobj=no)
         p_no.set_defaults(func=self.cmd_net_options)
 
@@ -3175,7 +3177,8 @@ Confirm:
             configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
             configfile.write('# %s\n' % (', '.join(node_names)))
             configfile.write('# You can also specify the keyword "%s" in node sections\n' % (KEY_SITE))
-            configfile.write('# Example: [Node:nodeA]\n')
+            example_node = node_names[0] if node_names else 'nodeA'
+            configfile.write('# Example: [Node:%s]\n' % (example_node))
             configfile.write('\n')
 
             configfile.write('# For further information please refere to drbdmanage.cfg(8)\n')

@@ -46,7 +46,8 @@ from drbdmanage.consts import (
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME
+    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
+    KEY_SERVER_INSTANCE
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -327,6 +328,8 @@ class DrbdManageServer(object):
         cluster_conf = PropsContainer(None, 1, None)
         self._objects_root[DrbdManageServer.OBJ_CCONF_NAME]     = cluster_conf
         self._objects_root[DrbdManageServer.OBJ_SGEN_NAME]      = cluster_conf.new_serial_gen()
+
+        self._objects_root[KEY_SERVER_INSTANCE] = self
 
         self._objects_root[DrbdManageServer.OBJ_COMMON_NAME] = (
             DrbdCommon(self.get_serial, cluster_conf.get_prop(SERIAL), None)
@@ -1287,9 +1290,32 @@ class DrbdManageServer(object):
                         p = filter_allowed(p, allowed_node_props)
                         p = filter_prohibited(p, prohibited_settings)
                         ns = PropsContainer.NAMESPACES['dmconfig']
+
+                        old_site = props.get_prop('site', ns)
+
                         props.merge_props(p, ns)
                         pgone = [k for k in allowed_node_props if k not in p]
                         props.remove_selected_props(pgone, ns)
+
+                        new_site = props.get_prop('site', ns)
+                        if old_site != new_site:
+                            self._set_updflag(node)
+
+                            inform_sites = []
+                            if old_site is None and new_site:
+                                inform_sites = [new_site]
+                            elif old_site and new_site is None:
+                                inform_sites = [old_site]
+                            elif old_site and new_site:
+                                inform_sites = [old_site, new_site]
+
+                            for n_iter in self._nodes.itervalues():
+                                node_props_cont = n_iter.get_props()
+                                if node_props_cont:
+                                    ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
+                                    node_site = node_props_cont.get_prop('site', ns)
+                                    if node_site in inform_sites:
+                                        self._set_updflag(n_iter)
 
                         # plugin settings (only allowed node specific)
                         if cfgtype == CONF_NODE:
@@ -1319,6 +1345,7 @@ class DrbdManageServer(object):
                         pns = PropsContainer.NAMESPACES['plugins'] + plugin
                         props.remove_selected_props(props.get_all_props(pns), pns)
 
+                self._drbd_mgr.perform_changes()
                 self.save_conf_data(persist)
 
             else:
@@ -2885,15 +2912,15 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
 
+    def _set_updflag(self, item):
+        for assg in item.iterate_assignments():
+            assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
+
     def set_drbdsetup_props(self, props):
         fn_rc = []
         item = None
         props_cont = None
         persist = None
-
-        def set_updflag(item):
-            for assg in item.iterate_assignments():
-                assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
 
         try:
             persist = self.begin_modify_conf()
@@ -2902,7 +2929,7 @@ class DrbdManageServer(object):
             otype = props.pop("type")
             target_name = props.pop(target, False)
 
-            if target == "common":
+            if target == "common" or target == "sites":
                 item = self.get_common()
             elif target == "node":
                 item = self.get_node(target_name)
@@ -2918,7 +2945,11 @@ class DrbdManageServer(object):
 
             if props_cont is not None and persist is not None:
                 for k, v in props.iteritems():
-                    ns = PropsContainer.NAMESPACES["setupopt"] + "%s/" % (otype)
+                    if target == "sites":
+                        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SITES]
+                        ns += "%s/%s/" % (target_name, otype)
+                    else:
+                        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SETUPOPT] + "%s/" % (otype)
                     if k.startswith('unset'):
                         props_cont.remove_prop(k[len('unset-'):], ns)
                     else:
@@ -2932,9 +2963,18 @@ class DrbdManageServer(object):
 
                 if target == "common":
                     for node in self._nodes.itervalues():
-                        set_updflag(node)
+                        self._set_updflag(node)
+                elif target == "sites":
+                    sites = target_name.split(':')
+                    for node in self._nodes.itervalues():
+                        node_props_cont = node.get_props()
+                        if node_props_cont:
+                            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
+                            site = node_props_cont.get_prop('site', ns)
+                            if site in sites:
+                                self._set_updflag(node)
                 else:
-                    set_updflag(item)
+                    self._set_updflag(item)
                     # assg.get_props().new_serial()
 
                 self._drbd_mgr.perform_changes()

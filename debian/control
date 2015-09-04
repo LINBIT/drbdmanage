@@ -13,7 +13,7 @@ Standards-Version: 3.9.6
 
 Package: python-drbdmanage
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends}, python-gobject, python-dbus, dbus, drbd-utils (>= 8.9.3)
+Depends: ${misc:Depends}, ${python:Depends}, python-gobject, python-dbus, dbus, drbd-utils (>= 8.9.4)
 Description: DRBD distributed resource management utility
  Drbdmanage is a daemon and a command line utility that manages DRBD
  replicated LVM volumes across a group of machines.

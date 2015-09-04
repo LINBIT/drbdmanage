@@ -21,11 +21,216 @@
 import logging
 import drbdmanage.utils as dmutils
 
+from drbdmanage.consts import (
+    KEY_SERVER_INSTANCE
+)
+
 from drbdmanage.exceptions import InvalidMinorNrException
 from drbdmanage.propscontainer import PropsContainer
 
 is_set   = dmutils.is_set
 is_unset = dmutils.is_unset
+
+
+class DrbdConnectionConf(object):
+    def __init__(self, servers, clients, objects_root, stream):
+        self.objects_root = objects_root
+        self.servers = servers
+        self.clients = clients
+        self.stream = stream
+
+        self._all_nodes = set(servers + clients)
+        self._meshes = []  # list of sets, every set is list of nodes, a set represents a mesh
+        self._nodes_interesting = set()  # nodes we have a connection to (+ self)
+
+        self._indentwidth = 3
+
+    def _is_part_of_site(self, node):
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
+        site_name = node.get_props().get_prop('site', ns)
+        return site_name
+
+    def _is_diskless(self, node):
+        return node in self.clients
+
+    def _get_other_site_nodes(self, node, site_name):
+        common = self.objects_root["common"]
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SITES]
+        sites = common.get_props().get_all_props(ns)
+        sites = [s.partition('/')[0] for s in sites]
+        others = []
+        for s in sites:
+            f, t = s.split(':')
+            f, t = f.strip(), t.strip()
+
+            # only interested in nodes that are in the same site
+            if f != t:
+                continue
+            if f != site_name:  # f == t, could be merged with if above, but easier to understand like this
+                continue
+
+            for n in self._all_nodes:
+                other_site = self._is_part_of_site(n)
+                if other_site == site_name and n != node:
+                    others.append(n)
+
+        return others
+
+    def _gen_mesh(self, base_node, others):
+        if self._is_diskless(base_node):
+            return
+
+        others = [o for o in others if not self._is_diskless(o)]
+
+        # existing mesh?
+        for m in self._meshes:
+            if base_node in m:
+                m.update(others)
+                return
+
+        # new mesh
+        s = set([base_node] + others)
+        if s:
+            self._meshes.append(s)
+
+    def _gen_meshes(self):
+        for n in self._all_nodes:
+            n_site = self._is_part_of_site(n)
+            if n_site:
+                others = self._get_other_site_nodes(n, n_site)
+                if others:
+                    self._gen_mesh(n, others)
+
+    def _get_net_opts(self, site_a, site_b):
+        common = self.objects_root["common"]
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SITES]
+        # should be symmetric, but...
+        netopts = common.get_props().get_all_props(ns + site_a + ':' + site_b + '/neto')
+        if netopts:
+            return netopts
+
+        # fallback
+        netopts = common.get_props().get_all_props(ns + site_b + ':' + site_a + '/neto')
+        return netopts
+
+    def _get_server_instance(self):
+        try:
+            return self.objects_root[KEY_SERVER_INSTANCE].get_instance_node()
+        except:
+            return None
+
+    def _gen_mesh_conf(self, mesh, have_same_site=False):
+        site = None
+        s = self.stream
+        inst_node = self._get_server_instance()
+
+        if inst_node and inst_node not in mesh:
+            return
+
+        self._nodes_interesting.update([n for n in mesh])
+
+        if have_same_site:
+            site = self._is_part_of_site(list(mesh)[0])
+        s.write(' ' * self._indentwidth + 'connection-mesh {\n')
+        s.write(' ' * self._indentwidth * 2 + 'hosts ' + ' '.join([n.get_name() for n in mesh]) + ';\n')
+
+        if site:
+            netopts = self._get_net_opts(site, site)
+            s.write(' ' * self._indentwidth * 2 + 'net {\n')
+            for k, v in netopts.items():
+                s.write(' ' * self._indentwidth * 3 + '%s %s;\n' % (k, v))
+            s.write(' ' * self._indentwidth * 2 + '}\n')
+        s.write(' ' * self._indentwidth + '}\n')
+
+    def _gen_connection_conf(self, node_a, node_b, netopts=False):
+        s = self.stream
+        inst_node = self._get_server_instance()
+
+        if inst_node and inst_node not in [node_a, node_b]:
+            return
+
+        self._nodes_interesting.update([node_a, node_b])
+
+        s.write(' ' * self._indentwidth + 'connection {\n')
+        s.write(' ' * self._indentwidth * 2 + 'host %s;\n' % node_a.get_name())
+        s.write(' ' * self._indentwidth * 2 + 'host %s;\n' % node_b.get_name())
+        if netopts:
+            s.write(' ' * self._indentwidth * 2 + 'net {\n')
+            for k, v in netopts.items():
+                s.write(' ' * self._indentwidth * 3 + '%s %s;\n' % (k, v))
+            s.write(' ' * self._indentwidth * 2 + '}\n')
+        s.write(' ' * self._indentwidth + '}\n')
+
+    def _two_in_site_cfg(self, node_a, node_b):
+        site_a = self._is_part_of_site(node_a)
+        site_b = self._is_part_of_site(node_b)
+        if not site_a or not site_b:
+            return False
+
+        netopts = self._get_net_opts(site_a, site_b)
+        if netopts:
+            return netopts
+
+        return False
+
+    def _connect_between_meshes(self, mesh_list):
+        for idx, mesh in enumerate(mesh_list):
+            meshes_right = mesh_list[idx+1:]
+            for node in mesh:
+                for mesh_r in meshes_right:
+                    for node_mr in mesh_r:
+                        netopts = self._two_in_site_cfg(node, node_mr)
+                        self._gen_connection_conf(node, node_mr, netopts)
+
+    def generate_conf(self):
+        # populate self._meshes with nodes that can be added to 'connection-mesh'
+        # these are nodes that have the same site config and are not diskless
+        # these meshes contain at least 2 nodes.
+        self._gen_meshes()
+
+        servers_without_mesh = self.servers[:]
+        for mesh in self._meshes:
+            self._gen_mesh_conf(mesh, True)
+            for mesh_node in mesh:
+                servers_without_mesh.remove(mesh_node)
+
+        # we can form a virtual mesh of config less nodes currently outside a mesh, that:
+        # are not part of a site, or
+        # are part of a site but we could not connect it to another node with special site settings
+        virtual_mesh = servers_without_mesh[:]
+
+        for idx, node in enumerate(servers_without_mesh):
+            nodes_right = servers_without_mesh[idx+1:]
+            for node_r in nodes_right:
+                netopts = self._two_in_site_cfg(node, node_r)
+                if netopts:  # we can set a specific config, therefore remove from virtual mesh
+                    self._gen_connection_conf(node, node_r, netopts)
+                    if node_r in virtual_mesh:
+                        virtual_mesh.remove(node_r)
+                    if node in virtual_mesh:
+                        virtual_mesh.remove(node)
+
+        # nodes in virtual mesh are now these that don't have any special settings in common with others
+        # but it might be a single node!
+        if len(virtual_mesh) > 1:
+            self._gen_mesh_conf(virtual_mesh, False)
+
+        # connections between meshes (virtual and real)
+        mesh_list = [list(mesh) for mesh in self._meshes]
+        if virtual_mesh:
+            mesh_list.append(virtual_mesh)
+
+        self._connect_between_meshes(mesh_list)
+
+        # flatten mesh_list (now including virtual mesh)
+        in_mesh = [node for mesh in mesh_list for node in mesh]
+        # out are all nodes (servers and diskless clients not in real meshes or virtual meshes)
+        out_mesh = [node for node in self._all_nodes if node not in in_mesh]
+
+        # interconnect outsiders with insiders
+        self._connect_between_meshes(list((in_mesh, out_mesh)))
+
+        return self._nodes_interesting
 
 
 class DrbdAdmConf(object):
@@ -106,6 +311,8 @@ class DrbdAdmConf(object):
         try:
             wrote_global = self._write_global_stream(globalstream)
 
+            # stream = open('/tmp/bla', 'w')
+
             resource = assignment.get_resource()
             secret = resource.get_secret()
             if secret is None:
@@ -134,103 +341,82 @@ class DrbdAdmConf(object):
             self._write_section('disk', stream, diskopts, 1)
             # end resource/disk options
 
-            # begin resource/nodes
-            local_node = assignment.get_node()
-            for assg in resource.iterate_assignments():
-                diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
-                if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or
-                    undeployed_flag):
-                        node = assg.get_node()
-                        stream.write(
-                            "    on %s {\n"
-                            "        node-id %s;\n"
-                            "        address %s:%d;\n"
-                            % (node.get_name(), assg.get_node_id(),
-                               node.get_addr(), resource.get_port())
-                        )
-                        for vol_state in assg.iterate_volume_states():
-                            tstate = vol_state.get_tstate()
-                            if (tstate & vol_state.FLAG_DEPLOY) != 0:
-                                volume = vol_state.get_volume()
-                                minor = volume.get_minor()
-                                if minor is None:
-                                    raise InvalidMinorNrException
-                                bd_path = vol_state.get_bd_path()
-                                if bd_path is None:
-                                    if node is local_node:
-                                        # If the local node has no
-                                        # backend storage, configure it as
-                                        # a DRBD client
-                                        bd_path = "none"
-                                    else:
-                                        # If a remote node has no
-                                        # backend storage (probably because it
-                                        # is not deployed yet), pretend that
-                                        # there is backend storage on that
-                                        # node. This should prevent a
-                                        # situation where drbdadm refuses to
-                                        # adjust the configuration because
-                                        # none of the nodes seems to have some
-                                        # backend storage
-                                        bd_path = "/dev/null"
-                                stream.write(
-                                    "        volume %d {\n"
-                                    "            device minor %d;\n"
-                                    "            disk %s;\n"
-                                    % (volume.get_id(), minor.get_value(),
-                                       bd_path)
-                                )
-                                if not diskless:
-                                    diskopts = self._get_setup_props(volume, "/disko/")
-                                    peerdiskopts = self._get_setup_props(volume, "/peerdisko/")
-                                    for k, v in peerdiskopts.items():
-                                        diskopts[k] = v
-                                    diskopts['size'] = str(volume.get_size_kiB()) + 'k'
-                                    self._write_section('disk', stream, diskopts, 4)
-                                    # end volume/disk options
-                                stream.write(
-                                    "            meta-disk internal;\n"
-                                    "        }\n"
-                                )
-                        stream.write("    }\n")
-            # end resource/nodes
-
             # begin resource/connection
             servers = []
             clients = []
             for assg in resource.iterate_assignments():
                 tstate = assg.get_tstate()
-                if (is_set(tstate, assg.FLAG_DEPLOY) or
-                    undeployed_flag):
-                        node = assg.get_node()
-                        if is_unset(tstate, assg.FLAG_DISKLESS):
-                            servers.append(node)
-                        else:
-                            clients.append(node)
+                if (is_set(tstate, assg.FLAG_DEPLOY) or undeployed_flag):
+                    node = assg.get_node()
+                    if is_unset(tstate, assg.FLAG_DISKLESS):
+                        servers.append(node)
+                    else:
+                        clients.append(node)
 
-            if len(servers) > 0:
-                stream.write(
-                    "    connection-mesh {\n"
-                    "        hosts"
-                )
-                for node in servers:
-                    stream.write(" %s" % (node.get_name()))
-                stream.write(";\n")
-                stream.write("    }\n")
+            conn_conf = DrbdConnectionConf(servers, clients, self.objects_root, stream)
+            nodes_interesting = conn_conf.generate_conf()
 
-            # connect each client to every server, but not to other clients
-            for client_node in clients:
-                client_name = client_node.get_name()
-                for server_node in servers:
+            # begin resource/nodes
+            local_node = assignment.get_node()
+            for assg in resource.iterate_assignments():
+                diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
+                if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or undeployed_flag):
+                    node = assg.get_node()
+                    if node not in nodes_interesting:
+                        continue
                     stream.write(
-                        "    connection {\n"
-                        "        host %s;\n"
-                        "        host %s;\n"
-                        "    }\n"
-                        % (client_name, server_node.get_name())
+                        "    on %s {\n"
+                        "        node-id %s;\n"
+                        "        address %s:%d;\n"
+                        % (node.get_name(), assg.get_node_id(),
+                           node.get_addr(), resource.get_port())
                     )
-            # end resource/connection
-
+                    for vol_state in assg.iterate_volume_states():
+                        tstate = vol_state.get_tstate()
+                        if (tstate & vol_state.FLAG_DEPLOY) != 0:
+                            volume = vol_state.get_volume()
+                            minor = volume.get_minor()
+                            if minor is None:
+                                raise InvalidMinorNrException
+                            bd_path = vol_state.get_bd_path()
+                            if bd_path is None:
+                                if node is local_node:
+                                    # If the local node has no
+                                    # backend storage, configure it as
+                                    # a DRBD client
+                                    bd_path = "none"
+                                else:
+                                    # If a remote node has no
+                                    # backend storage (probably because it
+                                    # is not deployed yet), pretend that
+                                    # there is backend storage on that
+                                    # node. This should prevent a
+                                    # situation where drbdadm refuses to
+                                    # adjust the configuration because
+                                    # none of the nodes seems to have some
+                                    # backend storage
+                                    bd_path = "/dev/null"
+                            stream.write(
+                                "        volume %d {\n"
+                                "            device minor %d;\n"
+                                "            disk %s;\n"
+                                % (volume.get_id(), minor.get_value(),
+                                   bd_path)
+                            )
+                            if not diskless:
+                                diskopts = self._get_setup_props(volume, "/disko/")
+                                peerdiskopts = self._get_setup_props(volume, "/peerdisko/")
+                                for k, v in peerdiskopts.items():
+                                    diskopts[k] = v
+                                diskopts['size'] = str(volume.get_size_kiB()) + 'k'
+                                self._write_section('disk', stream, diskopts, 4)
+                                # end volume/disk options
+                            stream.write(
+                                "            meta-disk internal;\n"
+                                "        }\n"
+                            )
+                    stream.write("    }\n")
+            # end resource/nodes
             stream.write("}\n")
             # end resource
         except InvalidMinorNrException:
