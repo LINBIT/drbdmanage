@@ -48,7 +48,8 @@ from drbdmanage.consts import (
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
-    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME
+    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
+    NODE_SITE
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -627,8 +628,8 @@ class DrbdManage(object):
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
-        nodesverbose = ('Family', 'IP')
-        nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP',
+        nodesverbose = ('Family', 'IP', 'Site')
+        nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'Site'
                         'State')
 
         def ShowGroupCompleter(lst, where):
@@ -1801,12 +1802,13 @@ class DrbdManage(object):
         t.addColumn("Name", color=color(COLOR_TEAL))
         t.addColumn("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
         t.addColumn("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
+        t.addColumn("Site", color=color(COLOR_BROWN), just_txt='>')
         t.addColumn("Family", just_txt='>')
         t.addColumn("IP", just_txt='>')
         t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
-        tview = ["Name", "Pool_Size", "Pool_Free", "State"]
+        tview = ["Name", "Pool_Size", "Pool_Free", "Site", "State"]
         if args.show:
             tview += args.show
         t.setView(tview)
@@ -1819,6 +1821,8 @@ class DrbdManage(object):
                 view = DrbdNodeView(properties, machine_readable)
                 v_af = self._property_text(view.get_property(NODE_AF))
                 v_addr = self._property_text(view.get_property(NODE_ADDR))
+                ns = Props.NAMESPACES[Props.KEY_DMCONFIG]
+                v_site = self._property_text(view.get_property(ns + NODE_SITE))
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
                     try:
@@ -1857,7 +1861,7 @@ class DrbdManage(object):
                     level, state_text = view.state_info()
                     level_color = self._level_color(level)
                     row_data = [
-                        node_name, poolsize_text, poolfree_text,
+                        node_name, poolsize_text, poolfree_text, v_site,
                         "ipv" + v_af, v_addr, (level_color, state_text)
                     ]
                     t.addRow(row_data)
@@ -1868,10 +1872,10 @@ class DrbdManage(object):
                         view.get_property(NODE_POOLFREE))
 
                     sys.stdout.write(
-                        "%s,%s,%s,%s,%s,%s\n"
+                        "%s,%s,%s,%s,%s,%s,%s\n"
                         % (node_name, v_af,
                            v_addr, v_psize,
-                           v_pfree, view.get_state())
+                           v_pfree, view.get_state(), v_site)
                     )
             except IncompatibleDataException:
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
@@ -3000,7 +3004,7 @@ Confirm:
 
     def cmd_net_options(self, args):
         fn_rc = 1
-        target = self._checkmutex(args, ("common", "resource"))
+        target = self._checkmutex(args, ("common", "resource", "sites"))
 
         newopts = args.optsobj.filterNew(args)
         if not newopts:
