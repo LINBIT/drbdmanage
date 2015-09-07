@@ -54,25 +54,12 @@ class DrbdConnectionConf(object):
         return node in self.clients
 
     def _get_other_site_nodes(self, node, site_name):
-        common = self.objects_root["common"]
-        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SITES]
-        sites = common.get_props().get_all_props(ns)
-        sites = [s.partition('/')[0] for s in sites]
         others = []
-        for s in sites:
-            f, t = s.split(':')
-            f, t = f.strip(), t.strip()
 
-            # only interested in nodes that are in the same site
-            if f != t:
-                continue
-            if f != site_name:  # f == t, could be merged with if above, but easier to understand like this
-                continue
-
-            for n in self._all_nodes:
-                other_site = self._is_part_of_site(n)
-                if other_site == site_name and n != node:
-                    others.append(n)
+        for n in self._all_nodes:
+            other_site = self._is_part_of_site(n)
+            if other_site and other_site == site_name and n != node:
+                others.append(n)
 
         return others
 
@@ -136,10 +123,11 @@ class DrbdConnectionConf(object):
 
         if site:
             netopts = self._get_net_opts(site, site)
-            s.write(' ' * self._indentwidth * 2 + 'net {\n')
-            for k, v in netopts.items():
-                s.write(' ' * self._indentwidth * 3 + '%s %s;\n' % (k, v))
-            s.write(' ' * self._indentwidth * 2 + '}\n')
+            if netopts:
+                s.write(' ' * self._indentwidth * 2 + 'net {\n')
+                for k, v in netopts.items():
+                    s.write(' ' * self._indentwidth * 3 + '%s %s;\n' % (k, v))
+                s.write(' ' * self._indentwidth * 2 + '}\n')
         s.write(' ' * self._indentwidth + '}\n')
 
     def _gen_connection_conf(self, node_a, node_b, netopts=False):
