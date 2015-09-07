@@ -848,6 +848,7 @@ class DrbdManage(object):
         p_init.add_argument('-p', '--port', type=rangecheck(1, 65535),
                             default=DRBDCTRL_DEFAULT_PORT)
         p_init.add_argument('-q', '--quiet', action="store_true")
+        p_init.add_argument('-s', '--no-storage', action="store_true")
         p_init.add_argument('ip', nargs='?', default=default_ip())
         p_init.set_defaults(func=self.cmd_init)
 
@@ -2445,6 +2446,7 @@ or the drbdmanage server.
             address = args.ip
             port = args.port
             quiet = args.quiet
+            flag_storage = not args.no_storage
             # END Setup drbdctrl resource properties
 
             if not quiet:
@@ -2474,6 +2476,8 @@ Confirm:
                 props = {}
                 props[NODE_ADDR] = address
                 props[NODE_AF] = af
+                if not flag_storage:
+                    props[FLAG_STORAGE] = bool_to_string(flag_storage)
                 # Startup the drbdmanage server and add the current node
                 self.dbus_init()
                 server_rc = self._server.init_node(
