@@ -78,7 +78,7 @@ class BuildManCommand(Command):
         assert os.getcwd() == self.cwd, "Must be in package root: %s" % self.cwd
         from drbdmanage_client import DrbdManage
         outdir = "man-pages"
-        name = "dm"
+        name = "drbdmanage"
         mansection = '8'
         client = DrbdManage()
         descriptions = client.parser_cmds_description(client._all_commands)
