@@ -21,9 +21,7 @@
 import logging
 import drbdmanage.utils as dmutils
 
-from drbdmanage.consts import (
-    KEY_SERVER_INSTANCE
-)
+import drbdmanage.consts as consts
 
 from drbdmanage.exceptions import InvalidMinorNrException
 from drbdmanage.propscontainer import PropsContainer
@@ -102,7 +100,7 @@ class DrbdConnectionConf(object):
 
     def _get_server_instance(self):
         try:
-            return self.objects_root[KEY_SERVER_INSTANCE].get_instance_node()
+            return self.objects_root[consts.KEY_SERVER_INSTANCE].get_instance_node()
         except:
             return None
 
@@ -222,10 +220,6 @@ class DrbdConnectionConf(object):
 
 
 class DrbdAdmConf(object):
-
-    KEY_SECRET = "secret"
-    KEY_ADDRESS = "port"
-    KEY_BDEV = "blockdevice"
 
     def __init__(self, objects_root):
         self.indentwidth = 3
@@ -558,19 +552,28 @@ class DrbdAdmConf(object):
         # parameters that contain specific information
         # FIXME: these parameters should be read from the section of the
         #        current node
-        params = [
-            ["shared-secret",   DrbdAdmConf.KEY_SECRET],
-            ["disk",            DrbdAdmConf.KEY_BDEV],
-            ["address",         DrbdAdmConf.KEY_ADDRESS]
-        ]
         fields   = {}
+        conf_node_name = None
+        conf_volume    = None
         for confline in dmutils.read_lines(stream):
-            for keypair in params:
-                p_name = keypair[0]
-                confline = confline.lstrip()
-                if confline.startswith(p_name):
-                    confline = confline[len(p_name):]
-                    fields[keypair[1]] = self._extract_field(confline)
+            key, confline = self._next_word(confline)
+            if key == "on":
+                conf_node_name, confline = self._next_word(confline)
+            elif key == "volume":
+                conf_volume, confline = self._next_word(confline)
+            elif key == "shared-secret":
+                fields[consts.NODE_SECRET] = self._extract_field(confline)
+            elif key == "address":
+                fields[consts.NODE_ADDRESS] = self._extract_field(confline)
+            elif key == "disk":
+                try:
+                    conf_volume_nr = int(conf_volume)
+                    if conf_volume_nr == 0:
+                        fields[consts.NODE_VOL_0] = self._extract_field(confline)
+                    elif conf_volume_nr == 1:
+                        fields[consts.NODE_VOL_1] = self._extract_field(confline)
+                except (ValueError, TypeError):
+                    pass
         return fields
 
 
@@ -587,7 +590,25 @@ class DrbdAdmConf(object):
         return value
 
 
-    def write_drbdctrl(self, stream, nodes, bdev, port, secret):
+    def _next_word(self, value):
+        value = value.lstrip()
+        space_idx = value.find(" ")
+        tab_idx = value.find("\t")
+        idx = None
+        if space_idx != -1 and tab_idx != -1:
+            idx = space_idx if space_idx < tab_idx else tab_idx
+        elif space_idx != -1:
+            idx = space_idx
+        else:
+            idx = tab_idx
+        word = value[:idx]
+        value = value[idx:]
+        if word.endswith("\n"):
+            word = word[:-1]
+        return word, value
+
+
+    def write_drbdctrl(self, stream, nodes, bdev_0, bdev_1, port, secret):
         stream.write(
             "resource .drbdctrl {\n"
             "    net {\n"
@@ -597,7 +618,12 @@ class DrbdAdmConf(object):
             "    }\n"
             "    volume 0 {\n"
             "        device      minor 0;\n"
-            "        disk        " + bdev + ";\n"
+            "        disk        " + bdev_0 + ";\n"
+            "        meta-disk   internal;\n"
+            "    }\n"
+            "    volume 1 {\n"
+            "        device      minor 1;\n"
+            "        disk        " + bdev_1 + ";\n"
             "        meta-disk   internal;\n"
             "    }\n"
         )

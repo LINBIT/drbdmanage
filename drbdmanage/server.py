@@ -47,7 +47,8 @@ from drbdmanage.consts import (
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
     CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
-    KEY_SERVER_INSTANCE
+    KEY_SERVER_INSTANCE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET, NODE_ADDRESS,
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
 )
 from drbdmanage.utils import NioLineReader, MetaData
 from drbdmanage.utils import (
@@ -57,7 +58,7 @@ from drbdmanage.utils import (
     filter_prohibited, filter_allowed
 )
 from drbdmanage.exceptions import (
-    DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL,DM_EMINOR, DM_ENAME,
+    DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_EQUORUM,
     DM_ENOTIMPL, DM_SUCCESS
@@ -1378,7 +1379,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                sub_rc = self._create_node(False, node_name, props, None, None)
+                sub_rc = self._create_node(False, node_name, props, None, None, None)
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
                 else:
@@ -1398,7 +1399,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def _create_node(self, initial, node_name, props, bdev, port):
+    def _create_node(self, initial, node_name, props, bdev_0, bdev_1, port):
         """
         Register DRBD cluster nodes and update control volume configuration
 
@@ -1477,7 +1478,7 @@ class DrbdManageServer(object):
                             # create or update the drbdctrl.res file
                             check_configure = self._configure_drbdctrl(
                                 initial,
-                                None, bdev, port
+                                None, bdev_0, bdev_1, port
                             )
                             if check_configure == 0:
                                 self._drbd_mgr.adjust_drbdctrl()
@@ -2868,7 +2869,7 @@ class DrbdManageServer(object):
             # if nodes have been removed, reconfigure the control volume
             if len(removable) > 0:
                 try:
-                    self._configure_drbdctrl(False, None, None, None)
+                    self._configure_drbdctrl(False, None, None, None, None)
                     self._drbd_mgr.adjust_drbdctrl()
                 except (IOError, OSError) as reconf_err:
                     logging.error(
@@ -4124,7 +4125,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def init_node(self, name, props, bdev, port):
+    def init_node(self, name, props):
         """
         Server part of initializing a new drbdmanage cluster
         """
@@ -4133,26 +4134,40 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf(override_quorum=True)
 
-            # clear the configuration
-            srv = DrbdManageServer
-            self._objects_root[srv.OBJ_NODES_NAME] = {}
-            self._objects_root[srv.OBJ_RESOURCES_NAME] = {}
-            self._update_objects()
-
             if persist is not None:
-                sub_rc = self._create_node(True, name, props, bdev, port)
-                if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
-                    # attempt to determine the amount of total and free
-                    # storage space on the local node; if that fails, total
-                    # and free space will be determined later, either when
-                    # volumes are created or when the drbdmanage server
-                    # is restarted
-                    # therefore, the return code is intentionally ignored
-                    self.update_pool_data()
-                    # save the changes to the control volume
-                    self.save_conf_data(persist)
+
+                # clear the configuration
+                srv = DrbdManageServer
+                self._objects_root[srv.OBJ_NODES_NAME] = {}
+                self._objects_root[srv.OBJ_RESOURCES_NAME] = {}
+                self._update_objects()
+
+                bdev_0 = None
+                bdev_1 = None
+                port   = None
+                try:
+                    bdev_0 = props[NODE_VOL_0]
+                    bdev_1 = props[NODE_VOL_1]
+                    port = int(props[NODE_PORT])
+                except (KeyError, ValueError, TypeError):
+                    pass
+
+                if bdev_0 is not None and bdev_1 is not None and port is not None:
+                    sub_rc = self._create_node(True, name, props, bdev_0, bdev_1, port)
+                    if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
+                        # attempt to determine the amount of total and free
+                        # storage space on the local node; if that fails, total
+                        # and free space will be determined later, either when
+                        # volumes are created or when the drbdmanage server
+                        # is restarted
+                        # therefore, the return code is intentionally ignored
+                        self.update_pool_data()
+                        # save the changes to the control volume
+                        self.save_conf_data(persist)
+                    else:
+                        add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
                 else:
-                    add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+                    add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
             else:
                 raise PersistenceException
         except PersistenceException:
@@ -4166,7 +4181,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def join_node(self, bdev, port, secret):
+    def join_node(self, props):
         """
         Server part of integrating a node into an existing drbdmanage cluster
         """
@@ -4193,24 +4208,39 @@ class DrbdManageServer(object):
                 if load_ok:
                     check_node = self._nodes.get(self._instance_node_name)
                     if check_node is not None:
-                        if (conf_drbdctrl(True, secret, bdev, port) == 0):
-                            # Establish connections to the other
-                            # drbdmanage nodes
-                            self._drbd_mgr.adjust_drbdctrl()
-                            # Clear the update flag on the joining node
-                            state = check_node.get_state()
-                            state = ((state | DrbdNode.FLAG_UPDATE) ^
-                                     DrbdNode.FLAG_UPDATE)
-                            check_node.set_state(state)
-                            # Attempt to update the node's storage pool data
-                            # If it fails now, it will run again later anyway,
-                            # therefore the return code is ignored
-                            self.update_pool_data()
-                            # Save changes
-                            self.save_conf_data(persist)
+                        bdev_0 = None
+                        bdev_1 = None
+                        port   = None
+                        secret = None
+
+                        try:
+                            bdev_0 = props[NODE_VOL_0]
+                            bdev_1 = props[NODE_VOL_1]
+                            port   = int(props[NODE_PORT])
+                            secret = props[NODE_SECRET]
+                        except (KeyError, ValueError, TypeError):
+                            pass
+
+                        if (bdev_0 is not None and bdev_1 is not None and
+                            port is not None and secret is not None):
+                            if (conf_drbdctrl(True, secret, bdev_0, bdev_1, port) == 0):
+                                # Establish connections to the other
+                                # drbdmanage nodes
+                                self._drbd_mgr.adjust_drbdctrl()
+                                # Clear the update flag on the joining node
+                                state = check_node.get_state()
+                                state = ((state | DrbdNode.FLAG_UPDATE) ^ DrbdNode.FLAG_UPDATE)
+                                check_node.set_state(state)
+                                # Attempt to update the node's storage pool data
+                                # If it fails now, it will run again later anyway,
+                                # therefore the return code is ignored
+                                self.update_pool_data()
+                                # Save changes
+                                self.save_conf_data(persist)
+                            else:
+                                add_rc_entry(fn_rc, DM_ECTRLVOL, dm_exc_text(DM_ECTRLVOL))
                         else:
-                            add_rc_entry(fn_rc, DM_ECTRLVOL,
-                                         dm_exc_text(DM_ECTRLVOL))
+                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
                     else:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
@@ -4259,13 +4289,13 @@ class DrbdManageServer(object):
                     pass
 
         try:
-            address = fields[DrbdAdmConf.KEY_ADDRESS]
+            address = fields[NODE_ADDRESS]
             idx = address.rfind(":")
             if idx != -1:
                 port = address[idx + 1:]
             else:
                 raise ValueError
-            secret = fields[DrbdAdmConf.KEY_SECRET]
+            secret = fields[NODE_SECRET]
             update = True
         except (KeyError, ValueError):
             pass
@@ -4479,11 +4509,11 @@ class DrbdManageServer(object):
         """
         Updates the current node's control volume configuration
         """
-        self._configure_drbdctrl(False, None, None, None)
+        self._configure_drbdctrl(False, None, None, None, None)
         self._drbd_mgr.adjust_drbdctrl()
 
 
-    def _configure_drbdctrl(self, initial, secret, bdev, port):
+    def _configure_drbdctrl(self, initial, secret, bdev_0, bdev_1, port):
         """
         Creates or updates the drbdctrl resource configuration file
         """
@@ -4495,7 +4525,8 @@ class DrbdManageServer(object):
         conffile     = DrbdAdmConf(self._objects_root)
         update       = False
 
-        if (secret is not None and bdev is not None and port is not None):
+        if (bdev_0 is not None and bdev_1 is not None and
+            port is not None and secret is not None):
             update = True
         else:
             # Load values from an existing configuation unless all values are
@@ -4530,16 +4561,18 @@ class DrbdManageServer(object):
                     if fields is not None:
                         try:
                             if port is None:
-                                address = fields[DrbdAdmConf.KEY_ADDRESS]
+                                address = fields[NODE_ADDRESS]
                                 idx = address.rfind(":")
                                 if idx != -1:
                                     port = address[idx + 1:]
                                 else:
                                     raise ValueError
-                            if bdev is None:
-                                bdev = fields[DrbdAdmConf.KEY_BDEV]
+                            if bdev_0 is None:
+                                bdev_0 = fields[NODE_VOL_0]
+                            if bdev_1 is None:
+                                bdev_1 = fields[NODE_VOL_1]
                             if secret is None:
-                                secret = fields[DrbdAdmConf.KEY_SECRET]
+                                secret = fields[NODE_SECRET]
                             update = True
                         except (KeyError, ValueError):
                             pass
@@ -4552,14 +4585,18 @@ class DrbdManageServer(object):
                 # use defaults for anything that is still unset
                 if port is None:
                     port = str(DRBDCTRL_DEFAULT_PORT)
-                if bdev is None:
-                    bdev = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
-                            "/" + DRBDCTRL_RES_NAME)
+                if bdev_0 is None:
+                    bdev_0 = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
+                              "/" + DRBDCTRL_LV_NAME_0)
+                if bdev_1 is None:
+                    bdev_1 = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
+                              "/" + DRBDCTRL_LV_NAME_1)
                 if secret is None:
                     secret = generate_secret()
 
                 drbdctrl_res = open(
-                    build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w")
+                    build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE), "w"
+                )
                 # Collect all nodes that have a drbdmanage control volume
                 drbdctrl_nodes = {}
                 for node in self._nodes.itervalues():
@@ -4568,7 +4605,7 @@ class DrbdManageServer(object):
                         drbdctrl_nodes[node.get_name()] = node
                 # Generate the drbdmanage control volume configuration file
                 conffile.write_drbdctrl(drbdctrl_res, drbdctrl_nodes,
-                                        bdev, port, secret)
+                                        bdev_0, bdev_1, port, secret)
                 drbdctrl_res.close()
                 fn_rc = 0
             except (IOError, OSError):
@@ -4749,8 +4786,9 @@ class DrbdManageServer(object):
         fn_rc = 1
         secret = args.pop(0)
         port   = args.pop(0)
-        bdev   = args.pop(0)
-        fn_rc  = self._configure_drbdctrl(True, secret, bdev, port)
+        bdev_0 = args.pop(0)
+        bdev_1 = args.pop(0)
+        fn_rc  = self._configure_drbdctrl(True, secret, bdev_0, bdev_1, port)
         return fn_rc
 
 
@@ -4758,8 +4796,9 @@ class DrbdManageServer(object):
         fn_rc = 1
         secret = args.pop(0)
         port   = args.pop(0)
-        bdev   = args.pop(0)
-        fn_rc  = self._configure_drbdctrl(False, secret, bdev, port)
+        bdev_0 = args.pop(0)
+        bdev_1 = args.pop(0)
+        fn_rc  = self._configure_drbdctrl(False, secret, bdev_0, bdev_1, port)
         return fn_rc
 
 

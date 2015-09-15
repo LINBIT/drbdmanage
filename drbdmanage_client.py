@@ -49,7 +49,8 @@ from drbdmanage.consts import (
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
-    NODE_SITE
+    NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -2460,15 +2461,19 @@ CAUTION! Note that:
 Confirm:
 """)
             if quiet:
-                drbdctrl_blockdev = self._create_drbdctrl("0", server_conf)
+                drbdctrl_blockdev_0, drbdctrl_blockdev_1 = self._create_drbdctrl(
+                    "0", server_conf, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
+                )
                 self._ext_command(
                     ["drbdsetup", "primary", DRBDCTRL_RES_NAME, "--force"]
                 )
-                init_rc = self._drbdctrl_init(DRBDCTRL_DEV)
 
-                if init_rc != 0:
-                    # an error message is printed by _drbdctrl_init()
+                # error messages are printed by _drbdctrl_init()
+                if self._drbdctrl_init(DRBDCTRL_DEV_0) != 0:
                     raise AbortException
+                if self._drbdctrl_init(DRBDCTRL_DEV_1) != 0:
+                    raise AbortException
+
                 self._ext_command(
                     ["drbdsetup", "secondary", DRBDCTRL_RES_NAME]
                 )
@@ -2476,13 +2481,15 @@ Confirm:
                 props = {}
                 props[NODE_ADDR] = address
                 props[NODE_AF] = af
+                props[NODE_VOL_0] = drbdctrl_blockdev_0
+                props[NODE_VOL_1] = drbdctrl_blockdev_1
+                props[NODE_PORT] = str(port)
                 if not flag_storage:
                     props[FLAG_STORAGE] = bool_to_string(flag_storage)
                 # Startup the drbdmanage server and add the current node
                 self.dbus_init()
                 server_rc = self._server.init_node(
-                    dbus.String(node_name), props,
-                    dbus.String(drbdctrl_blockdev), str(port)
+                    dbus.String(node_name), props
                 )
 
                 fn_rc = self._list_rc_entries(server_rc)
@@ -2590,8 +2597,8 @@ Confirm:
                 p_node_id = args.peer_node_id
                 secret = args.secret
 
-                drbdctrl_blockdev = self._create_drbdctrl(
-                    l_node_id, server_conf
+                drbdctrl_blockdev_0, drbdctrl_blockdev_1 = self._create_drbdctrl(
+                    l_node_id, server_conf, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
                 )
 
                 begin_time = time.time()
@@ -2660,9 +2667,12 @@ Confirm:
                 # Startup the drbdmanage server and update the local .drbdctrl
                 # resource configuration file
                 self.dbus_init()
-                server_rc = self._server.join_node(
-                    drbdctrl_blockdev, port, secret
-                )
+                props = {}
+                props[NODE_PORT] = str(port)
+                props[NODE_VOL_0] = drbdctrl_blockdev_0
+                props[NODE_VOL_1] = drbdctrl_blockdev_1
+                props[NODE_SECRET] = secret
+                server_rc = self._server.join_node(props)
                 end_time = time.time()
                 time_set = True
                 for rc_entry in server_rc:
@@ -2739,7 +2749,10 @@ Confirm:
 
         # Delete any existing .drbdctrl LV
         self._ext_command(
-            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_RES_NAME]
+            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0]
+        )
+        self._ext_command(
+            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1]
         )
 
         # Delete any existing configuration file
@@ -2766,7 +2779,13 @@ Confirm:
             pass
         try:
             self._ext_command(
-                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_RES_NAME]
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0]
+            )
+        except AbortException:
+            pass
+        try:
+            self._ext_command(
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1]
             )
         except AbortException:
             pass
@@ -2823,11 +2842,12 @@ Confirm:
             raise AbortException
         return proc_rc
 
-    def _create_drbdctrl(self, node_id, server_conf):
+    def _create_drbdctrl(self, node_id, server_conf, drbdctrl_lv_0, drbdctrl_lv_1):
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
         conf_path = self._get_conf_path(server_conf)
 
-        drbdctrl_blockdev = ("/dev/" + drbdctrl_vg + "/" + DRBDCTRL_RES_NAME)
+        drbdctrl_blockdev_0 = ("/dev/" + drbdctrl_vg + "/" + drbdctrl_lv_0)
+        drbdctrl_blockdev_1 = ("/dev/" + drbdctrl_vg + "/" + drbdctrl_lv_1)
 
         # ========================================
         # Cleanup
@@ -2840,13 +2860,22 @@ Confirm:
 
         # Create the .drbdctrl LV
         self._ext_command(
-            ["lvcreate", "-n", DRBDCTRL_RES_NAME, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
+        )
+        self._ext_command(
+            ["lvcreate", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
         )
 
         # Create meta-data
         self._ext_command(
             [
-                "drbdmeta", "--force", "0", "v09", drbdctrl_blockdev,
+                "drbdmeta", "--force", "0", "v09", drbdctrl_blockdev_0,
+                "internal", "create-md", "31"
+            ]
+        )
+        self._ext_command(
+            [
+                "drbdmeta", "--force", "1", "v09", drbdctrl_blockdev_1,
                 "internal", "create-md", "31"
             ]
         )
@@ -2855,22 +2884,38 @@ Confirm:
         self._ext_command(
             ["drbdsetup", "new-resource", DRBDCTRL_RES_NAME, node_id]
         )
+        # Note: Syntax: drbdsetup new-minor minor-nr volume-nr
         self._ext_command(
             ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "0", "0"]
         )
         self._ext_command(
+            ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "1", "1"]
+        )
+        self._ext_command(
             [
                 "drbdmeta", "0", "v09",
-                drbdctrl_blockdev, "internal", "apply-al"
+                drbdctrl_blockdev_0, "internal", "apply-al"
+            ]
+        )
+        self._ext_command(
+            [
+                "drbdmeta", "1", "v09",
+                drbdctrl_blockdev_1, "internal", "apply-al"
             ]
         )
         self._ext_command(
             [
                 "drbdsetup", "attach", "0",
-                drbdctrl_blockdev, drbdctrl_blockdev, "internal"
+                drbdctrl_blockdev_0, drbdctrl_blockdev_0, "internal"
             ]
         )
-        return drbdctrl_blockdev
+        self._ext_command(
+            [
+                "drbdsetup", "attach", "1",
+                drbdctrl_blockdev_1, drbdctrl_blockdev_1, "internal"
+            ]
+        )
+        return drbdctrl_blockdev_0, drbdctrl_blockdev_1
 
     def _get_drbdctrl_vg(self, server_conf):
         # ========================================
@@ -3339,29 +3384,33 @@ Confirm:
         fn_rc = 1
 
         init_blks = 4
-        pers_impl = drbdmanage.drbd.persistence.PersistenceImpl
-        blksz = pers_impl.BLKSZ
+        pers_impl = drbdmanage.drbd.persistence.PersistenceDualImpl
+        blksz = pers_impl.BLOCK_SIZE
 
-        index_name = pers_impl.IDX_NAME
-        index_off = pers_impl.IDX_OFFSET
+        index_name = pers_impl.INDEX_KEY
+        index_off = pers_impl.INDEX_OFFSET
         hash_off = pers_impl.HASH_OFFSET
         data_off = pers_impl.DATA_OFFSET
+        cconf_off = pers_impl.DATA_OFFSET + 4096
 
-        assg_len_name = pers_impl.ASSG_LEN_NAME
-        assg_off_name = pers_impl.ASSG_OFF_NAME
-        nodes_len_name = pers_impl.NODES_LEN_NAME
-        nodes_off_name = pers_impl.NODES_OFF_NAME
-        res_len_name = pers_impl.RES_LEN_NAME
-        res_off_name = pers_impl.RES_OFF_NAME
-        cconf_len_name = pers_impl.CCONF_LEN_NAME
-        cconf_off_name = pers_impl.CCONF_OFF_NAME
-        common_len_name = pers_impl.COMMON_LEN_NAME
-        common_off_name = pers_impl.COMMON_OFF_NAME
+        assg_len_name = pers_impl.ASSG_LEN_KEY
+        assg_off_name = pers_impl.ASSG_OFF_KEY
+        nodes_len_name = pers_impl.NODES_LEN_KEY
+        nodes_off_name = pers_impl.NODES_OFF_KEY
+        res_len_name = pers_impl.RES_LEN_KEY
+        res_off_name = pers_impl.RES_OFF_KEY
+        cconf_len_name = pers_impl.CCONF_LEN_KEY
+        cconf_off_name = pers_impl.CCONF_OFF_KEY
+        common_len_name = pers_impl.COMMON_LEN_KEY
+        common_off_name = pers_impl.COMMON_OFF_KEY
 
         drbdctrl = None
         try:
             data_hash = drbdmanage.utils.DataHash()
 
+            data_str = "{}\n"
+            cconf_str = "{\n    \"serial\": \"0\"\n}"
+            cconf_len = len(cconf_str)
             index_str = (
                 "{\n"
                 "    \"" + index_name + "\": {\n"
@@ -3374,23 +3423,24 @@ Confirm:
                 "        \"" + res_len_name + "\": 3,\n"
                 "        \"" + res_off_name + "\": "
                 + str(data_off) + ",\n"
-                "        \"" + cconf_len_name + "\": 3,\n"
+                "        \"" + cconf_len_name + "\": " + str(cconf_len) + ",\n"
                 "        \"" + cconf_off_name + "\": "
-                + str(data_off) + ",\n"
+                + str(cconf_off) + ",\n"
                 "        \"" + common_len_name + "\": 3,\n"
                 "        \"" + common_off_name + "\": "
                 + str(data_off) + "\n"
                 "    }\n"
                 "}\n"
             )
-            data_str = "{}\n"
 
             # One update of the data_hash for every section that has an
             # index entry
             pos = 0
-            while pos < 5:
+            while pos < 3:
                 data_hash.update(data_str)
                 pos += 1
+            data_hash.update(cconf_str)
+            data_hash.update(data_str)
 
             drbdctrl = open(drbdctrl_file, "rb+")
             zeroblk = bytearray('\0' * blksz)
@@ -3412,14 +3462,20 @@ Confirm:
 
             drbdctrl.seek(index_off)
             drbdctrl.write(index_str)
+
             drbdctrl.seek(data_off)
             drbdctrl.write(data_str)
+
+            drbdctrl.seek(cconf_off)
+            drbdctrl.write(cconf_str)
+
             drbdctrl.seek(hash_off)
             drbdctrl.write(
                 "{\n"
                 "    \"hash\": \"" + data_hash.get_hex_hash() + "\"\n"
                 "}\n"
             )
+
             fn_rc = 0
         except IOError as ioexc:
             sys.stderr.write(

@@ -21,6 +21,7 @@
 import drbdmanage.snapshots.snapshots as snaps
 
 from drbdmanage.persistence import GenericPersistence
+from drbdmanage.exceptions import PersistenceException
 
 
 class DrbdSnapshotPersistence(GenericPersistence):
@@ -53,7 +54,7 @@ class DrbdSnapshotPersistence(GenericPersistence):
                 get_serial_fn, None, init_props
             )
         except Exception as exc:
-            raise exc
+            raise PersistenceException
         return snapshot
 
 
@@ -115,7 +116,7 @@ class DrbdSnapshotAssignmentPersistence(GenericPersistence):
                 )
                 snaps_assignment.init_add_snaps_vol_state(snaps_vol_state)
         except Exception as exc:
-            raise exc
+            raise PersistenceException
         return snaps_assignment
 
 
