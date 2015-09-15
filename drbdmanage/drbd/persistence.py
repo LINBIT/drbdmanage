@@ -51,7 +51,7 @@ def persistence_impl(ref_server):
 
     @return: persistence layer object
     """
-    return PersistenceImpl(ref_server)
+    return PersistenceDualImpl(ref_server)
 
 
 class PersistenceImplDummy(object):
@@ -82,6 +82,782 @@ class PersistenceImplDummy(object):
 
     def open(self, modify):
         return True
+
+
+class PersistenceDualImpl(object):
+    """
+    Persistence layer for dual drbdmanage control volumes
+    """
+
+    """
+    Persistence layer for the drbdmanage control volume
+    """
+
+    # crc32 of "drbdmanage control volume"
+    PERSISTENCE_MAGIC   = "\x1a\xdb\x98\xa2";
+
+    # serial number, big-endian
+    PERSISTENCE_VERSION = "\x00\x00\x00\x02";
+
+    _load_file     = None
+    _save_file     = None
+    _writable      = False
+
+    _data_hash     = None
+    _load_hash     = None
+    _server        = None
+
+    INDEX_KEY      = "index"
+    NODES_OFF_KEY  = "nodes_off"
+    NODES_LEN_KEY  = "nodes_len"
+    RES_OFF_KEY    = "res_off"
+    RES_LEN_KEY    = "res_len"
+    ASSG_OFF_KEY   = "assg_off"
+    ASSG_LEN_KEY   = "assg_len"
+    CCONF_OFF_KEY  = "cconf_off"
+    CCONF_LEN_KEY  = "cconf_len"
+    COMMON_OFF_KEY = "common_off"
+    COMMON_LEN_KEY = "common_len"
+    HASH_KEY       = "hash"
+
+    BLOCK_SIZE     = 0x1000 # 4096
+    MAGIC_OFFSET   = 0x1000 # 4096
+    VERSION_OFFSET = 0x1004 # 4100
+    INDEX_OFFSET   = 0x1800 # 6144
+    INDEX_SIZE     =  0x400 # 1024
+    HASH_OFFSET    = 0x1C00 # 6400
+    HASH_SIZE      = 0x0100 #  256
+    DATA_OFFSET    = 0x2000 # 8192
+    ZERO_FILL_SIZE = 0x0400 # 1024
+
+    # MMAP_BUFFER_SIZE: 1048576 == 1 MiB
+    MMAP_BUFFER_SIZE = 0x100000
+
+    # Linux specific ioctl()/fcntl() constant
+    # FIXME: That constant should probably not be here, but there does not
+    #        seem to be a good way to get it otherwise
+    BLKFLSBUF = 0x00001261 # <include/linux/fs.h>
+
+    # fail counter for attempts to open the config file (CONF_FILE)
+    MAX_FAIL_COUNT = 10
+
+    # wait 2 seconds before every open() retry if the file was not found
+    ENOENT_REOPEN_TIMER = 2
+
+    # wait at least half a second between open() retries
+    MIN_REOPEN_TIMER = 0.5
+
+
+    def __init__(self, ref_server):
+        self._server = ref_server
+
+
+    def open(self, modify):
+        """
+        Open the persistent storage for reading or writing, depending on
+        the modify flag. If (modify == True), open for writing, otherwise
+        open readonly.
+        """
+        fn_rc = False
+        fail_ctr = 0
+        file_0 = None
+        file_1 = None
+
+        # Prevent leaking file descriptors due to double open()
+        if self._load_file is not None or self._save_file is not None:
+            # Log the error
+            logging.error(
+                "PersistenceDualImpl: open(): "
+                "Double open() detected, this is a programming error. "
+                "Please report this problem to the developers."
+            )
+            # Recover and continue
+            self.close()
+
+        try:
+            while (fail_ctr < self.MAX_FAIL_COUNT and
+                   (file_0 is None or file_1 is None)):
+                try:
+                    # A writable file must be opened first, otherwise, multiple
+                    # nodes may succeed with opening the read-only volume first,
+                    # thereby deadlocking write-access by any of the nodes
+                    if file_0 is None:
+                        file_0 = self._open_control_volume(drbdmanage.consts.DRBDCTRL_DEV_0, modify)
+                    if file_1 is None:
+                        file_1 = self._open_control_volume(drbdmanage.consts.DRBDCTRL_DEV_1, modify)
+
+                    self._check_magic(file_0)
+                    self._check_magic(file_1)
+
+                    self._check_version(file_0)
+                    self._check_version(file_1)
+                except (OSError, IOError) as error:
+                    secs = 0
+                    if error.errno == errno.ENOENT:
+                        secs = PersistenceDualImpl.ENOENT_REOPEN_TIMER
+                    else:
+                        rnd_byte = os.urandom(1)
+                        secs = float(ord(rnd_byte)) / 100 + PersistenceDualImpl.MIN_REOPEN_TIMER
+                    time.sleep(secs)
+                fail_ctr += 1
+            # end while loop
+
+            # If opening the second file failed, close the first one
+            # If opening the first one failed, there would not have
+            # been an attempt to open the second one anyway
+            if file_0 is not None and file_1 is None:
+                try:
+                    self._close_file(file_0)
+                    file_0 = None
+                except:
+                    pass
+            elif file_0 is not None and file_1 is not None:
+                # Select from which file to load data
+                # and to which file to save data
+                load_file, load_hash, save_file = self._order_files(file_0, file_1)
+
+                # Assign the instance's save and load files
+                # TODO: The load file can be downgraded to read-only access
+                if modify:
+                    self._save_file = save_file
+                else:
+                    self._close_file(save_file)
+                    self._save_file = None
+                self._load_file = load_file
+                self._load_hash = load_hash
+
+                self._writable = modify
+                fn_rc = True
+        except PersistenceException:
+            self._close_file(file_0)
+            self._close_file(file_1)
+        return fn_rc
+
+
+    def close(self):
+        """
+        Closes the persistent storage
+
+        Can be called multiple times and/or no matter whether the persistent
+        storage is actually open without causing any error.
+        """
+        self._close_file(self._load_file)
+        self._close_file(self._save_file)
+        self._load_file = None
+        self._save_file = None
+        self._writable = False
+        self._data_hash = None
+        self._load_hash = None
+
+
+    def _close_file(self, drbdctrl_file):
+        if drbdctrl_file is not None:
+            if self._writable:
+                try:
+                    drbdctrl_file.flush()
+                except IOError:
+                    pass
+                try:
+                    os.fsync(drbdctrl_file.fileno())
+                except OSError:
+                    pass
+            try:
+                drbdctrl_file.close()
+            except IOError:
+                pass
+
+
+    def load(self, objects_root):
+        """
+        Loads the configuration from the drbdmanage control volume
+
+        The persistent storage must have been opened before calling load().
+        See open().
+
+        @raise   PersistenceException: on I/O error
+        @raise   IOError: if no file descriptor is open
+        """
+        if self._load_file is not None:
+            try:
+                load_file = self._load_file
+                index = self._load_index(load_file)
+
+                # Get data section offsets and lengths
+
+                # Offset & length: Nodes section
+                nodes_off = index[PersistenceDualImpl.NODES_OFF_KEY]
+                nodes_len = index[PersistenceDualImpl.NODES_LEN_KEY]
+
+                # Offset & length: Resources section
+                res_off = index[PersistenceDualImpl.RES_OFF_KEY]
+                res_len = index[PersistenceDualImpl.RES_LEN_KEY]
+
+                # Offset & length: Assignments section
+                assg_off = index[PersistenceDualImpl.ASSG_OFF_KEY]
+                assg_len = index[PersistenceDualImpl.ASSG_LEN_KEY]
+
+                # Offset & length: Cluster configuration section
+                cconf_off = index[PersistenceDualImpl.CCONF_OFF_KEY]
+                cconf_len = index[PersistenceDualImpl.CCONF_LEN_KEY]
+
+                # Offset & length: Common configuration section
+                common_off = index[PersistenceDualImpl.COMMON_OFF_KEY]
+                common_len = index[PersistenceDualImpl.COMMON_LEN_KEY]
+
+                nodes_con  = self._import_container(load_file, nodes_off, nodes_len)
+                res_con    = self._import_container(load_file, res_off, res_len)
+                assg_con   = self._import_container(load_file, assg_off, assg_len)
+                cconf_con  = self._import_container(load_file, cconf_off, cconf_len)
+                common_con = self._import_container(load_file, common_off, common_len)
+
+                # Cache the currently loaded assignment objects
+                # (Required later to figure out which assignments have been added or
+                # removed after reloading the configuration)
+                nodes_key = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
+                nodes = objects_root[nodes_key]
+
+                assg_map_cache = {}
+                for node in nodes.itervalues():
+                    node_assg_map = {}
+                    for assg in node.iterate_assignments():
+                        node_assg_map[assg.get_resource().get_name()] = assg
+                    if len(node_assg_map) > 0:
+                        assg_map_cache[node.get_name()] = node_assg_map
+
+                # Load nodes
+                loaded_nodes = {}
+                for properties in nodes_con.itervalues():
+                    node = DrbdNodePersistence.load(
+                        properties,
+                        self._server.get_serial
+                    )
+                    loaded_nodes[node.get_name()] = node
+
+                # Load resources
+                loaded_resources = {}
+                for properties in res_con.itervalues():
+                    resource = DrbdResourcePersistence.load(
+                        properties,
+                        self._server.get_serial
+                    )
+                    loaded_resources[resource.get_name()] = resource
+
+                # Load assignments
+                for properties in assg_con.itervalues():
+                    assignment = AssignmentPersistence.load(
+                        properties, loaded_nodes, loaded_resources,
+                        self._server.get_serial
+                    )
+
+                # Reestablish assignments and snapshot assignments signals
+                for node in loaded_nodes.itervalues():
+                    node_name = node.get_name()
+                    node_assg_map = assg_map_cache.get(node_name)
+                    for cur_assg in node.iterate_assignments():
+                        res_name = cur_assg.get_resource().get_name()
+                        prev_assg = None
+                        if node_assg_map is not None:
+                            prev_assg = node_assg_map.get(res_name)
+
+                        if prev_assg is not None:
+                            # Assignment was present in the previous configuration
+                            signal = prev_assg.get_signal()
+                            cur_assg.set_signal(signal)
+                            del node_assg_map[res_name]
+                            # If the current state or target state of that assignment
+                            # has changed, send out a change notification
+                            if (cur_assg.get_cstate() != prev_assg.get_cstate() or
+                                cur_assg.get_tstate() != prev_assg.get_tstate()):
+                                # cstate or tstate changed
+                                cur_assg.notify_changed()
+
+                            # Collect the previous snapshot assignments
+                            prev_snaps_assg_map = {}
+                            for snaps_assg in prev_assg.iterate_snaps_assgs():
+                                snaps = snaps_assg.get_snapshot()
+                                snaps_name = snaps.get_name()
+                                prev_snaps_assg_map[snaps_name] = snaps_assg
+
+                            # Cross-check for changes (creation/removal) of
+                            # snapshot assignments
+                            for cur_snaps_assg in cur_assg.iterate_snaps_assgs():
+                                cur_snaps = cur_snaps_assg.get_snapshot()
+                                cur_snaps_name = cur_snaps.get_name()
+                                prev_snaps_assg = prev_snaps_assg_map.get(cur_snaps_name)
+
+                                # Transfer the existing signal or create a new signal
+                                # for the snapshot assignment
+                                signal = None
+                                if prev_snaps_assg is not None:
+                                    del prev_snaps_assg_map[cur_snaps_name]
+                                    # Transfer the signal from the previous configuration's
+                                    # snapshot assignment
+                                    signal = prev_snaps_assg.get_signal()
+                                    cur_snaps_assg.set_signal(signal)
+                                    # If the current state or target state of that
+                                    # snapshot assignment has changed, send out
+                                    # a change notification
+                                    if (cur_snaps_assg.get_cstate() != prev_snaps_assg.get_cstate() or
+                                        cur_snaps_assg.get_tstate() != prev_snaps_assg.get_tstate()):
+                                        # cstate or tstate change
+                                        cur_snaps_assg.notify_changed()
+                                else:
+                                    # Create a new signal for the newly present
+                                    # snapshot assignment
+                                    signal = self._server.create_signal(
+                                        "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                                    )
+                                    cur_snaps_assg.set_signal(signal)
+
+                            # Send remove signals for those snapshot assignments that
+                            # existed in the previous configuration but do no longer
+                            # exist in the current configuration
+                            for prev_snaps_assg in prev_snaps_assg_map.itervalues():
+                                prev_snaps_assg.notify_removed()
+                        else:
+                            # Assignment was not present in the previous configuration
+                            # (e.g. it was created by another node)
+                            signal = self._server.create_signal(
+                                "assignments/" + node_name + "/" + res_name
+                            )
+                            cur_assg.set_signal(signal)
+                            # Create signals for the snapshot assignments
+                            for snaps_assg in cur_assg.iterate_snaps_assgs():
+                                snaps = snaps_assg.get_snapshot()
+                                snaps_name = snaps.get_name()
+                                signal = self._server.create_signal(
+                                    "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                                )
+                                snaps_assg.set_signal(signal)
+                    if node_assg_map is not None and len(node_assg_map) == 0:
+                        del assg_map_cache[node_name]
+                for node_assg_map in assg_map_cache.itervalues():
+                    for prev_assg in node_assg_map.itervalues():
+                        prev_assg.notify_removed()
+
+                # Load the cluster configuration
+                loaded_cluster_conf = propscon.PropsContainer(None, None, cconf_con)
+                loaded_serial_gen = loaded_cluster_conf.new_serial_gen()
+
+                # Load the common configuration
+                loaded_common_conf = DrbdCommonPersistence.load(
+                    common_con, self._server.get_serial
+                )
+
+                # Update the server's object directory
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]     = loaded_nodes
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME] = loaded_resources
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_SGEN_NAME]      = loaded_serial_gen
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]     = loaded_cluster_conf
+                objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]    = loaded_common_conf
+                # NOTE: Caller must update the server's objects directory cache
+
+                # Quorum: Clear the quorum-ignore flag on each node that is
+                #         currently connected and update the number of
+                #         expected nodes
+                quorum = self._server.get_quorum()
+                quorum.readjust_qignore_flags()
+                quorum.readjust_full_member_count()
+            except PersistenceException as pers_exc:
+                # Rethrow
+                raise pers_exc
+            except Exception as exc:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                logging.error(
+                    "PersistenceDualImpl: Cannot load configuration, Exception=%s"
+                    % (str(exc_type))
+                )
+                logging.debug("*** begin stack trace")
+                for line in traceback.format_tb(exc_tb):
+                    logging.debug("    %s" % (line))
+                logging.debug("*** end stack trace")
+                raise PersistenceException
+        else:
+            logging.debug("PersistenceDualImpl: load(): source file is not open")
+            raise PersistenceException
+
+
+    def save(self, objects_root):
+        """
+        Saves the configuration to the drbdmanage control volume
+
+        The persistent storage must have been opened for writing before
+        calling save(). See open().
+
+        @raise   PersistenceException: on I/O error
+        @raise   IOError: if no writable file descriptor is open
+        """
+        if self._save_file is not None:
+            try:
+                save_file = self._save_file
+
+                nodes        = objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]
+                resources    = objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME]
+                cluster_conf = objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]
+                common_conf  = objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]
+
+                data_hash = DataHash()
+
+                # Prepare nodes and assignments containers
+                nodes_con = {}
+                assg_con = {}
+                for node in nodes.itervalues():
+                    DrbdNodePersistence(node).save(nodes_con)
+                    for assg in node.iterate_assignments():
+                        AssignmentPersistence(assg).save(assg_con)
+
+                # Prepare resources container
+                res_con = {}
+                for resource in resources.itervalues():
+                    DrbdResourcePersistence(resource).save(res_con)
+
+                # Prepare cluster configuration container
+                cluster_conf_con = cluster_conf.get_all_props()
+
+                # Prepare common configuration container
+                common_conf_con = {}
+                DrbdCommonPersistence(common_conf).save(common_conf_con)
+
+                save_file.seek(PersistenceDualImpl.DATA_OFFSET)
+
+                nodes_off, nodes_len   = self._export_container(save_file, nodes_con, data_hash)
+                res_off, res_len       = self._export_container(save_file, res_con, data_hash)
+                assg_off, assg_len     = self._export_container(save_file, assg_con, data_hash)
+                cconf_off, cconf_len   = self._export_container(save_file, cluster_conf_con, data_hash)
+                common_off, common_len = self._export_container(save_file, common_conf_con, data_hash)
+
+                index_con = {
+                    PersistenceDualImpl.INDEX_KEY: {
+                        PersistenceDualImpl.NODES_OFF_KEY:  nodes_off,
+                        PersistenceDualImpl.NODES_LEN_KEY:  nodes_len,
+                        PersistenceDualImpl.RES_OFF_KEY:    res_off,
+                        PersistenceDualImpl.RES_LEN_KEY:    res_len,
+                        PersistenceDualImpl.ASSG_OFF_KEY:   assg_off,
+                        PersistenceDualImpl.ASSG_LEN_KEY:   assg_len,
+                        PersistenceDualImpl.CCONF_OFF_KEY:  cconf_off,
+                        PersistenceDualImpl.CCONF_LEN_KEY:  cconf_len,
+                        PersistenceDualImpl.COMMON_OFF_KEY: common_off,
+                        PersistenceDualImpl.COMMON_LEN_KEY: common_len
+                    }
+                }
+                self._save_index(save_file, index_con)
+
+                self._update_stored_hash(save_file, data_hash.get_hex_hash())
+            except PersistenceException as pers_exc:
+                # Rethrow
+                raise pers_exc
+            except Exception as exc:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                logging.error(
+                    "cannot save data tables, Exception=%s"
+                    % (str(exc_type))
+                )
+                logging.debug("*** begin stack trace")
+                for line in traceback.format_tb(exc_tb):
+                    logging.debug("    %s" % (line))
+                logging.debug("*** end stack trace")
+                raise PersistenceException
+        else:
+            logging.debug("PersistenceDualImpl: save(): destination file is not open")
+            raise PersistenceException
+
+
+    def get_hash_obj(self):
+        """
+        Returns the DataHash object used by this instance
+
+        The DataHash object that is used to calculate the hash code of the
+        configuration is returned.
+
+        @return: DataHash object. See drbdmanage.utils
+        """
+        return self._data_hash
+
+
+    def get_stored_hash(self):
+        """
+        Retrieves the hash code of the stored configuration
+
+        The hash code stored with the configuration on the drbdmanage
+        control volume is read and returned without updating the
+        hash code currently known to the server.
+        Used to compare the server's known hash code with the hash code on
+        the control volume, to detect whether the configuration has changed.
+
+        @return: hash code from the drbdmanage control volume
+        @rtype:  str
+        """
+        if self._load_file is None:
+            raise PersistenceException
+        return self._load_hash
+
+
+    def _open_control_volume(self, drbdctrl_file, modify):
+        file_stream = None
+        try:
+            file_fd = None
+            mode    = None
+            if modify:
+                file_fd = os.open(drbdctrl_file, os.O_RDWR)
+                mode    = "r+"
+            else:
+                file_fd = os.open(drbdctrl_file, os.O_RDONLY)
+                mode    = "r"
+
+            try:
+                fcntl.ioctl(file_fd, PersistenceDualImpl.BLKFLSBUF)
+            except (OSError, IOError):
+                pass
+
+            file_stream = os.fdopen(file_fd, mode)
+        except (OSError, IOError) as error:
+            if error.errno == errno.ENOENT:
+                logging.error(
+                    "Cannot open control volume '%s': "
+                    "Object not found" % (drbdctrl_file)
+                )
+            raise error
+        finally:
+            if file_stream is None and file_fd is not None:
+                try:
+                    os.close(file_fd)
+                except (OSError, IOError):
+                    pass
+        return file_stream
+
+
+    def _check_magic(self, drbdctrl_file):
+        drbdctrl_file.seek(PersistenceDualImpl.MAGIC_OFFSET)
+        magic = drbdctrl_file.read(len(PersistenceDualImpl.PERSISTENCE_MAGIC))
+        if magic != PersistenceDualImpl.PERSISTENCE_MAGIC:
+            logging.error(
+                "Unusable control volume, "
+                "the control volume magic number is missing"
+            )
+            raise PersistenceException
+
+
+    def _check_version(self, drbdctrl_file):
+        drbdctrl_file.seek(PersistenceDualImpl.VERSION_OFFSET)
+        version = drbdctrl_file.read(len(PersistenceDualImpl.PERSISTENCE_VERSION))
+        if version != PersistenceDualImpl.PERSISTENCE_VERSION:
+            logging.error(
+                "Can not load data tables, "
+                "control volume version does not match server version"
+            )
+            raise PersistenceException
+
+
+    def _order_files(self, file_0, file_1):
+        load_file = None
+        load_hash = None
+        save_file = None
+        try:
+            index_0 = self._load_index(file_0)
+            index_1 = self._load_index(file_1)
+
+            serial_0, stored_hash_0 = self._get_serial_integrity_check(file_0, index_0)
+            serial_1, stored_hash_1 = self._get_serial_integrity_check(file_1, index_1)
+
+            if serial_0 is not None and serial_1 is not None:
+                if serial_0 < serial_1:
+                    save_file = file_0
+                    load_file = file_1
+                    load_hash = stored_hash_1
+                else:
+                    load_file = file_0
+                    load_hash = stored_hash_0
+                    save_file = file_1
+            else:
+                if serial_0 is None and serial_1 is None:
+                    # Both volumes are invalid, cannot load any data,
+                    # but may attempt to save the current state by
+                    # overwriting an arbitrarily selected damaged volume
+                    save_file = file_0
+                    logging.error(
+                        "None of both control volumes contains valid data, "
+                        "loading is disabled"
+                    )
+                else:
+                    if serial_0 is None:
+                        save_file = file_0
+                        load_file = file_1
+                        load_hash = stored_hash_1
+                    else:
+                        load_file = file_0
+                        load_hash = stored_hash_0
+                        save_file = file_1
+        except (OSError, IOError):
+            raise PersistenceException
+        return load_file, load_hash, save_file
+
+
+    def _load_index(self, drbdctrl_file):
+        drbdctrl_file.seek(PersistenceDualImpl.INDEX_OFFSET)
+        index_data = self._null_trunc(drbdctrl_file.read(PersistenceDualImpl.INDEX_SIZE))
+        index_con = self._json_to_container(index_data)
+        index = index_con[PersistenceDualImpl.INDEX_KEY]
+        return index
+
+
+    def _save_index(self, drbdctrl_file, index_con):
+        drbdctrl_file.seek(PersistenceDualImpl.INDEX_OFFSET)
+        save_data = self._container_to_json(index_con)
+        drbdctrl_file.write(save_data)
+        drbdctrl_file.write(chr(0))
+        diff_size = PersistenceDualImpl.INDEX_SIZE - len(save_data) - 1
+        if diff_size > 0:
+            drbdctrl_file.write(diff_size * '\0')
+
+
+    def _import_data(self, drbdctrl_file, offset, length):
+        drbdctrl_file.seek(offset)
+        load_data = self._null_trunc(drbdctrl_file.read(length))
+        return load_data
+
+
+    def _export_data(self, drbdctrl_file, save_data):
+        offset = drbdctrl_file.tell()
+        drbdctrl_file.write(save_data)
+        length = drbdctrl_file.tell() - offset
+        drbdctrl_file.write(chr(0))
+        self._align_zero_fill(drbdctrl_file)
+        return offset, length
+
+
+    def _import_container(self, drbdctrl_file, offset, length):
+        load_data = self._import_data(drbdctrl_file, offset, length)
+        container = self._json_to_container(load_data)
+        return container
+
+
+    def _export_container(self, drbdctrl_file, container, data_hash):
+        save_data = self._container_to_json(container)
+        data_hash.update(save_data)
+        offset, length = self._export_data(drbdctrl_file, save_data)
+        return offset, length
+
+
+    def _align_zero_fill(self, drbdctrl_file):
+        """
+        Fills the file with zero bytes up to the next block boundary
+
+        The file is filled with zero bytes from the current file offset up to
+        the next block boundary as specified by BLOCK_SIZE.
+        """
+        offset = drbdctrl_file.tell()
+        if offset % PersistenceDualImpl.BLOCK_SIZE != 0:
+            fill_buffer = ('\0' * PersistenceDualImpl.ZERO_FILL_SIZE)
+            upper_bound  = ((offset / PersistenceDualImpl.BLOCK_SIZE) + 1) * PersistenceDualImpl.BLOCK_SIZE
+            diff = upper_bound - offset
+            fill_count = diff / PersistenceDualImpl.ZERO_FILL_SIZE
+            counter = 0
+            while counter < fill_count:
+                counter += 1
+                drbdctrl_file.write(fill_buffer)
+            diff -= (PersistenceDualImpl.ZERO_FILL_SIZE * counter)
+            drbdctrl_file.write(fill_buffer[:diff])
+
+
+    def _null_trunc(self, data):
+        """
+        Returns the supplied data truncated at the first zero byte
+
+        Used for sanitizing JSON strings read from the persistent storage
+        before passing them to the JSON parser, because the JSON parser does
+        not like to see any data behind the end of a JSON string.
+
+        @return: data truncated at the first zero byte
+        @rtype:  str
+        """
+        index = data.find(chr(0))
+        if index != -1:
+            data = data[:index]
+        return data
+
+
+    def _update_stored_hash(self, drbdctrl_file, hex_hash):
+        hash_con = {
+            PersistenceDualImpl.HASH_KEY: hex_hash
+        }
+        hash_json = self._container_to_json(hash_con)
+        drbdctrl_file.seek(PersistenceDualImpl.HASH_OFFSET)
+        drbdctrl_file.write(hash_json)
+        drbdctrl_file.write(chr(0))
+
+
+    def _get_serial_integrity_check(self, drbdctrl_file, index):
+        serial = None
+        stored_hash = None
+        try:
+            data_hash = drbdmanage.utils.DataHash()
+
+            # Hash nodes data
+            load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.NODES_OFF_KEY],
+                                          index[PersistenceDualImpl.NODES_LEN_KEY])
+            data_hash.update(load_data)
+
+            # Hash resources data
+            load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.RES_OFF_KEY],
+                                          index[PersistenceDualImpl.RES_LEN_KEY])
+            data_hash.update(load_data)
+
+            # Hash assignments data
+            load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.ASSG_OFF_KEY],
+                                          index[PersistenceDualImpl.ASSG_LEN_KEY])
+            data_hash.update(load_data)
+
+            # Hash cluster configuration data
+            load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.CCONF_OFF_KEY],
+                                          index[PersistenceDualImpl.CCONF_LEN_KEY])
+            data_hash.update(load_data)
+            cluster_conf = self._json_to_container(load_data)
+
+            # Hash common configuration data
+            load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.COMMON_OFF_KEY],
+                                          index[PersistenceDualImpl.COMMON_LEN_KEY])
+            data_hash.update(load_data)
+
+            # Compute the hash value
+            computed_hash = data_hash.get_hex_hash()
+
+            # Load the stored hash value
+            load_data = self._import_data(drbdctrl_file, PersistenceDualImpl.HASH_OFFSET,
+                                          PersistenceDualImpl.HASH_SIZE)
+            stored_hash_con = self._json_to_container(load_data)
+            stored_hash = stored_hash_con[PersistenceDualImpl.HASH_KEY]
+
+            if stored_hash == computed_hash:
+                serial = int(cluster_conf[drbdmanage.consts.SERIAL])
+        except (OSError, IOError, KeyError, ValueError, TypeError):
+            pass
+        return serial, stored_hash
+
+
+    def _container_to_json(self, container):
+        """
+        Serializes a dictionary into a JSON string
+
+        Indent level is 4 spaces, keys are sorted.
+
+        @param   container: the data collection to serialize into a JSON string
+        @type    container: dict
+        @return: JSON representation of the container
+        @rtype:  str
+        """
+        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
+
+
+    def _json_to_container(self, json_doc):
+        """
+        Deserializes a JSON string into a dictionary
+
+        @param   json_doc: the JSON string to deserialize
+        @type    json_doc: str (or compatible)
+        @return: data collection (key/value) deserialized from the JSON string
+        @rtype:  dict
+        """
+        return json.loads(json_doc)
 
 
 class PersistenceImpl(object):
@@ -892,8 +1668,7 @@ class DrbdCommonPersistence(GenericPersistence):
             init_props = properties.get("props")
             common = DrbdCommon(get_serial_fn, None, init_props)
         except Exception as exc:
-            # FIXME
-            raise exc
+            raise PersistenceException
         return common
 
 
@@ -939,8 +1714,7 @@ class DrbdNodePersistence(GenericPersistence):
                 init_props
             )
         except Exception as exc:
-            # FIXME
-            raise exc
+            raise PersistenceException
         return node
 
 
@@ -1012,7 +1786,7 @@ class DrbdResourcePersistence(GenericPersistence):
                 )
                 resource.init_add_snapshot(snapshot)
         except Exception as exc:
-            raise exc
+            raise PersistenceException
         return resource
 
 
@@ -1055,8 +1829,7 @@ class DrbdVolumePersistence(GenericPersistence):
                 init_props
             )
         except Exception as exc:
-            # FIXME
-            raise exc
+            raise PersistenceException
         return volume
 
 
@@ -1155,8 +1928,7 @@ class AssignmentPersistence(GenericPersistence):
                 snapshot = snaps_assg.get_snapshot()
                 snapshot.init_add_snaps_assg(snaps_assg)
         except Exception as exc:
-            # FIXME
-            raise exc
+            raise PersistenceException
         return assignment
 
 
@@ -1197,6 +1969,5 @@ class DrbdVolumeStatePersistence(GenericPersistence):
                 get_serial_fn, None, init_props
             )
         except Exception as exc:
-            # FIXME
-            raise exc
+            raise PersistenceException
         return vol_state

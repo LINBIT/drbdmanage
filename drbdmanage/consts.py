@@ -22,7 +22,7 @@
 Global constants for drbdmanage
 """
 
-DM_VERSION = "0.49"
+DM_VERSION = "0.50"
 try:
     from drbdmanage.consts_githash import DM_GITHASH
 except:
@@ -33,6 +33,11 @@ NODE_NAME           = "node_name"
 NODE_ADDR           = "addr"
 NODE_AF             = "addrfam"
 NODE_ID             = "node_id"
+NODE_VOL_0          = "drbdctrl_0"
+NODE_VOL_1          = "drbdctrl_1"
+NODE_ADDRESS        = "address"
+NODE_PORT           = "drbdctrl_port"
+NODE_SECRET         = "drbdctrl_secret"
 NODE_SITE           = "site"
 NODE_POOLSIZE       = "node_poolsize"
 NODE_POOLFREE       = "node_poolfree"
@@ -71,6 +76,10 @@ DRBDCTRL_RES_FILE   = "drbdctrl.res"
 DRBDCTRL_DEV        = "/dev/drbd0"
 DEFAULT_VG          = "drbdpool"
 DRBDCTRL_RES_PATH   = "/etc/drbd.d/"
+DRBDCTRL_DEV_0      = "/dev/drbd0"
+DRBDCTRL_DEV_1      = "/dev/drbd1"
+DRBDCTRL_LV_NAME_0  = ".drbdctrl_0"
+DRBDCTRL_LV_NAME_1  = ".drbdctrl_1"
 
 SERVER_CONFFILE     = "/etc/drbdmanaged.cfg"
 KEY_DRBD_CONFPATH = "drbd-conf-path"

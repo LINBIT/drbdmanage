@@ -579,26 +579,26 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="sa{ss}ss",
+        in_signature="sa{ss}",
         out_signature="a(isa(ss))"
     )
-    def init_node(self, node_name, props, bdev, port):
+    def init_node(self, node_name, props):
         """
         D-Bus interface for DrbdManageServer.init_node(...)
         """
-        return self._server.init_node(node_name, props, bdev, port)
+        return self._server.init_node(node_name, props)
 
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="sss",
+        in_signature="a{ss}",
         out_signature="a(isa(ss))"
     )
-    def join_node(self, bdev, port, secret):
+    def join_node(self, props):
         """
         D-Bus interface for DrbdManageServer.join_node(...)
         """
-        return self._server.join_node(bdev, port, secret)
+        return self._server.join_node(props)
 
 
     @dbus.service.method(
