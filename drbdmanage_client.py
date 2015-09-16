@@ -1042,23 +1042,23 @@ class DrbdManage(object):
         return description
 
     def cmd_list(self, args):
-        print 'Use "help <command>" to get help for a specific command.\n'
-        print 'Available commands:'
+        sys.stdout.write('Use "help <command>" to get help for a specific command.\n\n')
+        sys.stdout.write('Available commands:\n')
         # import pprint
         # pp = pprint.PrettyPrinter()
         # pp.pprint(self._all_commands)
         for cmd in self._all_commands:
-            print '-', cmd[0],
+            sys.stdout.write("- " + cmd[0])
             if len(cmd) > 1:
-                print "(%s)" % (', '.join(cmd[1:])),
-            print
+                sys.stdout.write("(%s)" % (", ".join(cmd[1:])))
+            sys.stdout.write("\n")
 
     def cmd_interactive(self, args):
         all_cmds = [i for sl in self._all_commands for i in sl]
 
         # helper function
         def unknown(cmd):
-            print '\n' + 'Command "%s" not known!' % (cmd)
+            sys.stdout.write("\n" + "Command \"%s\" not known!\n" % (cmd))
             self.cmd_list(args)
 
         devnull = open(os.devnull, "w")
@@ -1086,7 +1086,7 @@ class DrbdManage(object):
                             unknown(cmd)
                 elif cmd in all_cmds:
                     sys.stderr = stderr
-                    print '\n' + 'Wrong synopsis. Use the command as follows:'
+                    sys.stdout.write("\nWrong synopsis. Use the command as follows:\n")
                     parsecatch(["help", cmd], stoprec=True)
                 else:
                     unknown(cmd)
@@ -1107,7 +1107,7 @@ class DrbdManage(object):
         self.cmd_list(args)
         while True:
             try:
-                print
+                sys.stdout.write("\n")
                 cmds = raw_input('> ').strip()
 
                 cmds = [cmd.strip() for cmd in cmds.split()]
@@ -1116,7 +1116,7 @@ class DrbdManage(object):
                 else:
                     parsecatch(cmds)
             except (EOFError, KeyboardInterrupt):  # raised by ctrl-d, ctrl-c
-                print  # additional newline, makes shell prompt happy
+                sys.stdout.write("\n") # additional newline, makes shell prompt happy
                 return
 
     def cmd_help(self, args):
@@ -2333,10 +2333,10 @@ class DrbdManage(object):
 
         try:
             res = fn(*params)
-            print json.dumps(res,
+            sys.stdout.write(json.dumps(res,
                              sort_keys=True,
                              indent=4,
-                             separators=(',', ': '))
+                             separators=(',', ': ')) + "\n")
         except dbus.DBusException as e:
             if e._dbus_error_name == 'org.freedesktop.DBus.Python.TypeError':
                 msg = re.sub(r'.*\n(TypeError:)', '\\1',
@@ -3049,16 +3049,16 @@ Confirm:
                 return True
             for o in option_type:
                 if line.find(o) != -1:
-                    print color + line.rstrip() + COLOR_NONE
+                    sys.stdout.write(color + line.rstrip() + COLOR_NONE + "\n")
                     return True
             return False
 
         for res_f in (common_file, res_file):
-            print res_f + ':'
+            sys.stdout.write(res_f + ":\n")
             with open(res_f) as f:
                 for line in f:
                     if line.find('{') != -1 or line.find('}') != -1:
-                        print line,
+                        sys.stdout.write(line + "\n")
                         continue
 
                     found = highlight(net_options, colors['net-options'], False)
@@ -3066,14 +3066,15 @@ Confirm:
                     found = highlight(peer_device_options, colors['peer-device-options'], found)
                     found = highlight(resource_options, colors['resource-options'], found)
                     if not found:
-                        print line,
-            print
+                        sys.stdout.write(line + "\n")
+            sys.stdout.write("\n")
 
-        print 'Legend:',
+        sys.stdout.write("Legend:\n")
         for k, v in colors.items():
-            print v + k + COLOR_NONE,
-        print '\n\nNote: Do not directly edit these auto-generated files as they will be overwritten.'
-        print 'Use the according drbdmange sub-commands to set/unset options.'
+            sys.stdout.write(v + k + COLOR_NONE + "\n")
+        sys.stdout.write("\n\nNote: Do not directly edit these auto-generated"
+                         "files as they will be overwritten.\n")
+        sys.stdout.write("Use the according drbdmange sub-commands to set/unset options.\n")
 
     def cmd_edit_config(self, args):
         import ConfigParser
@@ -3214,7 +3215,7 @@ Confirm:
 
         after = os.stat(tmpf).st_mtime
         if before == after:
-            print "Nothing to save, bye"
+            sys.stdout.write("Nothing to save, bye\n")
             sys.exit(0)
 
         try:
