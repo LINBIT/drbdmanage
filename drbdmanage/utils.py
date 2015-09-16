@@ -240,11 +240,11 @@ class Table():
             if not row[0]:  # print a separator
                 sep = '+' + '-' * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + '+'
                 if self.r_just and len(sep) < maxwidht:
-                    print '+' + '-' * (maxwidht - 2) + '+'
+                    sys.stdout.write('+' + '-' * (maxwidht - 2) + '+' + "\n")
                 else:
-                    print sep
+                    sys.stdout.write(sep)
             else:
-                print fstr.format(*row)
+                sys.stdout.write(fstr.format(*row) + "\n")
 
 
 # a wrapper for subprocess.check_output

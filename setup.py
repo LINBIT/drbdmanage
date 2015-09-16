@@ -23,6 +23,7 @@ Installer & Package creator for drbdmanage
 """
 
 import os, glob
+import sys
 
 from distutils.core import setup, Command
 
@@ -43,7 +44,6 @@ class CheckUpToDate(Command):
         self.cwd = os.getcwd()
 
     def run(self):
-        import sys
         version = get_version()
         try:
             with open("debian/changelog") as f:
@@ -100,7 +100,7 @@ class BuildManCommand(Command):
                     <para>
                        %s
                     </para>
-                    <para>For furter information see 
+                    <para>For furter information see
                         <citerefentry>
                         <refentrytitle>%s</refentrytitle>
                         <manvolnum>%s</manvolnum></citerefentry>
@@ -143,7 +143,7 @@ class BuildManCommand(Command):
                                    mansection + ".gz")
             if os.path.isfile(outfile):
                 continue
-            print "Generating %s ..." % (outfile)
+            sys.stdout.write("Generating %s ...\n" % (outfile))
             mangen = ["help2man", "-n", toplevel, '-s', mansection,
                       '--version-string=%s' % (get_version()), "-N",
                       '"./drbdmanage_client.py %s"' % (toplevel)]
