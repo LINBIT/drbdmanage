@@ -133,7 +133,7 @@ class DrbdManager(object):
                     logging.debug("DrbdManager: cannot open the "
                                   "control volume (read-only)")
 
-            if run_changes == True:
+            if run_changes:
                 # close the read-only stream, then lock and open the
                 # configuration for reading and writing
                 persist = self._server.begin_modify_conf()
@@ -141,13 +141,13 @@ class DrbdManager(object):
                     old_serial = self._server.peek_serial()
                     changed    = self.perform_changes()
                     new_serial = self._server.peek_serial()
-                    if (poke_cluster == True and new_serial == old_serial):
+                    if (poke_cluster and new_serial == old_serial):
                         # increase the serial number, implicitly changing the
                         # hash and thereby running requested changes on all
                         # cluster nodes
                         self._server.get_serial()
                         changed = True
-                    if changed == True:
+                    if changed:
                         logging.debug("DrbdManager: state changed, "
                                       "saving control volume data")
                         self._server.save_conf_data(persist)
