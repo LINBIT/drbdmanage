@@ -1,3 +1,28 @@
+drbdmanage (0.50-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * debian: changelog fixup
+  * utils: added cell colors
+  * client: add list-options command
+  * added release/bugfix policy
+  * client: Fixed indentation for 'list-options'
+  * provide saner VG defaults for plugins
+  * sites: allow net-options per site, rewrite config generation
+  * sites: show sites in 'list-nodes' subcommand
+  * client: add '--no-storage' to init subcommand
+  * sites: fixed connection/mesh generation
+  * doc: changed man pages prefix
+
+  [ Robert Altnoeder ]
+  * Conditionally colored state cells for node lists
+  * Conditionally colored state cells for resource, [...]
+  * Fix lost quorum if a node leaves when its qignore flag is already set
+  * Replaced Python2-style "print xyz..." statements with sys.stdout.write()
+  * Removed redundant comparisons of boolean values with True/Flase
+  * Implemented dual-redundant drbdmanage control volume
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 16 Sep 2015 16:43:18 +0200
+
 drbdmanage (0.49-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
