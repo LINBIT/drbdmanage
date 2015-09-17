@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+# -*- coding: utf-8 -*-
 """
     drbdmanage - management of distributed DRBD9 resources
     Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
@@ -226,21 +227,73 @@ class Table():
         self.table.append([None])
 
         # build format string
-        fstr = '|'
+        ctbl = {
+            'utf8': {
+                'tl': '╭',   # top left
+                'tr': '╮',   # top right
+                'bl': '╰',   # bottom left
+                'br': '╯',   # bottom right
+                'mr': '╡',   # middle right
+                'ml': '╞',   # middle left
+                'mdc': '┄',  # middle dotted connector
+                'msc': '─',  # middle straight connector
+                'pipe': '┊'
+            },
+            'ascii': {
+                'tl': '+',
+                'tr': '+',
+                'bl': '+',
+                'br': '+',
+                'mr': '|',
+                'ml': '|',
+                'mdc': '-',
+                'msc': '-',
+                'pipe': '|'
+            }
+        }
+
+        enc = 'ascii'
+        try:
+            import locale
+            if locale.getdefaultlocale()[1].lower() == 'utf-8':
+                enc = 'utf8'
+        except:
+            pass
+
+        # ## currently this is too dangerous
+        # 'st': OK
+        # 'terminology': FAIL
+        # 'xterm': OK
+        # 'urxvt': OK
+        # 'gnome-terminal': OK
+        # and this is on debian/stretch, don't want to know how broken ancient rhel5/6 terminals are...
+        enc = 'ascii'
+        #
+
+        fstr = ctbl[enc]['pipe']
         for idx, col in enumerate(self.header):
             if col['just_col'] == '>':
                 space = (maxwidht - sum(columnmax) + co_sum)
                 space_and_overhead = space - (len(self.header) * 3) - 2
                 if space_and_overhead >= 0:
-                    fstr += ' ' * space_and_overhead + '|'
+                    fstr += ' ' * space_and_overhead + ctbl[enc]['pipe']
 
-            fstr += ' {' + str(idx) + ':' + col['just_txt'] + str(columnmax[idx]) + '} |'
+            fstr += ' {' + str(idx) + ':' + col['just_txt'] + str(columnmax[idx]) + '} ' + ctbl[enc]['pipe']
 
-        for row in self.table:
+        for idx, row in enumerate(self.table):
             if not row[0]:  # print a separator
-                sep = '+' + '-' * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + '+'
+                if idx == 0:
+                    l, m, r = ctbl[enc]['tl'], ctbl[enc]['msc'], ctbl[enc]['tr']
+                elif idx == len(self.table) - 1:
+                    l, m, r = ctbl[enc]['bl'], ctbl[enc]['msc'], ctbl[enc]['br']
+                else:
+                    l, m, r = ctbl[enc]['ml'], ctbl[enc]['mdc'], ctbl[enc]['mr']
+                sep = l + m * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + r
+                if enc == 'utf8':  # should be save on non utf-8 too...
+                    sep = sep.decode('utf-8')
+
                 if self.r_just and len(sep) < maxwidht:
-                    sys.stdout.write('+' + '-' * (maxwidht - 2) + '+' + "\n")
+                    sys.stdout.write(l + m * (maxwidht - 2) + r + "\n")
                 else:
                     sys.stdout.write(sep)
             else:
