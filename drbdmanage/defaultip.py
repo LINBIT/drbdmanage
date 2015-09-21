@@ -3,7 +3,6 @@
 import socket
 import fcntl
 import struct
-import time
 
 
 def get_ip_address(ifname):
@@ -23,11 +22,15 @@ def get_interface_of_default_route():
     Reads the default gateway directly from /proc
     """
     interface = None
-    with open("/proc/net/route") as fh:
-        for line in fh:
-            fields = line.strip().split()
-            if fields[1] == '00000000' and int(fields[3], 16) & 2 != 0:
-                interface = fields[0]
+    try:  # might fail because '/proc/net/route' does not exist.
+        with open("/proc/net/route") as fh:
+            for line in fh:
+                fields = line.strip().split()
+                if fields[1] == '00000000' and int(fields[3], 16) & 2 != 0:
+                    interface = fields[0]
+    except:  # catch all, IOError is the most likely one (which is very unlikely) ;-)
+        pass
+
     return interface
 
 
