@@ -1,0 +1,9 @@
+[bdist_rpm]
+release = 1
+group = System Environment/Daemons
+packager = Robert Altnoeder <robert.altnoeder@linbit.com>
+vendor = LINBIT HA Solutions GmbH
+requires =
+  python-gobject2
+  dbus-1-python
+  drbd-utils >= 8.9.4

@@ -33,6 +33,7 @@ debrelease: up2date
 deb: up2date
 	debuild -i -us -uc -b
 
+# it is up to you (or the buildenv) to provide a distri specific setup.cfg
 rpm: up2date doc
 	python setup.py bdist_rpm
 
