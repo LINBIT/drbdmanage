@@ -169,6 +169,11 @@ class DrbdConnectionConf(object):
                         self._gen_connection_conf(node, node_mr, netopts)
 
     def generate_conf(self):
+        # check if it is a single node cluster
+        if len(self._all_nodes) == 1:
+            self._gen_mesh_conf(self._all_nodes, False)
+            return self._all_nodes
+
         # populate self._meshes with nodes that can be added to 'connection-mesh'
         # these are nodes that have the same site config and are not diskless
         # these meshes contain at least 2 nodes.
