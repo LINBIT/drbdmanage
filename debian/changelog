@@ -1,3 +1,10 @@
+drbdmanage (0.50-1.1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * Fix for single-node clusters.
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 28 Sep 2015 09:12:48 +0200
+
 drbdmanage (0.50-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
