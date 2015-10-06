@@ -295,7 +295,7 @@ class Table():
                 if self.r_just and len(sep) < maxwidht:
                     sys.stdout.write(l + m * (maxwidht - 2) + r + "\n")
                 else:
-                    sys.stdout.write(sep)
+                    sys.stdout.write(sep + "\n")
             else:
                 sys.stdout.write(fstr.format(*row) + "\n")
 
