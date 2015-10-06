@@ -151,7 +151,7 @@ class Table():
 
         columnmax = [0] * len(self.header)
         term_width, _ = get_terminal_size()
-        maxwidht = 110 if term_width > 110 else term_width
+        maxwidth = 110 if term_width > 110 else term_width
 
         # color overhead
         co = len(COLOR_RED) + len(COLOR_NONE)
@@ -273,7 +273,7 @@ class Table():
         fstr = ctbl[enc]['pipe']
         for idx, col in enumerate(self.header):
             if col['just_col'] == '>':
-                space = (maxwidht - sum(columnmax) + co_sum)
+                space = (maxwidth - sum(columnmax) + co_sum)
                 space_and_overhead = space - (len(self.header) * 3) - 2
                 if space_and_overhead >= 0:
                     fstr += ' ' * space_and_overhead + ctbl[enc]['pipe']
@@ -292,8 +292,8 @@ class Table():
                 if enc == 'utf8':  # should be save on non utf-8 too...
                     sep = sep.decode('utf-8')
 
-                if self.r_just and len(sep) < maxwidht:
-                    sys.stdout.write(l + m * (maxwidht - 2) + r + "\n")
+                if self.r_just and len(sep) < maxwidth:
+                    sys.stdout.write(l + m * (maxwidth - 2) + r + "\n")
                 else:
                     sys.stdout.write(sep + "\n")
             else:
