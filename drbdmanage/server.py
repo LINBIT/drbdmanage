@@ -3990,7 +3990,7 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 RES_NAME, res_name)
+                                 [(RES_NAME, res_name)])
             else:
                 for assg in node.iterate_assignments():
                     if self.export_assignment_conf(assg) != 0:
@@ -5712,8 +5712,8 @@ class DrbdManageServer(object):
     @staticmethod
     def catch_and_append_internal_error(fn_rc, exc):
         msg, args = DrbdManageServer.catch_internal_error(exc)
-        add_rc_entry(fn_rc, DM_DEBUG, msg, *args.items())
-        add_rc_entry(fn_rc, DM_DEBUG, "%s", DM_VERSION + '; ' + DM_GITHASH)
+        add_rc_entry(fn_rc, DM_DEBUG, msg, args)
+        add_rc_entry(fn_rc, DM_DEBUG, "%(versioninfo)s", ["versioninfo", (DM_VERSION + '; ' + DM_GITHASH)])
 
 
 """

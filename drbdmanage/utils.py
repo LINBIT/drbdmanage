@@ -637,7 +637,7 @@ def extend_path(orig_path, ext_path):
     os.environ["PATH"] = sep.join(path)
 
 
-def add_rc_entry(fn_rc, err_code, err_msg, *args):
+def add_rc_entry(fn_rc, err_code, err_msg, args=[]):
     """
     Add a new return code entry to the return codes array
 
