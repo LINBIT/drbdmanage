@@ -693,19 +693,28 @@ class PersistenceDualImpl(object):
 
 
     def _load_index(self, drbdctrl_file):
-        drbdctrl_file.seek(PersistenceDualImpl.INDEX_OFFSET)
-        index_data = self._null_trunc(drbdctrl_file.read(PersistenceDualImpl.INDEX_SIZE))
+        index_data = self._import_index(drbdctrl_file)
         index_con = self._json_to_container(index_data)
         index = index_con[PersistenceDualImpl.INDEX_KEY]
         return index
 
 
     def _save_index(self, drbdctrl_file, index_con):
+        index_data = self._container_to_json(index_con)
+        self._export_index(drbdctrl_file, index_data)
+
+
+    def _import_index(self, drbdctrl_file):
         drbdctrl_file.seek(PersistenceDualImpl.INDEX_OFFSET)
-        save_data = self._container_to_json(index_con)
-        drbdctrl_file.write(save_data)
+        index_data = self._null_trunc(drbdctrl_file.read(PersistenceDualImpl.INDEX_SIZE))
+        return index_data
+
+
+    def _export_index(self, drbdctrl_file, index_data):
+        drbdctrl_file.seek(PersistenceDualImpl.INDEX_OFFSET)
+        drbdctrl_file.write(index_data)
         drbdctrl_file.write(chr(0))
-        diff_size = PersistenceDualImpl.INDEX_SIZE - len(save_data) - 1
+        diff_size = PersistenceDualImpl.INDEX_SIZE - len(index_data) - 1
         if diff_size > 0:
             drbdctrl_file.write(diff_size * '\0')
 
