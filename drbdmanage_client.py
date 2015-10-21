@@ -765,7 +765,7 @@ class DrbdManage(object):
                                    'deployed on the local node are exported. The configuration files will '
                                    'be created (or updated) in the drbdmanage directory for temporary '
                                    'configuration files, typically /var/lib/drbd.d.')
-        p_export.add_argument('resource',
+        p_export.add_argument('resource', nargs="+",
                               help='Name of the resource').completer = ResourceCompleter
         p_export.set_defaults(func=self.cmd_export_conf)
 
@@ -2262,15 +2262,19 @@ class DrbdManage(object):
         return 0
 
     def cmd_export_conf(self, args):
-        fn_rc = 1
-
-        res_name = args.resource
-        if res_name == "*":
-            res_name = ""
+        fn_rc = 0
 
         self.dbus_init()
-        server_rc = self._server.export_conf(dbus.String(res_name))
-        fn_rc = self._list_rc_entries(server_rc)
+        display_names = (len(args.resource) > 1)
+        for res_name in args.resource:
+            server_rc = self._server.export_conf(dbus.String(res_name))
+            if display_names:
+                sys.stdout.write("Exporting resource '%s':\n" % (res_name))
+            item_rc = self._list_rc_entries(server_rc)
+            if display_names:
+                sys.stdout.write("\n")
+            if item_rc != 0:
+                fn_rc = 1
 
         return fn_rc
 
