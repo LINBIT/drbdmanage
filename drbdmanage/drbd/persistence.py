@@ -54,6 +54,39 @@ def persistence_impl(ref_server):
     return PersistenceDualImpl(ref_server)
 
 
+class BasePersistence(object):
+
+
+    def __init__(self):
+        pass
+
+
+    def container_to_json(self, container):
+        """
+        Serializes a dictionary into a JSON string
+
+        Indent level is 4 spaces, keys are sorted.
+
+        @param   container: the data collection to serialize into a JSON string
+        @type    container: dict
+        @return: JSON representation of the container
+        @rtype:  str
+        """
+        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
+
+
+    def json_to_container(self, json_doc):
+        """
+        Deserializes a JSON string into a dictionary
+
+        @param   json_doc: the JSON string to deserialize
+        @type    json_doc: str (or compatible)
+        @return: data collection (key/value) deserialized from the JSON string
+        @rtype:  dict
+        """
+        return json.loads(json_doc)
+
+
 class PersistenceImplDummy(object):
     def __init__(self, ref_server):
         pass
@@ -84,7 +117,7 @@ class PersistenceImplDummy(object):
         return True
 
 
-class PersistenceDualImpl(object):
+class PersistenceDualImpl(BasePersistence):
     """
     Persistence layer for dual drbdmanage control volumes
     """
@@ -694,13 +727,13 @@ class PersistenceDualImpl(object):
 
     def _load_index(self, drbdctrl_file):
         index_data = self._import_index(drbdctrl_file)
-        index_con = self._json_to_container(index_data)
+        index_con = self.json_to_container(index_data)
         index = index_con[PersistenceDualImpl.INDEX_KEY]
         return index
 
 
     def _save_index(self, drbdctrl_file, index_con):
-        index_data = self._container_to_json(index_con)
+        index_data = self.container_to_json(index_con)
         self._export_index(drbdctrl_file, index_data)
 
 
@@ -736,12 +769,12 @@ class PersistenceDualImpl(object):
 
     def _import_container(self, drbdctrl_file, offset, length):
         load_data = self._import_data(drbdctrl_file, offset, length)
-        container = self._json_to_container(load_data)
+        container = self.json_to_container(load_data)
         return container
 
 
     def _export_container(self, drbdctrl_file, container, data_hash):
-        save_data = self._container_to_json(container)
+        save_data = self.container_to_json(container)
         data_hash.update(save_data)
         offset, length = self._export_data(drbdctrl_file, save_data)
         return offset, length
@@ -789,7 +822,7 @@ class PersistenceDualImpl(object):
         hash_con = {
             PersistenceDualImpl.HASH_KEY: hex_hash
         }
-        hash_json = self._container_to_json(hash_con)
+        hash_json = self.container_to_json(hash_con)
         drbdctrl_file.seek(PersistenceDualImpl.HASH_OFFSET)
         drbdctrl_file.write(hash_json)
         drbdctrl_file.write(chr(0))
@@ -820,7 +853,7 @@ class PersistenceDualImpl(object):
             load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.CCONF_OFF_KEY],
                                           index[PersistenceDualImpl.CCONF_LEN_KEY])
             data_hash.update(load_data)
-            cluster_conf = self._json_to_container(load_data)
+            cluster_conf = self.json_to_container(load_data)
 
             # Hash common configuration data
             load_data = self._import_data(drbdctrl_file, index[PersistenceDualImpl.COMMON_OFF_KEY],
@@ -833,7 +866,7 @@ class PersistenceDualImpl(object):
             # Load the stored hash value
             load_data = self._import_data(drbdctrl_file, PersistenceDualImpl.HASH_OFFSET,
                                           PersistenceDualImpl.HASH_SIZE)
-            stored_hash_con = self._json_to_container(load_data)
+            stored_hash_con = self.json_to_container(load_data)
             stored_hash = stored_hash_con[PersistenceDualImpl.HASH_KEY]
 
             if stored_hash == computed_hash:
@@ -841,32 +874,6 @@ class PersistenceDualImpl(object):
         except (OSError, IOError, KeyError, ValueError, TypeError):
             pass
         return serial, stored_hash
-
-
-    def _container_to_json(self, container):
-        """
-        Serializes a dictionary into a JSON string
-
-        Indent level is 4 spaces, keys are sorted.
-
-        @param   container: the data collection to serialize into a JSON string
-        @type    container: dict
-        @return: JSON representation of the container
-        @rtype:  str
-        """
-        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
-
-
-    def _json_to_container(self, json_doc):
-        """
-        Deserializes a JSON string into a dictionary
-
-        @param   json_doc: the JSON string to deserialize
-        @type    json_doc: str (or compatible)
-        @return: data collection (key/value) deserialized from the JSON string
-        @rtype:  dict
-        """
-        return json.loads(json_doc)
 
 
 class PersistenceImpl(object):
