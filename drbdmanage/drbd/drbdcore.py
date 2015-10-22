@@ -2339,6 +2339,10 @@ class DrbdNode(GenericDrbdObject):
                         bool_to_string(is_set(self._state, self.FLAG_UPDATE)),
                     consts.TSTATE_PREFIX + consts.FLAG_UPD_POOL :
                         bool_to_string(is_set(self._state, self.FLAG_UPD_POOL)),
+                    consts.TSTATE_PREFIX + consts.FLAG_DRBDCTRL :
+                        bool_to_string(is_set(self._state, self.FLAG_DRBDCTRL)),
+                    consts.TSTATE_PREFIX + consts.FLAG_STORAGE :
+                        bool_to_string(is_set(self._state, self.FLAG_STORAGE)),
                     consts.TSTATE_PREFIX + consts.FLAG_STANDBY :
                         bool_to_string(is_set(self._state, self.FLAG_STANDBY)),
                     consts.TSTATE_PREFIX + consts.FLAG_QIGNORE :
