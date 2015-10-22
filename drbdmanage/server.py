@@ -31,6 +31,7 @@ import re
 import traceback
 import inspect
 import StringIO
+from functools import wraps
 import drbdmanage.drbd.persistence
 import drbdmanage.quorum
 import drbdmanage.drbd.metadata as md
@@ -46,12 +47,17 @@ from drbdmanage.consts import (
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     KEY_SERVER_INSTANCE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET, NODE_ADDRESS,
-    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, NODE_CONTROL_NODE, NODE_SATELLITE_NODE, KEY_ISSATELLITE,
+    SAT_SATELLITE, SAT_SHOULD_CONTROL_NODE, SAT_CONTROL_NODE,
+    KEY_SAT_CFG_SATELLITE, KEY_SAT_CFG_CONTROL_NODE, KEY_SAT_CFG_ROLE,
+    KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
+    DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
+    KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_SHUTDOWN, SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP,
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number,
-    add_rc_entry, serial_filter, props_filter, string_to_bool,
+    add_rc_entry, serial_filter, props_filter, string_to_bool, bool_to_string,
     aux_props_selector, is_set, is_unset, key_value_string, load_server_conf_file,
     filter_prohibited, filter_allowed
 )
@@ -59,7 +65,7 @@ from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_EQUORUM,
-    DM_ENOTIMPL, DM_SUCCESS
+    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE,
 )
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
@@ -78,6 +84,7 @@ from drbdmanage.conf.conffile import DrbdAdmConf
 from drbdmanage.propscontainer import PropsContainer
 
 from drbdmanage.plugins.plugin import PluginManager
+from drbdmanage.proxy import DrbdManageProxy
 
 
 class DrbdManageServer(object):
@@ -160,7 +167,10 @@ class DrbdManageServer(object):
         KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
         KEY_DRBDCTRL_VG    : DEFAULT_VG,
         KEY_DEBUG_OUT_FILE : "/dev/stderr",
-        KEY_LOGLEVEL       : "INFO"
+        KEY_LOGLEVEL       : "INFO",
+        KEY_SAT_CFG_TCP_KEEPIDLE: str(DEFAULT_SAT_CFG_TCP_KEEPIDLE),
+        KEY_SAT_CFG_TCP_KEEPINTVL: str(DEFAULT_SAT_CFG_TCP_KEEPINTVL),
+        KEY_SAT_CFG_TCP_KEEPCNT: str(DEFAULT_SAT_CFG_TCP_KEEPCNT),
     }
 
     # config stages
@@ -247,6 +257,68 @@ class DrbdManageServer(object):
 
     _pluginmgr = None
 
+    _proxy = None
+
+    _is_satellite = False
+    _forced_is_satellite = False
+    # state according to the control volume
+    sat_state_ctrlvol = {}
+
+    def no_satellite(f):
+        KEY_NOTHING = "nothing"
+        # currently not necessary, but maybe we want to wrap functions that return (nested) types
+        # in the future...
+        wrapped_returns = {
+            'assign': KEY_NOTHING,
+            'attach': KEY_NOTHING,
+            'auto_deploy': KEY_NOTHING,
+            'auto_undeploy': KEY_NOTHING,
+            'connect': KEY_NOTHING,
+            'create_node': KEY_NOTHING,
+            'create_resource': KEY_NOTHING,
+            'create_snapshot': KEY_NOTHING,
+            'create_volume': KEY_NOTHING,
+            'dbus_load_conf': KEY_NOTHING,
+            'dbus_save_conf': KEY_NOTHING,
+            'detach': KEY_NOTHING,
+            'disconnect': KEY_NOTHING,
+            'init_node': KEY_NOTHING,
+            'join_node': KEY_NOTHING,
+            'modify_resource': KEY_NOTHING,
+            'modify_state': KEY_NOTHING,
+            'modify_volume': KEY_NOTHING,
+            'poke': KEY_NOTHING,
+            'quorum_control': KEY_NOTHING,
+            'remove_node': KEY_NOTHING,
+            'remove_resource': KEY_NOTHING,
+            'remove_snapshot': KEY_NOTHING,
+            'remove_snapshot_assignment': KEY_NOTHING,
+            'remove_volume': KEY_NOTHING,
+            'resize_volume': KEY_NOTHING,
+            'restore_snapshot': KEY_NOTHING,
+            'set_drbdsetup_props': KEY_NOTHING,
+            'unassign': KEY_NOTHING,
+            'update_pool': KEY_NOTHING,
+            'update_pool_check': KEY_NOTHING,
+            'assign_satellite': KEY_NOTHING,
+        }
+
+        @wraps(f)
+        def wrapper(self, *args, **kwds):
+            if self._is_satellite == SAT_SATELLITE:
+                fn_rc = []
+                add_rc_entry(fn_rc, DM_ESATELLITE, dm_exc_text(DM_ESATELLITE))
+                if f.__name__ in wrapped_returns:
+                    if wrapped_returns[f.__name__] == KEY_NOTHING:
+                        return fn_rc
+                    else:
+                        return fn_rc, wrapped_returns[f.__name__]
+                else:
+                    # hope for the best...
+                    return fn_rc
+            else:
+                return f(self, *args, **kwds)
+        return wrapper
 
     def __init__(self, signal_factory):
         """
@@ -299,15 +371,28 @@ class DrbdManageServer(object):
         extend_path(self._path, self.get_conf_value(self.KEY_EXTEND_PATH))
 
         # Create drbdmanage objects
-        #
-        # Quorum tracking
-        self._quorum = drbdmanage.quorum.Quorum(self)
+
+        # Create the proxy object (server only started on satellite)
+        # control node needs the proxy object to send data
+        self._proxy = DrbdManageProxy(self)
 
         # DRBD manager (manages DRBD resources using drbdadm etc.)
         self._drbd_mgr = DrbdManager(self)
 
         # Start up the drbdmanage control volume
-        self._drbd_mgr.adjust_drbdctrl()
+        # call internal metric
+        _, self._is_satellite = self._drbd_mgr.adjust_drbdctrl()
+
+        # it might be the case that reading drbdmanaged.cfg overwrote what we "guessed"
+        if self._forced_is_satellite is not False:
+            self._is_satellite = self._forced_is_satellite
+
+        if self._is_satellite == SAT_SATELLITE:
+            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
+            logging.info('DRBDManage starting as satellite node')
+        elif self._is_satellite == SAT_CONTROL_NODE:
+            logging.info('DRBDManage starting as control node')
+            self._quorum = drbdmanage.quorum.Quorum(self)
 
         # Initialize the signal objects source
         if signal_factory is not None:
@@ -371,27 +456,25 @@ class DrbdManageServer(object):
         """
         Initializes the persistence layer
         """
-        # TODO: Server/Satellite decision
-        # if this_is_a_server_node:
-        persist = drbdmanage.drbd.persistence.create_server_persistence(self)
-        # else:
-        #     persist = drbdmanage.drbd.persistence.create_satellite_persistence(self)
+
+        if self._is_satellite == SAT_SATELLITE:
+            persist = drbdmanage.drbd.persistence.create_satellite_persistence(self)
+        else:
+            persist = drbdmanage.drbd.persistence.create_server_persistence(self)
+
         self._objects_root[DrbdManageServer.OBJ_PERSIST_NAME] = persist
         self.update_objects()
 
-
-    def run(self):
-        """
-        Finishes the server's startup and runs the main loop
-
-        Waits for client requests or events generated by "drbdsetup events".
-        """
-        self._init_persist()
-
+    def run_config(self):
         # Load the drbdmanage database from the control volume
         self.load_conf()
 
         self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
+
+        if self._is_satellite == SAT_CONTROL_NODE:
+            self.update_satellite_states()
+            self._persist.json_export(self._objects_root)
+            self.send_init_satellites()
 
         # Set the full member count for quorum tracking
         self._quorum.readjust_full_member_count()
@@ -414,7 +497,8 @@ class DrbdManageServer(object):
 
         # Wait for drbdsetup to finish reporting the initial DRBD status
         # Read the status report and setup quorum
-        self._drbd_event_initial_status()
+        if self._is_satellite == SAT_CONTROL_NODE:
+            self._drbd_event_initial_status()
 
         # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
@@ -425,7 +509,26 @@ class DrbdManageServer(object):
                 if poolsize == -1 or poolfree == -1:
                     self.update_pool([])
 
-        gobject.MainLoop().run()
+    def run(self):
+        """
+        Finishes the server's startup and runs the main loop
+
+        Waits for client requests or events generated by "drbdsetup events".
+        """
+        self._init_persist()
+
+        self.run_config()
+        if self._is_satellite == SAT_SATELLITE:
+            self._proxy.start()
+
+        # gobject.MainLoop().run()
+
+        # http://www.jejik.com/articles/2007/01/python-gstreamer_threading_and_the_main_loop/
+        loop = gobject.MainLoop()
+        gobject.threads_init()
+        context = loop.get_context()
+        while True:
+            context.iteration(True)
 
 
     def init_events(self):
@@ -593,6 +696,8 @@ class DrbdManageServer(object):
         # for the new events pipe
         return False
 
+    def schedule_shutdown(self):
+        gobject.timeout_add(0, self.shutdown)
 
     def schedule_run_changes(self):
         """
@@ -905,6 +1010,14 @@ class DrbdManageServer(object):
             for k, v in cfg['local'].items():
                 if k in final_config:
                     final_config[k] = v
+                # the role is only used once at startup it does not make sense to add it to the
+                # general config options because it makes no sense to write this to the control volume
+                # only makes sense in drbdmanaged.cfg
+                elif k == KEY_SAT_CFG_ROLE:
+                    if v == KEY_SAT_CFG_SATELLITE:
+                        self._forced_is_satellite == SAT_SATELLITE
+                    elif v == KEY_SAT_CFG_CONTROL_NODE:
+                        self._forced_is_satellite == SAT_CONTROL_NODE
 
             for plugin_name in cfg['plugins']:
                 for k, v in cfg['plugins'][plugin_name].items():
@@ -1145,7 +1258,7 @@ class DrbdManageServer(object):
                 if is_set(state, DrbdNode.FLAG_DRBDCTRL):
                     peer_node.set_state(state | DrbdNode.FLAG_UPDATE)
 
-
+    @no_satellite
     def poke(self):
         """
         Causes cluster nodes to perform pending actions by changing the serial
@@ -1263,6 +1376,158 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, ret)
 
+    def update_satellite_states(self):
+        fn_rc = []
+        states = {}
+
+        try:
+            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+            node_props = self.get_instance_node().get_props().get_all_props(ns)
+            for k, v in node_props.items():
+                name, key = k.split('/')
+                if key == KEY_ISSATELLITE:
+                    states[name] = int(v)
+        except:
+            pass
+
+        self.sat_state_ctrlvol = filter_allowed(self.sat_state_ctrlvol, states.keys())
+
+        for k, v in states.items():
+            self.sat_state_ctrlvol[k] = v
+
+        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return (fn_rc, states.keys())
+
+    def send_init_satellites(self):
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+        self._persist.json_export(self._objects_root)
+
+        needs_change = False
+
+        wanted = [s for s, state in self.sat_state_ctrlvol.items() if state == SAT_CON_STARTUP or state == SAT_CON_ESTABLISHED]
+
+        instance_node = self.get_instance_node()
+        for satellite in [s for s in wanted if s not in self._proxy.get_established()]:
+            skip = False
+            for node in self.iterate_nodes():
+                if node is instance_node:  # can never send init to myself
+                    continue
+                if node.get_props().get_prop(KEY_ISSATELLITE, os.path.join(ns, satellite)):
+                    skip = True  # somebody else is responsible for that satellite
+                    needs_change = True  # give it a hint to shutdown
+                    break
+            if skip:
+                continue
+
+            opcode, length, data = self._proxy.send_cmd(satellite, KEY_S_CMD_INIT)
+            if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                self.sat_state_ctrlvol[satellite] = SAT_CON_ESTABLISHED
+                node_props = self.get_instance_node().get_props()
+                node_props.set_prop(KEY_ISSATELLITE, SAT_CON_ESTABLISHED, os.path.join(ns, satellite))
+                needs_change = True
+
+        return needs_change
+
+    def _remove_satellites(self, satellite_names, node_names=[]):
+        # persistence has to be opened by caller
+        # is save to be called with [ctrlnode, ...]
+        for satellite in satellite_names:
+            self._proxy.shutdown_connection(satellite)
+
+        if node_names:
+            wanted_nodes = dict([(k, v) for k, v in self._nodes.items() if k in node_names])
+        else:
+            wanted_nodes = self._nodes
+
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+        for node in [v for k, v in wanted_nodes.items() if k not in satellite_names]:
+            node_props = node.get_props()
+            to_delete = [k for k in node_props.get_all_props(ns).keys() if k.split('/')[0] in satellite_names]
+            node_props.remove_selected_props(to_delete, ns)
+
+    def is_satellite(self, node_name):
+        is_satellite = self.get_node(node_name).get_props().get_prop(KEY_ISSATELLITE)
+        if is_satellite is not None:
+            is_satellite = string_to_bool(is_satellite)
+        else:
+            is_satellite = False
+        return is_satellite
+
+    def get_satellite_names(self, node):
+        satellite_names = set()
+        if self.is_satellite(node.get_name()):
+            return satellite_names
+
+        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+        node_props = node.get_props()
+        satellite_names = set([k.split('/')[0] for k in node_props.get_all_props(ns).keys()])
+
+        return satellite_names
+
+    def get_ctrl_node(self, satellite_name):
+        ctrl_node = None
+        for node in self.iterate_nodes():
+            satellite_names = self.get_satellite_names(node)
+            if satellite_name in satellite_names:
+                return node
+        return ctrl_node
+
+    @no_satellite
+    def assign_satellite(self, props):
+        fn_rc = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+                new_control_node_name = props[NODE_CONTROL_NODE]
+                satellite_name = props[NODE_SATELLITE_NODE]
+
+                # santiy checks
+                # do the nodes exist?
+                if self.get_node(new_control_node_name) is None or self.get_node(satellite_name) is None:
+                    raise KeyError
+
+                # is the satellite_name a satellite?
+                if not self.is_satellite(satellite_name):
+                    raise KeyError
+
+                # is the control node really a control node (i.e., does not have ISSATELLITE)
+                if self.is_satellite(new_control_node_name):
+                    raise KeyError
+
+                # set shutdown on old node
+                old_ctrl_node = self.get_ctrl_node(satellite_name)
+                # could be None if old ctrlnode got removed and this is a fresh assignment
+                # if there is an old ctrtlnode it is a reassignment
+                if old_ctrl_node is not None:
+                    old_ctrl_node.get_props().set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
+                                                       os.path.join(ns, satellite_name))
+                # set startup on new node
+                new_control_node = self.get_node(new_control_node_name)
+                new_control_node.get_props().set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP,
+                                                      os.path.join(ns, satellite_name))
+                self.get_serial()
+            else:
+                raise PersistenceException
+        except KeyError:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+            self.schedule_run_changes()
+
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
+        return fn_rc
+
+    @no_satellite
     def set_cluster_config(self, cfgdict):
         # for persistence see create_node
         fn_rc = []
@@ -1416,6 +1681,7 @@ class DrbdManageServer(object):
 
         return fn_rc
 
+    @no_satellite
     def create_node(self, node_name, props):
         """
         Registers a DRBD cluster node
@@ -1428,6 +1694,24 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 sub_rc = self._create_node(False, node_name, props, None, None, None)
+                if NODE_CONTROL_NODE in props and sub_rc == DM_SUCCESS:  # satellite node
+                    storage = True
+                    if FLAG_STORAGE in props:
+                        storage = string_to_bool(props[FLAG_STORAGE])
+
+                    if storage:  # a usual satellite with storage
+                        control_node_name = props[NODE_CONTROL_NODE]
+                        control_node = self._nodes.get(control_node_name)
+                        if control_node:
+                            props = control_node.get_props()
+                            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+                            props.set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP, os.path.join(ns, node_name))
+                            # take a shortcut to add the new node to the satellites array without
+                            # update_satellite_states()
+                            if control_node_name == self._instance_node_name:
+                                self.sat_state_ctrlvol[node_name] = SAT_CON_STARTUP
+                                self.send_init_satellites()
+
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
                 else:
@@ -1540,6 +1824,8 @@ class DrbdManageServer(object):
                                 else:
                                     fn_rc = DM_ECTRLVOL
                             else:
+                                if node_storage:
+                                    node.get_props().set_prop(KEY_ISSATELLITE, bool_to_string(True))
                                 fn_rc = DM_SUCCESS
                         else:
                             # Attempted to create a node with a control volume,
@@ -1556,7 +1842,7 @@ class DrbdManageServer(object):
             fn_rc = DM_DEBUG
         return fn_rc
 
-
+    @no_satellite
     def remove_node(self, node_name, force):
         """
         Marks a node for removal from the DRBD cluster
@@ -1572,8 +1858,23 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 drbdctrl_flag = False
+                ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+
+                if self.is_satellite(node_name):
+                    ctrl_node = self.get_ctrl_node(node_name)
+                    if ctrl_node:
+                        ctrl_node_props = ctrl_node.get_props()
+                        ctrl_node_props.set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
+                                                 os.path.join(ns, node_name))
+                else:
+                    ctrl_node = self._nodes[node_name]
+                    ctrl_node_props = ctrl_node.get_props()
+                    for satellite_name in self.get_satellite_names(ctrl_node):
+                        ctrl_node_props.set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
+                                                 os.path.join(ns, satellite_name))
+
                 node = self._nodes[node_name]
-                if (not force) and node.has_assignments():
+                if (not force) and (node.has_assignments() or self.get_satellite_names(node)):
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
                         resource = assignment.get_resource()
@@ -1617,6 +1918,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
+    @no_satellite
     def create_resource(self, res_name, props):
         """
         Registers a new resource that can be deployed to DRBD cluster nodes
@@ -1695,7 +1997,7 @@ class DrbdManageServer(object):
             resource = None
         return resource
 
-
+    @no_satellite
     def modify_resource(self, res_name, serial, props):
         """
         Modifies resource properties
@@ -1706,7 +2008,7 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
-
+    @no_satellite
     def modify_volume(self, res_name, vol_id, serial, props):
         """
         Modifies volume properties
@@ -1717,7 +2019,7 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
-
+    @no_satellite
     def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB):
         """
         Resizes a volume
@@ -1730,7 +2032,7 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def remove_resource(self, res_name, force):
         """
         Marks a resource for removal from the DRBD cluster
@@ -1773,7 +2075,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def create_volume(self, res_name, size_kiB, props):
         """
         Adds a volume to a resource
@@ -1845,7 +2147,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def remove_volume(self, res_name, vol_id, force):
         """
         Marks a volume for removal from the DRBD cluster
@@ -1894,7 +2196,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def assign(self, node_name, res_name, props):
         """
         Assigns a resource to a node
@@ -2003,7 +2305,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def unassign(self, node_name, res_name, force):
         """
         Removes the assignment of a resource to a node
@@ -2199,7 +2501,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc, free_space, total_space
 
-
+    @no_satellite
     def auto_deploy(self, res_name, count, delta, site_clients):
         """
         Deploys a resource to a number of nodes
@@ -2418,7 +2720,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def auto_undeploy(self, res_name, force):
         """
         Undeploys a resource from all nodes
@@ -2478,7 +2780,7 @@ class DrbdManageServer(object):
                 if is_unset(tstate, Assignment.FLAG_DEPLOY):
                     assg.deploy_client()
 
-
+    @no_satellite
     def modify_state(self, node_name, res_name,
       cstate_clear_mask, cstate_set_mask, tstate_clear_mask, tstate_set_mask):
         """
@@ -2540,6 +2842,7 @@ class DrbdManageServer(object):
 
 
     # TODO: should possibly specify connections between specific nodes
+    @no_satellite
     def connect(self, node_name, res_name, reconnect):
         """
         Sets the CONNECT or RECONNECT flag on a resource's target state
@@ -2582,7 +2885,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def disconnect(self, node_name, res_name, force):
         """
         Clears the CONNECT flag on a resource's target state
@@ -2623,7 +2926,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def attach(self, node_name, res_name, vol_id):
         """
         Sets the ATTACH flag on a volume's target state
@@ -2669,7 +2972,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def detach(self, node_name, res_name, vol_id):
         """
         Clears the ATTACH flag on a volume's target state
@@ -2715,7 +3018,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def update_pool_check(self):
         """
         Checks storage pool data and if necessary, updates the data
@@ -2748,7 +3051,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def update_pool(self, node_names):
         """
         Updates information about the current node's storage pool
@@ -2954,7 +3257,7 @@ class DrbdManageServer(object):
             for node in self._nodes.itervalues():
                 node_state = node.get_state()
                 if is_set(node_state, DrbdNode.FLAG_REMOVE):
-                    if not node.has_assignments():
+                    if not node.has_assignments() and not self.get_satellite_names(node):
                         removable.append(node)
                         if is_set(node_state, DrbdNode.FLAG_DRBDCTRL):
                             drbdctrl_flag = True
@@ -3020,6 +3323,7 @@ class DrbdManageServer(object):
         for assg in item.iterate_assignments():
             assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
 
+    @no_satellite
     def set_drbdsetup_props(self, props):
         fn_rc = []
         item = None
@@ -3318,7 +3622,7 @@ class DrbdManageServer(object):
 
         return fn_rc, None
 
-
+    @no_satellite
     def create_snapshot(self, res_name, snaps_name, node_names, props):
         """
         Create a snapshot of a resource's volumes on a number of nodes
@@ -3697,7 +4001,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def remove_snapshot_assignment(self, res_name, snaps_name, node_name,
                                    force):
         """
@@ -3742,7 +4046,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def remove_snapshot(self, res_name, snaps_name, force):
         """
         Discard all instances of a resource's snapshot
@@ -3825,6 +4129,9 @@ class DrbdManageServer(object):
                                     SNAPS_SRC_BLOCKDEV, src_bd_name
                                 )
 
+    @no_satellite
+    def dbus_save_conf(self):
+        return self.save_conf()
 
     def save_conf(self):
         """
@@ -3858,6 +4165,9 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    @no_satellite
+    def dbus_load_conf(self):
+        return self.load_conf()
 
     def load_conf(self):
         """
@@ -4042,6 +4352,7 @@ class DrbdManageServer(object):
         if not self._run_changes_scheduled:
             self.end_modify_conf(persist)
 
+    @no_satellite
     def quorum_control(self, node_name, props, override_quorum_flag):
         """
         Sets quorum parameters on drbdmanage nodes
@@ -4241,7 +4552,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def init_node(self, name, props):
         """
         Server part of initializing a new drbdmanage cluster
@@ -4297,7 +4608,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @no_satellite
     def join_node(self, props):
         """
         Server part of integrating a node into an existing drbdmanage cluster
@@ -5677,11 +5988,19 @@ class DrbdManageServer(object):
         self._debug_out.write(section_ruler)
 
 
-    def shutdown(self):
+    def shutdown(self, props={}):
         """
         Stops this drbdmanage server instance
         """
         logging.info("server shutdown (requested by function call)")
+        if KEY_S_CMD_SHUTDOWN in props and string_to_bool(props[KEY_S_CMD_SHUTDOWN]):
+            for satellite in [s for s, state in self.sat_state_ctrlvol.items() if state == SAT_CON_ESTABLISHED or
+                              state == SAT_CON_SHUTDOWN]:
+                self._proxy.send_cmd(satellite, KEY_S_CMD_SHUTDOWN)
+        logging.info("shutting down the TCPServer")
+        if self._proxy:
+            self._proxy.shutdown()
+
         logging.info("shutting down the control volume")
         try:
             self._drbd_mgr.down_drbdctrl()

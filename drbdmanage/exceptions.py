@@ -94,6 +94,9 @@ DM_ECTRLVOL = 116
 # Absence of quorum
 DM_EQUORUM  = 117
 
+# Operation not allowed on satellite
+DM_ESATELLITE = 118
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -123,6 +126,7 @@ _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 _DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"
 _DM_EXC_TEXTS[DM_EQUORUM]  = "Partition does not have a quorum"
+_DM_EXC_TEXTS[DM_ESATELLITE]  = "Operation not allowed on satellite node"
 
 
 def dm_exc_text(exc_id):

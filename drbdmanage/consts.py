@@ -42,6 +42,8 @@ NODE_SITE           = "site"
 NODE_POOLSIZE       = "node_poolsize"
 NODE_POOLFREE       = "node_poolfree"
 NODE_STATE          = "node_state"
+NODE_CONTROL_NODE   = "control_node"
+NODE_SATELLITE_NODE = "satellite_node"
 RES_NAME            = "res_name"
 RES_PORT            = "port"
 RES_SECRET          = "secret"
@@ -92,6 +94,8 @@ KEY_SERVER_INSTANCE = "serverinstance"
 # additional configuration keys
 KEY_SITE = 'site'
 
+KEY_ISSATELLITE = "isSatellite"
+
 # auxiliary property prefix
 AUX_PROP_PREFIX     = "aux:"
 
@@ -139,3 +143,35 @@ TQ_GET_PATH         = "get_path"
 CONF_GLOBAL = 'global'
 CONF_NODE = 'node'
 PLUGIN_PREFIX = 'Plugin:'
+
+# ### satellites ###
+# is satellite, should be a control node but could not access ctrlvol, is control node
+SAT_SATELLITE, SAT_SHOULD_CONTROL_NODE, SAT_CONTROL_NODE = range(3)
+# connection state to satellite
+# SHUTDOWN and STARTUP are states that should be reached but are not currently reached
+SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP = range(3)
+# cfg
+KEY_SAT_CFG_SATELLITE = 'satellite'
+KEY_SAT_CFG_CONTROL_NODE = 'controlnode'
+KEY_SAT_CFG_ROLE = 'ctrl-volume-access-mode'
+KEY_SAT_CFG_TCP_KEEPIDLE = 'tcp-keepidle'
+KEY_SAT_CFG_TCP_KEEPINTVL = 'tcp-keepintvl'
+KEY_SAT_CFG_TCP_KEEPCNT = 'tcp-keepcnt'
+
+# after 10 sec of no other traffic,
+# send a keep-alive every 7 seconds
+# and fail if 5 not delivered
+DEFAULT_SAT_CFG_TCP_KEEPIDLE = 10
+DEFAULT_SAT_CFG_TCP_KEEPINTVL = 7
+DEFAULT_SAT_CFG_TCP_KEEPCNT = 5
+# communication protocol
+KEY_S_CMD_INIT = 'CMD_INIT'
+KEY_S_CMD_UPDATE = 'CMD_UPDATE'
+KEY_S_CMD_SHUTDOWN = 'CMD_SHUTDOWN'
+KEY_S_INT_SHUTDOWN = 'INT_SHUTDOWN'
+KEY_S_ANS_OK = 'ANS_OK'
+KEY_S_ANS_CHANGED = 'ANS_CHANGED'
+KEY_S_ANS_UNCHANGED = 'ANS_UNCHANGED'
+KEY_S_ANS_E_OP_INVALID = 'ANS_OP_INVALID'
+KEY_S_ANS_E_TOO_LONG = 'ANS_E_TOO_LONG'
+KEY_S_ANS_E_COMM = 'ANS_E_COMM'

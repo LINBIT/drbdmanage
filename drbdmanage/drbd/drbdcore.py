@@ -255,6 +255,55 @@ class DrbdManager(object):
                 pool_changed = True
 
         """
+        Send new ctrlvol state to satellites
+        """
+        # are there new satellites I'm responsible for?
+        self._server.update_satellite_states()
+
+        if self._server.sat_state_ctrlvol:
+            proxy = self._server._proxy
+
+            # SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP = range(3)
+            shutdown = [s for s, st in self._server.sat_state_ctrlvol.items() if st == consts.SAT_CON_SHUTDOWN]
+
+            for satellite_name in shutdown:
+                proxy.shutdown_connection(satellite_name)
+
+            if shutdown:
+                self._server._remove_satellites(shutdown, self._server._instance_node_name)
+                state_changed = True
+
+            # send CMD_INIT to ones not already inited
+            need_change = self._server.send_init_satellites()
+            if need_change:
+                state_changed = True
+
+            self._server._persist.json_export(self._server._objects_root)
+            final_ctrl_vol = None
+            changed_at_all = True
+
+            while changed_at_all:
+                changed_at_all = False
+                # dont move established before send_init_satellites() <- updates sat_state_ctrlvol
+                up = [s for s, st in self._server.sat_state_ctrlvol.items() if st == consts.SAT_CON_ESTABLISHED]
+                for satellite in up:
+                    opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
+                    if opcode == proxy.opcodes[consts.KEY_S_ANS_E_COMM]:  # give it a second chance
+                        opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
+
+                    if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED]:
+                        changed_at_all = True
+                        final_ctrl_vol = data
+                        # set_json_data is required, next send_cmd() reads that value!
+                        # do not remove following call:
+                        self._server._persist.set_json_data(final_ctrl_vol)
+
+            if final_ctrl_vol:
+                self._server._persist.set_json_data(final_ctrl_vol)
+                self._server._persist.json_import(self._server._objects_root)
+                state_changed = True
+
+        """
         Cleanup the server's data structures
         (remove entries that are no longer required)
         """
@@ -686,14 +735,27 @@ class DrbdManager(object):
 
     def adjust_drbdctrl(self):
         logging.debug("DrbdManager: Enter function adjust_drbdctrl()")
+        sat_state = consts.SAT_CONTROL_NODE
+        drbdctrl_res_name = consts.DRBDCTRL_RES_NAME
+
         # call drbdadm to bring up the control volume
-        drbd_proc = self._drbdadm.ext_conf_adjust(consts.DRBDCTRL_RES_NAME)
+        drbd_proc = self._drbdadm.ext_conf_adjust(drbdctrl_res_name)
         if drbd_proc is not None:
             fn_rc = drbd_proc.wait()
+            if fn_rc != 0:
+                res_file_name = os.path.join(consts.DRBDCTRL_RES_PATH, drbdctrl_res_name)
+                res_file_exits = os.path.isfile(res_file_name)
+                import subprocess
+                ctrlvol_exits = True if subprocess.call(["drbdsetup", "status", ".drbdctrl"]) == 0 else False
+
+                if res_file_exits or ctrlvol_exits:
+                    sat_state = consts.SAT_CONTROL_NODE
+                else:
+                    sat_state = consts.SAT_SATELLITE
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         logging.debug("DrbdManager: Exit function adjust_drbdctrl()")
-        return fn_rc
+        return fn_rc, sat_state
 
 
     def down_drbdctrl(self):

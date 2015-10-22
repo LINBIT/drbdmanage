@@ -50,14 +50,15 @@ from drbdmanage.consts import (
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
-    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
+    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
     build_path, bool_to_string, rangecheck, ssh_exec,
-    load_server_conf_file, filter_prohibited
+    load_server_conf_file, filter_prohibited, get_uname
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -203,6 +204,15 @@ class DrbdManage(object):
                 return ip
             return Completer
 
+        def NodeCompleter(prefix, **kwargs):
+            server_rc, node_list = self._get_nodes()
+            possible = set()
+            for n in node_list:
+                name, _ = n
+                possible.add(name)
+
+            return possible
+
         p_new_node = subp.add_parser('add-node',
                                      aliases=['nn', 'new-node', 'an'],
                                      description='Creates a node entry for a node that participates in the '
@@ -216,10 +226,14 @@ class DrbdManage(object):
                                 default='ipv4', choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
         p_new_node.add_argument('-q', '--quiet', action="store_true")
-        p_new_node.add_argument('-c', '--no-control-volume',
+        p_new_node.add_argument('-l', '--satellite',
                                 action="store_true",
                                 help='This node does not have a control volume'
-                                ' on its own. It is used as a satelite node')
+                                ' on its own. It is used as a satellite node')
+        p_new_node.add_argument('-c', '--control-node',
+                                help='Node name of the control node (the one with access to control volume).'
+                                ' Only valid if "--satellite" was given. By default the hostname of the node'
+                                ' where this command was executed.').completer = NodeCompleter
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
@@ -228,15 +242,6 @@ class DrbdManage(object):
         p_new_node.set_defaults(func=self.cmd_new_node)
 
         # remove-node
-        def NodeCompleter(prefix, **kwargs):
-            server_rc, node_list = self._get_nodes()
-            possible = set()
-            for n in node_list:
-                name, _ = n
-                possible.add(name)
-
-            return possible
-
         p_rm_node = subp.add_parser('remove-node',
                                     aliases=['rn', 'delete-node', 'dn'],
                                     description='Removes a node from the drbdmanage cluster. '
@@ -623,6 +628,8 @@ class DrbdManage(object):
         # shutdown
         p_shutdown = subp.add_parser('shutdown',
                                      description='Stops the local drbdmanage server process.')
+        p_shutdown.add_argument('-l', '--satellite', action="store_true",
+                                help='If given, also send a shutdown command to connected satellites.')
         p_shutdown.add_argument('-q', '--quiet', action="store_true",
                                 help='Unless this option is used, drbdmanage will issue a safety question '
                                 'that must be answered with yes, otherwise the operation is canceled.')
@@ -1023,6 +1030,15 @@ class DrbdManage(object):
         p_exportconf.set_defaults(func=self.cmd_edit_config)
         p_exportconf.set_defaults(type="export")
 
+        # assign-satellite
+        p_assign_satellite = subp.add_parser('assign-satellite',
+                                             description='Assingn a satellite node to a control node')
+        p_assign_satellite.add_argument('satellite',
+                                        help='Name of the satellite node').completer = NodeCompleter
+        p_assign_satellite.add_argument('controlnode',
+                                        help='Name of the control node').completer = NodeCompleter
+        p_assign_satellite.set_defaults(func=self.cmd_assign_satellite)
+
         argcomplete.autocomplete(parser)
 
         return parser
@@ -1180,13 +1196,23 @@ class DrbdManage(object):
     def cmd_new_node(self, args):
         fn_rc = 1
         name = args.name
+        control_node = args.control_node
         ip = args.ip
         af = args.address_family
         if af is None:
             af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
         flag_storage = not args.no_storage
-        flag_drbdctrl = not args.no_control_volume
+        flag_drbdctrl = not args.satellite
         flag_autojoin = not args.no_autojoin
+
+        if control_node and flag_drbdctrl:
+            sys.stderr.write('Not allowed to specify --control-node without --satellite\n')
+            sys.exit(1)
+        if not flag_drbdctrl and not control_node:
+            control_node = get_uname()
+            if not control_node:
+                sys.stderr.write('Could not guess --control-node name\n')
+                sys.exit(1)
 
         props = dbus.Dictionary(signature="ss")
         props[NODE_ADDR] = ip
@@ -1195,6 +1221,8 @@ class DrbdManage(object):
             props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
         if not flag_storage:
             props[FLAG_STORAGE] = bool_to_string(flag_storage)
+        if not flag_drbdctrl and control_node:
+            props[NODE_CONTROL_NODE] = control_node
 
         self.dbus_init()
         server_rc = self._server.create_node(name, props)
@@ -1788,6 +1816,9 @@ class DrbdManage(object):
 
     def cmd_shutdown(self, args):
         quiet = args.quiet
+        satellites = args.satellite
+        props = dbus.Dictionary(signature="ss")
+        props[KEY_S_CMD_SHUTDOWN] = bool_to_string(satellites)
         if not quiet:
             quiet = self.user_confirm(
                 "You are going to shut down the drbdmanaged server "
@@ -1796,7 +1827,7 @@ class DrbdManage(object):
         if quiet:
             try:
                 self.dbus_init()
-                self._server.shutdown()
+                self._server.shutdown(props)
             except dbus.exceptions.DBusException:
                 # An exception is expected here, as the server
                 # probably will not answer
@@ -2478,13 +2509,7 @@ or the drbdmanage server.
 
         try:
             # BEGIN Setup drbdctrl resource properties
-            node_name = None
-            try:
-                uname = os.uname()
-                if len(uname) >= 2:
-                    node_name = uname[1]
-            except OSError:
-                pass
+            node_name = get_uname()
             if node_name is None:
                 raise AbortException
 
@@ -2605,13 +2630,7 @@ Confirm:
         umh = None
         try:
             # BEGIN Setup drbdctrl resource properties
-            node_name = None
-            try:
-                uname = os.uname()
-                if len(uname) >= 2:
-                    node_name = uname[1]
-            except OSError:
-                pass
+            node_name = get_uname()
             if node_name is None:
                 raise AbortException
             af = args.address_family
@@ -3376,6 +3395,23 @@ Confirm:
         server_rc = self._server.set_cluster_config(cfgdict)
 
         return server_rc
+
+    def cmd_assign_satellite(self, args):
+        fn_rc = 1
+        satellite = args.satellite
+        control_node = args.controlnode
+
+        props = dbus.Dictionary(signature="ss")
+        props[NODE_CONTROL_NODE] = control_node
+        props[NODE_SATELLITE_NODE] = satellite
+        self.dbus_init()
+        server_rc = self._server.assign_satellite(props)
+        fn_rc = self._list_rc_entries(server_rc)
+
+        if fn_rc == 0:
+            pass
+
+        return fn_rc
 
     def user_confirm(self, question):
         """

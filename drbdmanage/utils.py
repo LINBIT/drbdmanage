@@ -34,7 +34,8 @@ import drbdmanage.consts as consts
 import logging
 import ConfigParser
 from drbdmanage.exceptions import SyntaxException
-from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH, KEY_DRBDCTRL_VG)
+from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
+                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -360,6 +361,17 @@ def rangecheck(i, j):
     return range
 
 
+def get_uname():
+    node_name = None
+    try:
+        uname = os.uname()
+        if len(uname) >= 2:
+            node_name = uname[1]
+    except OSError:
+        pass
+    return node_name
+
+
 def load_server_conf_file(localonly=False):
     """
     Try to load the server configuration.
@@ -377,6 +389,7 @@ def load_server_conf_file(localonly=False):
                 if not cfg.has_option(section, 'force'):
                     final_config = filter_allowed(in_file_cfg.copy(), (KEY_DRBDCTRL_VG,
                                                                        'extend-path',
+                                                                       KEY_SAT_CFG_ROLE,
                                                                        KEY_DRBD_CONFPATH))
                     ignored = [k for k in in_file_cfg if k not in final_config]
                     for k in ignored:

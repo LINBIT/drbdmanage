@@ -16,12 +16,14 @@ class Props(object):
     KEY_DMCONFIG = 'dmconfig'
     KEY_PLUGINS = 'plugins'
     KEY_SITES = 'siteopt'
+    KEY_SATELLITES = 'satellites'
 
     NAMESPACES = {
-        KEY_SETUPOPT: '/dso/',     # drbdsetup options like net options
-        KEY_DMCONFIG: '/dmconf/',  # drbdmanage config like 'min-minor-nr'
-        KEY_PLUGINS: '/plugins/',  # plugin config
-        KEY_SITES: '/sites/'       # site specific options (currently net options)
+        KEY_SETUPOPT: '/dso/',          # drbdsetup options like net options
+        KEY_DMCONFIG: '/dmconf/',       # drbdmanage config like 'min-minor-nr'
+        KEY_PLUGINS: '/plugins/',       # plugin config
+        KEY_SITES: '/sites/',           # site specific options (currently net options)
+        KEY_SATELLITES: '/satellites/'  # site specific options (currently net options)
     }
 
     def __init__(self, ins_props):

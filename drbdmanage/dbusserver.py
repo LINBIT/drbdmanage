@@ -588,6 +588,13 @@ class DBusServer(dbus.service.Object):
         """
         return self._server.init_node(node_name, props)
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="a{ss}",
+        out_signature="a(isa(ss))"
+    )
+    def assign_satellite(self, props):
+        return self._server.assign_satellite(props)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
@@ -610,7 +617,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.load_conf()
         """
-        return self._server.load_conf()
+        return self._server.dbus_load_conf()
 
 
     @dbus.service.method(
@@ -622,7 +629,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.save_conf()
         """
-        return self._server.save_conf()
+        return self._server.dbus_save_conf()
 
 
     @dbus.service.method(
@@ -644,15 +651,15 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="",
+        in_signature="a{ss}",
         out_signature=""
     )
-    def shutdown(self):
+    def shutdown(self, props):
         """
         D-Bus interface for DrbdManageServer.shutdown()
         """
         logging.info("server shutdown requested through D-Bus")
-        self._server.shutdown()
+        self._server.shutdown(dict(props))
 
 
     @dbus.service.method(
