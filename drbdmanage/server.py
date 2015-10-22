@@ -1,4 +1,3 @@
-import select
 #!/usr/bin/env python2
 """
     drbdmanage - management of distributed DRBD9 resources
@@ -18,8 +17,6 @@ import select
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import select
-
 import sys
 import os
 import signal
