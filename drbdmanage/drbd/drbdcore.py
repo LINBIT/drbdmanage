@@ -2328,11 +2328,11 @@ class DrbdNode(GenericDrbdObject):
             if not match:
                 special_props_list = {
                     consts.NODE_NAME     : self._name,
-                    consts.NODE_AF       : self._addrfam,
+                    consts.NODE_AF       : str(self._addrfam),
                     consts.NODE_ADDR     : self._addr,
-                    consts.NODE_ID       : self._node_id,
-                    consts.NODE_POOLSIZE : self._poolsize,
-                    consts.NODE_POOLFREE : self._poolfree,
+                    consts.NODE_ID       : str(self._node_id),
+                    consts.NODE_POOLSIZE : str(self._poolsize),
+                    consts.NODE_POOLFREE : str(self._poolfree),
                     consts.TSTATE_PREFIX + consts.FLAG_REMOVE :
                         bool_to_string(is_set(self._state, self.FLAG_REMOVE)),
                     consts.TSTATE_PREFIX + consts.FLAG_UPDATE   :
@@ -2613,10 +2613,10 @@ class DrbdVolumeState(GenericDrbdObject):
             if not match:
                 bdev = "" if self._bd_path is None else str(self._bd_path)
                 special_props_list = {
-                    consts.VOL_ID      : self._volume.get_id(),
-                    consts.VOL_SIZE    : self._volume.get_size_kiB(),
+                    consts.VOL_ID      : str(self._volume.get_id()),
+                    consts.VOL_SIZE    : str(self._volume.get_size_kiB()),
                     consts.VOL_BDEV    : bdev,
-                    consts.VOL_MINOR   : self._volume.get_minor().get_value(),
+                    consts.VOL_MINOR   : str(self._volume.get_minor().get_value()),
                     consts.TSTATE_PREFIX + consts.FLAG_DEPLOY :
                         bool_to_string(is_set(self._tstate, self.FLAG_DEPLOY)),
                     consts.TSTATE_PREFIX + consts.FLAG_ATTACH :
