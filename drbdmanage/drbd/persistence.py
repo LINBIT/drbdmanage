@@ -631,10 +631,10 @@ class PersistenceDualImpl(BasePersistence):
             file_fd = None
             mode    = None
             if modify:
-                file_fd = os.open(drbdctrl_file, os.O_RDWR)
+                file_fd = os.open(drbdctrl_file, os.O_RDWR | os.O_EXCL)
                 mode    = "r+"
             else:
-                file_fd = os.open(drbdctrl_file, os.O_RDONLY)
+                file_fd = os.open(drbdctrl_file, os.O_RDONLY | os.O_EXCL)
                 mode    = "r"
 
             try:
