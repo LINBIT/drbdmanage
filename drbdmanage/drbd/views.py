@@ -413,25 +413,29 @@ class DrbdNodeView(GenericView):
             self.add_pending_text("remove")
             self.raise_level(GenericView.STATE_ALERT)
         else:
-            if i_offline:
-                if s_qignore:
-                    self.raise_level(GenericView.STATE_WARN)
-                    self.add_state_text("offline/quorum vote ignored")
+            if s_drbdctrl:
+                # States apply only to nodes with a control volume
+                if i_offline:
+                    if s_qignore:
+                        self.raise_level(GenericView.STATE_WARN)
+                        self.add_state_text("offline/quorum vote ignored")
+                    else:
+                        self.raise_level(GenericView.STATE_ALERT)
+                        self.add_state_text("OFFLINE")
                 else:
+                    # Online, but quorum vote ignored; this should be resolved
+                    # automatically by the server
+                    if s_qignore:
+                        self.raise_level(GenericView.STATE_WARN)
+                        self.add_state_text("online/quorum vote ignored")
+                if s_update:
+                    self.add_pending_text("adjust connections")
                     self.raise_level(GenericView.STATE_ALERT)
-                    self.add_state_text("OFFLINE")
-            else:
-                # Online, but quorum vote ignored; this should be resolved
-                # automatically by the server
-                if s_qignore:
+            if s_storage:
+                # State applies only to a node with storage
+                if s_upd_pool:
                     self.raise_level(GenericView.STATE_WARN)
-                    self.add_state_text("online/quorum vote ignored")
-            if s_update:
-                self.add_pending_text("adjust connections")
-                self.raise_level(GenericView.STATE_ALERT)
-            if s_upd_pool:
-                self.raise_level(GenericView.STATE_WARN)
-                self.add_pending_text("check space")
+                    self.add_pending_text("check space")
             if not s_drbdctrl:
                 self.add_state_text("satellite node")
             if not s_storage:
