@@ -1461,9 +1461,14 @@ class DrbdManageServer(object):
                         if ((node_id != DrbdNode.NODE_ID_NONE) or
                             (not node_drbdctrl)):
                             # Initialize the node object
+                            poolsize = 0
+                            poolfree = 0
+                            if node_storage:
+                                poolsize = -1
+                                poolfree = -1
                             node = DrbdNode(
                                 node_name, addr, addrfam, node_id,
-                                node_state, -1, -1,
+                                node_state, poolsize, poolfree,
                                 self.get_serial, None, None
                             )
                             # Merge only auxiliary properties into the
@@ -1515,9 +1520,9 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
+                drbdctrl_flag = False
                 node = self._nodes[node_name]
                 if (not force) and node.has_assignments():
-                    drbdctrl_flag = False
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
                         resource = assignment.get_resource()
@@ -1526,7 +1531,8 @@ class DrbdManageServer(object):
                     node.remove()
                     self._drbd_mgr.perform_changes()
                 else:
-                    drbdctrl_flag = True
+                    if is_set(node.get_state(), DrbdNode.FLAG_DRBDCTRL):
+                        drbdctrl_flag = True
                     # drop all associated assignments
                     for assignment in node.iterate_assignments():
                         resource = assignment.get_resource()
@@ -1536,7 +1542,8 @@ class DrbdManageServer(object):
                         for peer_assg in resource.iterate_assignments():
                             peer_assg.update_connections()
                     del self._nodes[node_name]
-                    self._cluster_nodes_update()
+                    if drbdctrl_flag:
+                        self._cluster_nodes_update()
                 self.save_conf_data(persist)
                 if drbdctrl_flag:
                     self.reconfigure_drbdctrl()
@@ -2859,15 +2866,18 @@ class DrbdManageServer(object):
             # delete nodes that are marked for removal and that do not
             # have assignments anymore
             removable = []
+            drbdctrl_flag = False
             for node in self._nodes.itervalues():
                 node_state = node.get_state()
                 if is_set(node_state, DrbdNode.FLAG_REMOVE):
                     if not node.has_assignments():
                         removable.append(node)
+                        if is_set(node_state, DrbdNode.FLAG_DRBDCTRL):
+                            drbdctrl_flag = True
             for node in removable:
                 del self._nodes[node.get_name()]
-            # if nodes have been removed, reconfigure the control volume
-            if len(removable) > 0:
+            # if nodes with a control volume have been removed, reconfigure the control volume
+            if drbdctrl_flag:
                 try:
                     self._configure_drbdctrl(False, None, None, None, None)
                     self._drbd_mgr.adjust_drbdctrl()
