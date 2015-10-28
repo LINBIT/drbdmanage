@@ -1471,17 +1471,20 @@ class DrbdManageServer(object):
                             aux_props = aux_props_selector(props)
                             node.get_props().merge_gen(aux_props)
                             self._nodes[node.get_name()] = node
-                            self._cluster_nodes_update()
-                            # create or update the drbdctrl.res file
-                            check_configure = self._configure_drbdctrl(
-                                initial,
-                                None, bdev_0, bdev_1, port
-                            )
-                            if check_configure == 0:
-                                self._drbd_mgr.adjust_drbdctrl()
-                                fn_rc = DM_SUCCESS
+                            if node_drbdctrl:
+                                self._cluster_nodes_update()
+                                # create or update the drbdctrl.res file
+                                check_configure = self._configure_drbdctrl(
+                                    initial,
+                                    None, bdev_0, bdev_1, port
+                                )
+                                if check_configure == 0:
+                                    self._drbd_mgr.adjust_drbdctrl()
+                                    fn_rc = DM_SUCCESS
+                                else:
+                                    fn_rc = DM_ECTRLVOL
                             else:
-                                fn_rc = DM_ECTRLVOL
+                                fn_rc = DM_SUCCESS
                         else:
                             # Attempted to create a node with a control volume,
                             # but could not assign a node id
