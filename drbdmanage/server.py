@@ -4253,6 +4253,9 @@ class DrbdManageServer(object):
                             add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
                     else:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                else:
+                    # load_conf() failed
+                    raise PersistenceException
             else:
                 raise PersistenceException
         except PersistenceException:
