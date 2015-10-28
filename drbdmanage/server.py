@@ -2735,6 +2735,10 @@ class DrbdManageServer(object):
                         )
                         inst_node.set_pool(poolsize, poolfree)
                     fn_rc = DM_SUCCESS
+                else:
+                    # Node without storage
+                    inst_node.set_pool(0, 0)
+                    fn_rc = DM_SUCCESS
             else:
                 fn_rc = DM_ENOENT
         except Exception as exc:
