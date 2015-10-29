@@ -42,16 +42,22 @@ from drbdmanage.drbd.drbdcore import (
 )
 
 
-def persistence_impl(ref_server):
+def create_server_persistence(ref_server):
     """
-    Return the persistence implementation of the drbdmanage control volume
-
-    This function serves for easy and centralized replacement of
-    the class that implements persistence (saving object state to disk)
+    Creates the persistence layer for a drbdmanage server-node
 
     @return: persistence layer object
     """
     return ServerDualPersistence(ref_server)
+
+
+def create_satellite_persistence(ref_server):
+    """
+    Creates the persistence layer for a drbdmanage satellite-node
+
+    @return: persistence layer object
+    """
+    return SatellitePersistence(ref_server)
 
 
 class DummyPersistence(object):

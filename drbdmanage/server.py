@@ -366,7 +366,10 @@ class DrbdManageServer(object):
         Initializes the persistence layer
         """
         # TODO: Server/Satellite decision
-        persist = drbdmanage.drbd.persistence.persistence_impl(self)
+        # if this_is_a_server_node:
+        persist = drbdmanage.drbd.persistence.create_server_persistence(self)
+        # else:
+        #     persist = drbdmanage.drbd.persistence.create_satellite_persistence(self)
         self._objects_root[DrbdManageServer.OBJ_PERSIST_NAME] = persist
         self._update_objects()
 
