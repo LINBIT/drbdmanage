@@ -3388,25 +3388,25 @@ Confirm:
         fn_rc = 1
 
         init_blks = 4
-        pers_impl = drbdmanage.drbd.persistence.PersistenceDualImpl
-        blksz = pers_impl.BLOCK_SIZE
+        persist = drbdmanage.drbd.persistence.ServerDualPersistence
+        blksz = persist.BLOCK_SIZE
 
-        index_name = pers_impl.INDEX_KEY
-        index_off = pers_impl.INDEX_OFFSET
-        hash_off = pers_impl.HASH_OFFSET
-        data_off = pers_impl.DATA_OFFSET
-        cconf_off = pers_impl.DATA_OFFSET + 4096
+        index_name = persist.INDEX_KEY
+        index_off = persist.INDEX_OFFSET
+        hash_off = persist.HASH_OFFSET
+        data_off = persist.DATA_OFFSET
+        cconf_off = persist.DATA_OFFSET + 4096
 
-        assg_len_name = pers_impl.ASSG_LEN_KEY
-        assg_off_name = pers_impl.ASSG_OFF_KEY
-        nodes_len_name = pers_impl.NODES_LEN_KEY
-        nodes_off_name = pers_impl.NODES_OFF_KEY
-        res_len_name = pers_impl.RES_LEN_KEY
-        res_off_name = pers_impl.RES_OFF_KEY
-        cconf_len_name = pers_impl.CCONF_LEN_KEY
-        cconf_off_name = pers_impl.CCONF_OFF_KEY
-        common_len_name = pers_impl.COMMON_LEN_KEY
-        common_off_name = pers_impl.COMMON_OFF_KEY
+        assg_len_name = persist.ASSG_LEN_KEY
+        assg_off_name = persist.ASSG_OFF_KEY
+        nodes_len_name = persist.NODES_LEN_KEY
+        nodes_off_name = persist.NODES_OFF_KEY
+        res_len_name = persist.RES_LEN_KEY
+        res_off_name = persist.RES_OFF_KEY
+        cconf_len_name = persist.CCONF_LEN_KEY
+        cconf_off_name = persist.CCONF_OFF_KEY
+        common_len_name = persist.COMMON_LEN_KEY
+        common_off_name = persist.COMMON_OFF_KEY
 
         drbdctrl = None
         try:
@@ -3457,12 +3457,12 @@ Confirm:
                 pos += 1
 
             # Write the control volume magic number
-            drbdctrl.seek(pers_impl.MAGIC_OFFSET)
-            drbdctrl.write(pers_impl.PERSISTENCE_MAGIC)
+            drbdctrl.seek(persist.MAGIC_OFFSET)
+            drbdctrl.write(persist.PERSISTENCE_MAGIC)
 
             # Write the control volume version
-            drbdctrl.seek(pers_impl.VERSION_OFFSET)
-            drbdctrl.write(pers_impl.PERSISTENCE_VERSION)
+            drbdctrl.seek(persist.VERSION_OFFSET)
+            drbdctrl.write(persist.PERSISTENCE_VERSION)
 
             drbdctrl.seek(index_off)
             drbdctrl.write(index_str)
