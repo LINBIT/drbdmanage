@@ -54,39 +54,6 @@ def persistence_impl(ref_server):
     return PersistenceDualImpl(ref_server)
 
 
-class BasePersistence(object):
-
-
-    def __init__(self):
-        pass
-
-
-    def container_to_json(self, container):
-        """
-        Serializes a dictionary into a JSON string
-
-        Indent level is 4 spaces, keys are sorted.
-
-        @param   container: the data collection to serialize into a JSON string
-        @type    container: dict
-        @return: JSON representation of the container
-        @rtype:  str
-        """
-        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
-
-
-    def json_to_container(self, json_doc):
-        """
-        Deserializes a JSON string into a dictionary
-
-        @param   json_doc: the JSON string to deserialize
-        @type    json_doc: str (or compatible)
-        @return: data collection (key/value) deserialized from the JSON string
-        @rtype:  dict
-        """
-        return json.loads(json_doc)
-
-
 class PersistenceImplDummy(object):
     def __init__(self, ref_server):
         pass
@@ -115,6 +82,355 @@ class PersistenceImplDummy(object):
 
     def open(self, modify):
         return True
+
+
+class BasePersistence(object):
+
+
+    NODES_KEY  = "nodes"
+    RES_KEY    = "res"
+    ASSG_KEY   = "assg"
+    CCONF_KEY  = "cconf"
+    COMMON_KEY = "common"
+
+    # Reference to the server instance
+    _server = None
+
+    # Buffered JSON data and its hash
+    _json_data      = None
+    _json_data_hash = None
+
+
+    def __init__(self, ref_server):
+        self._json_data = ""
+        self._server = ref_server
+
+
+    def set_json_data(self, data):
+        self._json_data = str(data)
+        data_hash = DataHash()
+        data_hash.update(self._json_data)
+        self._json_data_hash = data_hash.get_hex_hash()
+
+
+    def get_json_data(self):
+        return self._json_data
+
+
+    def get_stored_hash(self):
+        if self._json_data_hash is None:
+            raise PersistenceException
+        return self._json_data_hash
+
+
+    def container_to_json(self, container):
+        """
+        Serializes a dictionary into a JSON string
+
+        Indent level is 4 spaces, keys are sorted.
+
+        @param   container: the data collection to serialize into a JSON string
+        @type    container: dict
+        @return: JSON representation of the container
+        @rtype:  str
+        """
+        return (json.dumps(container, indent=4, sort_keys=True) + "\n")
+
+
+    def json_to_container(self, json_doc):
+        """
+        Deserializes a JSON string into a dictionary
+
+        @param   json_doc: the JSON string to deserialize
+        @type    json_doc: str (or compatible)
+        @return: data collection (key/value) deserialized from the JSON string
+        @rtype:  dict
+        """
+        return json.loads(json_doc)
+
+
+    def load_containers(self, objects_root, nodes_con, res_con, assg_con, cconf_con, common_con):
+        """
+        Loads drbdmanage objects from their key/value maps
+        """
+        # Cache the currently loaded assignment objects
+        # (Required later to figure out which assignments have been added or
+        # removed after reloading the configuration)
+        nodes_key = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
+        nodes = objects_root[nodes_key]
+
+        assg_map_cache = {}
+        for node in nodes.itervalues():
+            node_assg_map = {}
+            for assg in node.iterate_assignments():
+                node_assg_map[assg.get_resource().get_name()] = assg
+            if len(node_assg_map) > 0:
+                assg_map_cache[node.get_name()] = node_assg_map
+
+        # Load nodes
+        loaded_nodes = {}
+        for properties in nodes_con.itervalues():
+            node = DrbdNodePersistence.load(
+                properties,
+                self._server.get_serial
+            )
+            loaded_nodes[node.get_name()] = node
+
+        # Load resources
+        loaded_resources = {}
+        for properties in res_con.itervalues():
+            resource = DrbdResourcePersistence.load(
+                properties,
+                self._server.get_serial
+            )
+            loaded_resources[resource.get_name()] = resource
+
+        # Load assignments
+        for properties in assg_con.itervalues():
+            assignment = AssignmentPersistence.load(
+                properties, loaded_nodes, loaded_resources,
+                self._server.get_serial
+            )
+
+        # Reestablish assignments and snapshot assignments signals
+        for node in loaded_nodes.itervalues():
+            node_name = node.get_name()
+            node_assg_map = assg_map_cache.get(node_name)
+            for cur_assg in node.iterate_assignments():
+                res_name = cur_assg.get_resource().get_name()
+                prev_assg = None
+                if node_assg_map is not None:
+                    prev_assg = node_assg_map.get(res_name)
+
+                if prev_assg is not None:
+                    # Assignment was present in the previous configuration
+                    signal = prev_assg.get_signal()
+                    cur_assg.set_signal(signal)
+                    del node_assg_map[res_name]
+                    # If the current state or target state of that assignment
+                    # has changed, send out a change notification
+                    if (cur_assg.get_cstate() != prev_assg.get_cstate() or
+                        cur_assg.get_tstate() != prev_assg.get_tstate()):
+                        # cstate or tstate changed
+                        cur_assg.notify_changed()
+
+                    # Collect the previous snapshot assignments
+                    prev_snaps_assg_map = {}
+                    for snaps_assg in prev_assg.iterate_snaps_assgs():
+                        snaps = snaps_assg.get_snapshot()
+                        snaps_name = snaps.get_name()
+                        prev_snaps_assg_map[snaps_name] = snaps_assg
+
+                    # Cross-check for changes (creation/removal) of
+                    # snapshot assignments
+                    for cur_snaps_assg in cur_assg.iterate_snaps_assgs():
+                        cur_snaps = cur_snaps_assg.get_snapshot()
+                        cur_snaps_name = cur_snaps.get_name()
+                        prev_snaps_assg = prev_snaps_assg_map.get(cur_snaps_name)
+
+                        # Transfer the existing signal or create a new signal
+                        # for the snapshot assignment
+                        signal = None
+                        if prev_snaps_assg is not None:
+                            del prev_snaps_assg_map[cur_snaps_name]
+                            # Transfer the signal from the previous configuration's
+                            # snapshot assignment
+                            signal = prev_snaps_assg.get_signal()
+                            cur_snaps_assg.set_signal(signal)
+                            # If the current state or target state of that
+                            # snapshot assignment has changed, send out
+                            # a change notification
+                            if (cur_snaps_assg.get_cstate() != prev_snaps_assg.get_cstate() or
+                                cur_snaps_assg.get_tstate() != prev_snaps_assg.get_tstate()):
+                                # cstate or tstate change
+                                cur_snaps_assg.notify_changed()
+                        else:
+                            # Create a new signal for the newly present
+                            # snapshot assignment
+                            signal = self._server.create_signal(
+                                "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                            )
+                            cur_snaps_assg.set_signal(signal)
+
+                    # Send remove signals for those snapshot assignments that
+                    # existed in the previous configuration but do no longer
+                    # exist in the current configuration
+                    for prev_snaps_assg in prev_snaps_assg_map.itervalues():
+                        prev_snaps_assg.notify_removed()
+                else:
+                    # Assignment was not present in the previous configuration
+                    # (e.g. it was created by another node)
+                    signal = self._server.create_signal(
+                        "assignments/" + node_name + "/" + res_name
+                    )
+                    cur_assg.set_signal(signal)
+                    # Create signals for the snapshot assignments
+                    for snaps_assg in cur_assg.iterate_snaps_assgs():
+                        snaps = snaps_assg.get_snapshot()
+                        snaps_name = snaps.get_name()
+                        signal = self._server.create_signal(
+                            "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                        )
+                        snaps_assg.set_signal(signal)
+            if node_assg_map is not None and len(node_assg_map) == 0:
+                del assg_map_cache[node_name]
+        for node_assg_map in assg_map_cache.itervalues():
+            for prev_assg in node_assg_map.itervalues():
+                prev_assg.notify_removed()
+
+        # Load the cluster configuration
+        loaded_cluster_conf = propscon.PropsContainer(None, None, cconf_con)
+        loaded_serial_gen = loaded_cluster_conf.new_serial_gen()
+
+        # Load the common configuration
+        loaded_common_conf = DrbdCommonPersistence.load(
+            common_con, self._server.get_serial
+        )
+
+        # Update the server's object directory
+        objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]     = loaded_nodes
+        objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME] = loaded_resources
+        objects_root[drbdmanage.server.DrbdManageServer.OBJ_SGEN_NAME]      = loaded_serial_gen
+        objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]     = loaded_cluster_conf
+        objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]    = loaded_common_conf
+        # NOTE: Caller must update the server's objects directory cache
+
+        # Quorum: Clear the quorum-ignore flag on each node that is
+        #         currently connected and update the number of
+        #         expected nodes
+        quorum = self._server.get_quorum()
+        quorum.readjust_qignore_flags()
+        quorum.readjust_full_member_count()
+
+
+    def save_containers(self, objects_root):
+        nodes        = objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]
+        resources    = objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME]
+        cluster_conf = objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]
+        common_conf  = objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]
+
+        # Prepare nodes and assignments containers
+        nodes_con = {}
+        assg_con = {}
+        for node in nodes.itervalues():
+            DrbdNodePersistence(node).save(nodes_con)
+            for assg in node.iterate_assignments():
+                AssignmentPersistence(assg).save(assg_con)
+
+        # Prepare resources container
+        res_con = {}
+        for resource in resources.itervalues():
+            DrbdResourcePersistence(resource).save(res_con)
+
+        # Prepare cluster configuration container
+        cluster_conf_con = cluster_conf.get_all_props()
+
+        # Prepare common configuration container
+        common_conf_con = {}
+        DrbdCommonPersistence(common_conf).save(common_conf_con)
+
+        return (nodes_con, res_con, assg_con, cluster_conf_con, common_conf_con)
+
+
+    def json_import(self, objects_root):
+        """
+        Imports the configuration from JSON data streams
+        """
+        try:
+            import_con = self.json_to_container(self._json_data)
+
+            # Extract the various containers
+            # FIXME: Establish constants for the container keys
+            nodes_con  = import_con[BasePersistence.NODES_KEY]
+            res_con    = import_con[BasePersistence.RES_KEY]
+            assg_con   = import_con[BasePersistence.ASSG_KEY]
+            cconf_con  = import_con[BasePersistence.CCONF_KEY]
+            common_con = import_con[BasePersistence.COMMON_KEY]
+
+            self.load_containers(objects_root, nodes_con, res_con, assg_con, cconf_con, common_con)
+        except PersistenceException as pers_exc:
+            # Rethrow
+            raise pers_exc
+        except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logging.error(
+                "PersistenceDualImpl: Cannot import configuration, Exception=%s"
+                % (str(exc_type))
+            )
+            logging.debug("*** begin stack trace")
+            for line in traceback.format_tb(exc_tb):
+                logging.debug("    %s" % (line))
+            logging.debug("*** end stack trace")
+            raise PersistenceException
+
+
+    def json_export(self, objects_root):
+        """
+        Exports JSON data streams of the configuration
+
+        The persistent storage must have been opened before calling load().
+        See open().
+
+        @raise   PersistenceException: on I/O error
+        @raise   IOError: if no file descriptor is open
+        """
+        try:
+            nodes_con, res_con, assg_con, cconf_con, common_con = self.save_containers(objects_root)
+
+            export_con = {}
+            export_con[BasePersistence.NODES_KEY]  = nodes_con
+            export_con[BasePersistence.RES_KEY]    = res_con
+            export_con[BasePersistence.ASSG_KEY]   = assg_con
+            export_con[BasePersistence.CCONF_KEY]  = cconf_con
+            export_con[BasePersistence.COMMON_KEY] = common_con
+
+            self._json_data = self.container_to_json(export_con)
+        except PersistenceException as pers_exc:
+            # Rethrow
+            raise pers_exc
+        except Exception as exc:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            logging.error(
+                "PersistenceDualImpl: Cannot export configuration, Exception=%s"
+                % (str(exc_type))
+            )
+            logging.debug("*** begin stack trace")
+            for line in traceback.format_tb(exc_tb):
+                logging.debug("    %s" % (line))
+            logging.debug("*** end stack trace")
+            raise PersistenceException
+
+
+class SatellitePersistence(BasePersistence):
+
+    _data_hash   = None
+
+
+    def __init__(self, ref_server):
+        super(SatellitePersistence, self).__init__(ref_server)
+
+
+    def open(self, modify):
+        return True;
+
+
+    def get_hash_obj(self):
+        return self._data_hash
+
+
+    def close(self):
+        self._data_hash = None
+
+
+    def load(self, objects_root):
+        self.json_import(objects_root)
+
+
+    def save(self, objects_root):
+        self.json_export(objects_root)
+        self._data_hash = DataHash()
+        self._data_hash.update(self.get_json_data())
+
 
 
 class PersistenceDualImpl(BasePersistence):
@@ -182,7 +498,7 @@ class PersistenceDualImpl(BasePersistence):
 
 
     def __init__(self, ref_server):
-        self._server = ref_server
+        super(PersistenceDualImpl, self).__init__(ref_server)
 
 
     def open(self, modify):
@@ -343,154 +659,7 @@ class PersistenceDualImpl(BasePersistence):
                 cconf_con  = self._import_container(load_file, cconf_off, cconf_len)
                 common_con = self._import_container(load_file, common_off, common_len)
 
-                # Cache the currently loaded assignment objects
-                # (Required later to figure out which assignments have been added or
-                # removed after reloading the configuration)
-                nodes_key = drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME
-                nodes = objects_root[nodes_key]
-
-                assg_map_cache = {}
-                for node in nodes.itervalues():
-                    node_assg_map = {}
-                    for assg in node.iterate_assignments():
-                        node_assg_map[assg.get_resource().get_name()] = assg
-                    if len(node_assg_map) > 0:
-                        assg_map_cache[node.get_name()] = node_assg_map
-
-                # Load nodes
-                loaded_nodes = {}
-                for properties in nodes_con.itervalues():
-                    node = DrbdNodePersistence.load(
-                        properties,
-                        self._server.get_serial
-                    )
-                    loaded_nodes[node.get_name()] = node
-
-                # Load resources
-                loaded_resources = {}
-                for properties in res_con.itervalues():
-                    resource = DrbdResourcePersistence.load(
-                        properties,
-                        self._server.get_serial
-                    )
-                    loaded_resources[resource.get_name()] = resource
-
-                # Load assignments
-                for properties in assg_con.itervalues():
-                    assignment = AssignmentPersistence.load(
-                        properties, loaded_nodes, loaded_resources,
-                        self._server.get_serial
-                    )
-
-                # Reestablish assignments and snapshot assignments signals
-                for node in loaded_nodes.itervalues():
-                    node_name = node.get_name()
-                    node_assg_map = assg_map_cache.get(node_name)
-                    for cur_assg in node.iterate_assignments():
-                        res_name = cur_assg.get_resource().get_name()
-                        prev_assg = None
-                        if node_assg_map is not None:
-                            prev_assg = node_assg_map.get(res_name)
-
-                        if prev_assg is not None:
-                            # Assignment was present in the previous configuration
-                            signal = prev_assg.get_signal()
-                            cur_assg.set_signal(signal)
-                            del node_assg_map[res_name]
-                            # If the current state or target state of that assignment
-                            # has changed, send out a change notification
-                            if (cur_assg.get_cstate() != prev_assg.get_cstate() or
-                                cur_assg.get_tstate() != prev_assg.get_tstate()):
-                                # cstate or tstate changed
-                                cur_assg.notify_changed()
-
-                            # Collect the previous snapshot assignments
-                            prev_snaps_assg_map = {}
-                            for snaps_assg in prev_assg.iterate_snaps_assgs():
-                                snaps = snaps_assg.get_snapshot()
-                                snaps_name = snaps.get_name()
-                                prev_snaps_assg_map[snaps_name] = snaps_assg
-
-                            # Cross-check for changes (creation/removal) of
-                            # snapshot assignments
-                            for cur_snaps_assg in cur_assg.iterate_snaps_assgs():
-                                cur_snaps = cur_snaps_assg.get_snapshot()
-                                cur_snaps_name = cur_snaps.get_name()
-                                prev_snaps_assg = prev_snaps_assg_map.get(cur_snaps_name)
-
-                                # Transfer the existing signal or create a new signal
-                                # for the snapshot assignment
-                                signal = None
-                                if prev_snaps_assg is not None:
-                                    del prev_snaps_assg_map[cur_snaps_name]
-                                    # Transfer the signal from the previous configuration's
-                                    # snapshot assignment
-                                    signal = prev_snaps_assg.get_signal()
-                                    cur_snaps_assg.set_signal(signal)
-                                    # If the current state or target state of that
-                                    # snapshot assignment has changed, send out
-                                    # a change notification
-                                    if (cur_snaps_assg.get_cstate() != prev_snaps_assg.get_cstate() or
-                                        cur_snaps_assg.get_tstate() != prev_snaps_assg.get_tstate()):
-                                        # cstate or tstate change
-                                        cur_snaps_assg.notify_changed()
-                                else:
-                                    # Create a new signal for the newly present
-                                    # snapshot assignment
-                                    signal = self._server.create_signal(
-                                        "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
-                                    )
-                                    cur_snaps_assg.set_signal(signal)
-
-                            # Send remove signals for those snapshot assignments that
-                            # existed in the previous configuration but do no longer
-                            # exist in the current configuration
-                            for prev_snaps_assg in prev_snaps_assg_map.itervalues():
-                                prev_snaps_assg.notify_removed()
-                        else:
-                            # Assignment was not present in the previous configuration
-                            # (e.g. it was created by another node)
-                            signal = self._server.create_signal(
-                                "assignments/" + node_name + "/" + res_name
-                            )
-                            cur_assg.set_signal(signal)
-                            # Create signals for the snapshot assignments
-                            for snaps_assg in cur_assg.iterate_snaps_assgs():
-                                snaps = snaps_assg.get_snapshot()
-                                snaps_name = snaps.get_name()
-                                signal = self._server.create_signal(
-                                    "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
-                                )
-                                snaps_assg.set_signal(signal)
-                    if node_assg_map is not None and len(node_assg_map) == 0:
-                        del assg_map_cache[node_name]
-                for node_assg_map in assg_map_cache.itervalues():
-                    for prev_assg in node_assg_map.itervalues():
-                        prev_assg.notify_removed()
-
-                # Load the cluster configuration
-                loaded_cluster_conf = propscon.PropsContainer(None, None, cconf_con)
-                loaded_serial_gen = loaded_cluster_conf.new_serial_gen()
-
-                # Load the common configuration
-                loaded_common_conf = DrbdCommonPersistence.load(
-                    common_con, self._server.get_serial
-                )
-
-                # Update the server's object directory
-                objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]     = loaded_nodes
-                objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME] = loaded_resources
-                objects_root[drbdmanage.server.DrbdManageServer.OBJ_SGEN_NAME]      = loaded_serial_gen
-                objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]     = loaded_cluster_conf
-                objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]    = loaded_common_conf
-                # NOTE: Caller must update the server's objects directory cache
-
-                # Quorum: Clear the quorum-ignore flag on each node that is
-                #         currently connected and update the number of
-                #         expected nodes
-                quorum = self._server.get_quorum()
-                quorum.readjust_qignore_flags()
-                quorum.readjust_full_member_count()
+                self.load_containers(objects_root, nodes_con, res_con, assg_con, cconf_con, common_con)
             except PersistenceException as pers_exc:
                 # Rethrow
                 raise pers_exc
@@ -524,32 +693,11 @@ class PersistenceDualImpl(BasePersistence):
             try:
                 save_file = self._save_file
 
-                nodes        = objects_root[drbdmanage.server.DrbdManageServer.OBJ_NODES_NAME]
-                resources    = objects_root[drbdmanage.server.DrbdManageServer.OBJ_RESOURCES_NAME]
-                cluster_conf = objects_root[drbdmanage.server.DrbdManageServer.OBJ_CCONF_NAME]
-                common_conf  = objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]
-
                 data_hash = DataHash()
 
-                # Prepare nodes and assignments containers
-                nodes_con = {}
-                assg_con = {}
-                for node in nodes.itervalues():
-                    DrbdNodePersistence(node).save(nodes_con)
-                    for assg in node.iterate_assignments():
-                        AssignmentPersistence(assg).save(assg_con)
-
-                # Prepare resources container
-                res_con = {}
-                for resource in resources.itervalues():
-                    DrbdResourcePersistence(resource).save(res_con)
-
-                # Prepare cluster configuration container
-                cluster_conf_con = cluster_conf.get_all_props()
-
-                # Prepare common configuration container
-                common_conf_con = {}
-                DrbdCommonPersistence(common_conf).save(common_conf_con)
+                nodes_con, res_con, assg_con, cluster_conf_con, common_conf_con = (
+                    self.save_containers(objects_root)
+                )
 
                 save_file.seek(PersistenceDualImpl.DATA_OFFSET)
 
@@ -576,6 +724,7 @@ class PersistenceDualImpl(BasePersistence):
                 self._save_index(save_file, index_con)
 
                 self._update_stored_hash(save_file, data_hash.get_hex_hash())
+                self._data_hash = data_hash
             except PersistenceException as pers_exc:
                 # Rethrow
                 raise pers_exc
