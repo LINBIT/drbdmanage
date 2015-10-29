@@ -122,7 +122,7 @@ class Quorum(object):
         """
         present = False
         if self._quorum_full >= Quorum.FULL_MIN:
-            threshold = int(self._quorum_full) / 2 + 1
+            threshold = int(self._quorum_full / 2) + 1
             if self._quorum_count >= threshold:
                 present = True
         else:
