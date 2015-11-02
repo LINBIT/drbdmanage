@@ -3239,7 +3239,7 @@ Confirm:
             configfile.write('# Example: [Node:%s]\n' % (example_node))
             configfile.write('\n')
 
-            configfile.write('# For further information please refere to drbdmanage.cfg(8)\n')
+            configfile.write('# For further information please refere to "Configuration" in drbdmanage(8)\n')
 
         shutil.copyfile(tmpf, orig)
 
