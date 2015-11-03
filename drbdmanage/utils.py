@@ -1053,8 +1053,10 @@ class MetaData(object):
     @classmethod
     def get_gross_data_kiB(self, net_data_kiB, peers):
         # Do not allow volumes with a negative or empty size
+        # FIXME: The minimum size should be increased to a value where
+        #        this actually works in practice
         if net_data_kiB < MetaData.ALIGNMENT / 1024:
-            net_data_kiB = MetaData.ALIGNMENT
+            net_data_kiB = MetaData.ALIGNMENT / 1024
 
         # Round up to the next alignment boundary
         net_data_b = long(net_data_kiB * 1024)
