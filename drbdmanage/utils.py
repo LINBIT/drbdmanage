@@ -1049,6 +1049,9 @@ class MetaData(object):
     # Unit of alignment; must be a multiple of 1024
     ALIGNMENT = 4096
 
+    # Minimum backend device size
+    # drbdmeta currently requires at least 68 kiB
+    MIN_GROSS_DATA_kiB = 68
 
     @classmethod
     def get_gross_data_kiB(self, net_data_kiB, peers):
@@ -1094,8 +1097,10 @@ class MetaData(object):
             gross_data_blocks += 1
 
         gross_data_kiB = gross_data_blocks * (MetaData.ALIGNMENT / 1024)
+        if gross_data_kiB < MetaData.MIN_GROSS_DATA_kiB:
+            gross_data_kiB = MetaData.MIN_GROSS_DATA_kiB
 
-        return gross_data_kiB
+        return long(gross_data_kiB)
 
 
     @classmethod
@@ -1133,7 +1138,7 @@ class MetaData(object):
         net_data_blocks = net_data_b / MetaData.ALIGNMENT
         net_data_kiB    = net_data_blocks * (MetaData.ALIGNMENT / 1024)
 
-        return net_data_kiB
+        return long(net_data_kiB)
 
 
     @classmethod
