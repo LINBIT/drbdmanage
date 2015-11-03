@@ -110,6 +110,7 @@ class DrbdManager(object):
         """
         logging.debug("DrbdManager: Enter function run()")
         persist = None
+        data_changed = False
         logging.debug("DrbdManager: invoked")
         try:
             # Always perform changes requested for the local node if the
@@ -138,6 +139,7 @@ class DrbdManager(object):
                 # configuration for reading and writing
                 persist = self._server.begin_modify_conf()
                 if persist is not None:
+                    loaded_hash = persist.get_stored_hash()
                     old_serial = self._server.peek_serial()
                     changed    = self.perform_changes()
                     new_serial = self._server.peek_serial()
@@ -151,6 +153,9 @@ class DrbdManager(object):
                         logging.debug("DrbdManager: state changed, "
                                       "saving control volume data")
                         self._server.save_conf_data(persist)
+                        # Report changed data back only if the hash has changed too
+                        if not self._server.hashes_match(loaded_hash):
+                            data_changed = True
                     else:
                         logging.debug("DrbdManager: state unchanged")
                 else:
@@ -174,12 +179,15 @@ class DrbdManager(object):
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
         logging.debug("DrbdManager: Exit function run()")
+        return data_changed
+
 
     def _get_global_conf(self):
         global_path = os.path.join(self._server._conf[consts.KEY_DRBD_CONFPATH],
                                    consts.FILE_GLOBAL_COMMON_CONF)
         global_conf = open(global_path, "w")
         return global_conf
+
 
     # FIXME
     # - still requires more error handling
