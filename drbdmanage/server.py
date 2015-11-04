@@ -1626,7 +1626,7 @@ class DrbdManageServer(object):
             resource = self._resources.get(res_name)
             if resource is not None:
                 add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST),
-                             [ RES_NAME, resource.get_name() ])
+                             [ [RES_NAME, resource.get_name()] ])
             else:
                 port = RES_PORT_NR_AUTO
                 secret = generate_secret()
