@@ -338,10 +338,10 @@ class DrbdManageServer(object):
 
         self._objects_root[DrbdManageServer.OBJ_PERSIST_NAME] = None
 
-        self._update_objects()
+        self.update_objects()
 
 
-    def _update_objects(self):
+    def update_objects(self):
         """
         Updates the server's cached references into the objects directory
 
@@ -371,7 +371,7 @@ class DrbdManageServer(object):
         # else:
         #     persist = drbdmanage.drbd.persistence.create_satellite_persistence(self)
         self._objects_root[DrbdManageServer.OBJ_PERSIST_NAME] = persist
-        self._update_objects()
+        self.update_objects()
 
 
     def run(self):
@@ -898,7 +898,7 @@ class DrbdManageServer(object):
         if cur_storage_plugin and cur_storage_plugin != new_storage_plugin:
             self._bd_mgr = BlockDeviceManager(new_storage_plugin, self._pluginmgr)
 
-        self._update_objects()  # which sets self._conf and self._plugin_conf from _objects_root
+        self.update_objects()  # which sets self._conf and self._plugin_conf from _objects_root
 
         self._reload_plugins()
         # print "Stage_END", self._conf, self._plugin_conf
@@ -3834,7 +3834,6 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         persist.load(self._objects_root)
-        self._update_objects()
         self._conf_hash = persist.get_stored_hash()
         self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
 
@@ -4163,7 +4162,7 @@ class DrbdManageServer(object):
                 srv = DrbdManageServer
                 self._objects_root[srv.OBJ_NODES_NAME] = {}
                 self._objects_root[srv.OBJ_RESOURCES_NAME] = {}
-                self._update_objects()
+                self.update_objects()
 
                 bdev_0 = None
                 bdev_1 = None

@@ -301,6 +301,8 @@ class BasePersistence(object):
         objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]    = loaded_common_conf
         # NOTE: Caller must update the server's objects directory cache
 
+        self._server.update_objects();
+
         # Quorum: Clear the quorum-ignore flag on each node that is
         #         currently connected and update the number of
         #         expected nodes
