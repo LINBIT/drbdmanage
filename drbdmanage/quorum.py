@@ -206,3 +206,47 @@ class Quorum(object):
                 if drbdmanage.utils.is_set(node.get_state(),
                                            drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE):
                     node.clear_state_flags(drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE)
+
+
+class IgnoredQuorum(object):
+
+    COUNT_MIN = 1
+    COUNT_MAX = 31
+
+    FULL_MIN = 3
+
+    _server = None
+
+    def __init__(self, server_ref):
+        self._server = server_ref
+
+    def node_joined(self, node_name):
+        return False
+
+    def node_left(self, node_name):
+        pass
+
+    def is_present(self):
+        return True
+
+    def iterate_active_member_names(self):
+        return {}.iterkeys()
+
+    def is_active_member_node(self, node_name):
+        return False
+
+    def set_full_member_count(self, count):
+        pass
+
+    def get_full_member_count(self):
+        return 1
+
+    def get_active_member_count(self):
+        return 1
+
+    def readjust_full_member_count(self):
+        pass
+
+    def readjust_qignore_flags(self):
+        pass
+
