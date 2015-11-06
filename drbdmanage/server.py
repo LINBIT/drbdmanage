@@ -1572,7 +1572,7 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                         [ NODE_NAME, node_name ])
+                         [ [ NODE_NAME, node_name ] ])
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except QuorumException:
@@ -1639,7 +1639,7 @@ class DrbdManageServer(object):
                         port = self.get_free_port_nr()
                     if port < 1 or port > 65535:
                         add_rc_entry(fn_rc, DM_EPORT, dm_exc_text(DM_EPORT),
-                                     [ RES_PORT, str(port) ])
+                                     [ [ RES_PORT, str(port) ] ])
                     else:
                         resource = DrbdResource(
                             res_name,
@@ -1655,10 +1655,10 @@ class DrbdManageServer(object):
                                  dm_exc_text(DM_ESECRETG))
         except ValueError:
             add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL),
-                         [ RES_PORT, port ])
+                         [ [ RES_PORT, port ] ])
         except InvalidNameException:
             add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME),
-                         [ RES_NAME, res_name ])
+                         [ [ RES_NAME, res_name ] ])
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
             # Discard the resource if something went awry unexpectedly
@@ -1988,13 +1988,13 @@ class DrbdManageServer(object):
                     node = self._nodes[node_name]
                 except KeyError:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ NODE_NAME, node_name ])
+                                 [ [ NODE_NAME, node_name ] ])
                 resource = None
                 try:
                     resource = self._resources[res_name]
                 except KeyError:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ RES_NAME, res_name ])
+                                 [ [ RES_NAME, res_name ] ])
                 if node is None or resource is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
                 else:
@@ -3043,7 +3043,7 @@ class DrbdManageServer(object):
                 node = self._nodes.get(node_name)
                 if node is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ NODE_NAME, node_name ])
+                                 [ [ NODE_NAME, node_name ] ])
                 else:
                     yield node
 
@@ -3093,7 +3093,7 @@ class DrbdManageServer(object):
                 res = self._resources.get(res_name)
                 if res is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ RES_NAME, res_name ])
+                                 [ [ RES_NAME, res_name ] ])
                 else:
                     yield res
 
@@ -3136,7 +3136,7 @@ class DrbdManageServer(object):
                 res = self._resources.get(res_name)
                 if res is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ RES_NAME, res_name ])
+                                 [ [ RES_NAME, res_name ] ])
                 else:
                     yield res
 
@@ -3201,7 +3201,7 @@ class DrbdManageServer(object):
                     node = self._nodes.get(node_name)
                     if node is None:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                     [ NODE_NAME, node_name ])
+                                     [ [ NODE_NAME, node_name ] ])
                     else:
                         selected_nodes[node.get_name()] = node
             else:
@@ -3213,7 +3213,7 @@ class DrbdManageServer(object):
                     res = self._resources.get(res_name)
                     if res is None:
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                     [ RES_NAME, res_name ])
+                                     [ [ RES_NAME, res_name ] ])
                     else:
                         selected_res[res.get_name()] = res
             else:
@@ -3387,7 +3387,7 @@ class DrbdManageServer(object):
                 res = self._resources.get(res_name)
                 if res is None:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ RES_NAME, res_name ])
+                                 [ [ RES_NAME, res_name ] ])
                 else:
                     yield res
 
@@ -4012,7 +4012,7 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [(RES_NAME, res_name)])
+                                 [ [ RES_NAME, res_name ] ])
             else:
                 for assg in node.iterate_assignments():
                     if self.export_assignment_conf(assg) != 0:

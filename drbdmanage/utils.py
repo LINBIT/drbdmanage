@@ -639,17 +639,42 @@ def extend_path(orig_path, ext_path):
 
 def add_rc_entry(fn_rc, err_code, err_msg, args=[]):
     """
-    Add a new return code entry to the return codes array
+    Adds a new return code entry to the return codes array
+
+    The syntax for this function is:
+      - without arguments for the format string:
+          add_rc_entry(fn_rc, exception_number, error_format_string)
+      - with a single argument for the format string:
+          add_rc_entry(fn_rc, exception_number, error_format_string, [ [ key_string, value_string ] ])
+      - with multiple arguments for the format string:
+          add_rc_entry(fn_rc, exception_number, error_format_string,
+              [
+                  [ key_string, value_string ],
+                  [ key_string, value_string ],
+                  ...
+              ]
+          )
 
     Used by the drbdmanage server
     """
-    if type(args) is dict:
-        # Note: this seemingly superfluous intermediate step is basically
-        #       something like a type cast that fixes a PyLint warning
-        args_dict = dict(args)
-        args = [(key, val) for key, val in args_dict.iteritems()]
-    rc_entry = [ err_code, err_msg, args ]
-    fn_rc.append(rc_entry)
+    try:
+        if (type(err_code) is not int or
+            type(err_msg) is not str or
+            type(args) is not list):
+            # One or multiple arguments of incorrect type
+            raise TypeError
+        for item in args:
+            if type(item) is not list:
+                raise TypeError
+            # Will raise ValueError if there are not exactly two elements in the list
+            key, value = item
+            if type(key) is not str or type(value) is not str:
+                raise TypeError
+
+        rc_entry = [ err_code, err_msg, args ]
+        fn_rc.append(rc_entry)
+    except (TypeError, ValueError):
+        logging.error("Implementation error: Incorrect use of drbdmanage.utils.add_rc_entry()")
 
 
 def serial_filter(serial, objects):
