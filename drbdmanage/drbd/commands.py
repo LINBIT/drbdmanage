@@ -20,6 +20,7 @@
 
 import subprocess
 import errno
+import sys
 import logging
 import drbdmanage.utils as utils
 
@@ -186,6 +187,8 @@ class DrbdAdm(object):
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
+    def _run_drbdadm_preexec(self, args):
+        sys.stderr.write("spawning %s" % args)
 
     def _run_drbdadm(self, exec_args):
         """
@@ -193,12 +196,19 @@ class DrbdAdm(object):
         redirected to a pipe from the drbdmanage server
         """
         drbd_proc = None
+
         try:
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             drbd_proc = subprocess.Popen(
                 exec_args, 0, self.execpath,
+                preexec_fn=lambda *rest: self._run_drbdadm_preexec(exec_args),
+                stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE, close_fds=True
             )
+            subprocess.Popen(['logger', '--tag',
+                              'DRBDmanage:%d' % drbd_proc.pid],
+                             0, 'logger', stdin=drbd_proc.stderr)
+            drbd_proc.stderr.close()
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
                 logging.error("Cannot find the drbdadm utility")
