@@ -840,6 +840,26 @@ class DrbdManage(object):
                                     description='Start the server via D-Bus')
         p_startup.set_defaults(func=self.cmd_startup)
 
+        class IPAddressCheck(object):
+
+            def __init__(self):
+                pass
+
+            # used for "in" via "choices":
+            def __contains__(self, key):
+                import socket
+                try:
+                    ips = socket.getaddrinfo(key, 0)
+                except socket.gaierror as e:
+                    return None
+                if len(ips) == 0:
+                    return None
+                return ips[0][4][0]
+
+            def __iter__(self):
+                return iter([]) # gives no sane text
+                return iter(["any valid IP address"]) # completes this text
+
         # init
         p_init = subp.add_parser('init', description='Initialize the cluster'
                                  ' (including the control volume)')
@@ -850,7 +870,10 @@ class DrbdManage(object):
                             default=DRBDCTRL_DEFAULT_PORT)
         p_init.add_argument('-q', '--quiet', action="store_true")
         p_init.add_argument('-s', '--no-storage', action="store_true")
-        p_init.add_argument('ip', nargs='?', default=default_ip())
+        p_init.add_argument('ip', nargs='?',
+                            default=default_ip(),
+                            help="IP address of the machine",
+                            choices=IPAddressCheck())
         p_init.set_defaults(func=self.cmd_init)
 
         # uninit
