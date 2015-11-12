@@ -77,7 +77,7 @@ class Table():
         self.view = None
         self.showseps = False
 
-    def addColumn(self, name, color=False, just_col='<', just_txt='<'):
+    def add_column(self, name, color=False, just_col='<', just_txt='<'):
         self.got_column = True
         if self.got_row:
             raise SyntaxException("Not allowed to define columns after rows")
@@ -93,7 +93,7 @@ class Table():
             'just_col': just_col,
             'just_txt': just_txt})
 
-    def addRow(self, row, color=False, just_txt='<'):
+    def add_row(self, row, color=False, just_txt='<'):
         self.got_row = True
         if not self.got_column:
             raise SyntaxException("Not allowed to define rows before columns")
@@ -114,16 +114,16 @@ class Table():
         self.table.append(row)
         self.coloroverride.append(coloroverride)
 
-    def addSeparator(self):
+    def add_separator(self):
         self.table.append([None])
 
-    def showSeparators(self, val=False):
+    def set_show_separators(self, val=False):
         self.showseps = val
 
-    def setView(self, columns):
+    def set_view(self, columns):
         self.view = columns
 
-    def setGroupBy(self, groups):
+    def set_groupby(self, groups):
         if groups:
             self.groups = groups
 

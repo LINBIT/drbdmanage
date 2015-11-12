@@ -1824,21 +1824,21 @@ class DrbdManage(object):
         else:
             groupby = args.groupby
 
-        t.addColumn("Name", color=color(COLOR_TEAL))
-        t.addColumn("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
-        t.addColumn("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
-        t.addColumn("Site", color=color(COLOR_BROWN), just_txt='>')
-        t.addColumn("Family", just_txt='>')
-        t.addColumn("IP", just_txt='>')
-        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
+        t.add_column("Name", color=color(COLOR_TEAL))
+        t.add_column("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
+        t.add_column("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
+        t.add_column("Site", color=color(COLOR_BROWN), just_txt='>')
+        t.add_column("Family", just_txt='>')
+        t.add_column("IP", just_txt='>')
+        t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Name", "Pool_Size", "Pool_Free", "Site", "State"]
         if args.show:
             tview += args.show
-        t.setView(tview)
+        t.set_view(tview)
 
-        t.setGroupBy(groupby)
+        t.set_groupby(groupby)
 
         for node_entry in node_list:
             try:
@@ -1889,7 +1889,7 @@ class DrbdManage(object):
                         node_name, poolsize_text, poolfree_text, v_site,
                         "ipv" + v_af, v_addr, (level_color, state_text)
                     ]
-                    t.addRow(row_data)
+                    t.add_row(row_data)
                 else:
                     v_psize = self._property_text(
                         view.get_property(NODE_POOLSIZE))
@@ -1906,7 +1906,7 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
         if not machine_readable:
-            t.showSeparators(args.separators)
+            t.set_show_separators(args.separators)
             t.show()
         return 0
 
@@ -1973,13 +1973,13 @@ class DrbdManage(object):
         else:
             groupby = args.groupby
 
-        t.addColumn("Name", color=color(COLOR_TEAL))
+        t.add_column("Name", color=color(COLOR_TEAL))
         if list_volumes:
-            t.addColumn("Vol_ID", color=color(COLOR_BROWN), just_txt='>')
-            t.addColumn("Size", color=color(COLOR_BROWN), just_txt='>')
-            t.addColumn("Minor", color=color(COLOR_BROWN), just_txt='>')
-        t.addColumn("Port", just_txt='>')
-        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
+            t.add_column("Vol_ID", color=color(COLOR_BROWN), just_txt='>')
+            t.add_column("Size", color=color(COLOR_BROWN), just_txt='>')
+            t.add_column("Minor", color=color(COLOR_BROWN), just_txt='>')
+        t.add_column("Port", just_txt='>')
+        t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Name", "State"]
@@ -1989,9 +1989,9 @@ class DrbdManage(object):
 
         if args.show:
             tview += args.show
-        t.setView(tview)
+        t.set_view(tview)
 
-        t.setGroupBy(groupby)
+        t.set_groupby(groupby)
 
         for res_entry in res_list:
             try:
@@ -2009,9 +2009,9 @@ class DrbdManage(object):
                         res_name, v_port, state_text
                     ]
                     if level == GenericView.STATE_NORM:
-                        t.addRow(row_data)
+                        t.add_row(row_data)
                     else:
-                        t.addRow(row_data, color=color(level_color))
+                        t.add_row(row_data, color=color(level_color))
                 if list_volumes:
                     # sort volume list by volume id
                     vol_list.sort(key=lambda vol_entry: vol_entry[0])
@@ -2039,7 +2039,7 @@ class DrbdManage(object):
                                     res_name, str(vol_view.get_id()),
                                     size_MiB_str, v_minor, v_port, (level_color, state_text)
                                 ]
-                                t.addRow(row_data)
+                                t.add_row(row_data)
                             else:
                                 # machine readable output of the volume description
                                 sys.stdout.write(
@@ -2053,7 +2053,7 @@ class DrbdManage(object):
                         row_data = [
                             res_name, "*", "*", "*", v_port, "*"
                         ]
-                        t.addRow(row_data)
+                        t.add_row(row_data)
                 elif machine_readable:
                     # machine readable output of the resource description
                     sys.stdout.write(
@@ -2064,7 +2064,7 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
         if not machine_readable:
-            t.showSeparators(args.separators)
+            t.set_show_separators(args.separators)
             # t.show(overwrite=list_volumes)
             t.show()
         return 0
@@ -2107,11 +2107,11 @@ class DrbdManage(object):
         else:
             groupby = args.groupby
 
-        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
-        t.addColumn("Name", color=color(COLOR_DARKPINK))
-        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
+        t.add_column("Resource", color=color(COLOR_DARKGREEN))
+        t.add_column("Name", color=color(COLOR_DARKPINK))
+        t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
-        t.setGroupBy(groupby)
+        t.set_groupby(groupby)
 
         for res_entry in res_list:
             res_name, snaps_list = res_entry
@@ -2122,10 +2122,10 @@ class DrbdManage(object):
                 if machine_readable:
                     sys.stdout.write("%s,%s\n" % (res_name, snaps_name))
                 else:
-                    t.addRow([res_name, snaps_name, "n/a"])
+                    t.add_row([res_name, snaps_name, "n/a"])
 
         if not machine_readable:
-            t.showSeparators(args.separators)
+            t.set_show_separators(args.separators)
             t.show()
         return 0
 
@@ -2159,12 +2159,12 @@ class DrbdManage(object):
         else:
             groupby = args.groupby
 
-        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
-        t.addColumn("Name", color=color(COLOR_DARKPINK))
-        t.addColumn("Node", color=color(COLOR_TEAL))
-        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
+        t.add_column("Resource", color=color(COLOR_DARKGREEN))
+        t.add_column("Name", color=color(COLOR_DARKPINK))
+        t.add_column("Node", color=color(COLOR_TEAL))
+        t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
-        t.setGroupBy(groupby)
+        t.set_groupby(groupby)
 
         for assg_list_entry in assg_list:
             res_name, snaps_name, snaps_assg_list = assg_list_entry
@@ -2186,10 +2186,10 @@ class DrbdManage(object):
                     row_data = [
                         res_name, snaps_name, node_name, (level_color, state_text)
                     ]
-                    t.addRow(row_data)
+                    t.add_row(row_data)
 
         if not machine_readable:
-            t.showSeparators(args.separators)
+            t.set_show_separators(args.separators)
             t.show()
         return 0
 
@@ -2222,21 +2222,21 @@ class DrbdManage(object):
         else:
             groupby = args.groupby
 
-        t.addColumn("Node", color=color(COLOR_TEAL))
-        t.addColumn("Resource", color=color(COLOR_DARKGREEN))
-        t.addColumn("Vol_ID", color=color(COLOR_DARKPINK), just_txt='>')
-        t.addColumn("Blockdevice")
-        t.addColumn("Node_ID", just_txt='>')
-        t.addColumn("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
+        t.add_column("Node", color=color(COLOR_TEAL))
+        t.add_column("Resource", color=color(COLOR_DARKGREEN))
+        t.add_column("Vol_ID", color=color(COLOR_DARKPINK), just_txt='>')
+        t.add_column("Blockdevice")
+        t.add_column("Node_ID", just_txt='>')
+        t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
         tview = ["Node", "Resource", "Vol_ID", "State"]
 
         if args.show:
             tview += args.show
-        t.setView(tview)
+        t.set_view(tview)
 
-        t.setGroupBy(groupby)
+        t.set_groupby(groupby)
 
         for assg_entry in assg_list:
             try:
@@ -2251,7 +2251,7 @@ class DrbdManage(object):
                     row_data = [
                         node_name, res_name, "*", "*", "*", (level_color, state_text)
                     ]
-                    t.addRow(row_data)
+                    t.add_row(row_data)
 
                     for vol_state in vol_state_list:
                         vol_id, properties = vol_state
@@ -2269,7 +2269,7 @@ class DrbdManage(object):
                                 node_name, res_name, vol_id,
                                 v_bdev, v_node_id, (v_level_color, v_state_text)
                             ]
-                            t.addRow(v_row_data)
+                            t.add_row(v_row_data)
                 else:
                     sys.stdout.write(
                         "%s,%s,%s,%s,%s\n"
@@ -2279,7 +2279,7 @@ class DrbdManage(object):
                 sys.stderr.write("Warning: incompatible table entry skipped\n")
 
         if not machine_readable:
-            t.showSeparators(args.separators)
+            t.set_show_separators(args.separators)
             # t.show(overwrite=True)
             t.show()
         return 0
