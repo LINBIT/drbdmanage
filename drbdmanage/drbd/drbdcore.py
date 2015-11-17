@@ -26,6 +26,7 @@ import drbdmanage.conf.conffile
 import drbdmanage.snapshots.snapshots as snapshots
 import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
+import drbdmanage.drbd.metadata as md
 
 """
 WARNING!
@@ -37,7 +38,6 @@ from drbdmanage.exceptions import (
     InvalidAddrFamException, VolSizeRangeException, PersistenceException, QuorumException
 )
 from drbdmanage.exceptions import DM_SUCCESS, DM_ESTORAGE
-from drbdmanage.utils import MetaData
 from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset
 
 
@@ -966,7 +966,9 @@ class DrbdManager(object):
         volume   = resource.get_volume(vol_state.get_id())
 
         net_size   = volume.get_size_kiB()
-        gross_size = MetaData.get_gross_data_kiB(net_size, max_peers)
+        gross_size = md.MetaData.get_gross_kiB(
+            net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
+        )
         blockdev = bd_mgr.create_blockdevice(
             resource.get_name(),
             volume.get_id(),
@@ -1078,7 +1080,9 @@ class DrbdManager(object):
                 pass
 
             net_size   = volume.get_size_kiB()
-            gross_size = MetaData.get_gross_data_kiB(net_size, max_peers)
+            gross_size = md.MetaData.get_gross_kiB(
+                net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
+            )
             blockdev = bd_mgr.create_blockdevice(
                 resource.get_name(),
                 volume.get_id(),
@@ -2907,8 +2911,10 @@ class Assignment(GenericDrbdObject):
                     if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) or
                         is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
                             volume = vol_state.get_volume()
-                            size_sum += MetaData.get_gross_data_kiB(
-                                volume.get_size_kiB(), peers
+                            size_sum += md.MetaData.get_gross_kiB(
+                                volume.get_size_kiB(), peers,
+                                md.MetaData.DEFAULT_AL_STRIPES,
+                                md.MetaData.DEFAULT_AL_kiB
                             )
         return size_sum
 
@@ -2949,8 +2955,10 @@ class Assignment(GenericDrbdObject):
             if (is_unset(cstate, DrbdVolumeState.FLAG_DEPLOY) and
                 is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
                     volume = vol_state.get_volume()
-                    size_sum += MetaData.get_gross_data_kiB(
-                        volume.get_size_kiB(), peers
+                    size_sum += md.MetaData.get_gross_kiB(
+                        volume.get_size_kiB(), peers,
+                        md.MetaData.DEFAULT_AL_STRIPES,
+                        md.MetaData.DEFAULT_AL_kiB
                     )
         return size_sum
 
@@ -2966,8 +2974,10 @@ class Assignment(GenericDrbdObject):
             if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) and
                 is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
                     volume = vol_state.get_volume()
-                    size_sum += MetaData.get_gross_data_kiB(
-                        volume.get_size_kiB(), peers
+                    size_sum += md.MetaData.get_gross_kiB(
+                        volume.get_size_kiB(), peers,
+                        md.MetaData.DEFAULT_AL_STRIPES,
+                        md.MetaData.DEFAULT_AL_kiB
                     )
         return size_sum
 

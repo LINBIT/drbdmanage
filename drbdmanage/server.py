@@ -33,6 +33,7 @@ import inspect
 import StringIO
 import drbdmanage.drbd.persistence
 import drbdmanage.quorum
+import drbdmanage.drbd.metadata as md
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
@@ -47,7 +48,7 @@ from drbdmanage.consts import (
     KEY_SERVER_INSTANCE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET, NODE_ADDRESS,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
 )
-from drbdmanage.utils import NioLineReader, MetaData
+from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number,
     add_rc_entry, serial_filter, props_filter, string_to_bool,
@@ -2152,8 +2153,10 @@ class DrbdManageServer(object):
                             # Unparseable configuration value;
                             # no-op: keep default value
                             pass
-                        free_space = MetaData.get_net_data_kiB(
-                            gross_free, max_peers
+                        free_space = md.MetaData.get_net_kiB(
+                            gross_free, max_peers,
+                            md.MetaData.DEFAULT_AL_STRIPES,
+                            md.MetaData.DEFAULT_AL_kiB
                         )
                 else:
                     # requested redundancy exceeds the
@@ -2255,8 +2258,10 @@ class DrbdManageServer(object):
                     for vol in resource.iterate_volumes():
                         # Calculate required gross space for a volume
                         # with the specified net space
-                        size_sum += MetaData.get_gross_data_kiB(
-                            vol.get_size_kiB(), max_peers
+                        size_sum += md.MetaData.get_gross_kiB(
+                            vol.get_size_kiB(), max_peers,
+                            md.MetaData.DEFAULT_AL_STRIPES,
+                            md.MetaData.DEFAULT_AL_kiB
                         )
                     """
                     filter nodes that do not have the resource deployed yet
