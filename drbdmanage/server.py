@@ -717,6 +717,7 @@ class DrbdManageServer(object):
                                         # Unset QIGNORE status on connected nodes
                                         self._quorum.readjust_qignore_flags()
                                         self._quorum.readjust_full_member_count()
+                                        self.get_serial()
                                         self.save_conf_data(persist)
                                     else:
                                         # FIXME: Logging? See also the
@@ -1565,6 +1566,7 @@ class DrbdManageServer(object):
                     del self._nodes[node_name]
                     if drbdctrl_flag:
                         self._cluster_nodes_update()
+                self.get_serial()
                 self.save_conf_data(persist)
                 if drbdctrl_flag:
                     self.reconfigure_drbdctrl()
@@ -1725,6 +1727,7 @@ class DrbdManageServer(object):
                         node = assg.get_node()
                         node.remove_assignment(assg)
                     del self._resources[resource.get_name()]
+                self.get_serial()
                 self.save_conf_data(persist)
             else:
                 raise PersistenceException
@@ -1843,6 +1846,7 @@ class DrbdManageServer(object):
                         resource.remove_volume(vol_id)
                         for assg in resource.iterate_assignments():
                             assg.remove_volume_state(vol_id)
+                    self.get_serial()
                     self.save_conf_data(persist)
             else:
                 raise PersistenceException
@@ -2807,6 +2811,9 @@ class DrbdManageServer(object):
             VS_FLAG_DEPLOY = DrbdVolumeState.FLAG_DEPLOY
             A_FLAG_DEPLOY  = Assignment.FLAG_DEPLOY
 
+            # Flag indicating whether to update the serial number or not
+            update_serial = False
+
             for node in self._nodes.itervalues():
                 for assg in node.iterate_assignments():
                     assg_tstate = assg.get_tstate()
@@ -2840,6 +2847,8 @@ class DrbdManageServer(object):
                     for snaps_assg in removable:
                         snaps_assg.notify_removed()
                         snaps_assg.remove()
+                    if len(removable) > 0:
+                        update_serial = True
                     # delete volume states of volumes that have been undeployed
                     removable = []
                     assg_bd_exists = False
@@ -2862,6 +2871,8 @@ class DrbdManageServer(object):
                         assg.set_cstate_flags(A_FLAG_DEPLOY)
                     for vol_state in removable:
                         assg.remove_volume_state(vol_state.get_id())
+                    if len(removable) > 0:
+                        update_serial = True
 
             # remove snapshot registrations for non-existent snapshots
             # (those that do not have snapshot assignments anymore)
@@ -2872,6 +2883,8 @@ class DrbdManageServer(object):
                         removable.append(snapshot)
             for snapshot in removable:
                 snapshot.remove()
+            if len(removable) > 0:
+                update_serial = True
 
             # delete assignments that have been undeployed
             removable = []
@@ -2887,6 +2900,8 @@ class DrbdManageServer(object):
             for assg in removable:
                 assg.notify_removed()
                 assg.remove()
+            if len(removable) > 0:
+                update_serial = True
 
             # delete nodes that are marked for removal and that do not
             # have assignments anymore
@@ -2901,6 +2916,8 @@ class DrbdManageServer(object):
                             drbdctrl_flag = True
             for node in removable:
                 del self._nodes[node.get_name()]
+            if len(removable) > 0:
+                update_serial = True
             # if nodes with a control volume have been removed, reconfigure the control volume
             if drbdctrl_flag:
                 try:
@@ -2924,6 +2941,8 @@ class DrbdManageServer(object):
                         removable.append(resource)
             for resource in removable:
                 del self._resources[resource.get_name()]
+            if len(removable) > 0:
+                update_serial = True
 
             # delete volumes that are marked for removal and that are not
             # deployed on any node
@@ -2942,6 +2961,11 @@ class DrbdManageServer(object):
                             removable.append(volume)
                 for volume in removable:
                     resource.remove_volume(volume.get_id())
+                if len(removable) > 0:
+                    update_serial = True
+
+            if update_serial:
+                self.get_serial()
 
         except Exception as exc:
             DrbdManageServer.catch_internal_error(exc)
@@ -3661,6 +3685,7 @@ class DrbdManageServer(object):
             except KeyError:
                 add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             self.cleanup()
+            self.get_serial()
             self.save_conf_data(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
@@ -3702,6 +3727,7 @@ class DrbdManageServer(object):
             except KeyError:
                 add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             self.cleanup()
+            self.get_serial()
             self.save_conf_data(persist)
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
@@ -3967,6 +3993,7 @@ class DrbdManageServer(object):
                         else:
                             node.clear_state_flags(DrbdNode.FLAG_QIGNORE)
                         self._quorum.readjust_full_member_count()
+                        self.get_serial()
                         self.save_conf_data(persist)
                     except KeyError, ValueError:
                         pass
