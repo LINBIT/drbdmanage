@@ -68,7 +68,7 @@ class MetaData(object):
     DRBD_MIN_GROSS_kiB = long(68)
 
     # Minimum net size (without metadata) of a DRBD-replicated device
-    DRBD_MIN_NET_kiB = long(1)
+    DRBD_MIN_NET_kiB = long(4)
 
     # Minimum number of peers
     DRBD_MIN_PEERS = int(1)
