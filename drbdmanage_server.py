@@ -37,7 +37,7 @@ def main():
     try:
         server.run()
     except KeyboardInterrupt:
-        logging.info("server shutdown (received SIGINT)")
+        logging.info("Server shutdown (received SIGINT)")
     return 0
 
 

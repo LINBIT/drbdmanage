@@ -3543,8 +3543,14 @@ Confirm:
 
 
 def main():
+    rc = 0
     client = DrbdManage()
-    client.run()
+    try:
+        client.run()
+    except KeyboardInterrupt:
+        sys.stderr.write("\ndrbdmanage: Client exiting (received SIGINT)\n")
+        rc = 1
+    return rc
 
 if __name__ == "__main__":
     main()
