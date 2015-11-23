@@ -35,21 +35,22 @@ class PluginManager():
             ('drbdmanage.storage.lvm_thinpool.LvmThinPool', 'ThinPool'),
         )
 
-        self._loaded = dict([(k[self.KEY_PLUGIN_PATH], False) for k in self._known])
+        self._loaded = dict([(k[self.KEY_PLUGIN_PATH], None) for k in self._known])
 
     def get_known_plugins(self):
         return self._known
 
     def get_loaded_plugins(self):
-        return [p for p in self._known if self._loaded[p[self.KEY_PLUGIN_PATH]]]
+        return [p for p in self._known if self._loaded[p[self.KEY_PLUGIN_PATH]] is not None]
 
     def _get_new_instance(self, plugin_path):
+        instance = None
         try:
             module_name, class_name = plugin_path.rsplit(".", 1)
             class_ = getattr(importlib.import_module(module_name), class_name)
             instance = class_()
         except:
-            return False
+            pass
 
         return instance
 
@@ -92,11 +93,11 @@ class PluginManager():
         return configs
 
     def get_plugin_config(self, plugin_path):
-        if not self._loaded[plugin_path]:
-            return False
-
-        instance = self.get_plugin_instance(plugin_path)
-        return instance.get_config()
+        plugin_config = None
+        if self._loaded[plugin_path] is not None:
+            instance = self.get_plugin_instance(plugin_path)
+            plugin_config = instance.get_config()
+        return plugin_config
 
     def set_plugin_config(self, plugin_path, config):
         """
@@ -110,12 +111,11 @@ class PluginManager():
         """
         Returns existing plugin instance, or registers a new instance
         """
-        if plugin_path not in [k[self.KEY_PLUGIN_PATH] for k in self._known]:
-            return False
-
-        if self._loaded[plugin_path]:
-            return self._loaded[plugin_path]
-        else:
-            instance = self._get_new_instance(plugin_path)
-            self._loaded[plugin_path] = instance
-            return instance
+        instance = None
+        if plugin_path in [k[self.KEY_PLUGIN_PATH] for k in self._known]:
+            if self._loaded[plugin_path] is not None:
+                instance = self._loaded[plugin_path]
+            else:
+                instance = self._get_new_instance(plugin_path)
+                self._loaded[plugin_path] = instance
+        return instance
