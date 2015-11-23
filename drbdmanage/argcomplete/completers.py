@@ -3,7 +3,8 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import os, sys, subprocess
+import os
+import subprocess
 
 def _wrapcall(*args, **kwargs):
     try:
@@ -74,7 +75,7 @@ class _FilteredFilesCompleter(object):
         """
         Create the completer
 
-        A predicate accepts as its only argument a candidate path and either 
+        A predicate accepts as its only argument a candidate path and either
         accepts it or rejects it.
         """
         assert predicate, "Expected a callable predicate"

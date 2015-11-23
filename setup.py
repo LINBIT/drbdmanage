@@ -22,7 +22,8 @@
 Installer & Package creator for drbdmanage
 """
 
-import os, glob
+import os
+import glob
 import sys
 
 from distutils.core import setup, Command

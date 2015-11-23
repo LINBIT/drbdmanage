@@ -3,7 +3,13 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import os, sys, contextlib, subprocess, locale, re
+import os
+import sys
+import contextlib
+import subprocess
+import locale
+import re
+
 from ..argparse import argparse
 
 from . import my_shlex as shlex

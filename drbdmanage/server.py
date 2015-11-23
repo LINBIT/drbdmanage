@@ -37,14 +37,14 @@ import drbdmanage.drbd.metadata as md
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
-    DEFAULT_VG, SERVER_CONFFILE, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
+    DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY, FLAG_QIGNORE,
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
-    CONF_NODE, CONF_GLOBAL, PLUGIN_PREFIX, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
+    CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     KEY_SERVER_INSTANCE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET, NODE_ADDRESS,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
 )
@@ -702,12 +702,12 @@ class DrbdManageServer(object):
                                     "replication:SyncTarget"
                                 )
                         elif replication == self.EVT_REPL_OFF:
-                            # FIXME: Experimental: Quorum: May have lost a node
+                            # Quorum: May have lost a node
                             node_name = line_data[self.EVT_CONN_NAME]
                             self._quorum.node_left(node_name)
                             self._quorum.readjust_full_member_count()
                         elif replication == self.EVT_REPL_ON:
-                            # FIXME: Experimental: Quorum: Node may have joined
+                            # Quorum: Node may have joined
                             node_name = line_data[self.EVT_CONN_NAME]
                             change_quorum = self._quorum.node_joined(node_name)
                             if change_quorum:
@@ -721,9 +721,10 @@ class DrbdManageServer(object):
                                         self.get_serial()
                                         self.save_conf_data(persist)
                                     else:
-                                        # FIXME: Logging? See also the
-                                        #        PersistenceException below
-                                        pass
+                                        logging.warning(
+                                            "Attempt to save updated quorum membership information to "
+                                            "the control volume failed"
+                                        )
                                 except QuorumException:
                                     # This node does not have a quorum, skip saving
                                     pass
@@ -1135,6 +1136,8 @@ class DrbdManageServer(object):
             # Run the DrbdManager, overriding the hash check and changing
             # the serial number to cause all cluster nodes to run
             # any scheduled changes
+            # FIXME: This should be changed to schedule a run in the
+            #        asynchronous D-Bus version
             self._drbd_mgr.run(True, True)
         except Exception as exc:
             DrbdManageServer.catch_and_append_internal_error(fn_rc, exc)
@@ -1596,7 +1599,6 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc = []
-        errors   = False
         resource = None
         persist  = None
         try:
@@ -2036,7 +2038,7 @@ class DrbdManageServer(object):
         """
         fn_rc = DM_DEBUG
         try:
-            serial = self.get_serial()
+            self.get_serial()
 
             # If no node id is selected for this assignment, then attempt
             # to find a free one
@@ -2089,8 +2091,8 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         try:
-            serial   = self.get_serial()
-            node     = assignment.get_node()
+            self.get_serial()
+            node = assignment.get_node()
             resource = assignment.get_resource()
             if (not force) and assignment.is_deployed():
                 assignment.disconnect()
@@ -3182,7 +3184,6 @@ class DrbdManageServer(object):
             for res in selected_res:
                 selected_vol = res.iterate_volumes()
                 if props_filter_flag:
-                    skip_empty = True
                     selected_vol = props_filter(
                         selected_vol, filter_props
                     )
@@ -4000,7 +4001,7 @@ class DrbdManageServer(object):
                         self._quorum.readjust_full_member_count()
                         self.get_serial()
                         self.save_conf_data(persist)
-                    except KeyError, ValueError:
+                    except (KeyError, ValueError):
                         pass
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
@@ -4314,12 +4315,11 @@ class DrbdManageServer(object):
 
 
     def TQ_joinc(self, node_name=None):
-        if not node_name:
+        if node_name is None or len(node_name) == 0:
             return [("Error: joinc query without a node name argument")]
 
         fields    = None
         secret    = None
-        bdev      = None
         port      = None
         l_addr    = None
         l_node_id = None
@@ -4353,7 +4353,6 @@ class DrbdManageServer(object):
             else:
                 raise ValueError
             secret = fields[NODE_SECRET]
-            update = True
         except (KeyError, ValueError):
             pass
 
@@ -5321,7 +5320,6 @@ class DrbdManageServer(object):
         assg     = snaps_assg.get_assignment()
         snapshot = snaps_assg.get_snapshot()
         node     = assg.get_node()
-        resource = assg.get_resource()
         self._debug_dump_snapshot(snapshot)
         self._debug_out.write(
             "  '- N/ID: %s\n"
@@ -5438,40 +5436,66 @@ class DrbdManageServer(object):
     def _debug_set_assignment(self, args):
         fn_rc = 1
         nodename = None
-        try:
-            nodename   = args.pop(0)
-        except IndexError:
-            pass
         resname = None
+        vol_flag = False
         try:
-            resname    = None
+            nodename = args.pop(0)
         except IndexError:
             pass
-        split_idx  = nodename.find("/")
+        split_idx = nodename.find("/")
         if split_idx != -1:
-            resname  = nodename[split_idx + 1:]
+            resname = nodename[split_idx + 1:]
             nodename = nodename[:split_idx]
-        if nodename is not None and resname is not None:
+        split_idx = resname.find("/")
+        if split_idx != -1:
+            vol_flag = True
+            vol_id_str = resname[split_idx + 1:]
+            resname = resname[:split_idx]
+        if vol_id_str is not None:
+            try:
+                vol_id = int(vol_id_str)
+            except (TypeError, ValueError):
+                self._debug_out.write("Invalid volume id\n")
+        if nodename is not None and resname is not None and (vol_id >= 0 or not vol_flag):
             node     = self._nodes.get(nodename)
             resource = self._resources.get(resname)
             if node is not None and resource is not None:
                 assg = node.get_assignment(resource.get_name())
                 if assg is not None:
-                    try:
-                        keyval = args.pop(0)
-                        key, val = self._debug_keyval_split(keyval)
-                        if key == "cstate":
-                            state_update = long(val)
-                            assg.set_cstate(state_update)
-                            fn_rc = 0
-                        elif key == "tstate":
-                            state_update = long(val)
-                            assg.set_tstate(state_update)
-                            fn_rc = 0
-                    except ValueError:
-                        pass
-                    except IndexError:
-                        self._debug_out.write("Missing argument\n")
+                    if not vol_flag:
+                        try:
+                            keyval = args.pop(0)
+                            key, val = self._debug_keyval_split(keyval)
+                            if key == "cstate":
+                                state_update = long(val)
+                                assg.set_cstate(state_update)
+                                fn_rc = 0
+                            elif key == "tstate":
+                                state_update = long(val)
+                                assg.set_tstate(state_update)
+                                fn_rc = 0
+                        except ValueError:
+                            self._debug_out.write("Invalid value\n")
+                        except IndexError:
+                            self._debug_out.write("Missing argument\n")
+                    else:
+                        vol_state = assg.get_volume_state(vol_id)
+                        if vol_state is not None:
+                            keyval = args.pop(0)
+                            key, val = self._debug_keyval_split(keyval)
+                            if key == "cstate":
+                                state_update = long(val)
+                                vol_state.set_cstate(state_update)
+                                fn_rc = 0
+                            elif key == "tstate":
+                                state_update = long(val)
+                                vol_state.set_tstate(state_update)
+                                fn_rc = 0
+                        else:
+                            self._debug_out.write(
+                                "Assignment '%s/%s' has no volume id %d\n"
+                                % (node.get_name(), resource.get_name(), vol_id)
+                            )
                 else:
                     self._debug_out.write(
                         "Resource '%s' is not assigned to node '%s'\n"

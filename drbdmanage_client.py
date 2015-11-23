@@ -43,7 +43,7 @@ import gobject
 
 from drbdmanage.consts import (
     KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
-    DRBDCTRL_DEV, DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
+    DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
     FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
@@ -56,7 +56,7 @@ from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
-    build_path, bool_to_string, map_val_or_dflt, rangecheck, ssh_exec, check_output,
+    build_path, bool_to_string, rangecheck, ssh_exec,
     load_server_conf_file, filter_prohibited
 )
 from drbdmanage.utils import (
@@ -850,7 +850,7 @@ class DrbdManage(object):
                 import socket
                 try:
                     ips = socket.getaddrinfo(key, 0)
-                except socket.gaierror as e:
+                except socket.gaierror:
                     return None
                 if len(ips) == 0:
                     return None
@@ -2645,7 +2645,7 @@ Confirm:
                     umh_f = None
                     umh_f = open(self.UMHELPER_FILE, "w")
                     umh_f.write(self.UMHELPER_OVERRIDE)
-                except (IOError, OSError) as err:
+                except (IOError, OSError):
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     exc_lines = traceback.format_exception_only(
                         exc_type, exc_obj
@@ -2744,7 +2744,7 @@ Confirm:
                 try:
                     umh_f = open(self.UMHELPER_FILE, "w")
                     umh_f.write(umh)
-                except (IOError, OSError) as err:
+                except (IOError, OSError):
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     exc_lines = traceback.format_exception_only(
                         exc_type, exc_obj

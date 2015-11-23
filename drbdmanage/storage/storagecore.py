@@ -27,7 +27,7 @@ from drbdmanage.exceptions import (
     InvalidMajorNrException, InvalidMinorNrException
 )
 from drbdmanage.exceptions import (
-    DM_SUCCESS, DM_ENOENT, DM_ESTORAGE, DM_DEBUG, DM_ENOTIMPL
+    DM_SUCCESS, DM_ENOENT, DM_ESTORAGE, DM_ENOTIMPL
 )
 
 

@@ -53,7 +53,7 @@ class DrbdSnapshotPersistence(GenericPersistence):
                 properties["_name"], resource,
                 get_serial_fn, None, init_props
             )
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return snapshot
 
@@ -115,7 +115,7 @@ class DrbdSnapshotAssignmentPersistence(GenericPersistence):
                     vol_state, get_serial_fn
                 )
                 snaps_assignment.init_add_snaps_vol_state(snaps_vol_state)
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return snaps_assignment
 

@@ -700,7 +700,9 @@ def get_terminal_size():
     def ioctl_GWINSZ(term_fd):
         term_dim = None
         try:
-            import fcntl, termios, struct
+            import fcntl
+            import termios
+            import struct
             term_dim = struct.unpack(
                 'hh',
                 fcntl.ioctl(term_fd, termios.TIOCGWINSZ, '1234')

@@ -34,7 +34,6 @@ import drbdmanage.propscontainer as propscon
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import map_val_or_dflt
-from drbdmanage.utils import read_lines
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
 from drbdmanage.drbd.drbdcore import (
@@ -193,7 +192,7 @@ class BasePersistence(object):
 
         # Load assignments
         for properties in assg_con.itervalues():
-            assignment = AssignmentPersistence.load(
+            AssignmentPersistence.load(
                 properties, loaded_nodes, loaded_resources,
                 self._server.get_serial
             )
@@ -359,7 +358,7 @@ class BasePersistence(object):
         except PersistenceException as pers_exc:
             # Rethrow
             raise pers_exc
-        except Exception as exc:
+        except Exception:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logging.error(
                 "ServerDualPersistence: Cannot import configuration, Exception=%s"
@@ -396,7 +395,7 @@ class BasePersistence(object):
         except PersistenceException as pers_exc:
             # Rethrow
             raise pers_exc
-        except Exception as exc:
+        except Exception:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logging.error(
                 "ServerDualPersistence: Cannot export configuration, Exception=%s"
@@ -671,7 +670,7 @@ class ServerDualPersistence(BasePersistence):
             except PersistenceException as pers_exc:
                 # Rethrow
                 raise pers_exc
-            except Exception as exc:
+            except Exception:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 logging.error(
                     "ServerDualPersistence: Cannot load configuration, Exception=%s"
@@ -736,7 +735,7 @@ class ServerDualPersistence(BasePersistence):
             except PersistenceException as pers_exc:
                 # Rethrow
                 raise pers_exc
-            except Exception as exc:
+            except Exception:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 logging.error(
                     "cannot save data tables, Exception=%s"
@@ -1058,7 +1057,7 @@ class DrbdCommonPersistence(GenericPersistence):
         try:
             init_props = properties.get("props")
             common = DrbdCommon(get_serial_fn, None, init_props)
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return common
 
@@ -1104,7 +1103,7 @@ class DrbdNodePersistence(GenericPersistence):
                 None,
                 init_props
             )
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return node
 
@@ -1176,7 +1175,7 @@ class DrbdResourcePersistence(GenericPersistence):
                     snaps_properties, resource, get_serial_fn
                 )
                 resource.init_add_snapshot(snapshot)
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return resource
 
@@ -1219,7 +1218,7 @@ class DrbdVolumePersistence(GenericPersistence):
                 None,
                 init_props
             )
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return volume
 
@@ -1318,7 +1317,7 @@ class AssignmentPersistence(GenericPersistence):
             for snaps_assg in assignment.iterate_snaps_assgs():
                 snapshot = snaps_assg.get_snapshot()
                 snapshot.init_add_snaps_assg(snaps_assg)
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return assignment
 
@@ -1359,6 +1358,6 @@ class DrbdVolumeStatePersistence(GenericPersistence):
                 properties.get("_bd_name"), properties.get("_bd_path"),
                 get_serial_fn, None, init_props
             )
-        except Exception as exc:
+        except Exception:
             raise PersistenceException
         return vol_state

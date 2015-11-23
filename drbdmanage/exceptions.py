@@ -28,7 +28,6 @@ those objects.
 
 import sys
 import traceback
-import logging
 
 
 # return code for successful operations

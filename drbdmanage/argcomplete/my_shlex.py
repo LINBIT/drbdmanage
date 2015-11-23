@@ -13,7 +13,9 @@
 # iterator interface by Gustavo Niemeyer, April 2003.
 # changes to tokenize more like Posix shells by Vinay Sajip, January 2012.
 
-import os.path, sys, re
+import os.path
+import sys
+import re
 from collections import deque
 
 # Note: cStringIO is not compatible with Unicode
