@@ -1239,9 +1239,9 @@ class DrbdManage(object):
             return fn_rc
 
         minor = MinorNr.MINOR_NR_AUTO
+        if args.minor is not None:
+            minor = args.minor
         name = args.name
-        if not args.minor:
-            minor = MinorNr.MINOR_NR_AUTO
         deploy = args.deploy
 
         try:
