@@ -5438,6 +5438,7 @@ class DrbdManageServer(object):
         nodename = None
         resname = None
         vol_flag = False
+
         try:
             nodename = args.pop(0)
         except IndexError:
@@ -5446,16 +5447,21 @@ class DrbdManageServer(object):
         if split_idx != -1:
             resname = nodename[split_idx + 1:]
             nodename = nodename[:split_idx]
+
+        vol_id_str = None
         split_idx = resname.find("/")
         if split_idx != -1:
             vol_flag = True
             vol_id_str = resname[split_idx + 1:]
             resname = resname[:split_idx]
-        if vol_id_str is not None:
+
+        vol_id = -1
+        if vol_flag:
             try:
                 vol_id = int(vol_id_str)
             except (TypeError, ValueError):
                 self._debug_out.write("Invalid volume id\n")
+
         if nodename is not None and resname is not None and (vol_id >= 0 or not vol_flag):
             node     = self._nodes.get(nodename)
             resource = self._resources.get(resname)
