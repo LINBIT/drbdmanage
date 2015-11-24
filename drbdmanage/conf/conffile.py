@@ -31,11 +31,12 @@ is_unset = dmutils.is_unset
 
 
 class DrbdConnectionConf(object):
-    def __init__(self, servers, clients, objects_root, stream):
+    def __init__(self, servers, clients, objects_root, stream, target_node=None):
         self.objects_root = objects_root
         self.servers = servers
         self.clients = clients
         self.stream = stream
+        self.target_node = target_node
 
         self._all_nodes = set(servers + clients)
         self._meshes = []  # list of sets, every set is list of nodes, a set represents a mesh
@@ -99,10 +100,13 @@ class DrbdConnectionConf(object):
         return netopts
 
     def _get_server_instance(self):
-        try:
-            return self.objects_root[consts.KEY_SERVER_INSTANCE].get_instance_node()
-        except:
-            return None
+        if self.target_node is not None:
+            return self.target_node
+        else:
+            try:
+                return self.objects_root[consts.KEY_SERVER_INSTANCE].get_instance_node()
+            except:
+                return None
 
     def _gen_mesh_conf(self, mesh, have_same_site=False):
         site = None
@@ -226,9 +230,10 @@ class DrbdConnectionConf(object):
 
 class DrbdAdmConf(object):
 
-    def __init__(self, objects_root):
+    def __init__(self, objects_root, target_node=None):
         self.indentwidth = 3
         self.objects_root = objects_root
+        self.target_node = target_node
 
     def _get_setup_props(self, item, subnamespace):
         """
@@ -340,7 +345,7 @@ class DrbdAdmConf(object):
                     else:
                         clients.append(node)
 
-            conn_conf = DrbdConnectionConf(servers, clients, self.objects_root, stream)
+            conn_conf = DrbdConnectionConf(servers, clients, self.objects_root, stream, self.target_node)
             nodes_interesting = conn_conf.generate_conf()
 
             # begin resource/nodes

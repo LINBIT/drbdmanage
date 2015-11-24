@@ -4448,7 +4448,7 @@ class DrbdManageServer(object):
             assignment = node.get_assignment(res_name)
             if assignment is not None:
                 conf_buffer = StringIO.StringIO()
-                writer = DrbdAdmConf(self._objects_root)
+                writer = DrbdAdmConf(self._objects_root, target_node=node)
                 writer.write(conf_buffer, assignment, False)
                 val_list = list(reduce(lambda x, y: x + y, values.items()))
                 response = [conf_buffer.getvalue()] + val_list
@@ -4482,7 +4482,7 @@ class DrbdManageServer(object):
             assignment = node.get_assignment(res_name)
             if assignment is not None:
                 conf_buffer = StringIO.StringIO()
-                writer = DrbdAdmConf(self._objects_root)
+                writer = DrbdAdmConf(self._objects_root, target_node=node)
                 writer.write(conf_buffer, assignment, False)
                 response = [conf_buffer.getvalue()]
                 conf_buffer.close()
