@@ -2201,6 +2201,7 @@ class DrbdManageServer(object):
                 add_rc_entry(fn_rc, DM_EINVAL,
                              "auto_deploy: Count (%(c)d) must be positive, or if 0, then delta (%(d)d must be != 0.",
                              [["c", count], ["d", delta]])
+                return fn_rc
             else:
                 deployer = self._pluginmgr.get_plugin_instance(
                     self.get_conf_value(self.KEY_DEPLOYER_NAME)
@@ -2239,11 +2240,13 @@ class DrbdManageServer(object):
                 # Try to achieve it
                 if final_count > maxcount:
                     add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
+                    return fn_rc
 
                 elif final_count <= 0:
                     add_rc_entry(fn_rc, DM_EINVAL,
                                  "auto_deploy: Final count %(fin)d <= 0",
                                  [["fin", final_count]])
+                    return fn_rc
 
                 elif final_count > assigned_count:
                     # ========================================
@@ -2312,6 +2315,7 @@ class DrbdManageServer(object):
                         self.save_conf_data(persist)
                     else:
                         add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+                        return fn_rc
 
                 elif final_count < assigned_count:
                     # ========================================
