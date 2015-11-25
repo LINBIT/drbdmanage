@@ -3234,8 +3234,8 @@ Confirm:
             cfg.write(configfile)
             hdr = 'Options you can set with their default value in the GLOBAL section, per Site, or per Node:'
             configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
-            for k, v in config_keys.items():
-                configfile.write('# %s = %s\n' % (k, v))
+            for k in sorted(config_keys.keys()):
+                configfile.write('# %s = %s\n' % (k, config_keys[k]))
             configfile.write('\n')
 
             if cfgtype == CONF_NODE:
