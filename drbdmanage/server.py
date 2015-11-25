@@ -2198,7 +2198,9 @@ class DrbdManageServer(object):
         persist = None
         try:
             if ((count != 0 and delta != 0) or count < 0):
-                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                add_rc_entry(fn_rc, DM_EINVAL,
+                             "auto_deploy: Count (%(c)d) must be positive, or if 0, then delta (%(d)d must be != 0.",
+                             [["c", count], ["d", delta]])
             else:
                 deployer = self._pluginmgr.get_plugin_instance(
                     self.get_conf_value(self.KEY_DEPLOYER_NAME)
@@ -2224,7 +2226,11 @@ class DrbdManageServer(object):
                 if delta != 0:
                     final_count = assigned_count + delta
                     if final_count < 1:
-                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                        add_rc_entry(fn_rc, DM_EINVAL,
+                                     "auto_deploy: Final count %(fin)d less than 1: assigned %(ass)d + delta %(delta)d",
+                                     [["ass", assigned_count],
+                                      ["delta", delta],
+                                      ["fin", final_count]])
                         return fn_rc
                 else:
                     final_count = count
@@ -2235,7 +2241,9 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
 
                 elif final_count <= 0:
-                    add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                    add_rc_entry(fn_rc, DM_EINVAL,
+                                 "auto_deploy: Final count %(fin)d <= 0",
+                                 [["fin", final_count]])
 
                 elif final_count > assigned_count:
                     # ========================================
