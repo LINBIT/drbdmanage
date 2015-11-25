@@ -2197,7 +2197,7 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         try:
-            if ((count != 0 and delta != 0) or count < 0):
+            if ((count == 0 and delta == 0) or count < 0):
                 add_rc_entry(fn_rc, DM_EINVAL,
                              "auto_deploy: Count (%(c)d) must be positive, or if 0, then delta (%(d)d must be != 0.",
                              [["c", count], ["d", delta]])
@@ -2226,7 +2226,7 @@ class DrbdManageServer(object):
                 # Calculate target node count
                 if delta != 0:
                     final_count = assigned_count + delta
-                    if final_count < 1:
+                    if final_count <= 0:
                         add_rc_entry(fn_rc, DM_EINVAL,
                                      "auto_deploy: Final count %(fin)d less than 1: assigned %(ass)d + delta %(delta)d",
                                      [["ass", assigned_count],
