@@ -23,6 +23,7 @@
 Generalized utility functions and classes for drbdmanage
 """
 
+import dbus
 import os
 import sys
 import hashlib
@@ -662,19 +663,25 @@ def add_rc_entry(fn_rc, err_code, err_msg, args=[]):
             type(err_msg) is not str or
             type(args) is not list):
             # One or multiple arguments of incorrect type
-            raise TypeError
+            raise TypeError("add_rc_entry(): incorrect input types")
+
+        s_args = []
         for item in args:
             if type(item) is not list:
                 raise TypeError
             # Will raise ValueError if there are not exactly two elements in the list
             key, value = item
-            if type(key) is not str or type(value) is not str:
-                raise TypeError
+            if not isinstance(key, str):
+                raise TypeError("key should be str, is %s" % type(key))
+            if not isinstance(value, (str, int, dbus.String)):
+                raise TypeError("value should be str, is %s" % type(value))
 
-        rc_entry = [ err_code, err_msg, args ]
+            s_args.append([str(key), str(value)])
+
+        rc_entry = [ err_code, err_msg, s_args ]
         fn_rc.append(rc_entry)
-    except (TypeError, ValueError):
-        logging.error("Implementation error: Incorrect use of drbdmanage.utils.add_rc_entry()")
+    except (TypeError, ValueError) as e:
+        logging.error("Implementation error: Incorrect use of drbdmanage.utils.add_rc_entry(): %s" % e)
 
 
 def serial_filter(serial, objects):
