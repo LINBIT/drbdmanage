@@ -281,7 +281,7 @@ class DBusServer(dbus.service.Object):
         """
         D-Bus interface for DrbdManageServer.auto_deploy(...)
         """
-        return self._server.auto_deploy(res_name, count, delta, site_clients)
+        return self._server.auto_deploy(res_name, int(count), int(delta), site_clients)
 
 
     @dbus.service.method(
