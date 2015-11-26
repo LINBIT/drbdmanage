@@ -971,6 +971,24 @@ class DrbdManage(object):
         p_no.set_defaults(optsobj=no)
         p_no.set_defaults(func=self.cmd_net_options)
 
+        # handlers
+        # currently we do not parse the xml-output because drbd-utils are not ready for it
+        # number and handler names are very static, so use a list for now and add this feature to
+        # drbd-utils later
+        handlers = (
+            'after-resync-target',  'before-resync-target', 'fence-peer', 'initial-split-brain',
+            'local-io-error', 'pri-lost', 'pri-lost-after-sb', 'pri-on-incon-degr', 'split-brain',
+        )
+        p_handlers = subp.add_parser('handlers',
+                                     description='Set or unset event handlers.')
+        p_handlers.add_argument('--common', action="store_true")
+        p_handlers.add_argument('--resource',
+                                help='Name of the resource to modify').completer = ResourceCompleter
+        for handler in handlers:
+            p_handlers.add_argument('--' + handler, help='Please refer to drbd.conf(5)', metavar='cmd')
+            p_handlers.add_argument('--unset-' + handler, action='store_true')
+        p_handlers.set_defaults(func=self.cmd_handlers)
+
         # list-options
         p_listopts = subp.add_parser('list-options',
                                      description='List drbd options set',
@@ -3089,6 +3107,20 @@ Confirm:
 
         newopts["target"] = target
         newopts["type"] = "neto"
+
+        return self._set_drbdsetup_props(newopts)
+
+    def cmd_handlers(self, args):
+        fn_rc = 1
+        target = self._checkmutex(args, ("common", "resource"))
+        from drbdmanage.utils import filter_new_args
+        newopts = filter_new_args('unset', args)
+        if not newopts:
+            sys.stderr.write('No new options found\n')
+            return fn_rc
+
+        newopts["target"] = target
+        newopts["type"] = "handlers"
 
         return self._set_drbdsetup_props(newopts)
 

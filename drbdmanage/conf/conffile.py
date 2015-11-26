@@ -282,13 +282,16 @@ class DrbdAdmConf(object):
                 for k, v in peerdiskopts.items():
                     diskopts[k] = v
                 netopts = self._get_setup_props(common, "/neto/")
+                handlers = self._get_setup_props(common, "/handlers/")
                 if globalstream:
                     globalstream.write('common {\n')
-                    if diskopts or netopts:
+                    if diskopts or netopts or handlers:
                         if diskopts:
                             self._write_section('disk', globalstream, diskopts, 1)
                         if netopts:
                             self._write_section('net', globalstream, netopts, 1)
+                        if handlers:
+                            self._write_section('handlers', globalstream, handlers, 1)
                     else:
                         globalstream.write('# currently empty\n')
                     globalstream.write('}\n')
@@ -331,6 +334,11 @@ class DrbdAdmConf(object):
             for k, v in peerdiskopts.items():
                 diskopts[k] = v
             self._write_section('disk', stream, diskopts, 1)
+            # end resource/disk options
+
+            # begin resource/handlers
+            handlers = self._get_setup_props(resource, "/handlers/")
+            self._write_section('handlers', stream, handlers, 1)
             # end resource/disk options
 
             # begin resource/connection

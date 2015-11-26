@@ -407,6 +407,34 @@ def load_server_conf_file(localonly=False):
         return cfgdict
 
 
+# mainly used for DrbdSetupOpts()
+# but also usefull for 'handlers' subcommand
+def filter_new_args(unsetprefix, args):
+    new = dict()
+    for k, v in args.__dict__.iteritems():
+        if v is not None and k != "func" and k != "optsobj" and k != "common":
+            key = k.replace('_', '-')
+
+            # handle --unset
+            if key.startswith(unsetprefix) and not v:
+                continue
+
+            strv = str(v)
+            if strv == 'False':
+                strv = 'no'
+            if strv == 'True':
+                strv = 'yes'
+
+            new[key] = strv
+
+    for k in new.keys():
+        if "unset-" + k in new:
+            sys.stderr.write('Error: You are not allowed to set and unset'
+                             ' and option at the same time!\n')
+            return False
+    return new
+
+
 class DrbdSetupOpts():
     def __init__(self, command):
         import sys
@@ -490,29 +518,7 @@ class DrbdSetupOpts():
 
     # return a dict containing all non-None args
     def filterNew(self, args):
-        new = dict()
-        for k, v in args.__dict__.iteritems():
-            if v is not None and k != "func" and k != "optsobj" and k != "common":
-                key = k.replace('_', '-')
-
-                # handle --unset
-                if key.startswith(self.unsetprefix) and not v:
-                    continue
-
-                strv = str(v)
-                if strv == 'False':
-                    strv = 'no'
-                if strv == 'True':
-                    strv = 'yes'
-
-                new[key] = strv
-
-        for k in new.keys():
-            if "unset-" + k in new:
-                sys.stderr.write('Error: You are not allowed to set and unset'
-                                 ' and option at the same time!\n')
-                return False
-        return new
+        return filter_new_args(self.unsetprefix, args)
 
     # returns True if opt is a valid option and val has the correct type and
     # satisfies the specified check (e.g., a range check)
