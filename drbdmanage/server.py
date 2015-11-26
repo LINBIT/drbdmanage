@@ -213,6 +213,8 @@ class DrbdManageServer(object):
     _evt_hup_h = None
     # Flag indicating whether run_changes() has been scheduled or not
     _run_changes_scheduled = False
+    # Flag indicating whether to poke other cluster nodes from run_changes()
+    _poke_cluster = False
 
     # The name of the node this server is running on
     _instance_node_name = None
@@ -701,7 +703,7 @@ class DrbdManageServer(object):
 
     def schedule_run_changes(self):
         """
-        Schedules exeuction of run_changes() from the GMainLoop
+        Schedules execution of run_changes() from the GMainLoop
 
         run_changes() executes DrbdManager.run()
         """
@@ -709,13 +711,20 @@ class DrbdManageServer(object):
             gobject.timeout_add(0, self.run_changes)
             self._run_changes_scheduled = True
 
+    def schedule_poke(self):
+        """
+        Schedules a local DrbdManager run including poking other cluster nodes
+        """
+        self._poke_cluster = True
+        self.schedule_run_changes()
 
     def run_changes(self):
         """
         Performs DrbdManager.run(), thereby applying pending changes locally
         """
-        self._drbd_mgr.run(True, False)
+        self._drbd_mgr.run(True, self._poke_cluster)
         self._run_changes_scheduled = False
+        self._poke_cluster = False
         return False
 
 
@@ -1271,12 +1280,10 @@ class DrbdManageServer(object):
         """
         fn_rc   = []
         try:
-            # Run the DrbdManager, overriding the hash check and changing
-            # the serial number to cause all cluster nodes to run
-            # any scheduled changes
-            # FIXME: This should be changed to schedule a run in the
-            #        asynchronous D-Bus version
-            self._drbd_mgr.run(True, True)
+            # Schedule a DrbdManager run that overrides the hash check
+            # and changes the serial number, so as to cause all other
+            # cluster nodes to run any scheduled changes too
+            self.schedule_poke()
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
