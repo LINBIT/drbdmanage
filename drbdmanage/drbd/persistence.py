@@ -253,7 +253,7 @@ class BasePersistence(object):
                             # Create a new signal for the newly present
                             # snapshot assignment
                             signal = self._server.create_signal(
-                                "snapshots/" + node_name + "/" + res_name + "/" + snaps_name
+                                "snapshots/" + node_name + "/" + res_name + "/" + cur_snaps_name
                             )
                             cur_snaps_assg.set_signal(signal)
 
