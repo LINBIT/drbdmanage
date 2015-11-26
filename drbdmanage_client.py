@@ -3162,7 +3162,7 @@ Confirm:
             with open(res_f) as f:
                 for line in f:
                     if line.find('{') != -1 or line.find('}') != -1:
-                        sys.stdout.write(line + "\n")
+                        sys.stdout.write(line)
                         continue
 
                     found = highlight(net_options, colors['net-options'], False)
@@ -3170,13 +3170,13 @@ Confirm:
                     found = highlight(peer_device_options, colors['peer-device-options'], found)
                     found = highlight(resource_options, colors['resource-options'], found)
                     if not found:
-                        sys.stdout.write(line + "\n")
+                        sys.stdout.write(line)
             sys.stdout.write("\n")
 
         sys.stdout.write("Legend:\n")
         for k, v in colors.items():
             sys.stdout.write(v + k + COLOR_NONE + "\n")
-        sys.stdout.write("\n\nNote: Do not directly edit these auto-generated"
+        sys.stdout.write("\nNote: Do not directly edit these auto-generated"
                          "files as they will be overwritten.\n")
         sys.stdout.write("Use the according drbdmange sub-commands to set/unset options.\n")
 
