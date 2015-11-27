@@ -163,13 +163,16 @@ class BuildManCommand(Command):
 def gen_data_files():
     data_files = [("/etc/drbd.d", ["conf/drbdctrl.res_template",
                                    "conf/drbdmanage-resources.res"]),
-                  ("/etc", ["conf/drbdmanaged.cfg"]),
                   ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
                   ("/usr/share/dbus-1/system-services",
                    ["conf/org.drbd.drbdmanaged.service"]),
                   ("/var/lib/drbd.d", []),
                   ("/var/lib/drbdmanage", []),
                   ("/etc/bash_completion.d", ["scripts/bash_completion/drbdmanage"])]
+
+    # Don't overwrite existing file
+    if not os.path.isfile("/etc/drbdmanaged.cfg"):
+        data_files.append( ("/etc", ["conf/drbdmanaged.cfg"]) )
 
     for manpage in glob.glob(os.path.join("man-pages", "*.8.gz")):
         data_files.append(("/usr/share/man/man8", [manpage]))
