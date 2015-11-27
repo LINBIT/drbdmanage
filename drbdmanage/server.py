@@ -41,7 +41,7 @@ from drbdmanage.consts import (
     DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_STANDBY, FLAG_QIGNORE,
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_STANDBY, FLAG_QIGNORE,
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
@@ -1695,22 +1695,17 @@ class DrbdManageServer(object):
             if persist is not None:
                 sub_rc = self._create_node(False, node_name, props, None, None, None)
                 if NODE_CONTROL_NODE in props and sub_rc == DM_SUCCESS:  # satellite node
-                    storage = True
-                    if FLAG_STORAGE in props:
-                        storage = string_to_bool(props[FLAG_STORAGE])
-
-                    if storage:  # a usual satellite with storage
-                        control_node_name = props[NODE_CONTROL_NODE]
-                        control_node = self._nodes.get(control_node_name)
-                        if control_node:
-                            props = control_node.get_props()
-                            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-                            props.set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP, os.path.join(ns, node_name))
-                            # take a shortcut to add the new node to the satellites array without
-                            # update_satellite_states()
-                            if control_node_name == self._instance_node_name:
-                                self.sat_state_ctrlvol[node_name] = SAT_CON_STARTUP
-                                self.send_init_satellites()
+                    control_node_name = props[NODE_CONTROL_NODE]
+                    control_node = self._nodes.get(control_node_name)
+                    if control_node:
+                        props = control_node.get_props()
+                        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
+                        props.set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP, os.path.join(ns, node_name))
+                        # take a shortcut to add the new node to the satellites array without
+                        # update_satellite_states()
+                        if control_node_name == self._instance_node_name:
+                            self.sat_state_ctrlvol[node_name] = SAT_CON_STARTUP
+                            self.send_init_satellites()
 
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
@@ -1770,6 +1765,11 @@ class DrbdManageServer(object):
                     node_storage = string_to_bool(props[FLAG_STORAGE])
                 except (KeyError, ValueError):
                     pass
+                node_external = False
+                try:
+                    node_external = string_to_bool(props[FLAG_EXTERNAL])
+                except (KeyError, ValueError):
+                    pass
                 node_standby = False
                 try:
                     node_standby = string_to_bool(props[FLAG_STANDBY])
@@ -1824,7 +1824,7 @@ class DrbdManageServer(object):
                                 else:
                                     fn_rc = DM_ECTRLVOL
                             else:
-                                if node_storage:
+                                if not node_external:  # a satellite
                                     node.get_props().set_prop(KEY_ISSATELLITE, bool_to_string(True))
                                 fn_rc = DM_SUCCESS
                         else:

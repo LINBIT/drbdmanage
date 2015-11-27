@@ -46,7 +46,7 @@ from drbdmanage.consts import (
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
-    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
+    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
@@ -234,6 +234,8 @@ class DrbdManage(object):
                                 help='Node name of the control node (the one with access to control volume).'
                                 ' Only valid if "--satellite" was given. By default the hostname of the node'
                                 ' where this command was executed.').completer = NodeCompleter
+        p_new_node.add_argument('-e', '--external', action="store_true",
+                                help='External node that is whether a control node nor a satellite')
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
@@ -1196,19 +1198,32 @@ class DrbdManage(object):
     def cmd_new_node(self, args):
         fn_rc = 1
         name = args.name
+        satellite = args.satellite
         control_node = args.control_node
         ip = args.ip
         af = args.address_family
         if af is None:
             af = drbdmanage.drbd.drbdcore.DrbdNode.AF_IPV4_LABEL
         flag_storage = not args.no_storage
-        flag_drbdctrl = not args.satellite
+        flag_external = args.external
+        flag_drbdctrl = not (flag_external or satellite)
         flag_autojoin = not args.no_autojoin
 
-        if control_node and flag_drbdctrl:
+        if flag_external:
+            # currently not implemented
+            # start rm
+            sys.stderr.write('Currently not implemented\n')
+            sys.exit(1)
+            # end rm
+            if control_node or satellite:
+                sys.stderr.write('Not allowed to mix --external with --control-node or --satellite\n')
+                sys.exit(1)
+            flag_storage = False
+            flag_drbdctrl = False
+        elif control_node and not satellite:
             sys.stderr.write('Not allowed to specify --control-node without --satellite\n')
             sys.exit(1)
-        if not flag_drbdctrl and not control_node:
+        elif satellite and not control_node:
             control_node = get_uname()
             if not control_node:
                 sys.stderr.write('Could not guess --control-node name\n')
@@ -1221,8 +1236,10 @@ class DrbdManage(object):
             props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
         if not flag_storage:
             props[FLAG_STORAGE] = bool_to_string(flag_storage)
-        if not flag_drbdctrl and control_node:
+        if control_node:
             props[NODE_CONTROL_NODE] = control_node
+        if flag_external:
+            props[FLAG_EXTERNAL] = bool_to_string(flag_external)
 
         self.dbus_init()
         server_rc = self._server.create_node(name, props)

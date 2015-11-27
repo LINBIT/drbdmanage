@@ -111,6 +111,7 @@ FLAG_UPD_POOL       = "upd_pool"
 FLAG_UPDATE         = "update"
 FLAG_DRBDCTRL       = "drbdctrl"
 FLAG_STORAGE        = "storage"
+FLAG_EXTERNAL       = "external"
 
 # assignments, volume states:
 FLAG_DEPLOY         = "deploy"
