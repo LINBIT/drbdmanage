@@ -35,7 +35,7 @@ import logging
 import ConfigParser
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
-                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE)
+                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -68,7 +68,7 @@ DEFAULT_TERM_HEIGHT = 25
 
 
 class Table():
-    def __init__(self):
+    def __init__(self, colors=True, utf8=False):
         self.r_just = False
         self.got_column = False
         self.got_row = False
@@ -78,6 +78,8 @@ class Table():
         self.coloroverride = []
         self.view = None
         self.showseps = False
+        self.colors = colors
+        self.utf8 = utf8
 
     def add_column(self, name, color=False, just_col='<', just_txt='<'):
         self.got_column = True
@@ -105,13 +107,14 @@ class Table():
         coloroverride = [None] * len(row)
         for idx, c in enumerate(row[:]):
             if isinstance(c, tuple):
-                if not self.header[idx]['color']:
-                    raise SyntaxException("Color tuple for this row not allowed "
-                                          "to have colors")
-                else:
-                    color, text = c
-                    row[idx] = text
-                    coloroverride[idx] = color
+                color, text = c
+                row[idx] = text
+                if self.colors:
+                    if not self.header[idx]['color']:
+                        raise SyntaxException("Color tuple for this row not allowed "
+                                              "to have colors")
+                    else:
+                        coloroverride[idx] = color
 
         self.table.append(row)
         self.coloroverride.append(coloroverride)
@@ -257,20 +260,10 @@ class Table():
         enc = 'ascii'
         try:
             import locale
-            if locale.getdefaultlocale()[1].lower() == 'utf-8':
+            if locale.getdefaultlocale()[1].lower() == 'utf-8' and self.utf8:
                 enc = 'utf8'
         except:
             pass
-
-        # ## currently this is too dangerous
-        # 'st': OK
-        # 'terminology': FAIL
-        # 'xterm': OK
-        # 'urxvt': OK
-        # 'gnome-terminal': OK
-        # and this is on debian/stretch, don't want to know how broken ancient rhel5/6 terminals are...
-        enc = 'ascii'
-        #
 
         fstr = ctbl[enc]['pipe']
         for idx, col in enumerate(self.header):
@@ -390,7 +383,9 @@ def load_server_conf_file(localonly=False):
                     final_config = filter_allowed(in_file_cfg.copy(), (KEY_DRBDCTRL_VG,
                                                                        'extend-path',
                                                                        KEY_SAT_CFG_ROLE,
-                                                                       KEY_DRBD_CONFPATH))
+                                                                       KEY_DRBD_CONFPATH,
+                                                                       KEY_COLORS,
+                                                                       KEY_UTF8))
                     ignored = [k for k in in_file_cfg if k not in final_config]
                     for k in ignored:
                         logging.warning('Ignoring %s in configuration file' % k)

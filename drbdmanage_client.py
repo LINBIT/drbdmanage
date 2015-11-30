@@ -51,7 +51,8 @@ from drbdmanage.consts import (
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
-    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN
+    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN,
+    KEY_COLORS, KEY_UTF8,
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -96,6 +97,7 @@ class DrbdManage(object):
     _server = None
     _noerr = False
     _colors = True
+    _utf8 = False
     _all_commands = None
 
     VIEW_SEPARATOR_LEN = 78
@@ -104,11 +106,14 @@ class DrbdManage(object):
     UMHELPER_OVERRIDE = "/bin/true"
     UMHELPER_WAIT_TIME = 5.0
 
-
     def __init__(self):
         self._parser = self.setup_parser()
         self._all_commands = self.parser_cmds()
-
+        self._config = load_server_conf_file(localonly=True)
+        if KEY_COLORS in self._config:
+            self._colors = True if self._config[KEY_COLORS].strip().lower() == 'yes' else False
+        if KEY_UTF8 in self._config:
+            self._utf8 = True if self._config[KEY_UTF8].strip().lower() == 'yes' else False
 
     def dbus_init(self):
         try:
@@ -1884,7 +1889,7 @@ class DrbdManage(object):
                 sys.stdout.write("No nodes defined\n")
                 return 0
 
-        t = Table()
+        t = Table(colors=self._colors, utf8=self._utf8)
         if not args.groupby:
             groupby = ["Name"]
         else:
@@ -2032,7 +2037,7 @@ class DrbdManage(object):
                 sys.stdout.write("No resources defined\n")
                 return 0
 
-        t = Table()
+        t = Table(colors=self._colors, utf8=self._utf8)
 
         if not args.groupby:
             groupby = ["Name"]
@@ -2167,7 +2172,7 @@ class DrbdManage(object):
                 sys.stdout.write("Snapshot list is empty\n")
                 return 0
 
-        t = Table()
+        t = Table(colors=self._colors, utf8=self._utf8)
         if not args.groupby:
             groupby = ["Resource"]
         else:
@@ -2219,7 +2224,7 @@ class DrbdManage(object):
                 sys.stdout.write("Snapshot assignment list is empty\n")
                 return 0
 
-        t = Table()
+        t = Table(colors=self._colors, utf8=self._utf8)
         if not args.groupby:
             groupby = ["Resource", "Name"]
         else:
@@ -2281,7 +2286,7 @@ class DrbdManage(object):
                 sys.stdout.write("No assignments defined\n")
                 return 0
 
-        t = Table()
+        t = Table(colors=self._colors, utf8=self._utf8)
 
         if not args.groupby:
             groupby = ["Node", "Resource"]
@@ -2521,8 +2526,7 @@ or the drbdmanage server.
         """
         fn_rc = 1
 
-        server_conf = load_server_conf_file(localonly=True)
-        drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
+        drbdctrl_vg = self._get_drbdctrl_vg(self._config)
 
         try:
             # BEGIN Setup drbdctrl resource properties
@@ -2549,7 +2553,7 @@ Confirm:
 """)
             if quiet:
                 drbdctrl_blockdev_0, drbdctrl_blockdev_1 = self._create_drbdctrl(
-                    "0", server_conf, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
+                    "0", self._config, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
                 )
                 self._ext_command(
                     ["drbdsetup", "primary", DRBDCTRL_RES_NAME, "--force"]
@@ -2615,9 +2619,8 @@ Confirm:
                     # both is not considered an error here
                     pass
             try:
-                server_conf = load_server_conf_file(localonly=True)
-                drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
-                conf_path = self._get_conf_path(server_conf)
+                drbdctrl_vg = self._get_drbdctrl_vg(self._config)
+                conf_path = self._get_conf_path(self._config)
                 self._init_join_cleanup(drbdctrl_vg, conf_path)
                 fn_rc = 0
             except:
@@ -2633,8 +2636,7 @@ Confirm:
         """
         fn_rc = 1
 
-        server_conf = load_server_conf_file(localonly=True)
-        drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
+        drbdctrl_vg = self._get_drbdctrl_vg(self._config)
 
         # Initialization of the usermode helper restore delay
         delay_flag = False
@@ -2679,7 +2681,7 @@ Confirm:
                 secret = args.secret
 
                 drbdctrl_blockdev_0, drbdctrl_blockdev_1 = self._create_drbdctrl(
-                    l_node_id, server_conf, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
+                    l_node_id, self._config, DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1
                 )
 
                 begin_time = time.time()
@@ -3055,7 +3057,7 @@ Confirm:
             level_color = COLOR_DARKGREEN
         elif level == GenericView.STATE_WARN:
             level_color = COLOR_YELLOW
-        return level_color
+        return self.color(level_color)
 
 
     def cmd_debug(self, args):

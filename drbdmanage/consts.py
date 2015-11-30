@@ -96,6 +96,9 @@ KEY_SITE = 'site'
 
 KEY_ISSATELLITE = "isSatellite"
 
+KEY_COLORS = "colors"
+KEY_UTF8 = "utf8"
+
 # auxiliary property prefix
 AUX_PROP_PREFIX     = "aux:"
 
