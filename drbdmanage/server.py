@@ -70,7 +70,7 @@ from drbdmanage.exceptions import (
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
     PluginException, SyntaxException, VolSizeRangeException, AbortException, QuorumException,
-    DebugException, dm_exc_text
+    DeployerException, DebugException, dm_exc_text
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
@@ -2532,10 +2532,19 @@ class DrbdManageServer(object):
         persist = None
         try:
             if ((count == 0 and delta == 0) or count < 0):
-                add_rc_entry(fn_rc, DM_EINVAL,
-                             "auto_deploy: Count (%(c)d) must be positive, or if 0, then delta (%(d)d must be != 0.",
-                             [["c", count], ["d", delta]])
-                return fn_rc
+                add_rc_entry(
+                    fn_rc, DM_EINVAL,
+                    "auto_deploy: Count (%(c)d) must be positive, or if 0, then delta (%(d)d) must be != 0",
+                    [["c", count], ["d", delta]]
+                )
+                raise ValueError
+            elif (count != 0 and delta != 0):
+                add_rc_entry(
+                    fn_rc, DM_EINVAL,
+                    "auto_deploy: Only one of count (%(c)d) or delta (%(d)d) may be set to a non-zero value",
+                    [["c", count], ["d", delta]]
+                )
+                raise ValueError
             else:
                 deployer = self._pluginmgr.get_plugin_instance(
                     self.get_conf_value(self.KEY_DEPLOYER_NAME)
@@ -2561,12 +2570,12 @@ class DrbdManageServer(object):
                 if delta != 0:
                     final_count = assigned_count + delta
                     if final_count <= 0:
-                        add_rc_entry(fn_rc, DM_EINVAL,
-                                     "auto_deploy: Final count %(fin)d less than 1: assigned %(ass)d + delta %(delta)d",
-                                     [["ass", assigned_count],
-                                      ["delta", delta],
-                                      ["fin", final_count]])
-                        return fn_rc
+                        add_rc_entry(
+                            fn_rc, DM_EINVAL,
+                            "auto_deploy: Final count %(fin)d less than 1: assigned %(ass)d + delta %(delta)d",
+                            [["ass", assigned_count], ["delta", delta], ["fin", final_count]]
+                        )
+                        raise ValueError
                 else:
                     final_count = count
 
@@ -2574,13 +2583,15 @@ class DrbdManageServer(object):
                 # Try to achieve it
                 if final_count > maxcount:
                     add_rc_entry(fn_rc, DM_ENODECNT, dm_exc_text(DM_ENODECNT))
-                    return fn_rc
+                    raise ValueError
 
                 elif final_count <= 0:
-                    add_rc_entry(fn_rc, DM_EINVAL,
-                                 "auto_deploy: Final count %(fin)d <= 0",
-                                 [["fin", final_count]])
-                    return fn_rc
+                    add_rc_entry(
+                        fn_rc, DM_EINVAL,
+                        "auto_deploy: Final count %(fin)d <= 0",
+                        [["fin", final_count]]
+                    )
+                    raise ValueError
 
                 elif final_count > assigned_count:
                     # ========================================
@@ -2649,7 +2660,7 @@ class DrbdManageServer(object):
                         self.schedule_run_changes()
                     else:
                         add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
-                        return fn_rc
+                        raise DeployerException
 
                 elif final_count < assigned_count:
                     # ========================================
@@ -2713,6 +2724,9 @@ class DrbdManageServer(object):
                 self._site_clients(resource, None)
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except (ValueError, DeployerException):
+            # add_rc_entry() error message set by exception generator
+            pass
         except PersistenceException:
             add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
         except QuorumException:

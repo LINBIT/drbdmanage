@@ -286,6 +286,16 @@ class AbortException(DrbdManageException):
         super(AbortException, self).__init__()
 
 
+class DeployerException(DrbdManageException):
+
+    """
+    Raised if selecting nodes for deploying a resource fails
+    """
+
+    def __init__(self):
+        super(DeployerException, self).__init__()
+
+
 class DebugException(DrbdManageException):
 
     """
