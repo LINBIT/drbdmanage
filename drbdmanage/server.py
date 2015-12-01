@@ -1454,10 +1454,7 @@ class DrbdManageServer(object):
 
     def is_satellite(self, node_name):
         is_satellite = self.get_node(node_name).get_props().get_prop(KEY_ISSATELLITE)
-        if is_satellite is not None:
-            is_satellite = string_to_bool(is_satellite)
-        else:
-            is_satellite = False
+        is_satellite = True if is_satellite is not None else False
         return is_satellite
 
     def get_satellite_names(self, node):
@@ -1472,12 +1469,14 @@ class DrbdManageServer(object):
         return satellite_names
 
     def get_ctrl_node(self, satellite_name):
-        ctrl_node = None
-        for node in self.iterate_nodes():
-            satellite_names = self.get_satellite_names(node)
-            if satellite_name in satellite_names:
-                return node
-        return ctrl_node
+        control_node = None
+        if not self.is_satellite(satellite_name):
+            return None
+        else:
+            control_node_name = self.get_node(satellite_name).get_props().get_prop(KEY_ISSATELLITE)
+            control_node = self.get_node(control_node_name)
+
+        return control_node
 
     @no_satellite
     def assign_satellite(self, props):
@@ -1514,6 +1513,11 @@ class DrbdManageServer(object):
                 new_control_node = self.get_node(new_control_node_name)
                 new_control_node.get_props().set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP,
                                                       os.path.join(ns, satellite_name))
+
+                # set new control node on satellite
+                satellite_node = self.get_node(satellite_name)
+                satellite_node.get_props().set_prop(KEY_ISSATELLITE, new_control_node_name)
+
                 self.get_serial()
             else:
                 raise PersistenceException
@@ -1782,6 +1786,11 @@ class DrbdManageServer(object):
                     node_standby = string_to_bool(props[FLAG_STANDBY])
                 except (KeyError, ValueError):
                     pass
+                control_node_name = None
+                try:
+                    control_node_name = props[NODE_CONTROL_NODE]
+                except (KeyError, ValueError):
+                    pass
                 node_state = 0
                 if node_drbdctrl:
                     node_state |= DrbdNode.FLAG_DRBDCTRL
@@ -1832,7 +1841,7 @@ class DrbdManageServer(object):
                                     fn_rc = DM_ECTRLVOL
                             else:
                                 if not node_external:  # a satellite
-                                    node.get_props().set_prop(KEY_ISSATELLITE, bool_to_string(True))
+                                    node.get_props().set_prop(KEY_ISSATELLITE, control_node_name)
                                 fn_rc = DM_SUCCESS
                         else:
                             # Attempted to create a node with a control volume,
