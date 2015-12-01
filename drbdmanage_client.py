@@ -51,7 +51,7 @@ from drbdmanage.consts import (
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
-    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN,
+    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN, KEY_ISSATELLITE,
     KEY_COLORS, KEY_UTF8,
 )
 from drbdmanage.utils import SizeCalc
@@ -643,9 +643,8 @@ class DrbdManage(object):
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
-        nodesverbose = ('Family', 'IP', 'Site')
-        nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'Site'
-                        'State')
+        nodesverbose = ('Family', 'IP', 'Site', 'CTRL_Node')
+        nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'State')
 
         def ShowGroupCompleter(lst, where):
             def Completer(prefix, parsed_args, **kwargs):
@@ -1898,13 +1897,14 @@ class DrbdManage(object):
         t.add_column("Name", color=color(COLOR_TEAL))
         t.add_column("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
+        t.add_column("CTRL_Node", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Site", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Family", just_txt='>')
         t.add_column("IP", just_txt='>')
         t.add_column("State", color=color(COLOR_DARKGREEN), just_txt='>', just_col='>')
 
         # fixed ones we always show
-        tview = ["Name", "Pool_Size", "Pool_Free", "Site", "State"]
+        tview = ["Name", "Pool_Size", "Pool_Free", "State"]
         if args.show:
             tview += args.show
         t.set_view(tview)
@@ -1919,6 +1919,7 @@ class DrbdManage(object):
                 v_addr = self._property_text(view.get_property(NODE_ADDR))
                 ns = Props.NAMESPACES[Props.KEY_DMCONFIG]
                 v_site = self._property_text(view.get_property(ns + NODE_SITE))
+                v_control_node = self._property_text(view.get_property(KEY_ISSATELLITE))
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
                     try:
@@ -1957,7 +1958,7 @@ class DrbdManage(object):
                     level, state_text = view.state_info()
                     level_color = self._level_color(level)
                     row_data = [
-                        node_name, poolsize_text, poolfree_text, v_site,
+                        node_name, poolsize_text, poolfree_text, v_control_node, v_site,
                         "ipv" + v_af, v_addr, (level_color, state_text)
                     ]
                     t.add_row(row_data)
