@@ -166,6 +166,8 @@ def gen_data_files():
                   ("/etc/dbus-1/system.d", ["conf/org.drbd.drbdmanaged.conf"]),
                   ("/usr/share/dbus-1/system-services",
                    ["conf/org.drbd.drbdmanaged.service"]),
+                  ("/lib/systemd/system/", ["conf/drbdmanaged.service",
+                                            "conf/drbdmanaged.socket"]),
                   ("/var/lib/drbd.d", []),
                   ("/var/lib/drbdmanage", []),
                   ("/etc/bash_completion.d", ["scripts/bash_completion/drbdmanage"])]

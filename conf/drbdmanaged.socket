@@ -1,0 +1,8 @@
+[Unit]
+Description=DRBDManage Service
+
+[Socket]
+ListenStream=6996
+
+[Install]
+WantedBy=default.target

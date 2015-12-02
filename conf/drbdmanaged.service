@@ -1,0 +1,8 @@
+[Unit]
+Description=DRBDManage Service
+
+[Service]
+ExecStart=/usr/bin/dbus-drbdmanaged-service
+User=root
+
+PrivateTmp=yes

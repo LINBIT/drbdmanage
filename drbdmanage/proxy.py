@@ -18,6 +18,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import os
 import socket
 import SocketServer
 import threading
@@ -127,7 +128,30 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+    # traditional server, manually started or by dbus activation
     pass
+
+
+class TCPServerSystemdSockActivation(SocketServer.TCPServer):
+    def __init__(self, server_address, handler_class, bind_and_activate=True):
+        # we init the SocketServer.TCPServer always with bind_and_activate False
+        SocketServer.TCPServer.__init__(self, server_address, handler_class,
+                                        bind_and_activate=False)
+
+
+class ThreadedTCPServerSystemdSockActivation(SocketServer.ThreadingMixIn, TCPServerSystemdSockActivation):
+    # server started by systemd socket activation
+    def __init__(self, server_address, handler_class, bind_and_activate=True):
+        SYSTEMD_FIRST_SOCKET_FD = 3
+        socket_type = SocketServer.TCPServer.socket_type
+        address_family = SocketServer.TCPServer.address_family
+
+        TCPServerSystemdSockActivation.__init__(self, server_address, handler_class, bind_and_activate)
+
+        self.socket = socket.fromfd(SYSTEMD_FIRST_SOCKET_FD, address_family, socket_type)
+
+        # rest of TCPServer.__init__ (if bind_and_activate) is in our case always False
+        # no further action required
 
 
 class DrbdManageProxy(object):
@@ -181,8 +205,15 @@ class DrbdManageProxy(object):
         self.lock = threading.Lock()
         self.event_shutdown_init = threading.Event()
         self.event_shutdown_done = threading.Event()
-        ThreadedTCPServer.allow_reuse_address = True
-        self._tcp_server = ThreadedTCPServer((self._host, self._port), ThreadedTCPRequestHandler)
+
+        # server type selection
+        if os.environ.get('LISTEN_PID', None) == str(os.getpid()):
+            ThreadedTCPServerSystemdSockActivation.allow_reuse_address = True
+            self._tcp_server = ThreadedTCPServerSystemdSockActivation((self._host, self._port),
+                                                                      ThreadedTCPRequestHandler)
+        else:
+            ThreadedTCPServer.allow_reuse_address = True
+            self._tcp_server = ThreadedTCPServer((self._host, self._port), ThreadedTCPRequestHandler)
 
         # forward some refs to the TCPServer
         # while we could add a ref to 'self', I like to keep it selective
