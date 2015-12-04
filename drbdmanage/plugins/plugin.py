@@ -23,17 +23,26 @@ try:
 except ImportError:
     import drbdmanage.importlib as importlib
 
+from drbdmanage.plugins.externalplugins import get_external
+
 
 class PluginManager():
     KEY_PLUGIN_PATH, KEY_PLUGIN_NAME = range(2)
 
-    def __init__(self):
-        self._known = (
+    def __init__(self, server):
+        self._server = server
+        self._known = [
             ('drbdmanage.deployers.BalancedDeployer', 'balanced-deployer'),
             ('drbdmanage.storage.lvm.Lvm', 'LVM'),
             ('drbdmanage.storage.lvm_thinlv.LvmThinLv', 'ThinLV'),
             ('drbdmanage.storage.lvm_thinpool.LvmThinPool', 'ThinPool'),
-        )
+        ]
+
+        external_plugins = get_external()
+        for external_plugin in external_plugins:
+            if '/' in external_plugin[1]:
+                continue
+            self._known.append(external_plugin)
 
         self._loaded = dict([(k[self.KEY_PLUGIN_PATH], None) for k in self._known])
 
@@ -48,7 +57,7 @@ class PluginManager():
         try:
             module_name, class_name = plugin_path.rsplit(".", 1)
             class_ = getattr(importlib.import_module(module_name), class_name)
-            instance = class_()
+            instance = class_(self._server)
         except:
             pass
 

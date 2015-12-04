@@ -298,6 +298,7 @@ class DrbdManageServer(object):
             'remove_volume': KEY_NOTHING,
             'resize_volume': KEY_NOTHING,
             'restore_snapshot': KEY_NOTHING,
+            'run_external_plugin': KEY_NOTHING,
             'set_drbdsetup_props': KEY_NOTHING,
             'unassign': KEY_NOTHING,
             'update_pool': KEY_NOTHING,
@@ -331,7 +332,7 @@ class DrbdManageServer(object):
         # BEGIN -- Server initialization
         # ========================================
 
-        self._pluginmgr = PluginManager()
+        self._pluginmgr = PluginManager(self)
 
         # Determine the current node's name
         #
@@ -1076,6 +1077,22 @@ class DrbdManageServer(object):
         """
         return self._cluster_conf.get_prop(key)
 
+    @no_satellite
+    def run_external_plugin(self, plugin_name, props):
+        fn_rc = []
+        ret = {}
+        try:
+            plugin = self._pluginmgr.get_plugin_instance(plugin_name)
+            self._pluginmgr.set_plugin_config(plugin_name, props)
+            ret = plugin.run()
+        except:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
+        ret = ret if isinstance(ret, dict) else {}
+        return (fn_rc, ret)
 
     def peek_serial(self):
         """

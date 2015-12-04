@@ -607,6 +607,17 @@ class DBusServer(dbus.service.Object):
         """
         return self._server.join_node(props)
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="sa{ss}",
+        out_signature="a(isa(ss))" "a{ss}"
+    )
+    def run_external_plugin(self, plugin_name, props):
+        """
+        D-Bus interface for DrbdManageServer.create_node(...)
+        """
+        return self._server.run_external_plugin(plugin_name, dict(props))
+
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,

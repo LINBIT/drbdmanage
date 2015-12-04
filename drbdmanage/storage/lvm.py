@@ -89,7 +89,7 @@ class Lvm(lvmcom.LvmCommon):
     _subproc_env = None
 
 
-    def __init__(self):
+    def __init__(self, server):
         """
         Initializes a new instance
         """
