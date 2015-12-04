@@ -2334,6 +2334,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
+                node = None
                 try:
                     node = self._nodes[node_name]
                 except KeyError:
