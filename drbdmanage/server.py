@@ -5122,162 +5122,292 @@ class DrbdManageServer(object):
         Set debugging options
         """
         fn_rc = 127
+        sync = False
+        persist = None
         try:
             args = cmdline.split()
             command = args.pop(0)
-            if command is not None:
-                if command == "set":
-                    try:
-                        subcommand = args.pop(0)
-                        if subcommand == "n":
-                            fn_rc = self._debug_set_node(args)
-                        elif subcommand == "r":
-                            fn_rc = self._debug_set_resource(args)
-                        elif subcommand == "v":
-                            fn_rc = self._debug_set_volume(args)
-                        elif subcommand == "a":
-                            fn_rc = self._debug_set_assignment(args)
-                        elif subcommand == "s":
-                            fn_rc = self._debug_set_snapshot(args)
-                        elif subcommand == "s/a":
-                            fn_rc = self._debug_set_snapshot_assignment(args)
-                        else:
-                            key, val = self._debug_keyval_split(subcommand)
-                            if key == "dbg_events":
-                                self.dbg_events = self._debug_parse_flag(val)
-                                fn_rc = 0
-                            elif key == "loglevel":
-                                loglevel = self._debug_parse_loglevel(val)
-                                self._root_logger.setLevel(loglevel)
-                                fn_rc = 0
-                            elif key == "dbgout":
-                                fn_rc = self._debug_set_debug_out(val)
-                    except (AttributeError, IndexError):
-                        fn_rc = 1
-                elif command == "run":
-                    try:
-                        item = args.pop(0)
-                        if item == "cleanup":
-                            self.cleanup()
+            if command == "sync":
+                sync = True
+                persist = self.begin_modify_conf(False)
+                if persist is None:
+                    raise PersistenceException
+                command = args.pop(0)
+            if command == "sync/ovrd":
+                sync = True
+                persist = self.begin_modify_conf(True)
+                if persist is None:
+                    raise PersistenceException
+                command = args.pop(0)
+            if command == "set":
+                try:
+                    subcommand = args.pop(0)
+                    if subcommand == "n":
+                        fn_rc = self._debug_set_node(args)
+                    elif subcommand == "r":
+                        fn_rc = self._debug_set_resource(args)
+                    elif subcommand == "v":
+                        fn_rc = self._debug_set_volume(args)
+                    elif subcommand == "a":
+                        fn_rc = self._debug_set_assignment(args)
+                    elif subcommand == "s":
+                        fn_rc = self._debug_set_snapshot(args)
+                    elif subcommand == "s/a":
+                        fn_rc = self._debug_set_snapshot_assignment(args)
+                    else:
+                        key, val = self._debug_keyval_split(subcommand)
+                        if key == "dbg_events":
+                            self.dbg_events = self._debug_parse_flag(val)
                             fn_rc = 0
-                        elif item == "DrbdManager":
-                            # override the hash check, but do not poke
-                            # the cluster
-                            self._drbd_mgr.run(True, False)
+                        elif key == "loglevel":
+                            loglevel = self._debug_parse_loglevel(val)
+                            self._root_logger.setLevel(loglevel)
                             fn_rc = 0
-                        elif item == "initial_up":
-                            self._drbd_mgr.initial_up()
-                            fn_rc = 0
-                        elif item == "adjust_drbdctrl":
-                            self._drbd_mgr.adjust_drbdctrl()
-                            fn_rc = 0
-                        elif item == "down_drbdctrl":
-                            self._drbd_mgr.down_drbdctrl()
-                            fn_rc = 0
-                        elif item == "init_events":
-                            self.init_events()
-                            fn_rc = 0
-                        elif item == "uninit_events":
-                            self.uninit_events()
-                            fn_rc = 0
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "restart":
-                    try:
-                        item = args.pop(0)
-                        if item == "events":
-                            self.restart_events(None, None)
-                            fn_rc = 0
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "test":
-                    try:
-                        item = args.pop(0)
-                        if item == "stdout":
-                            sys.stdout.write("(test stdout)\n")
-                            fn_rc = 0
-                        elif item == "stderr":
-                            sys.stderr.write("(test stderr)\n")
-                            fn_rc = 0
-                        elif item == "dbgout":
-                            self._debug_out.write("(test dbgout)\n")
-                            fn_rc = 0
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "list":
-                    try:
-                        item = args.pop(0)
-                        if item == "n":
-                            fn_rc = self._debug_list_nodes(args)
-                        elif item == "r":
-                            fn_rc = self._debug_list_resources(args)
-                        elif item == "v":
-                            fn_rc = self._debug_list_volumes(args)
-                        elif item == "a":
-                            fn_rc = self._debug_list_assignments(args)
-                        elif item == "s":
-                            fn_rc = self._debug_list_snapshots(args)
-                        elif item == "s/a":
-                            fn_rc = self._debug_list_snapshot_assignments(args)
-                        elif item == "conf/server":
-                            fn_rc = self._debug_list_server_conf(args)
-                        elif item == "conf/cluster":
-                            fn_rc = self._debug_list_cluster_conf(args)
-                        elif item == "props":
-                            fn_rc = self._debug_list_props(args)
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "gen":
-                    try:
-                        item = args.pop(0)
-                        if item == "drbdctrl":
-                            fn_rc = self._debug_gen_drbdctrl(args)
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "mod":
-                    try:
-                        item = args.pop(0)
-                        if item == "drbdctrl":
-                            fn_rc = self._debug_mod_drbdctrl(args)
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "invalidate":
-                    self._conf_hash = None
+                        elif key == "dbgout":
+                            fn_rc = self._debug_set_debug_out(val)
+                except (AttributeError, IndexError):
+                    fn_rc = 1
+            elif command == "cancel-actions":
+                subcommand = args.pop(0)
+                if subcommand == "r":
+                    res_name = args.pop(0)
+                    resource = self._debug_get_resource(res_name)
+                    state = resource.get_state()
+                    state = (state | DrbdResource.FLAG_REMOVE) ^ DrbdResource.FLAG_REMOVE
+                    resource.set_state(0)
                     fn_rc = 0
-                elif command == "show":
-                    try:
-                        subcommand = args.pop(0)
-                        if subcommand == "hash":
-                            if self._conf_hash is None:
-                                self._debug_out.write("unset/invalid\n")
-                            else:
-                                self._debug_out.write(
-                                    "%s\n" % (self._conf_hash)
-                                )
-                            fn_rc = 0
-                    except (AttributeError, IndexError):
-                        pass
-                elif command == "exit":
-                    try:
-                        exit_code_str = args.pop(0)
-                        exit_code     = int(exit_code_str)
-                        exit_msg = ("server shutdown (debug command): exit %d"
-                                    % (exit_code))
-                        self._debug_out.write(exit_msg + "\n")
-                        self._debug_out.flush()
-                        logging.debug(exit_msg)
-                        exit(exit_code)
-                    except (ValueError, AttributeError, IndexError):
-                        pass
+                elif subcommand == "v":
+                    res_name = args.pop(0)
+                    vol_id_str = args.pop(0)
+                    volume = self._debug_get_volume(res_name, vol_id_str)
+                    state = volume.get_state()
+                    state = (state | DrbdVolume.FLAG_REMOVE) ^ DrbdVolume.FLAG_REMOVE
+                    volume.set_state(state)
+                    fn_rc = 0
+                elif subcommand == "n":
+                    node_name = args.pop(0)
+                    node = self._debug_get_node(node_name)
+                    state = node.get_state()
+                    clear = DrbdNode.FLAG_UPD_POOL | DrbdNode.FLAG_UPDATE | DrbdNode.FLAG_REMOVE
+                    state = (state | clear) ^ clear
+                    node.set_state(state)
+                    fn_rc = 0
+                elif subcommand == "a":
+                    assg_path = args.pop(0)
+                    assignment = self._debug_get_assignment(assg_path)
+                    assignment.set_tstate(assignment.get_cstate())
+                    for vol_state in assignment.iterate_volume_states():
+                        vol_state.set_tstate(vol_state.get_cstate())
+                    fn_rc = 0
+            elif command == "run":
+                try:
+                    item = args.pop(0)
+                    if item == "cleanup":
+                        self.cleanup()
+                        fn_rc = 0
+                    elif item == "DrbdManager":
+                        # override the hash check, but do not poke
+                        # the cluster
+                        self._drbd_mgr.run(True, False)
+                        fn_rc = 0
+                    elif item == "initial_up":
+                        self._drbd_mgr.initial_up()
+                        fn_rc = 0
+                    elif item == "adjust_drbdctrl":
+                        self._drbd_mgr.adjust_drbdctrl()
+                        fn_rc = 0
+                    elif item == "down_drbdctrl":
+                        self._drbd_mgr.down_drbdctrl()
+                        fn_rc = 0
+                    elif item == "init_events":
+                        self.init_events()
+                        fn_rc = 0
+                    elif item == "uninit_events":
+                        self.uninit_events()
+                        fn_rc = 0
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "restart":
+                try:
+                    item = args.pop(0)
+                    if item == "events":
+                        self.restart_events(None, None)
+                        fn_rc = 0
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "test":
+                try:
+                    item = args.pop(0)
+                    if item == "stdout":
+                        sys.stdout.write("(test stdout)\n")
+                        fn_rc = 0
+                    elif item == "stderr":
+                        sys.stderr.write("(test stderr)\n")
+                        fn_rc = 0
+                    elif item == "dbgout":
+                        self._debug_out.write("(test dbgout)\n")
+                        fn_rc = 0
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "list":
+                try:
+                    item = args.pop(0)
+                    if item == "n":
+                        fn_rc = self._debug_list_nodes(args)
+                    elif item == "r":
+                        fn_rc = self._debug_list_resources(args)
+                    elif item == "v":
+                        fn_rc = self._debug_list_volumes(args)
+                    elif item == "a":
+                        fn_rc = self._debug_list_assignments(args)
+                    elif item == "s":
+                        fn_rc = self._debug_list_snapshots(args)
+                    elif item == "s/a":
+                        fn_rc = self._debug_list_snapshot_assignments(args)
+                    elif item == "conf/server":
+                        fn_rc = self._debug_list_server_conf(args)
+                    elif item == "conf/cluster":
+                        fn_rc = self._debug_list_cluster_conf(args)
+                    elif item == "props":
+                        fn_rc = self._debug_list_props(args)
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "gen":
+                try:
+                    item = args.pop(0)
+                    if item == "drbdctrl":
+                        fn_rc = self._debug_gen_drbdctrl(args)
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "mod":
+                try:
+                    item = args.pop(0)
+                    if item == "drbdctrl":
+                        fn_rc = self._debug_mod_drbdctrl(args)
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "invalidate":
+                self._conf_hash = None
+                fn_rc = 0
+            elif command == "show":
+                try:
+                    subcommand = args.pop(0)
+                    if subcommand == "hash":
+                        if self._conf_hash is None:
+                            self._debug_out.write("unset/invalid\n")
+                        else:
+                            self._debug_out.write(
+                                "%s\n" % (self._conf_hash)
+                            )
+                        fn_rc = 0
+                except (AttributeError, IndexError):
+                    pass
+            elif command == "exit":
+                try:
+                    exit_code_str = args.pop(0)
+                    exit_code     = int(exit_code_str)
+                    exit_msg = ("server shutdown (debug command): exit %d"
+                                % (exit_code))
+                    self._debug_out.write(exit_msg + "\n")
+                    self._debug_out.flush()
+                    logging.debug(exit_msg)
+                    exit(exit_code)
+                except (ValueError, AttributeError, IndexError):
+                    pass
+        except IndexError:
+            # args.pop(0) from an empty list
+            self._debug_out.write("Incomplete command line")
+            self._debug_out.flush()
+        except ValueError:
+            # Generated by _debug_get_*() functions
+            pass
+        except PersistenceException:
+            self._debug_out.write("Unable to access the persistent configuration\n")
+            self._debug_out.flush()
         except Exception as exc:
             self.catch_internal_error(exc)
             fn_rc = DM_DEBUG
         finally:
+            if sync:
+                try:
+                    self.save_conf_data(persist)
+                except:
+                    pass
+                self.end_modify_conf(persist)
             try:
                 self._debug_out.flush()
             except (IOError, OSError, AttributeError):
                 pass
         return fn_rc
+
+
+    def _debug_get_node(self, node_name):
+        if node_name is None:
+            self._debug_out.write("Missing node argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        node = self.get_node(node_name)
+        if node is None:
+            self._debug_out.write("Node '%s' not found\n" % (node_name))
+            self._debug_out.flush()
+            raise ValueError
+        return node
+
+
+    def _debug_get_resource(self, res_name):
+        if res_name is None:
+            self._debug_out.write("Missing resource argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        resource = self.get_resource(res_name)
+        if resource is None:
+            self._debug_out.write("Resource '%s' not found\n" % (res_name))
+            self._debug_out.flush()
+            raise ValueError
+        return resource
+
+
+    def _debug_get_assignment(self, assg_path):
+        if assg_path is None:
+            self._debug_out.write("Missing assignment path\n")
+            self._debug_out.flush()
+            raise ValueError
+        idx = assg_path.find("/")
+        if idx == -1:
+            self._debug_out.write("Invalid assignment path\n")
+            self._debug_out.flush()
+            raise ValueError
+        node_name = assg_path[:idx]
+        res_name = assg_path[idx + 1:]
+        node = self._debug_get_node(node_name)
+        resource = self._debug_get_resource(res_name)
+        assignment = node.get_assignment(resource.get_name())
+        if assignment is None:
+            self._debug_out.write("Assignment '%s/%s' not found\n" % (node.get_name(), resource.get_name()))
+            self._debug_out.flush()
+            raise ValueError
+        return assignment
+
+
+    def _debug_get_volume(self, res_name, vol_id_str):
+        resource = self._debug_get_resource(res_name)
+        if vol_id_str is None:
+            self._debug_out.write("Missing volume id argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        vol_id = 0
+        try:
+            vol_id = int(vol_id_str)
+        except ValueError:
+            self._debug_out.write("Invalid volume id argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        volume = resource.get_volume(vol_id)
+        if volume is None:
+            self._debug_out.write("Volume '%s/%d' not found\n" % (resource.get_name(), vol_id))
+            self._debug_out.flush()
+            raise ValueError
+        return volume
 
 
     def _debug_gen_drbdctrl(self, args):

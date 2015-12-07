@@ -1597,12 +1597,11 @@ class DrbdResource(GenericDrbdObject):
     _get_serial = None
 
     FLAG_REMOVE  = 0x1
-    FLAG_NEW     = 0x2
 
     # STATE_MASK must include all valid flags;
     # used to mask the value supplied to set_state() to prevent setting
     # non-existent flags
-    STATE_MASK   = FLAG_REMOVE | FLAG_NEW
+    STATE_MASK   = FLAG_REMOVE
 
     # maximum volumes per resource
     MAX_RES_VOLS = 64
