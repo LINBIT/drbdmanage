@@ -6223,16 +6223,24 @@ class DrbdManageServer(object):
             for tb_entry in traceback.format_tb(exc_tb):
                 logging.debug(tb_entry)
             logging.debug("--- end stack trace")
+            self.end_modify_conf(self._locked_persist)
         except Exception:
             pass
-        return (expl, args)
+        fn_rc_args = []
+        for key, value in args.iteritems():
+            fn_rc_args.append([key, value])
+        return (expl, fn_rc_args)
 
 
     def catch_and_append_internal_error(self, fn_rc, exc):
-        self.end_modify_conf(self._locked_persist)
         msg, args = self.catch_internal_error(exc)
         add_rc_entry(fn_rc, DM_DEBUG, msg, args)
-        add_rc_entry(fn_rc, DM_DEBUG, "%(versioninfo)s", ["versioninfo", (DM_VERSION + '; ' + DM_GITHASH)])
+        add_rc_entry(
+            fn_rc, DM_DEBUG, "%(versioninfo)s",
+            [
+                ["versioninfo", DM_VERSION + '; ' + DM_GITHASH]
+            ]
+        )
 
 
 """
