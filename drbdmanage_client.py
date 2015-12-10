@@ -2439,9 +2439,12 @@ class DrbdManage(object):
                              separators=(',', ': ')) + "\n")
         except dbus.DBusException as e:
             if e._dbus_error_name == 'org.freedesktop.DBus.Python.TypeError':
-                msg = re.sub(r'.*\n(TypeError:)', '\\1',
-                             e.message,
-                             flags=re.DOTALL + re.MULTILINE)
+                if sys.hexversion >= 0x02070000:
+                    msg = re.sub(r'.*\n(TypeError:)', '\\1',
+                                 e.message,
+                                 flags=re.DOTALL + re.MULTILINE)
+                else:
+                    msg = e.message
                 sys.stderr.write(msg)
                 return 1
             else:
