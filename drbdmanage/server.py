@@ -185,6 +185,8 @@ class DrbdManageServer(object):
     # Container for the server's objects directory
     _objects_root = None
 
+    # Serial numbers generator
+    _serial_gen = None
 
     # Factory instance for creating signal objects
     _signal_factory = None
