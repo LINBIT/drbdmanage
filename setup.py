@@ -206,6 +206,7 @@ setup(
         "drbdmanage.argcomplete",
         "drbdmanage.importlib",
         "drbdmanage.plugins",
+        "drbdmanage.plugins.plugins",
         "drbdmanage.plugins.external",
     ],
     py_modules=["drbdmanage_server", "drbdmanage_client"],
