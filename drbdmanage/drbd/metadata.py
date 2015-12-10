@@ -106,7 +106,10 @@ class MetaData(object):
         if md_kiB < gross_kiB:
             net_kiB = gross_kiB - md_kiB
         else:
-            raise MinSizeException
+            raise MinSizeException(
+                "The specified DRBD volume gross size (%d kiB) is too small to keep the volume's meta data area"
+                % (gross_kiB)
+            )
 
         return net_kiB
 
@@ -296,43 +299,70 @@ class MetaData(object):
         al_stripe_kiB = long(al_stripe_kiB)
 
         if al_stripes < 1:
-            raise AlStripesException
+            raise AlStripesException(
+                "Number of activity log strips (%d) is smaller than the minimum of 1"
+                % (al_stripes)
+            )
 
         if al_stripe_kiB < 1:
-            raise MinAlSizeException
+            raise MinAlSizeException(
+                "Activity log stripe size (%d kiB) is smaller than the minimum of 1 kiB"
+                % (al_stripe_kiB)
+            )
 
         if al_stripe_kiB > MetaData.DRBD_MAX_AL_kiB:
-            raise MaxAlSizeException
+            raise MaxAlSizeException(
+                "Activity log stripe size (%d kiB) is larger than the maximum of %d kiB"
+                % (al_stripe_kiB, MetaData.DRBD_MAX_AL_kiB)
+            )
 
         al_kiB = al_stripe_kiB * al_stripes
         al_kiB = utils.align_up(al_kiB, MetaData.DRBD_AL_ALIGN_kiB)
 
         if al_kiB < MetaData.DRBD_MIN_AL_kiB:
-            raise MinAlSizeException
+            raise MinAlSizeException(
+                "Activity log total size (%d kiB) is smaller than the minimum of 1 kiB"
+                % (al_stripe_kiB)
+            )
         elif al_kiB > MetaData.DRBD_MAX_AL_kiB:
-            raise MaxAlSizeException
+            raise MaxAlSizeException(
+                "Activity log total size (%d kiB) is larger than the maximum of %d kiB"
+                % (al_stripe_kiB, MetaData.DRBD_MAX_AL_kiB)
+            )
 
         return al_kiB
 
 def check_peers(peers):
     peers = int(peers)
     if peers < MetaData.DRBD_MIN_PEERS or peers > MetaData.DRBD_MAX_PEERS:
-        raise PeerCountException
+        raise PeerCountException(
+            "Number of peers (%d) is out of range (%d - %d)"
+            % (peers, MetaData.DRBD_MIN_PEERS, MetaData.DRBD_MAX_PEERS)
+        )
 
 def check_min_drbd_kiB_net(net_kiB):
     net_kiB = long(net_kiB)
     if net_kiB < MetaData.DRBD_MIN_NET_kiB:
-        raise MinSizeException
+        raise MinSizeException(
+            "Specified DRBD data area size (%d kiB) is smaller than the minimum of %d kiB"
+            % (net_kiB, MetaData.DRBD_MIN_NET_kiB)
+        )
 
 def check_min_drbd_kiB_gross(gross_kiB):
     gross_kiB = long(gross_kiB)
     if gross_kiB < MetaData.DRBD_MIN_GROSS_kiB:
-        raise MinSizeException
+        raise MinSizeException(
+            "Specified DRBD volume gross size (%d kiB) is smaller than the minimum of %d kiB"
+            % (gross_kiB, MetaData.DRBD_MIN_GROSS_kiB)
+        )
 
 def check_max_drbd_kiB(size_kiB):
     size_kiB = long(size_kiB)
     if size_kiB > MetaData.DRBD_MAX_kiB:
-        raise MaxSizeException
+        raise MaxSizeException(
+            "DRBD volume size (%d kiB) is larger than the maximum of %d kiB"
+            % (size_kiB, MetaData.DRBD_MAX_kiB)
+        )
 
 class MetaDataException(BaseException):
 
