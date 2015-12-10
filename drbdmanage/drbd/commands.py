@@ -74,6 +74,17 @@ class DrbdAdm(object):
         return self._run_drbdadm(exec_args)
 
 
+    def resize(self, res_name, vol_id):
+        """
+        Resizes a resource
+
+        @return: process handle of the drbdadm process
+        """
+        logging.debug("DrbdAdm: resize %s" % (res_name))
+        exec_args = [self.EXECUTABLE, "-c", "-", "resize", res_name + "/" + str(vol_id)]
+        return self._run_drbdadm(exec_args)
+
+
     def up(self, res_name):
         """
         OBSOLETE. Brings up a DRBD resource. Use adjust instead

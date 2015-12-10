@@ -53,6 +53,7 @@ class Lvm(lvmcom.LvmCommon):
 
     # Command names of LVM utilities
     LVM_CREATE = "lvcreate"
+    LVM_EXTEND = "lvextend"
     LVM_REMOVE = "lvremove"
     LVM_LVS    = "lvs"
     LVM_VGS    = "vgs"
@@ -83,6 +84,7 @@ class Lvm(lvmcom.LvmCommon):
     # Set during initialization
     _vg_path     = None
     _cmd_create  = None
+    _cmd_extend  = None
     _cmd_remove  = None
     _cmd_lvs     = None
     _cmd_vgs     = None
@@ -124,21 +126,13 @@ class Lvm(lvmcom.LvmCommon):
 
             # Setup cached settings
             self._vg_path = utils.build_path(
-                self._conf[Lvm.KEY_DEV_PATH],
-                self._conf[consts.KEY_VG_NAME]
+                self._conf[Lvm.KEY_DEV_PATH], self._conf[consts.KEY_VG_NAME]
             ) + "/"
-            self._cmd_create = utils.build_path(
-                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_CREATE
-            )
-            self._cmd_remove = utils.build_path(
-                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_REMOVE
-            )
-            self._cmd_lvs    = utils.build_path(
-                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_LVS
-            )
-            self._cmd_vgs    = utils.build_path(
-                self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_VGS
-            )
+            self._cmd_create = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_CREATE)
+            self._cmd_extend = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_EXTEND)
+            self._cmd_remove = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_REMOVE)
+            self._cmd_lvs    = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_LVS)
+            self._cmd_vgs    = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_VGS)
 
             # Load the saved state
             self._volumes = self._load_state()
@@ -285,6 +279,51 @@ class Lvm(lvmcom.LvmCommon):
             )
 
         return blockdev
+
+
+    def extend_blockdevice(self, blockdevice, size):
+        """
+        Deallocates a block device
+
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @param   size: new size of the block device in kiB (binary kilobytes)
+        @type    size: long
+        @return: standard return code (see drbdmanage.exceptions)
+        """
+        fn_rc = exc.DM_ESTORAGE
+        lv_name = blockdevice.get_name()
+
+        try:
+            if self._volumes.get(lv_name) is not None:
+                if self._extend_lv(lv_name, size):
+                    fn_rc = exc.DM_SUCCESS
+            else:
+                raise lvmexc.LvmUnmanagedVolumeException
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+            # Unable to run one of the LVM commands
+            # The error is reported by the corresponding function
+            #
+            # Abort
+            pass
+        except lvmexc.LvmUnmanagedVolumeException:
+            # Collision with a volume not managed by drbdmanage
+            logging.error(
+                "Lvm: LV '%s' is unknown to drbdmanage's storage subsystem. "
+                "Aborting extend operation."
+            )
+        except exc.PersistenceException:
+            # save_state() failed
+            # If the module has an LV listed although it has actually been
+            # removed successfully, then that can easily be corrected later
+            pass
+        except Exception as unhandled_exc:
+            logging.error(
+                "Lvm: Removal of a block device failed, "
+                "unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
+        return fn_rc
 
 
     def remove_blockdevice(self, blockdevice):
@@ -489,6 +528,34 @@ class Lvm(lvmcom.LvmCommon):
                 % (self._cmd_create, str(os_err))
             )
             raise lvmexc.LvmException
+
+
+    def _extend_lv(self, lv_name, size):
+        """
+        Extends an LVM logical volume
+        """
+        status = False
+        try:
+            exec_args = [
+                self._cmd_extend, "-L", str(size) + "k",
+                self._conf[consts.KEY_VG_NAME] + "/" + lv_name
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+            proc_rc = subprocess.call(
+                exec_args,
+                0, self._cmd_extend,
+                env=self._subproc_env, close_fds=True
+            )
+            if proc_rc == 0:
+                status = True
+        except OSError as os_err:
+            logging.error(
+                "Lvm: LV extension failed, unable to run "
+                "external program '%s', error message from the OS: %s"
+                % (self._cmd_extend, str(os_err))
+            )
+        return status
+
 
 
     def _remove_lv(self, lv_name):

@@ -118,6 +118,37 @@ class BlockDeviceManager(object):
         return blockdev
 
 
+    def extend_blockdevice(self, bd_name, new_size):
+        """
+        Extends the block device of an existing DRBD volume
+        """
+        fn_rc = DM_ESTORAGE
+        if self._plugin is not None:
+            try:
+                blockdev = self.get_blockdevice(bd_name)
+                if blockdev is not None:
+                    fn_rc = self._plugin.extend_blockdevice(blockdev, new_size)
+                    status = "successful" if fn_rc == DM_SUCCESS else "failed"
+                    logging.debug(
+                        "BlockDeviceManager: extend_blockdevice('%s', %d): "
+                        "%s fn_rc=%d"
+                        % (bd_name, new_size, status, fn_rc)
+                    )
+                else:
+                    logging.debug(
+                        "BlockDeviceManager: extend_blockdevice('%s', %d): "
+                        "Cannot find the corresponding BlockDevice object"
+                        % (bd_name, new_size)
+                    )
+                    fn_rc = DM_ENOENT
+            except NotImplementedError:
+                self._log_not_implemented("extend_blockdevice")
+                fn_rc = DM_ENOTIMPL
+        else:
+            self._log_no_plugin()
+        return fn_rc
+
+
     def remove_blockdevice(self, bd_name):
         """
         Deallocates a block device
@@ -479,6 +510,19 @@ class StoragePlugin(object):
         @type    size: long
         @return: block device of the specified size
         @rtype:  BlockDevice object; None if the allocation fails
+        """
+        raise NotImplementedError
+
+
+    def extend_blockdevice(self, blockdevice, size):
+        """
+        Deallocates a block device
+
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @param   size: new size of the block device in kiB (binary kilobytes)
+        @type    size: long
+        @return: standard return code (see drbdmanage.exceptions)
         """
         raise NotImplementedError
 

@@ -368,18 +368,19 @@ class DrbdManage(object):
         p_new_vol.add_argument('-d', '--deploy', type=int)
         p_new_vol.add_argument('name',
                                help='Name of a new/existing resource').completer = ResourceCompleter
-        p_new_vol.add_argument('size',
-                               help='Size of the volume in resource. '
-                               'The default unit for size is GiB (size * (2 ^ 30) bytes). '
-                               'Another unit can be specified by using an according postfix. '
-                               "Drbdmanage's internal granularity for the capacity of volumes is one "
-                               'Mebibyte (2 ^ 20 bytes). All other unit specifications are implicitly '
-                               'converted to Mebibyte, so that the actual size value used by drbdmanage '
-                               'is the smallest natural number of Mebibytes that is large enough to '
-                               'accomodate a volume of the requested size in the specified size unit.').completer = SizeCompleter
+        p_new_vol.add_argument(
+            'size',
+            help='Size of the volume in resource. '
+            'The default unit for size is GiB (size * (2 ^ 30) bytes). '
+            'Another unit can be specified by using an according postfix. '
+            "Drbdmanage's internal granularity for the capacity of volumes is one "
+            'Kibibyte (2 ^ 10 bytes). All other unit specifications are implicitly '
+            'converted to Kibibyte, so that the actual size value used by drbdmanage '
+            'is the smallest natural number of Kibibytes that is large enough to '
+            'accomodate a volume of the requested size in the specified size unit.'
+        ).completer = SizeCompleter
         p_new_vol.set_defaults(func=self.cmd_new_volume)
 
-        # remove-volume
         def VolumeCompleter(prefix, parsed_args, **kwargs):
             server_rc, res_list = self.__list_resources(True)
             possible = set()
@@ -393,6 +394,28 @@ class DrbdManage(object):
 
             return possible
 
+        # resize-volume
+        p_resize_vol = subp.add_parser('resize-volume',
+                                       aliases=['resize'],
+                                       description='Resizes a volume to the specified size, which must be'
+                                       'greater than the current size of the volume.')
+        p_resize_vol.add_argument('name',
+                                  help='Name of the resource').completer = ResourceCompleter
+        p_resize_vol.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
+        p_resize_vol.add_argument(
+            'size',
+            help='New size of the volume. '
+            'The default unit for size is GiB (size * (2 ^ 30) bytes). '
+            'Another unit can be specified by using an according postfix. '
+            "Drbdmanage's internal granularity for the capacity of volumes is one "
+            'Kibibyte (2 ^ 10 bytes). All other unit specifications are implicitly '
+            'converted to Kibibyte, so that the actual size value used by drbdmanage '
+            'is the smallest natural number of Kibibytes that is large enough to '
+            'accomodate a volume of the requested size in the specified size unit.'
+        ).completer = SizeCompleter
+        p_resize_vol.set_defaults(func=self.cmd_resize_volume)
+
+        # remove-volume
         p_mod_res = subp.add_parser('remove-volume',
                                     aliases=['rv', 'delete-volume', 'dv'],
                                     description='Removes a volume from the drbdmanage cluster, and removes '
@@ -1287,23 +1310,6 @@ class DrbdManage(object):
 
     def cmd_new_volume(self, args):
         fn_rc = 1
-        m = re.match('(\d+)(\D*)', args.size)
-
-        try:
-            size = int(m.group(1))
-        except AttributeError:
-            sys.stderr.write('Size is not a valid number\n')
-            return fn_rc
-
-        unit_str = m.group(2)
-        if unit_str == "":
-            unit_str = "GiB"
-        try:
-            unit = self.UNITS_MAP[unit_str.lower()]
-        except KeyError:
-            sys.stderr.write('"%s" is not a valid unit!\n' % (unit_str))
-            sys.stderr.write('Valid units: %s\n' % (','.join(self.UNITS_MAP.keys())))
-            return fn_rc
 
         minor = MinorNr.MINOR_NR_AUTO
         if args.minor is not None:
@@ -1312,11 +1318,7 @@ class DrbdManage(object):
         deploy = args.deploy
 
         try:
-            unit = self.UNITS_MAP[unit_str.lower()]
-
-            if unit != SizeCalc.UNIT_kiB:
-                size = SizeCalc.convert_round_up(size, unit,
-                                                 SizeCalc.UNIT_kiB)
+            size = self._get_volume_size_arg(args)
 
             props = dbus.Dictionary(signature="ss")
 
@@ -1353,6 +1355,50 @@ class DrbdManage(object):
             self.cmd_help(args)
 
         return fn_rc
+
+    def cmd_resize_volume(self, args):
+        fn_rc = 1
+        try:
+            name   = args.name
+            vol_id = args.id
+            size   = self._get_volume_size_arg(args)
+
+            self.dbus_init()
+            server_rc = self._server.resize_volume(
+                dbus.String(name), dbus.Int32(vol_id), dbus.Int64(0), dbus.Int64(size), dbus.Int64(0)
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.cmd_help(args)
+        return fn_rc
+
+    def _get_volume_size_arg(self, args):
+        m = re.match('(\d+)(\D*)', args.size)
+
+        size = 0
+        try:
+            size = int(m.group(1))
+        except AttributeError:
+            sys.stderr.write('Size is not a valid number\n')
+            raise SyntaxException
+
+        unit_str = m.group(2)
+        if unit_str == "":
+            unit_str = "GiB"
+        try:
+            unit = self.UNITS_MAP[unit_str.lower()]
+        except KeyError:
+            sys.stderr.write('"%s" is not a valid unit!\n' % (unit_str))
+            sys.stderr.write('Valid units: %s\n' % (','.join(self.UNITS_MAP.keys())))
+            raise SyntaxException
+
+        unit = self.UNITS_MAP[unit_str.lower()]
+
+        if unit != SizeCalc.UNIT_kiB:
+            size = SizeCalc.convert_round_up(size, unit,
+                                             SizeCalc.UNIT_kiB)
+
+        return size
 
     def cmd_modify_resource(self, args):
         fn_rc = 1

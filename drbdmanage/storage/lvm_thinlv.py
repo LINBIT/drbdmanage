@@ -54,6 +54,7 @@ class LvmThinLv(lvmcom.LvmCommon):
 
     # Command names of LVM utilities
     LVM_CREATE    = "lvcreate"
+    LVM_EXTEND    = "lvextend"
     LVM_REMOVE    = "lvremove"
     LVM_LV_CHANGE = "lvchange"
     LVM_VG_CHANGE = "vgchange"
@@ -93,6 +94,7 @@ class LvmThinLv(lvmcom.LvmCommon):
     # Set during initialization
     _vg_path      = None
     _cmd_create   = None
+    _cmd_extend   = None
     _cmd_remove   = None
     _cmd_lvchange = None
     _cmd_vgchange = None
@@ -135,31 +137,15 @@ class LvmThinLv(lvmcom.LvmCommon):
 
             # Setup cached settings
             self._vg_path = utils.build_path(
-                self._conf[LvmThinLv.KEY_DEV_PATH],
-                self._conf[consts.KEY_VG_NAME]
+                self._conf[LvmThinLv.KEY_DEV_PATH], self._conf[consts.KEY_VG_NAME]
             ) + "/"
-            self._cmd_create = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH],
-                LvmThinLv.LVM_CREATE
-            )
-            self._cmd_remove = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH],
-                LvmThinLv.LVM_REMOVE
-            )
-            self._cmd_lvchange = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH],
-                LvmThinLv.LVM_LV_CHANGE
-            )
-            self._cmd_vgchange = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH],
-                LvmThinLv.LVM_VG_CHANGE
-            )
-            self._cmd_lvs    = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_LVS
-            )
-            self._cmd_vgs    = utils.build_path(
-                self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_VGS
-            )
+            self._cmd_create   = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_CREATE)
+            self._cmd_extend   = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_EXTEND)
+            self._cmd_remove   = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_REMOVE)
+            self._cmd_lvchange = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_LV_CHANGE)
+            self._cmd_vgchange = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_VG_CHANGE)
+            self._cmd_lvs      = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_LVS)
+            self._cmd_vgs      = utils.build_path(self._conf[LvmThinLv.KEY_LVM_PATH], LvmThinLv.LVM_VGS)
 
             # Load the saved state
             self._volumes = self._load_state()
@@ -327,6 +313,51 @@ class LvmThinLv(lvmcom.LvmCommon):
         return blockdev
 
 
+    def extend_blockdevice(self, blockdevice, size):
+        """
+        Deallocates a block device
+
+        @param   blockdevice: the block device to deallocate
+        @type    blockdevice: BlockDevice object
+        @param   size: new size of the block device in kiB (binary kilobytes)
+        @type    size: long
+        @return: standard return code (see drbdmanage.exceptions)
+        """
+        fn_rc = exc.DM_ESTORAGE
+        lv_name = blockdevice.get_name()
+
+        try:
+            if self._volumes.get(lv_name) is not None:
+                if self._extend_lv(lv_name, size):
+                    fn_rc = exc.DM_SUCCESS
+            else:
+                raise lvmexc.LvmUnmanagedVolumeException
+        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+            # Unable to run one of the LVM commands
+            # The error is reported by the corresponding function
+            #
+            # Abort
+            pass
+        except lvmexc.LvmUnmanagedVolumeException:
+            # Collision with a volume not managed by drbdmanage
+            logging.error(
+                "LvmThinLv: LV '%s' is unknown to drbdmanage's storage subsystem. "
+                "Aborting extend operation."
+            )
+        except exc.PersistenceException:
+            # save_state() failed
+            # If the module has an LV listed although it has actually been
+            # removed successfully, then that can easily be corrected later
+            pass
+        except Exception as unhandled_exc:
+            logging.error(
+                "LvmThinLv: Removal of a block device failed, "
+                "unhandled exception: %s"
+                % (str(unhandled_exc))
+            )
+        return fn_rc
+
+
     def remove_blockdevice(self, blockdevice):
         """
         Deallocates a block device
@@ -367,6 +398,8 @@ class LvmThinLv(lvmcom.LvmCommon):
                             "Removal of LV '%s' failed"
                             % (tries + 1, LvmThinLv.MAX_RETRIES, lv_name)
                         )
+            else:
+                raise lvmexc.LvmUnmanagedVolumeException
         except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
@@ -374,12 +407,9 @@ class LvmThinLv(lvmcom.LvmCommon):
             # Abort
             pass
         except lvmexc.LvmUnmanagedVolumeException:
-            # FIXME: this exception does not seem to be thrown anywhere?
-            #
             # Collision with a volume not managed by drbdmanage
             logging.error(
-                "LvmThinLv: LV '%s' exists, but is unknown to "
-                "drbdmanage's storage subsystem. Aborting removal."
+                "LvmThinLv: LV '%s' is unknown to drbdmanage's storage subsystem. Aborting removal."
             )
         except exc.PersistenceException:
             # save_state() failed
@@ -707,6 +737,33 @@ class LvmThinLv(lvmcom.LvmCommon):
                 % (self._cmd_create, str(os_err))
             )
             raise lvmexc.LvmException
+
+
+    def _extend_lv(self, lv_name, size):
+        """
+        Extends an LVM logical volume backed by a thin pool
+        """
+        status = False
+        try:
+            exec_args = [
+                self._cmd_extend, "-V", str(size) + "k",
+                self._conf[consts.KEY_VG_NAME] + "/" + lv_name
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+            proc_rc = subprocess.call(
+                exec_args,
+                0, self._cmd_extend,
+                env=self._subproc_env, close_fds=True
+            )
+            if proc_rc == 0:
+                status = True
+        except OSError as os_err:
+            logging.error(
+                "LvmThinLv: LV extension failed, unable to run "
+                "external program '%s', error message from the OS: %s"
+                % (self._cmd_extend, str(os_err))
+            )
+        return status
 
 
     def _create_snapshot(self, snaps_name, lv_name):

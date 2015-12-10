@@ -64,7 +64,7 @@ from drbdmanage.utils import (
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
-    DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_EQUORUM,
+    DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOSPC, DM_EQUORUM,
     DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE,
 )
 from drbdmanage.exceptions import (
@@ -2061,10 +2061,102 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
+        # FIXME: The volume should probably have a property that indicates a resize
+        #        operation that is in progress, so that it locks out new resize
+        #        commands while a previous one is still in progress
+        #        That property would have to be cleaned up as soon as the resize
+        #        operations are finished, or if the assignments that had the pending
+        #        resize operation are removed
         fn_rc = []
-        # FIXME: changed to return SUCCESS to avoid failing some
-        #        automated tests
-        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self._resources[res_name]
+                volume = resource.get_volume(vol_id)
+                if volume is None:
+                    raise KeyError
+                if size_kiB == 0 and delta_kiB == 0:
+                    add_rc_entry(fn_rc, DM_EINVAL, "Either size_kiB or delta_kiB must be non-zero")
+                    raise ValueError
+                if size_kiB < 0:
+                    add_rc_entry(fn_rc, DM_EINVAL, "The value of size_kiB must be a positive number or zero")
+                    raise ValueError
+                if delta_kiB < 0:
+                    add_rc_entry(fn_rc, DM_EINVAL, "The value of delta_kiB must be a positive number or zero")
+                    raise ValueError
+                if size_kiB > 0 and delta_kiB > 0:
+                    add_rc_entry(
+                        fn_rc, DM_EINVAL,
+                        "Only one of size_kiB and delta_kiB may be set to a non-zero value"
+                    )
+                    raise ValueError
+                cur_size_kiB = volume.get_size_kiB()
+                if size_kiB > 0:
+                    if not (size_kiB > cur_size_kiB):
+                        add_rc_entry(
+                            fn_rc, DM_EINVAL,
+                            "The new size of the volume must be greater than its current size"
+                        )
+                        raise ValueError
+                if delta_kiB > 0:
+                    size_kiB = cur_size_kiB + delta_kiB
+
+                if resource.has_assignments():
+                    # Check space on all nodes that have the resource assigned
+                    # Calculate the gross size of the space required for resizing
+                    # to the specified net size
+                    max_peers = self.DEFAULT_MAX_PEERS
+                    try:
+                        max_peers = int(
+                            self.get_conf_value(self.KEY_MAX_PEERS)
+                        )
+                    except ValueError:
+                        # Unparseable configuration entry;
+                        # no-op: use default value instead
+                        pass
+                    gross_size_kiB = md.MetaData.get_gross_kiB(
+                        size_kiB, max_peers,
+                        md.MetaData.DEFAULT_AL_STRIPES,
+                        md.MetaData.DEFAULT_AL_kiB
+                    )
+                    for assignment in resource.iterate_assignments():
+                        node = assignment.get_node()
+                        poolfree = node.get_poolfree()
+                        if poolfree >= 0:
+                            if gross_size_kiB > poolfree:
+                                add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
+                                raise ValueError
+
+                    # Set the resize parameters
+                    resource.begin_resize(vol_id, size_kiB)
+                else:
+                    # If the resource has no assignments, just change the volume size
+                    volume.set_size_kiB(size_kiB)
+                self.save_conf_data(persist)
+                self.schedule_run_changes()
+            else:
+                raise PersistenceException
+        except KeyError:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except ValueError:
+            # Error code set by caller
+            pass
+        except md.MetaDataException:
+            add_rc_entry(
+                fn_rc, DM_EINVAL,
+                "DRBD device size / meta data size out of range"
+            )
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
     @no_satellite
@@ -2434,6 +2526,13 @@ class DrbdManageServer(object):
                         vol_state.attach()
                 node.add_assignment(assignment)
                 resource.add_assignment(assignment)
+
+                # If any of the volumes need to be resized, mark
+                # the volume state for resizing
+                vol_id_list = resource.get_resizing_vol_id_list()
+                for vol_id in vol_id_list:
+                    vol_state = assignment.get_volume_state(vol_id)
+                    vol_state.begin_resize()
 
                 # Flag all existing assignments for an update of the
                 # assignment's network connections
@@ -3262,6 +3361,7 @@ class DrbdManageServer(object):
                     if len(removable) > 0:
                         update_serial = True
                     # delete volume states of volumes that have been undeployed
+                    # and cleanup extended actions (xact)
                     removable = []
                     assg_bd_exists = False
                     for vol_state in assg.iterate_volume_states():
@@ -3279,6 +3379,11 @@ class DrbdManageServer(object):
                              is_unset(assg_tstate, A_FLAG_DEPLOY)) and
                              (not bd_exists)):
                                 removable.append(vol_state)
+                        else:
+                            # Cleanup the XACT flag if no more
+                            # extended actions are pending
+                            if is_set(vol_tstate, DrbdVolumeState.FLAG_XACT):
+                                vol_state.cleanup_xact()
                     if assg_bd_exists:
                         assg.set_cstate_flags(A_FLAG_DEPLOY)
                     for vol_state in removable:

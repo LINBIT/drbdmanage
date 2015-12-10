@@ -27,6 +27,7 @@ import drbdmanage.snapshots.snapshots as snapshots
 import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
 import drbdmanage.drbd.metadata as md
+import drbdmanage.propscontainer
 
 """
 WARNING!
@@ -477,6 +478,16 @@ class DrbdManager(object):
         pool_changed   = False
         failed_actions = False
 
+        max_peers = self._server.DEFAULT_MAX_PEERS
+        try:
+            max_peers = int(
+                self._server.get_conf_value(
+                    self._server.KEY_MAX_PEERS
+                )
+            )
+        except ValueError:
+            pass
+
         if vol_state.requires_undeploy():
             pool_changed  = True
             state_changed = True
@@ -488,10 +499,36 @@ class DrbdManager(object):
             if vol_state.requires_deploy():
                 pool_changed = True
                 state_changed = True
-                fn_rc = self._deploy_volume_actions(assg, vol_state)
+                fn_rc = self._deploy_volume_actions(assg, vol_state, max_peers)
                 assg.set_rc(fn_rc)
                 if fn_rc != 0:
                     failed_actions = True
+            elif vol_state.requires_resize_storage():
+                logging.debug(
+                    "Resource '%s' Volume %d: requires_resize_storage() == True",
+                    assg.get_resource().get_name(), vol_state.get_id()
+                )
+                pool_changed = True
+                state_changed = True
+                self._resize_volume_blockdevice(assg, vol_state, max_peers)
+            elif vol_state.requires_resize_drbd():
+                logging.debug(
+                    "Resource '%s' Volume %d: requires_resize_drbd() == True",
+                    assg.get_resource().get_name(), vol_state.get_id()
+                )
+                if self._is_resize_storage_finished(assg, vol_state.get_id()):
+                    logging.debug(
+                        "Resource '%s' Volume %d: _is_resize_storage_finished() == True",
+                        assg.get_resource().get_name(), vol_state.get_id()
+                    )
+                    pool_changed = True
+                    state_changed = True
+                    self._resize_volume_drbd(assg, vol_state)
+                else:
+                    logging.debug(
+                        "Resource '%s' Volume %d: _is_resize_storage_finished() == False",
+                        assg.get_resource().get_name(), vol_state.get_id()
+                    )
             """
             Attach a volume to or detach a volume from local storage
             """
@@ -860,7 +897,7 @@ class DrbdManager(object):
         return fn_rc
 
 
-    def _deploy_volume_actions(self, assignment, vol_state):
+    def _deploy_volume_actions(self, assignment, vol_state, max_peers):
         """
         Deploys a volumes or restores a snapshot
         """
@@ -870,17 +907,6 @@ class DrbdManager(object):
         resource = assignment.get_resource()
 
         failed_actions = False
-
-        max_peers = self._server.DEFAULT_MAX_PEERS
-        try:
-            max_peers = int(
-                self._server.get_conf_value(
-                    self._server.KEY_MAX_PEERS
-                )
-            )
-        except ValueError:
-            pass
-
 
         # Default to error
         fn_rc = -1
@@ -1028,7 +1054,16 @@ class DrbdManager(object):
         volume   = resource.get_volume(vol_state.get_id())
         blockdev = None
 
-        net_size   = volume.get_size_kiB()
+        net_size = volume.get_size_kiB()
+        if vol_state.requires_resize_storage():
+            try:
+                net_size = volume.get_resize_value()
+            except ValueError:
+                logging.debug(
+                    "DrbdManager: _deploy_volume_blockdev(): Encountered an invalid volume resize value: "
+                    "Resource '%s, Volume %d"
+                    % (resource.get_name(), volume.get_id())
+                )
         try:
             gross_size = md.MetaData.get_gross_kiB(
                 net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
@@ -1210,6 +1245,91 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Exit function _undeploy_volume()")
         return fn_rc
 
+
+    def _resize_volume_blockdevice(self, assignment, vol_state, max_peers):
+        """
+        Resizes the block device of an existing volume
+        """
+        logging.debug("DrbdManager: Enter function _resize_volume_blockdevice()")
+        fn_rc    = -1
+        bd_mgr   = self._server.get_bd_mgr()
+        resource = assignment.get_resource()
+        volume   = resource.get_volume(vol_state.get_id())
+
+        gross_size = 0
+        try:
+            try:
+                net_size = volume.get_resize_value()
+                gross_size = md.MetaData.get_gross_kiB(
+                    net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
+                )
+            except ValueError as v_err:
+                logging.debug(
+                    "DrbdManager: _deploy_volume_blockdev(): Encountered an invalid volume resize value: "
+                    "Resource '%s, Volume %d"
+                    % (resource.get_name(), volume.get_id())
+                )
+                # Re-raise the exception to skip the resize action
+                raise v_err
+
+            bd_name = vol_state.get_bd_name()
+            if bd_name is not None:
+                fn_rc = bd_mgr.extend_blockdevice(bd_name, gross_size)
+                if fn_rc == DM_SUCCESS:
+                    vol_state.finish_resize_storage()
+        except ValueError:
+            vol_state.fail_resize()
+
+        logging.debug("DrbdManager: Exit function _resize_volume_blockdevice()")
+        return fn_rc
+
+    def _resize_volume_drbd(self, assignment, vol_state):
+        """
+        Completes the resize of a DRBD volume
+        """
+        logging.debug("DrbdManager: Enter function _resize_volume_drbd()")
+        fn_rc = -1
+        resource = assignment.get_resource()
+        vol_id = vol_state.get_id()
+        volume = resource.get_volume(vol_id)
+        if volume is not None:
+            saved_vol_size = volume.get_size_kiB()
+            try:
+                new_size = volume.get_resize_value()
+                volume.set_size_kiB(new_size)
+            except ValueError:
+                pass
+            drbd_proc = self._drbdadm.resize(resource.get_name(), vol_state.get_id())
+            if drbd_proc is not None:
+                self._resconf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+                if fn_rc == 0:
+                    logging.debug(
+                        "Resource '%s', Volume %d: finish_resize_drbd()"
+                        % (resource.get_name(), vol_id)
+                    )
+                    resource.finish_resize_drbd(vol_id)
+                    # The assigment of the resource on all nodes must be adjusted to update
+                    # the size parameter in the configuration.
+                    # For now, the assignment's UPD_CON flag actually causes a
+                    # 'drbdadm adjust', therefore simply enable the flag
+                    # FIXME: There should probably be an adjust flag for that
+                    for peer_assg in resource.iterate_assignments():
+                        if not (peer_assg is assg):
+                            peer_assg.update_connections()
+                else:
+                    # Rollback the volume size change
+                    volume.set_size_kiB(saved_vol_size)
+            else:
+                # Rollback the volume size change
+                volume.set_size_kiB(saved_vol_size)
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+        else:
+            # There is a volume state for a non-existent volume
+            assignment.update_volume_states()
+        logging.debug("DrbdManager: Exit function _resize_volume_drbd()")
+        return fn_rc
 
     def _deploy_assignment(self, assignment):
         """
@@ -1552,6 +1672,20 @@ class DrbdManager(object):
         return primary
 
 
+    def _is_resize_storage_finished(self, assg, vol_id):
+        flag = True
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        for node_assg in assg.get_resource().iterate_assignments():
+            vol_state = node_assg.get_volume_state(vol_id)
+            vs_props = vol_state.get_props()
+            resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
+            if resize_stage is not None:
+                if resize_stage != DrbdVolumeState.RESIZE_STAGE_DRBD:
+                   flag = False
+                   break
+        return flag
+
+
     def reconfigure(self):
         """
         Reconfigures the DrbdManager instance
@@ -1796,6 +1930,47 @@ class DrbdResource(GenericDrbdObject):
         return self._secret
 
 
+    def begin_resize(self, vol_id, new_size_kiB):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        for assg in self.iterate_assignments():
+            vol_state = assg.get_volume_state(vol_id)
+            if vol_state is not None:
+                vs_props = vol_state.get_props()
+                vs_props.set_prop(
+                    DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_STOR,
+                    namespace=xact
+                )
+                vol_state.set_tstate_flags(DrbdVolumeState.FLAG_XACT)
+        volume = self.get_volume(vol_id)
+        vol_props = volume.get_props()
+        vol_props.set_prop(DrbdVolume.KEY_RESIZE_VALUE, str(new_size_kiB), namespace=xact)
+
+
+    def get_resizing_vol_id_list(self):
+        id_list = []
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        for volume in self.iterate_volumes():
+            vol_props = volume.get_props()
+            resize_value = vol_props.get_prop(DrbdVolume.KEY_RESIZE_VALUE, namespace=xact)
+            if resize_value is not None:
+                id_list.append(volume.get_id())
+        return id_list
+
+
+    def finish_resize_drbd(self, vol_id):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        for assg in self.iterate_assignments():
+            vol_state = assg.get_volume_state(vol_id)
+            if vol_state is not None:
+                vs_props = vol_state.get_props()
+                vs_props.remove_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
+                vol_state.cleanup_xact()
+        volume = self.get_volume(vol_id)
+        if volume is not None:
+            vol_props = volume.get_props()
+            vol_props.remove_prop(DrbdVolume.KEY_RESIZE_VALUE, namespace=xact)
+
+
     def get_state(self):
         return self._state
 
@@ -1894,6 +2069,9 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
     # non-existent flags
     STATE_MASK   = FLAG_REMOVE
 
+    # Target size of a resize action
+    KEY_RESIZE_VALUE = "resize-value"
+
     def __init__(self, vol_id, size_kiB, minor, state, get_serial_fn,
                  init_serial, init_props):
         if not size_kiB > 0:
@@ -1935,8 +2113,45 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         return "/dev/drbd" + str(self.get_minor().get_value())
 
 
+    def set_size_kiB(self, new_size_kiB):
+        if new_size_kiB != self._size_kiB:
+            self.get_props().new_serial()
+        self.common_set_size_kiB(new_size_kiB)
+        self._size_kiB = long(new_size_kiB)
+
+
     def get_state(self):
         return self._state
+
+
+    def is_resizing(self):
+        """
+        Indicates whether this volume is being resized
+        """
+        flag = False
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vol_props = self.get_props()
+        if vol_props.get_prop(DrbdVolume.KEY_RESIZE_VALUE, namespace=xact) is not None:
+            flag = True
+        return flag
+
+
+    def get_resize_value(self):
+        """
+        Returns the requested volume size for resizing, or generates a ValueError
+        """
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vol_props = self.get_props()
+        resize_value_str = vol_props.get_prop(DrbdVolume.KEY_RESIZE_VALUE, namespace=xact)
+        resize_value = 0
+        if resize_value_str is not None:
+            try:
+                resize_value = long(resize_value_str)
+            except (ValueError, TypeError):
+                raise ValueError
+        else:
+            raise ValueError
+        return resize_value
 
 
     def set_state(self, state):
@@ -2343,6 +2558,8 @@ class DrbdVolumeState(GenericDrbdObject):
 
     FLAG_DEPLOY    = 0x1
     FLAG_ATTACH    = 0x2
+    # Pending extended actions controlled by properties (resize, ...)
+    FLAG_XACT      = 0x10000
 
     # CSTATE_MASK must include all valid current state flags;
     # used to mask the value supplied to set_cstate() to prevent setting
@@ -2352,7 +2569,17 @@ class DrbdVolumeState(GenericDrbdObject):
     # TSTATE_MASK must include all valid target state flags;
     # used to mask the value supplied to set_tstate() to prevent setting
     # non-existent flags
-    TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH
+    TSTATE_MASK    = FLAG_DEPLOY | FLAG_ATTACH | FLAG_XACT
+
+    # Current stage of a resize action
+    KEY_RESIZE_STAGE = "resize-stage"
+
+    # Waiting for resize of the backend storage
+    RESIZE_STAGE_STOR = "storage"
+    # Waiting for resize of the DRBD device
+    RESIZE_STAGE_DRBD = "drbd"
+    # Indicates that resizing failed
+    RESIZE_STAGE_FAILED = "failed"
 
     def __init__(self, volume, cstate, tstate, bd_name, bd_path,
                  get_serial_fn, init_serial, init_props):
@@ -2480,6 +2707,62 @@ class DrbdVolumeState(GenericDrbdObject):
             self._tstate = ((self._tstate | self.FLAG_ATTACH) ^
                             self.FLAG_ATTACH)
             self.get_props().new_serial()
+
+
+    def begin_resize(self):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vs_props = self.get_props()
+        vs_props.set_prop(
+            DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_STOR,
+            namespace=xact
+        )
+        self.set_tstate_flags(DrbdVolumeState.FLAG_XACT)
+
+
+    def requires_resize_storage(self):
+        return self.resize_stage_matches(DrbdVolumeState.RESIZE_STAGE_STOR)
+
+
+    def requires_resize_drbd(self):
+        return self.resize_stage_matches(DrbdVolumeState.RESIZE_STAGE_DRBD)
+
+
+    def resize_stage_matches(self, value):
+        flag = False
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vs_props = self.get_props()
+        resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
+        if resize_stage is not None:
+            if resize_stage == value:
+                flag = True
+        return flag
+
+
+    def finish_resize_storage(self):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vs_props = self.get_props()
+        vs_props.set_prop(
+            DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_DRBD,
+            namespace=xact
+        )
+        self.set_tstate_flags(DrbdVolumeState.FLAG_XACT)
+
+
+    def fail_resize(self):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vs_props = self.get_props()
+        vs_props.set_prop(
+            DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_FAILED,
+            namespace=xact
+        )
+
+
+    def cleanup_xact(self):
+        xact = drbdmanage.propscontainer.Props.KEY_XACT
+        vs_props = self.get_props()
+        xact_props = vs_props.get_all_props(namespace=xact)
+        if len(xact_props) == 0:
+            self.clear_tstate_flags(DrbdVolumeState.FLAG_XACT)
 
 
     def is_snapshot_restore(self):
@@ -2741,6 +3024,8 @@ class Assignment(GenericDrbdObject):
                         0, 0, None, None,
                         self._get_serial, None, None
                     )
+                    if volume.is_resizing():
+                        vol_st.begin_resize()
                     self._vol_states[volume.get_id()] = vol_st
         # remove volume states for volumes that no longer exist in the resource
         for vol_st in self._vol_states.itervalues():
@@ -2801,6 +3086,7 @@ class Assignment(GenericDrbdObject):
         """
         Calculates the storage size occupied by this assignment
         """
+        # FIXME: peers may not be the number of peers the volume were created with
         size_sum = 0
         try:
             if (is_set(self._cstate, Assignment.FLAG_DEPLOY) or
@@ -2826,6 +3112,7 @@ class Assignment(GenericDrbdObject):
         """
         Calculates the storage size for not-yet-deployed assignments
         """
+        # FIXME: peers may not be the number of peers the volumes were created with
         size_sum = 0
         # TODO: Correct calculation for volumes that are transitioning from
         #       diskless to backing storage
@@ -2844,7 +3131,34 @@ class Assignment(GenericDrbdObject):
                   is_set(self._cstate, Assignment.FLAG_DISKLESS) and
                   is_unset(self._tstate, Assignment.FLAG_DISKLESS)):
                     size_sum += self._get_diskless_corr(peers)
+
+            size_sum += self._get_resize_corr(peers)
         return size_sum
+
+
+    def _get_resize_corr(self, peers):
+        """
+        Correction for volumes that are being resized
+        """
+        diff_size_kiB = 0
+        resource = self.get_resource()
+        for volume in resource.iterate_volumes():
+            try:
+                net_size_kiB = volume.get_resize_value()
+                gross_size_kiB = md.MetaData.get_gross_kiB(
+                    net_size_kiB, peers,
+                    md.MetaData.DEFAULT_AL_STRIPES,
+                    md.MetaData.DEFAULT_AL_kiB
+                )
+                cur_size_kiB = md.MetaData.get_gross_kiB(
+                    volume.get_size_kiB(), peers,
+                    md.MetaData.DEFAULT_AL_STRIPES,
+                    md.MetaData.DEFAULT_AL_kiB
+                )
+                diff_size_kiB += gross_size_kiB - cur_size_kiB
+            except (ValueError, TypeError):
+                pass
+        return diff_size_kiB
 
 
     def _get_undeployed_corr(self, peers):

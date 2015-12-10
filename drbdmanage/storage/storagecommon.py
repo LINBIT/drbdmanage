@@ -13,7 +13,7 @@ class GenericStorage(object):
 
     def get_size_kiB(self):
         """
-        Returns the size of the volume in binary megabytes
+        Returns the size of the volume in binary kilobytes
 
         This is the size of the volume in units of (2 to the power of 10) bytes
         (bytes = size * 1024).
@@ -37,3 +37,10 @@ class GenericStorage(object):
         return drbdmanage.utils.SizeCalc.convert(
             self._size_kiB, drbdmanage.utils.SizeCalc.UNIT_kiB, unit
         )
+
+
+    def common_set_size_kiB(self, size_kiB):
+        """
+        Sets the size of the volume in binary kilobytes
+        """
+        self._size_kiB = long(size_kiB)
