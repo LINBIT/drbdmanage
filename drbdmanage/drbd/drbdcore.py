@@ -1676,13 +1676,14 @@ class DrbdManager(object):
         flag = True
         xact = drbdmanage.propscontainer.Props.KEY_XACT
         for node_assg in assg.get_resource().iterate_assignments():
-            vol_state = node_assg.get_volume_state(vol_id)
-            vs_props = vol_state.get_props()
-            resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
-            if resize_stage is not None:
-                if resize_stage != DrbdVolumeState.RESIZE_STAGE_DRBD:
-                   flag = False
-                   break
+            if is_unset(node_assg.get_cstate(), Assignment.FLAG_DISKLESS):
+                vol_state = node_assg.get_volume_state(vol_id)
+                vs_props = vol_state.get_props()
+                resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
+                if resize_stage is not None:
+                    if resize_stage != DrbdVolumeState.RESIZE_STAGE_DRBD:
+                       flag = False
+                       break
         return flag
 
 
