@@ -1316,7 +1316,7 @@ class DrbdManager(object):
                     # 'drbdadm adjust', therefore simply enable the flag
                     # FIXME: There should probably be an adjust flag for that
                     for peer_assg in resource.iterate_assignments():
-                        if not (peer_assg is assg):
+                        if not (peer_assg is assignment):
                             peer_assg.update_connections()
                 else:
                     # Rollback the volume size change
