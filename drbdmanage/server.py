@@ -2121,12 +2121,13 @@ class DrbdManageServer(object):
                         md.MetaData.DEFAULT_AL_kiB
                     )
                     for assignment in resource.iterate_assignments():
-                        node = assignment.get_node()
-                        poolfree = node.get_poolfree()
-                        if poolfree >= 0:
-                            if gross_size_kiB > poolfree:
-                                add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
-                                raise ValueError
+                        if is_unset(assignment.get_cstate(), Assignment.FLAG_DISKLESS):
+                            node = assignment.get_node()
+                            poolfree = node.get_poolfree()
+                            if poolfree >= 0:
+                                if gross_size_kiB > poolfree:
+                                    add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
+                                    raise ValueError
 
                     # Set the resize parameters
                     resource.begin_resize(vol_id, size_kiB)
