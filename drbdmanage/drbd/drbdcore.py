@@ -1317,7 +1317,7 @@ class DrbdManager(object):
                     # FIXME: There should probably be an adjust flag for that
                     for peer_assg in resource.iterate_assignments():
                         if not (peer_assg is assignment):
-                            peer_assg.update_connections()
+                            peer_assg.update_config()
                 else:
                     # Rollback the volume size change
                     volume.set_size_kiB(saved_vol_size)
@@ -3341,7 +3341,7 @@ class Assignment(GenericDrbdObject):
 
     def update_connections(self):
         """
-        Sets the UPDCON flag on an assignment's target state
+        Sets the UPD_CON flag on an assignment's target state
 
         Used to indicate that the network connections of an assignment's
         resource have changed and should be updated. This should be achieved
@@ -3350,8 +3350,20 @@ class Assignment(GenericDrbdObject):
         Commonly, drbdadm adjust should be a good candidate to update
         connections.
         """
-        if (self._tstate & self.FLAG_UPD_CON) == 0:
-            self._tstate = self._tstate | self.FLAG_UPD_CON
+        if (self._tstate & Assignment.FLAG_UPD_CON) == 0:
+            self._tstate = self._tstate | Assignment.FLAG_UPD_CON
+            self.get_props().new_serial()
+
+
+    def update_config(self):
+        """
+        Sets the UPD_CONFIG flag on an assignment's target state
+
+        Used to indicate that the assignment needs reconfiguration
+        (e.g., drbdadm adjust)
+        """
+        if (self._tstate & Assignment.FLAG_UPD_CONFIG) == 0:
+            self._tstate = self._tstate | Assignment.FLAG_UPD_CONFIG
             self.get_props().new_serial()
 
 
