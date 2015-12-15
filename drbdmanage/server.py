@@ -2518,11 +2518,18 @@ class DrbdManageServer(object):
                             # Unparseable configuration value;
                             # no-op: keep default value
                             pass
-                        free_space = md.MetaData.get_net_kiB(
-                            gross_free, max_peers,
-                            md.MetaData.DEFAULT_AL_STRIPES,
-                            md.MetaData.DEFAULT_AL_kiB
-                        )
+                        try:
+                            free_space = md.MetaData.get_net_kiB(
+                                gross_free, max_peers,
+                                md.MetaData.DEFAULT_AL_STRIPES,
+                                md.MetaData.DEFAULT_AL_kiB
+                            )
+                        except md.MetaDataException as md_exc:
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                md_exc.message
+                            )
+                            logging.debug("cluster_free_query(): MetaDataException: " + md_exc.message)
                 else:
                     # requested redundancy exceeds the
                     # number of nodes in the cluster
@@ -2645,11 +2652,19 @@ class DrbdManageServer(object):
                     for vol in resource.iterate_volumes():
                         # Calculate required gross space for a volume
                         # with the specified net space
-                        size_sum += md.MetaData.get_gross_kiB(
-                            vol.get_size_kiB(), max_peers,
-                            md.MetaData.DEFAULT_AL_STRIPES,
-                            md.MetaData.DEFAULT_AL_kiB
-                        )
+                        try:
+                            size_sum += md.MetaData.get_gross_kiB(
+                                vol.get_size_kiB(), max_peers,
+                                md.MetaData.DEFAULT_AL_STRIPES,
+                                md.MetaData.DEFAULT_AL_kiB
+                            )
+                        except md.MetaDataException as md_exc:
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                md_exc.message
+                            )
+                            logging.debug("auto_deploy(): MetaDataException: " + md_exc.message)
+                            raise ValueError
                     """
                     filter nodes that do not have the resource deployed yet
                     """

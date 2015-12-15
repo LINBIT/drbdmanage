@@ -1026,33 +1026,37 @@ class DrbdManager(object):
         bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
         volume   = resource.get_volume(vol_state.get_id())
+        blockdev = None
 
         net_size   = volume.get_size_kiB()
-        gross_size = md.MetaData.get_gross_kiB(
-            net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
-        )
-        blockdev = bd_mgr.create_blockdevice(
-            resource.get_name(),
-            volume.get_id(),
-            gross_size
-        )
-
-        if blockdev is not None:
-            vol_state.set_bd(
-                blockdev.get_name(),
-                blockdev.get_path()
+        try:
+            gross_size = md.MetaData.get_gross_kiB(
+                net_size, max_peers, md.MetaData.DEFAULT_AL_STRIPES, md.MetaData.DEFAULT_AL_kiB
             )
-            # FIXME: If meta-data creation fails later, drbdmanage
-            #        will not retry it, because it seems that the
-            #        resource is deployed already. However, if the
-            #        volume is not marked as deployed here, then
-            #        if meta-data creation fails and the volume is
-            #        left in an undeployed state, drbdmanage would
-            #        forget to remove the backend blockdevice upon
-            #        undeploying a partly-deployed resource.
-            #        This must be redesigned with additional flags
-            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
-            fn_rc = 0
+            blockdev = bd_mgr.create_blockdevice(
+                resource.get_name(),
+                volume.get_id(),
+                gross_size
+            )
+
+            if blockdev is not None:
+                vol_state.set_bd(
+                    blockdev.get_name(),
+                    blockdev.get_path()
+                )
+                # FIXME: If meta-data creation fails later, drbdmanage
+                #        will not retry it, because it seems that the
+                #        resource is deployed already. However, if the
+                #        volume is not marked as deployed here, then
+                #        if meta-data creation fails and the volume is
+                #        left in an undeployed state, drbdmanage would
+                #        forget to remove the backend blockdevice upon
+                #        undeploying a partly-deployed resource.
+                #        This must be redesigned with additional flags
+                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                fn_rc = 0
+        except md.MetaDataException as md_exc:
+            logging.debug("DrbdManager: _deploy_volume_blockdev(): MetaDataException: " + md_exc.message)
 
         logging.debug("DrbdManager: Exit function _deploy_volume_blockdev()")
         return fn_rc, blockdev
@@ -2799,19 +2803,23 @@ class Assignment(GenericDrbdObject):
         Calculates the storage size occupied by this assignment
         """
         size_sum = 0
-        if (is_set(self._cstate, Assignment.FLAG_DEPLOY) or
-            is_set(self._tstate, Assignment.FLAG_DEPLOY)):
-                for vol_state in self._vol_states.itervalues():
-                    cstate = vol_state.get_cstate()
-                    tstate = vol_state.get_tstate()
-                    if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) or
-                        is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
-                            volume = vol_state.get_volume()
-                            size_sum += md.MetaData.get_gross_kiB(
-                                volume.get_size_kiB(), peers,
-                                md.MetaData.DEFAULT_AL_STRIPES,
-                                md.MetaData.DEFAULT_AL_kiB
-                            )
+        try:
+            if (is_set(self._cstate, Assignment.FLAG_DEPLOY) or
+                is_set(self._tstate, Assignment.FLAG_DEPLOY)):
+                    for vol_state in self._vol_states.itervalues():
+                        cstate = vol_state.get_cstate()
+                        tstate = vol_state.get_tstate()
+                        if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) or
+                            is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
+                                volume = vol_state.get_volume()
+                                size_sum += md.MetaData.get_gross_kiB(
+                                    volume.get_size_kiB(), peers,
+                                    md.MetaData.DEFAULT_AL_STRIPES,
+                                    md.MetaData.DEFAULT_AL_kiB
+                                )
+        except md.MetaDataException as md_exc:
+            logging.debug("Assignment.get_gross_size_kiB(): MetaDataException: " + md_exc.message)
+            size_sum = 0
         return size_sum
 
 
@@ -2845,17 +2853,21 @@ class Assignment(GenericDrbdObject):
         Volume sizes for not-yet-deployed volumes
         """
         size_sum = 0
-        for vol_state in self._vol_states.itervalues():
-            cstate = vol_state.get_cstate()
-            tstate = vol_state.get_tstate()
-            if (is_unset(cstate, DrbdVolumeState.FLAG_DEPLOY) and
-                is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
-                    volume = vol_state.get_volume()
-                    size_sum += md.MetaData.get_gross_kiB(
-                        volume.get_size_kiB(), peers,
-                        md.MetaData.DEFAULT_AL_STRIPES,
-                        md.MetaData.DEFAULT_AL_kiB
-                    )
+        try:
+            for vol_state in self._vol_states.itervalues():
+                cstate = vol_state.get_cstate()
+                tstate = vol_state.get_tstate()
+                if (is_unset(cstate, DrbdVolumeState.FLAG_DEPLOY) and
+                    is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
+                        volume = vol_state.get_volume()
+                        size_sum += md.MetaData.get_gross_kiB(
+                            volume.get_size_kiB(), peers,
+                            md.MetaData.DEFAULT_AL_STRIPES,
+                            md.MetaData.DEFAULT_AL_kiB
+                        )
+        except md.MetaDataException as md_exc:
+            logging.debug("Assignment._get_undeployed_corr(): MetaDataException: " + md_exc.message)
+            size_sum = 0
         return size_sum
 
 
@@ -2864,17 +2876,21 @@ class Assignment(GenericDrbdObject):
         Volumes sizes for volumes that transition from diskless to storage
         """
         size_sum = 0
-        for vol_state in self._vol_states.itervalues():
-            cstate = vol_state.get_cstate()
-            tstate = vol_state.get_tstate()
-            if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) and
-                is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
-                    volume = vol_state.get_volume()
-                    size_sum += md.MetaData.get_gross_kiB(
-                        volume.get_size_kiB(), peers,
-                        md.MetaData.DEFAULT_AL_STRIPES,
-                        md.MetaData.DEFAULT_AL_kiB
-                    )
+        try:
+            for vol_state in self._vol_states.itervalues():
+                cstate = vol_state.get_cstate()
+                tstate = vol_state.get_tstate()
+                if (is_set(cstate, DrbdVolumeState.FLAG_DEPLOY) and
+                    is_set(tstate, DrbdVolumeState.FLAG_DEPLOY)):
+                        volume = vol_state.get_volume()
+                        size_sum += md.MetaData.get_gross_kiB(
+                            volume.get_size_kiB(), peers,
+                            md.MetaData.DEFAULT_AL_STRIPES,
+                            md.MetaData.DEFAULT_AL_kiB
+                        )
+        except md.MetaDataException as md_exc:
+            logging.debug("Assignment._get_diskless_corr(): MetaDataException: " + md_exc.message)
+            size_sum = 0
         return size_sum
 
 
