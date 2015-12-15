@@ -139,6 +139,7 @@ class DrbdManageServer(object):
     KEY_MIN_MINOR_NR   = "min-minor-nr"
     KEY_MIN_PORT_NR    = "min-port-nr"
     KEY_MAX_PORT_NR    = "max-port-nr"
+    KEY_MAX_FAIL_COUNT = "max-fail-count"
 
     KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_EXTEND_PATH    = "extend-path"
@@ -152,6 +153,7 @@ class DrbdManageServer(object):
     DEFAULT_MIN_MINOR_NR =  100
     DEFAULT_MIN_PORT_NR  = 7000
     DEFAULT_MAX_PORT_NR  = 7999
+    DEFAULT_MAX_FAIL_COUNT = 3
 
     # defaults
     CONF_DEFAULTS = {
@@ -162,6 +164,7 @@ class DrbdManageServer(object):
         KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
         KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
+        KEY_MAX_FAIL_COUNT : str(DEFAULT_MAX_FAIL_COUNT),
         KEY_DRBDADM_PATH   : "/usr/sbin",
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
         KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
@@ -4299,6 +4302,44 @@ class DrbdManageServer(object):
                                 dest_vol_props.set_prop(
                                     SNAPS_SRC_BLOCKDEV, src_bd_name
                                 )
+
+    @no_satellite
+    def resume(self, node_name, res_name):
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        return fn_rc
+
+    @no_satellite
+    def resume_all(self):
+        fn_rc = []
+        fn_rc   = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+
+            for node in self._nodes.itervalues():
+                for assignment in node.iterate_assignments():
+                    assignment.clear_fail_count()
+
+            self.schedule_run_changes()
+            self.cleanup()
+            self.get_serial()
+            self.save_conf_data(persist)
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
 
     @no_satellite
     def dbus_save_conf(self):

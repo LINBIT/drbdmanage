@@ -30,16 +30,13 @@ import drbdmanage.server
 import drbdmanage.consts
 import drbdmanage.snapshots.persistence as snapspers
 import drbdmanage.propscontainer as propscon
+import drbdmanage.drbd.drbdcore
 
 from drbdmanage.exceptions import PersistenceException
 from drbdmanage.utils import DataHash
 from drbdmanage.utils import map_val_or_dflt
 from drbdmanage.persistence import GenericPersistence
 from drbdmanage.storage.storagecore import MinorNr
-from drbdmanage.drbd.drbdcore import (
-    DrbdCommon, DrbdNode, DrbdResource, DrbdVolume, DrbdVolumeState, Assignment
-)
-
 
 def create_server_persistence(ref_server):
     """
@@ -1056,7 +1053,7 @@ class DrbdCommonPersistence(GenericPersistence):
         common = None
         try:
             init_props = properties.get("props")
-            common = DrbdCommon(get_serial_fn, None, init_props)
+            common = drbdmanage.drbd.drbdcore.DrbdCommon(get_serial_fn, None, init_props)
         except Exception:
             raise PersistenceException
         return common
@@ -1091,7 +1088,7 @@ class DrbdNodePersistence(GenericPersistence):
             state       = long(map_val_or_dflt(properties, "_state", 0))
             poolsize    = long(map_val_or_dflt(properties, "_poolsize", -1))
             poolfree    = long(map_val_or_dflt(properties, "_poolfree", -1))
-            node = DrbdNode(
+            node = drbdmanage.drbd.drbdcore.DrbdNode(
                 properties["_name"],
                 properties["_addr"],
                 int(properties["_addrfam"]),
@@ -1163,7 +1160,7 @@ class DrbdResourcePersistence(GenericPersistence):
                 init_volumes.append(volume)
 
             # Create the DrbdResource object
-            resource = DrbdResource(
+            resource = drbdmanage.drbd.drbdcore.DrbdResource(
                 properties["_name"], properties["_port"],
                 secret, state, init_volumes,
                 get_serial_fn, None, init_props
@@ -1209,7 +1206,7 @@ class DrbdVolumePersistence(GenericPersistence):
             minor_nr = properties["minor"]
             minor = MinorNr(minor_nr)
             init_props  = properties.get("props")
-            volume = DrbdVolume(
+            volume = drbdmanage.drbd.drbdcore.DrbdVolume(
                 properties["_id"],
                 long(properties["_size_kiB"]),
                 minor,
@@ -1288,7 +1285,7 @@ class AssignmentPersistence(GenericPersistence):
                 )
                 vol_states.append(vol_state)
 
-            assignment = Assignment(
+            assignment = drbdmanage.drbd.drbdcore.Assignment(
                 node,
                 resource,
                 int(properties["_node_id"]),
@@ -1350,9 +1347,9 @@ class DrbdVolumeStatePersistence(GenericPersistence):
         try:
             volume = resource.get_volume(properties["id"])
 
-            init_props  = properties.get("props")
+            init_props = properties.get("props")
 
-            vol_state   = DrbdVolumeState(
+            vol_state = drbdmanage.drbd.drbdcore.DrbdVolumeState(
                 volume,
                 properties["_cstate"], properties["_tstate"],
                 properties.get("_bd_name"), properties.get("_bd_path"),

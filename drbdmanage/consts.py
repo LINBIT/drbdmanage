@@ -53,6 +53,7 @@ VOL_SIZE            = "vol_size"
 VOL_BDEV            = "vol_bdev"
 SNAPS_NAME          = "snaps_name"
 ERROR_CODE          = "error_code"
+FAIL_COUNT          = "fail-count"
 COMMON_NAME         = "common_name"
 
 # Keys for the version text-query

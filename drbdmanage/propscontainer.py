@@ -64,6 +64,28 @@ class Props(object):
             value = str(value)
         return value
 
+    def get_int_or_default(self, key, default, namespace=""):
+        """
+        Returns a property as an int type if possible, otherwise the default
+        """
+        ret_value = default
+        try:
+            ret_value = int(self.get_prop(key, namespace))
+        except (ValueError, TypeError):
+            pass
+        return ret_value
+
+    def get_long_or_default(self, key, default, namespace=""):
+        """
+        Returns a property as a long type if possible, otherwise the default
+        """
+        ret_value = default
+        try:
+            ret_value = long(self.get_prop(key, namespace))
+        except (ValueError, TypeError):
+            pass
+        return ret_value
+
     def get_selected_props(self, keys, namespace=""):
         """
         Retrieves a dictionary of multiple properties

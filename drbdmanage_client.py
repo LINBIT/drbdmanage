@@ -655,6 +655,11 @@ class DrbdManage(object):
         p_restsnap.add_argument('snapshot', help='Name of the snapshot').completer = SnapsCompleter
         p_restsnap.set_defaults(func=self.cmd_restore_snapshot)
 
+        # resume-all
+        p_resume_all = subp.add_parser('resume-all',
+                                       description="Resumes all failed assignments")
+        p_resume_all.set_defaults(func=self.cmd_resume_all)
+
         # shutdown
         p_shutdown = subp.add_parser('shutdown',
                                      description='Stops the local drbdmanage server process.')
@@ -1880,6 +1885,11 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
+
+    def cmd_resume_all(self, args):
+        self.dbus_init()
+        server_rc = self._server.resume_all()
+        fn_rc = self._list_rc_entries(server_rc)
 
     def cmd_shutdown(self, args):
         quiet = args.quiet

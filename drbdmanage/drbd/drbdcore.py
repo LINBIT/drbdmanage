@@ -28,6 +28,12 @@ import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
 import drbdmanage.drbd.metadata as md
 import drbdmanage.propscontainer
+# Breaks the import system; maybe one day when everything has been rewritten
+# to use only 'import xy' it might work...
+# Until then, just misuse self._server instead of DrbdManageServer.CONSTANT,
+# because Python does not know the difference between variables, constants,
+# class members and instance members anyway
+# import drbdmanage.server
 
 """
 WARNING!
@@ -208,8 +214,9 @@ class DrbdManager(object):
         @rtype:  bool
         """
         logging.debug("DrbdManager: Enter function perform_changes()")
-        state_changed = False
-        pool_changed  = False
+        state_changed  = False
+        pool_changed   = False
+        failed_actions = False
 
         """
         Check whether the system the drbdmanaged server is running on is
@@ -237,23 +244,42 @@ class DrbdManager(object):
         """
         Check all assignments and snapshots for changes
         """
+        max_fail_count = self._get_max_fail_count()
         for assg in node.iterate_assignments():
             # Assignment changes
-            (set_state_changed, set_pool_changed) = (
-                self._assignment_actions(assg)
-            )
-            if set_state_changed:
-                state_changed = True
-            if set_pool_changed:
-                pool_changed = True
+            fail_count = assg.get_fail_count()
+            if fail_count < max_fail_count:
+                (set_state_changed, set_pool_changed, set_failed_actions) = (
+                    self._assignment_actions(assg)
+                )
+                if set_state_changed:
+                    state_changed = True
+                if set_pool_changed:
+                    pool_changed = True
+                if set_failed_actions:
+                    failed_actions = True
+            else:
+                failed_actions = True
+
             # Snapshot changes
-            (set_state_changed, set_pool_changed) = (
-                self._snapshot_actions(assg)
-            )
-            if set_state_changed:
-                state_changed = True
-            if set_pool_changed:
-                pool_changed = True
+            fail_count = assg.get_fail_count()
+            if fail_count < max_fail_count:
+                (set_state_changed, set_pool_changed, set_failed_actions) = (
+                    self._snapshot_actions(assg)
+                )
+                if set_state_changed:
+                    state_changed = True
+                if set_pool_changed:
+                    pool_changed = True
+                if set_failed_actions:
+                    failed_actions = True
+            else:
+                failed_actions = True
+
+            if not failed_actions:
+                # If actions were performed and none of them failed,
+                # clear any previously existing fail count
+                assg.clear_fail_count()
 
         """
         Send new ctrlvol state to satellites
@@ -384,9 +410,9 @@ class DrbdManager(object):
                             failed_actions = True
 
                 """
-                Update config (triggerd by {net,disk,resource}-options command)
+                Update config (triggered by {net,disk,resource}-options command)
                 """
-                if is_set(assg_actions, Assignment.FLAG_UPD_CONFIG):
+                if (not failed_actions) and is_set(assg_actions, Assignment.FLAG_UPD_CONFIG):
                     state_changed = True
                     fn_rc = self._reconfigure_assignment(assg)
                     if fn_rc == 0:
@@ -463,10 +489,12 @@ class DrbdManager(object):
                         state_changed = True
                         assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
 
+            if failed_actions:
+                assg.increase_fail_count()
         if state_changed:
             assg.notify_changed()
         logging.debug("DrbdManager: Exit function _assignment_actions()")
-        return (state_changed, pool_changed)
+        return (state_changed, pool_changed, failed_actions)
 
 
     def _volume_actions(self, assg, vol_state):
@@ -510,7 +538,9 @@ class DrbdManager(object):
                 )
                 pool_changed = True
                 state_changed = True
-                self._resize_volume_blockdevice(assg, vol_state, max_peers)
+                sub_rc = self._resize_volume_blockdevice(assg, vol_state, max_peers)
+                if sub_rc != DM_SUCCESS:
+                    failed_actions = True
             elif vol_state.requires_resize_drbd():
                 logging.debug(
                     "Resource '%s' Volume %d: requires_resize_drbd() == True",
@@ -523,7 +553,9 @@ class DrbdManager(object):
                     )
                     pool_changed = True
                     state_changed = True
-                    self._resize_volume_drbd(assg, vol_state)
+                    sub_rc = self._resize_volume_drbd(assg, vol_state)
+                    if sub_rc != DM_SUCCESS:
+                        failed_actions = True
                 else:
                     logging.debug(
                         "Resource '%s' Volume %d: _is_resize_storage_finished() == False",
@@ -647,8 +679,10 @@ class DrbdManager(object):
             if set_state_changed:
                 state_changed = True
                 snaps_assg.notify_changed()
+        if failed_actions:
+            assg.increase_fail_count()
         logging.debug("DrbdManager: Exit function _snapshot_actions()")
-        return (state_changed, pool_changed)
+        return (state_changed, pool_changed, failed_actions)
 
 
     def _snaps_volume_actions(self, snaps_assg, snaps_vol_state):
@@ -736,6 +770,7 @@ class DrbdManager(object):
             failed_actions = True
         if failed_actions:
             snaps_assg.set_error_code(dmexc.DM_ESTORAGE)
+            assg.increase_fail_count()
         logging.debug("DrbdManager: Exit function _snaps_deploy_volume()")
         return (pool_changed, failed_actions)
 
@@ -766,6 +801,8 @@ class DrbdManager(object):
                  % (snaps_name, snaps_vol_id, bd_name)
             )
             failed_actions = True
+            assg = snaps_assg.get_assignment()
+            assg.increase_fail_count()
         logging.debug("DrbdManager: Exit function _snaps_undeploy_volume()")
         return (pool_changed, failed_actions)
 
@@ -1367,14 +1404,16 @@ class DrbdManager(object):
                     self._resconf.write(drbd_proc.stdin, assignment, False)
                     drbd_proc.stdin.close()
                     fn_rc = drbd_proc.wait()
+                    drbd_proc = self._drbdadm.secondary(resource.get_name())
+                    if drbd_proc is not None:
+                        self._resconf.write(drbd_proc.stdin, assignment, False)
+                        drbd_proc.stdin.close()
+                        fn_rc = drbd_proc.wait()
+                    else:
+                        deploy_fail = True
+                        fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 else:
-                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-                drbd_proc = self._drbdadm.secondary(resource.get_name())
-                if drbd_proc is not None:
-                    self._resconf.write(drbd_proc.stdin, assignment, False)
-                    drbd_proc.stdin.close()
-                    fn_rc = drbd_proc.wait()
-                else:
+                    deploy_fail = True
                     fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
                 assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
             elif is_set(tstate, Assignment.FLAG_DISCARD):
@@ -1457,6 +1496,7 @@ class DrbdManager(object):
         Connects a resource on the current node to all peer nodes
         """
         logging.debug("DrbdManager: Enter function _connect()")
+        fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         tstate = assignment.get_tstate()
         discard_flag = is_set(tstate, Assignment.FLAG_DISCARD)
@@ -1479,6 +1519,7 @@ class DrbdManager(object):
         Disconnects a resource on the current node from all peer nodes
         """
         logging.debug("DrbdManager: Enter function _disconnect()")
+        fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         drbd_proc = self._drbdadm.disconnect(resource.get_name())
         if drbd_proc is not None:
@@ -1502,6 +1543,7 @@ class DrbdManager(object):
         * Leave valid existing connections untouched
         """
         logging.debug("DrbdManager: Enter function _update_connections()")
+        fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         # TODO:
         """
@@ -1550,6 +1592,7 @@ class DrbdManager(object):
         Attaches a volume
         """
         logging.debug("DrbdManager: Enter function _attach()")
+        fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
         drbd_proc = self._drbdadm.attach(
@@ -1575,6 +1618,7 @@ class DrbdManager(object):
         Detaches a volume
         """
         logging.debug("DrbdManager: Enter function _detach()")
+        fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         drbd_proc = self._drbdadm.detach(
             resource.get_name(),
@@ -1608,7 +1652,6 @@ class DrbdManager(object):
                 fn_rc = drbd_proc.wait()
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-
         return fn_rc
 
     def primary_deployment(self, assignment):
@@ -1685,6 +1728,19 @@ class DrbdManager(object):
                        flag = False
                        break
         return flag
+
+
+    def _get_max_fail_count(self):
+        # this is actually supposed to be DrbdManageServer.CONSTANT, but the import system
+        # broke again when 'import drbdmanage.server' was added
+        max_fail_count = self._server.DEFAULT_MAX_FAIL_COUNT
+        prop_str = self._server.get_cluster_conf_value(self._server.KEY_MAX_FAIL_COUNT)
+        if prop_str is not None:
+            try:
+                max_fail_count = int(prop_str)
+            except (ValueError, TypeError):
+                pass
+        return max_fail_count
 
 
     def reconfigure(self):
@@ -2908,6 +2964,8 @@ class Assignment(GenericDrbdObject):
     FLAG_DISCARD   = 0x80000
     FLAG_UPD_CONFIG = 0x100000
 
+    FAIL_COUNT_HARD_LIMIT = 99
+
     # CSTATE_MASK must include all valid current state flags;
     # used to mask the value supplied to set_cstate() to prevent setting
     # non-existent flags
@@ -3385,6 +3443,34 @@ class Assignment(GenericDrbdObject):
         See set_rc.
         """
         return self._rc
+
+
+    def get_fail_count(self):
+        """
+        Returns the fail count of this assignment
+        """
+        props = self.get_props()
+        fail_count = props.get_int_or_default(consts.FAIL_COUNT, 0)
+        return fail_count if fail_count >= 0 else 0
+
+
+    def increase_fail_count(self):
+        """
+        Increases the fail count of this assignment
+        """
+        props = self.get_props()
+        fail_count = props.get_int_or_default(consts.FAIL_COUNT, 0)
+        if fail_count < Assignment.FAIL_COUNT_HARD_LIMIT:
+            fail_count += 1
+            props.set_prop(consts.FAIL_COUNT, str(fail_count))
+
+
+    def clear_fail_count(self):
+        """
+        Clears (removes) the fail count property of this assignment
+        """
+        props = self.get_props()
+        props.remove_prop(consts.FAIL_COUNT)
 
 
     def is_deployed(self):

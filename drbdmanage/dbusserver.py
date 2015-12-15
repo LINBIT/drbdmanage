@@ -531,6 +531,30 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="ss",
+        out_signature="a(isa(ss))"
+    )
+    def resume(self, node_name, res_name):
+        """
+        Clear the fail count of a resource's assignments
+        """
+        return self._server.resume(node_name, res_name)
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))"
+    )
+    def resume_all(self):
+        """
+        Clear the fail count of a resource's assignments
+        """
+        return self._server.resume_all()
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="s",
         out_signature="a(isa(ss))"
     )
