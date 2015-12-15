@@ -364,7 +364,7 @@ def check_max_drbd_kiB(size_kiB):
             % (size_kiB, MetaData.DRBD_MAX_kiB)
         )
 
-class MetaDataException(BaseException):
+class MetaDataException(Exception):
 
     message = ""
 
