@@ -1250,7 +1250,7 @@ class AssignmentPersistence(GenericPersistence):
         properties["resource"] = res_name
         assg_name = node_name + ":" + res_name
 
-        properties["props"] = node.get_props().get_all_props()
+        properties["props"] = assignment.get_props().get_all_props()
 
         # Save the DrbdVolumeState objects
         vol_state_list = {}
