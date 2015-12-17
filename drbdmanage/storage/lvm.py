@@ -534,8 +534,8 @@ class Lvm(lvmcom.LvmCommon):
         """
         Extends an LVM logical volume
         """
-        self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
-                       self._cmd_extend, self._subproc_env, "Lvm")
+        return self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
+                              self._cmd_extend, self._subproc_env, "Lvm")
 
 
     def _remove_lv(self, lv_name):
