@@ -56,7 +56,9 @@ class GenericView(object):
     def get_property(self, key):
         val = None
         try:
-            val = str(self._props.get(str(key)))
+            val = self._props.get(str(key))
+            if val is not None:
+                val = str(val)
         except (ValueError, TypeError):
             pass
         return val
