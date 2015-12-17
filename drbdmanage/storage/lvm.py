@@ -534,28 +534,8 @@ class Lvm(lvmcom.LvmCommon):
         """
         Extends an LVM logical volume
         """
-        status = False
-        try:
-            exec_args = [
-                self._cmd_extend, "-L", str(size) + "k",
-                self._conf[consts.KEY_VG_NAME] + "/" + lv_name
-            ]
-            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            proc_rc = subprocess.call(
-                exec_args,
-                0, self._cmd_extend,
-                env=self._subproc_env, close_fds=True
-            )
-            if proc_rc == 0:
-                status = True
-        except OSError as os_err:
-            logging.error(
-                "Lvm: LV extension failed, unable to run "
-                "external program '%s', error message from the OS: %s"
-                % (self._cmd_extend, str(os_err))
-            )
-        return status
-
+        self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
+                       self._cmd_extend, self._subproc_env, "Lvm")
 
 
     def _remove_lv(self, lv_name):

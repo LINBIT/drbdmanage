@@ -157,6 +157,33 @@ class LvmCommon(storcore.StoragePlugin):
         return loaded_objects
 
 
+    def extend_lv(self, lv_name, vg_name, size, cmd_extend, subproc_env, plugin_name):
+        """
+        Extends an LVM logical volume
+        """
+        status = False
+        try:
+            exec_args = [
+                cmd_extend, "-L", str(size) + "k",
+                vg_name + "/" + lv_name
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+            proc_rc = subprocess.call(
+                exec_args,
+                0, cmd_extend,
+                env=subproc_env, close_fds=True
+            )
+            if proc_rc == 0:
+                status = True
+        except OSError as os_err:
+            logging.error(
+                plugin_name + ": LV extension failed, unable to run "
+                "external program '%s', error message from the OS: %s"
+                % (cmd_extend, str(os_err))
+            )
+        return status
+
+
     def remove_lv(self, lv_name, vg_name,
                   cmd_remove, subproc_env, plugin_name):
         try:

@@ -741,29 +741,10 @@ class LvmThinLv(lvmcom.LvmCommon):
 
     def _extend_lv(self, lv_name, size):
         """
-        Extends an LVM logical volume backed by a thin pool
+        Extends an LVM logical volume
         """
-        status = False
-        try:
-            exec_args = [
-                self._cmd_extend, "-V", str(size) + "k",
-                self._conf[consts.KEY_VG_NAME] + "/" + lv_name
-            ]
-            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            proc_rc = subprocess.call(
-                exec_args,
-                0, self._cmd_extend,
-                env=self._subproc_env, close_fds=True
-            )
-            if proc_rc == 0:
-                status = True
-        except OSError as os_err:
-            logging.error(
-                "LvmThinLv: LV extension failed, unable to run "
-                "external program '%s', error message from the OS: %s"
-                % (self._cmd_extend, str(os_err))
-            )
-        return status
+        self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
+                       self._cmd_extend, self._subproc_env, "LvmThinLv")
 
 
     def _create_snapshot(self, snaps_name, lv_name):
