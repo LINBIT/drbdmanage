@@ -54,16 +54,12 @@ class GenericView(object):
 
 
     def get_property(self, key):
-        if self._props is not None:
-            try:
-                val = self._props.get(str(key))
-                if val is not None:
-                    val = str(val)
-            except (ValueError, TypeError):
-                val = None
-            return val
-        else:
-            return None
+        val = None
+        try:
+            val = str(self._props.get(str(key)))
+        except (ValueError, TypeError):
+            pass
+        return val
 
 
     def state_text(self, flags_texts, sepa):
@@ -257,11 +253,19 @@ class AssignmentView(GenericView):
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_UPD_CONFIG)
         )
 
+        fail_count = 0
+        try:
+            fail_count_str = self.get_property(consts.FAIL_COUNT)
+            if fail_count_str is not None:
+                fail_count = int(fail_count_str)
+        except (ValueError, TypeError):
+            pass
+
         if (not c_deploy) and (not t_deploy):
             self.add_pending_text("cleanup")
         elif c_deploy and (not t_deploy):
             self.add_pending_text("decommission")
-            self.raise_level(GenericView.STATE_ALERT)
+            self.raise_level(GenericView.STATE_WARN)
         elif (not c_deploy) and t_deploy:
             self.add_pending_text("commission")
             self.raise_level(GenericView.STATE_WARN)
@@ -292,8 +296,12 @@ class AssignmentView(GenericView):
             self.add_pending_text("adjust connections")
             self.raise_level(GenericView.STATE_WARN)
         if a_upd_config and t_deploy:
-            self.add_pending_text("adjust configuration")
+            self.add_pending_text("reconfigure")
             self.raise_level(GenericView.STATE_WARN)
+
+        if fail_count > 0:
+            self.add_state_text("FAILED(" + str(fail_count) + ")")
+            self.raise_level(GenericView.STATE_ALERT)
 
         return self.get_level(), self.format_state_info()
 
@@ -664,7 +672,7 @@ class DrbdVolumeStateView(GenericView):
             self.add_pending_text("cleanup")
         elif c_deploy and (not t_deploy):
             self.add_pending_text("decommission")
-            self.raise_level(GenericView.STATE_ALERT)
+            self.raise_level(GenericView.STATE_WARN)
         elif (not c_deploy) and t_deploy:
             self.add_pending_text("commission")
             self.raise_level(GenericView.STATE_WARN)
