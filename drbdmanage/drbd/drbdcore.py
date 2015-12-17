@@ -123,7 +123,7 @@ class DrbdManager(object):
             # Always perform changes requested for the local node if the
             # hash check is overridden
             run_changes = override_hash_check
-            if override_hash_check == False:
+            if not override_hash_check:
                 # check whether the configuration hash has changed
                 persist = self._server.open_conf()
                 if persist is not None:
@@ -150,7 +150,7 @@ class DrbdManager(object):
                     old_serial = self._server.peek_serial()
                     changed    = self.perform_changes()
                     new_serial = self._server.peek_serial()
-                    if (poke_cluster and new_serial == old_serial):
+                    if poke_cluster:
                         # increase the serial number, implicitly changing the
                         # hash and thereby running requested changes on all
                         # cluster nodes
@@ -276,7 +276,7 @@ class DrbdManager(object):
             else:
                 failed_actions = True
 
-            if not failed_actions:
+            if state_changed and not failed_actions:
                 # If actions were performed and none of them failed,
                 # clear any previously existing fail count
                 assg.clear_fail_count()
