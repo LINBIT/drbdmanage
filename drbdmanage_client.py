@@ -1078,7 +1078,11 @@ class DrbdManage(object):
         return parser
 
     def parse(self, pargs):
+        devnull = open(os.devnull, "w")
+        stderr = sys.stderr
+        sys.stderr = devnull
         args = self._parser.parse_args(pargs)
+        sys.stderr = stderr
         args.func(args)
 
     def parser_cmds(self):
@@ -1153,12 +1157,8 @@ class DrbdManage(object):
             sys.stdout.write("\n" + "Command \"%s\" not known!\n" % (cmd))
             self.cmd_list(args)
 
-        devnull = open(os.devnull, "w")
-        stderr = sys.stderr
-
         # helper function
         def parsecatch(cmds, stoprec=False):
-            sys.stderr = devnull
             try:
                 self.parse(cmds)
             except SystemExit:  # raised by argparse
@@ -1177,7 +1177,6 @@ class DrbdManage(object):
                         if cmd not in all_cmds:
                             unknown(cmd)
                 elif cmd in all_cmds:
-                    sys.stderr = stderr
                     sys.stdout.write("\nWrong synopsis. Use the command as follows:\n")
                     parsecatch(["help", cmd], stoprec=True)
                 else:
