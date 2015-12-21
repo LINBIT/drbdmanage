@@ -1,3 +1,105 @@
+drbdmanage (0.90-1) experimental; urgency=medium
+  * Release codename: "Butters Stotch".
+
+  [ Philipp Marek ]
+  * Fix table output for long data.
+  * Spell check on variable name failed.
+  * Fixed parenthesis location to correctly produce an integer.
+  * Don't allow an empty string as argument to "init".
+  * Use a per-process logger and prepend the PID.
+  * Make add_rc_entry() accept a wider (type) range.
+  * auto_deploy: Make "invalid option" errors more verbose.
+  * Ensure that DrbdManageServer.auto_deploy() always gets integer arguments.
+  * auto_deploy: on errors, abort the function.
+  * auto_deploy: Fix check logic.
+  * Installation: Don't blindly overwrite existing configuration data.
+  * PEP8 configuration file, to make the lived practice a new rule.
+  * cmd_lowlevel_debug(): Compat with Python 2.6.
+
+  [ Robert Altnoeder ]
+  * Fixed utils add_rc_entry(), server export_conf()
+  * drbdmanage export: allow supplying multiple resource names
+  * Persistence: split file i/o out of _load_index()/_save_index()
+  * Fix missing node filter props: storage, drbdctrl flags
+  * Added class BasePersistence with json/dict conversion functions
+  * filter_match(): Node/Resource/Volume/..., normalize all properties to  [...]
+  * Dual drbdctrl persistence: open volumes in O_EXCL mode
+  * Skip updating control resource connections when creating a satellite node
+  * list-nodes: Hide quorum status for satellite nodes and update-pool sta [...]
+  * Satellite nodes: skip adjusting .drbdctrl on remove; Storage-less node [...]
+  * join_node(): Fix missing error report if loading the configuration fro [...]
+  * update_pool_data(): set pool size/free to 0 and return DM_SUCCESS on s [...]
+  * Server: instantiate the persistence layer object only once upon server [...]
+  * Persistence layer preparation for the server/satellite concept, see co [...]
+  * Persistence: renamed persistence layer classes
+  * Persistence: renamed persistence_impl() -> create_server_persistence() [...]
+  * drbdmanage_client: fixed failed refactoring: PersistenceDualImpl -> Se [...]
+  * Fixed a special case of metadata size calculation
+  * drbdcore: return from run() a flag indicating whether the saved data h [...]
+  * utils: MetaData: fix backend volume size for very small volumes, alway [...]
+  * Update the server's object directory cache upon load
+  * Fix incorrect use of add_rc_entry() in create_resource()
+  * Fixed calls of add_rc_entry() and fixed add_rc_entry
+  * Added an IgnoredQuorum class to be used on satellite nodes
+  * Generate a new serial number upon removal of objects
+  * Added new MetaData class for DRBD data / meta data size calculations
+  * metadata module: Set the minimum net size of DRBD data to 4 kiB
+  * drbdmanage_client: Added a SIGINT handler; drbdmanage_server: minor te [...]
+  * drbdcore: removed unused function _deploy_volume()
+  * Code cleanup, debug command for modifying volume states
+  * Changed return for unloadable plugins to None instead of False
+  * Fixed new-volume command: -m option (minor number)
+  * debug command 'set a': Fixed variable scope problems
+  * Fixed an UnboundLocalError in drbdmanage.drbd.persistence
+  * Implemented asynchronous D-Bus calls
+  * Asynchronous execution of the 'poke' command (immediate DBus return)
+  * Fixed auto_deploy(): Missing check for count != 0 and delta != 0
+  * drbdmanage.drbd.metadata: Fixed missing arguments when generating exceptions
+  * Fixed server methods catch_internal_error() and catch_and_append_inter [...]
+  * Fixed missing definition of server instance field _serial_gen
+  * Fixed AssignmentPersistence PropsContainer saving
+  * Handle and report MetaDataException
+  * Make MetaDataException a subclass of Exception instead of BaseException
+  * Added debug command "cancel-actions"
+  * Implemented resizing volumes
+  * Ignore diskless assignments in free space check for resize
+  * Fixed mistyped variable name
+  * Ignore diskless assignments when checking storage resize progress
+  * Set FLAG_UPD_CONFIG instead of FLAG_UPD_CON on peer assignments after  [...]
+  * Implemented assignment fail counts
+  * Client: Show fail-counts in the assignments list
+  * Moved extend_lv into LvmCommon, fixed resizing for LvmThinLv & LvmThinPool
+  * Fixed get_property() in views (non-existent properties breakage)
+  * Lvm, LvmThinPool, LvmThinLv: Fixed missing return statement in _extend_lv()
+  * Fixed poke / non-persistent serial number drift
+
+  [ Roland Kammerer ]
+  * removed unnecessary imports
+  * Fixed typo
+  * man: point to correct section
+  * pythonified method names in Table class
+  * query-conf: Fixed querying remote nodes
+  * client: sort items in edit-config
+  * allow set/unset of event handlers
+  * client: fix 'list-options' subcommand
+  * implemented satellites
+  * satellite: changed new-node semantic in client and server
+  * client: colors and utf-8 tables
+  * server/satellites: store ctrl node in satellite
+  * client: show control node name in 'list-nodes'
+  * howto-join: proper information for satellites
+  * added drbdmanaged.service and drbdmanaged.socket
+  * debian: cleaner systemd integration
+  * server: init node to None
+  * plugins: implemented external plugin API
+  * client: allow stderr output in interactive mode
+  * packaging: add dbus as explicit dependency
+
+  [ Peter Schwindt ]
+  * Fixed typo
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 21 Dec 2015 14:12:34 +0100
+
 drbdmanage (0.50-1.1) experimental; urgency=medium
 
   [ Roland Kammerer ]
