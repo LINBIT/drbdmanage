@@ -30,6 +30,7 @@ import hashlib
 import base64
 import operator
 import subprocess
+import uuid
 import drbdmanage.consts as consts
 import logging
 import ConfigParser
@@ -773,6 +774,12 @@ def generate_secret():
                 f_rnd.close()
             except IOError:
                 pass
+
+    # Fallback to uuid if the usual
+    # method of secret generation fails
+    if secret is None:
+        secret = uuid.uuid4()
+
     return secret
 
 
