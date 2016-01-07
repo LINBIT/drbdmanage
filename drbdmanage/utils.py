@@ -56,9 +56,6 @@ COLOR_TURQUOIS  = chr(0x1b) + "[1;36m"
 COLOR_WHITE     = chr(0x1b) + "[1;37m"
 COLOR_NONE      = chr(0x1b) + "[0m"
 
-# Source for random data
-RANDOM_SOURCE = "/dev/urandom"
-
 # Length of random data for generating shared secrets
 SECRET_LEN    = 15
 
@@ -757,27 +754,11 @@ def generate_secret():
     @rtype:  str
     """
     secret = None
-    f_rnd  = None
     try:
-        f_rnd = open(RANDOM_SOURCE, "r")
-        rnd   = bytearray(SECRET_LEN)
-        count = f_rnd.readinto(rnd)
-        # seems useless, but this is required for base64.b64encode() to
-        # work on python 2.6; otherwise, it crashes with a type error
-        s_rnd = str(rnd)
-        if count == SECRET_LEN:
-            secret = str(base64.b64encode(s_rnd))
-        f_rnd.close()
-    except IOError:
-        if f_rnd is not None:
-            try:
-                f_rnd.close()
-            except IOError:
-                pass
-
-    # Fallback to uuid if the usual
-    # method of secret generation fails
-    if secret is None:
+        secret = str(base64.b64encode(os.urandom(SECRET_LEN)))
+    except:
+        # Fallback to uuid if the usual
+        # method of secret generation fails
         secret = uuid.uuid4()
 
     return secret
