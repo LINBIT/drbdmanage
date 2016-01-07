@@ -1750,9 +1750,7 @@ class DrbdManager(object):
         Called by the server's reconfigure() function
         """
         logging.debug("DrbdManager: Enter function reconfigure()")
-        self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(
-            self._server.get_conf_value(self._server.KEY_DRBDADM_PATH)
-        )
+        self._drbdadm = drbdmanage.drbd.commands.DrbdAdm()
         logging.debug("DrbdManager: Exit function reconfigure()")
 
 

@@ -141,7 +141,6 @@ class DrbdManageServer(object):
     KEY_MAX_PORT_NR    = "max-port-nr"
     KEY_MAX_FAIL_COUNT = "max-fail-count"
 
-    KEY_DRBDADM_PATH   = "drbdadm-path"
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
 
@@ -165,7 +164,6 @@ class DrbdManageServer(object):
         KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
         KEY_MAX_FAIL_COUNT : str(DEFAULT_MAX_FAIL_COUNT),
-        KEY_DRBDADM_PATH   : "/usr/sbin",
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
         KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
         KEY_DRBDCTRL_VG    : DEFAULT_VG,
@@ -556,11 +554,9 @@ class DrbdManageServer(object):
         self.uninit_events()
 
         # Initialize a new events subprocess
-        evt_util = build_path(self.get_conf_value(self.KEY_DRBDADM_PATH),
-                              self.EVT_UTIL)
         self._proc_evt = subprocess.Popen(
             [self.EVT_UTIL, "events2", "all"], 0,
-            evt_util, stdout=subprocess.PIPE,
+            self.EVT_UTIL, stdout=subprocess.PIPE,
             close_fds=True
         )
         self._evt_file = self._proc_evt.stdout

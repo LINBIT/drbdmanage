@@ -22,6 +22,7 @@ import subprocess
 import errno
 import sys
 import logging
+import os
 import drbdmanage.utils as utils
 
 class DrbdAdm(object):
@@ -33,11 +34,8 @@ class DrbdAdm(object):
     EXECUTABLE      = "drbdadm"
     RES_ALL_KEYWORD = "all"
 
-    execpath = None
-
-    def __init__(self, path):
-        self.execpath = utils.build_path(path, self.EXECUTABLE)
-
+    def __init__(self):
+        pass
 
     def ext_conf_adjust(self, res_name):
         """
@@ -211,7 +209,7 @@ class DrbdAdm(object):
         try:
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             drbd_proc = subprocess.Popen(
-                exec_args, 0, self.execpath,
+                exec_args, 0, self.EXECUTABLE,
                 preexec_fn=lambda *rest: self._run_drbdadm_preexec(exec_args),
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE, close_fds=True
@@ -222,7 +220,7 @@ class DrbdAdm(object):
             drbd_proc.stderr.close()
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
-                logging.error("Cannot find the drbdadm utility")
+                logging.error("Cannot find the drbdadm utility, in PATH:%s", os.environ['PATH'])
             elif oserr.errno == errno.EACCES:
                 logging.error(
                     "Cannot execute the drbdadm utility, permission denied"
