@@ -216,7 +216,7 @@ class DrbdAdm(object):
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE, close_fds=True
             )
-            subprocess.Popen(['logger', '--tag',
+            subprocess.Popen(['logger', '-t',
                               'DRBDmanage:%d' % drbd_proc.pid],
                              0, 'logger', stdin=drbd_proc.stderr)
             drbd_proc.stderr.close()
