@@ -70,7 +70,7 @@ from drbdmanage.exceptions import (
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
     PluginException, SyntaxException, VolSizeRangeException, AbortException, QuorumException,
-    DeployerException, DebugException, dm_exc_text
+    DeployerException, InvalidAddrFamException, DebugException, dm_exc_text
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
@@ -2032,6 +2032,98 @@ class DrbdManageServer(object):
         return resource
 
     @no_satellite
+    def modify_node(self, node_name, serial, props):
+        """
+        Modifies node properties
+
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                node = self.get_node(node_name)
+                if node is not None:
+                    modified = False
+                    addr_changed = False
+
+                    # Network address change
+                    try:
+                        addr = props[NODE_ADDR]
+                        node.set_addr(addr)
+                        modified = True
+                        addr_changed = True
+                    except KeyError:
+                        pass
+
+                    # Address family change
+                    try:
+                        af_label = props[NODE_AF]
+                        if af_label == DrbdNode.AF_IPV4_LABEL:
+                            addrfam = DrbdNode.AF_IPV4
+                        elif af_label == DrbdNode.AF_IPV6_LABEL:
+                            addrfam = DrbdNode.AF_IPV6
+                        node.set_addrfam(addrfam)
+                        modified = True
+                        addr_changed = True
+                    except KeyError:
+                        pass
+                    except InvalidAddrFamException:
+                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+
+                    # Storage flag change
+                    try:
+                        node_storage = string_to_bool(props[FLAG_STORAGE])
+                        if node_storage:
+                            node.set_state_flags(DrbdNode.FLAG_STORAGE)
+                        else:
+                            node.clear_state_flags(DrbdNode.FLAG_STORAGE)
+                        modified = True
+                    except (KeyError, ValueError):
+                        pass
+
+                    # Standby flag change
+                    try:
+                        node_standby = string_to_bool(props[FLAG_STANDBY])
+                        if node_standby:
+                            node.set_state_flags(DrbdNode.FLAG_STANDBY)
+                        else:
+                            node.clear_state_flags(DrbdNode.FLAG_STANDBY)
+                        modified = True
+                    except (KeyError, ValueError):
+                        pass
+
+                    if modified:
+                        for assg in node.iterate_assignments():
+                            assg.update_config()
+                        if addr_changed:
+                            for dm_node in self._nodes.itervalues():
+                                dm_node_state = dm_node.get_state()
+                                if is_set(dm_node_state, DrbdNode.FLAG_DRBDCTRL):
+                                    dm_node.set_state_flags(DrbdNode.FLAG_UPDATE)
+                        self.schedule_run_changes()
+                    self.save_conf_data(persist)
+                else:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except ValueError:
+            # Return code set earlier
+            pass
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+    @no_satellite
     def modify_resource(self, res_name, serial, props):
         """
         Modifies resource properties
@@ -2039,7 +2131,50 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                resource = self.get_resource(res_name)
+                if resource is not None:
+                    try:
+                        port = int(props[RES_PORT])
+                        if self.is_free_port_nr(port):
+                            try:
+                                resource.set_port(port)
+                                for assg in resource.iterate_assignments():
+                                    assg.update_config()
+                                self.schedule_run_changes()
+                            except ValueError as val_err:
+                                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                                raise val_err
+                        else:
+                            add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
+                            raise ValueError
+                    except KeyError:
+                        pass
+                    # Merge only auxiliary properties into the
+                    # DrbdResource's properties container
+                    aux_props = aux_props_selector(props)
+                    resource.get_props().merge_gen(aux_props)
+                    self.save_conf_data(persist)
+                else:
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except ValueError:
+            # Return code set earlier
+            pass
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
     @no_satellite
@@ -2050,7 +2185,55 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                volume = None
+                resource = self.get_resource(res_name)
+                if resource is not None:
+                    volume = resource.get_volume(vol_id)
+                if volume is not None:
+                    try:
+                        minor_nr = int(props[VOL_MINOR])
+                        if self.is_free_minor_nr(minor_nr):
+                            try:
+                                minor = MinorNr(minor_nr)
+                                volume.set_minor(minor)
+                                for assg in resource.iterate_assignments():
+                                    assg.update_config()
+                                self.schedule_run_changes()
+                            except InvalidMinorNrException:
+                                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                                raise ValueError
+                        else:
+                            add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
+                            raise ValueError
+                    except KeyError:
+                        pass
+                    # Merge only auxiliary properties into the
+                    # DrbdVolume's properties container
+                    aux_props = aux_props_selector(props)
+                    volume.get_props().merge_gen(aux_props)
+                    self.save_conf_data(persist)
+                else:
+                    # Volume not found
+                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            else:
+                raise PersistenceException
+        except PersistenceException:
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except ValueError:
+            # Return code set earlier
+            pass
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
     @no_satellite
@@ -6400,6 +6583,31 @@ class DrbdManageServer(object):
         return minor_nr
 
 
+    def is_free_port_nr(self, port):
+        """
+        Checks whether a specified port number is allocated or not
+
+        @return: True if the specified port number is unallocated, False otherwise
+        """
+        is_free = True
+        for resource in self._resources.itervalues():
+            used_port = resource.get_port()
+            if port == used_port:
+                is_free = False
+        return is_free
+
+
+    def is_free_minor_nr(self, minor):
+        """
+        Checks whether a specified minor number is allocated or not
+
+        @return: True if the specified minor number is unallocated, False otherwise
+        """
+        used_minors = self.get_occupied_minor_nrs()
+        is_free = minor not in used_minors
+        return is_free
+
+
     def get_free_port_nr(self):
         """
         Retrieves a free (unused) network port number
@@ -6410,8 +6618,8 @@ class DrbdManageServer(object):
 
         @return: next free network port number; or -1 on error
         """
-        min_nr    = int(self._conf[self.KEY_MIN_PORT_NR])
-        max_nr    = int(self._conf[self.KEY_MAX_PORT_NR])
+        min_nr = int(self._conf[self.KEY_MIN_PORT_NR])
+        max_nr = int(self._conf[self.KEY_MAX_PORT_NR])
 
         port_list = []
         for resource in self._resources.itervalues():

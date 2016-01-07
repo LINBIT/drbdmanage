@@ -202,6 +202,42 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="sta{ss}",
+        out_signature="a(isa(ss))"
+    )
+    def modify_node(self, node_name, serial, props):
+        """
+        D-Bus interface for DrbdManageServer.modify_node(...)
+        """
+        return self._server.modify_node(node_name, serial, dict(props))
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="sta{ss}",
+        out_signature="a(isa(ss))"
+    )
+    def modify_resource(self, res_name, serial, props):
+        """
+        D-Bus interface for DrbdManageServer.modify_resource(...)
+        """
+        return self._server.modify_resource(res_name, serial, dict(props))
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="sita{ss}",
+        out_signature="a(isa(ss))"
+    )
+    def modify_volume(self, res_name, vol_id, serial, props):
+        """
+        D-Bus interface for DrbdManageServer.modify_volume(...)
+        """
+        return self._server.modify_volume(res_name, vol_id, serial, dict(props))
+
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="ssa{ss}",
         out_signature="a(isa(ss))"
     )

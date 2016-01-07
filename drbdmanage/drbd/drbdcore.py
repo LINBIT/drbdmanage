@@ -1841,6 +1841,13 @@ class DrbdResource(GenericDrbdObject):
         return self._name
 
 
+    def set_port(self, port):
+        if port >= 1 and port <= 65535 and port != self._port:
+            self._port = port
+            self.get_props().new_serial()
+        else:
+            raise ValueError
+
     def get_port(self):
         return self._port
 
@@ -2163,6 +2170,12 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
         return self._minor
 
 
+    def set_minor(self, minor):
+        if minor.get_value() != self._minor.get_value():
+            self._minor = minor
+            self.get_props().new_serial()
+
+
     def get_path(self):
         # TODO: return "pretty" name, /dev/drbd/by-res/...
         return "/dev/drbd" + str(self.get_minor().get_value())
@@ -2369,8 +2382,23 @@ class DrbdNode(GenericDrbdObject):
         return self._addr
 
 
+    def set_addr(self, addr):
+        if addr != self._addr:
+            self._addr = addr
+            self.get_props().new_serial()
+
+
     def get_addrfam(self):
         return self._addrfam
+
+
+    def set_addrfam(self, addrfam):
+        if addrfam != self._addrfam:
+            if addrfam == self.AF_IPV4 or addrfam == self.AF_IPV6:
+                self._addrfam = addrfam
+                self.get_props().new_serial()
+            else:
+                raise InvalidAddrFamException
 
 
     def get_node_id(self):

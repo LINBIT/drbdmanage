@@ -248,6 +248,19 @@ class DrbdManage(object):
                                 help='IP address of the new node').completer = IPCompleter("name")
         p_new_node.set_defaults(func=self.cmd_new_node)
 
+        # modify-node
+        p_mod_node = subp.add_parser('modify-node',
+                                    aliases=['mn'],
+                                    description='Modifies a drbdmanage node.')
+        p_mod_node.add_argument('-a', '--address-family', metavar="FAMILY",
+                                choices=['ipv4', 'ipv6'],
+                                help='FAMILY: "ipv4" (default) or "ipv6"')
+        p_mod_node.add_argument('-s', '--storage')
+        p_mod_node.add_argument('name', help='Name of the node').completer = NodeCompleter
+        p_mod_node.add_argument('--address',
+                                help='Network address of the node').completer = IPCompleter("name")
+        p_mod_node.set_defaults(func=self.cmd_modify_node)
+
         # remove-node
         p_rm_node = subp.add_parser('remove-node',
                                     aliases=['rn', 'delete-node', 'dn'],
@@ -313,12 +326,14 @@ class DrbdManage(object):
 
             return possible
 
+        # modify-resource
         p_mod_res = subp.add_parser('modify-resource',
-                                    description='Modify a resource')
+                                    aliases=['mr'],
+                                    description='Modifies a DRBD resource.')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
-        p_mod_res.add_argument('name',
-                               help='Name of the resource to modify').completer = ResourceCompleter
+        p_mod_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
+
 
         # remove-resource
         p_rm_res = subp.add_parser('remove-resource',
@@ -415,8 +430,17 @@ class DrbdManage(object):
         ).completer = SizeCompleter
         p_resize_vol.set_defaults(func=self.cmd_resize_volume)
 
+        # modify-resource
+        p_mod_vol = subp.add_parser('modify-volume',
+                                    aliases=['mv'],
+                                    description='Modifies a DRBD volume.')
+        p_mod_vol.add_argument('name', help='Name of the resource').completer = ResourceCompleter
+        p_mod_vol.add_argument('id', help='Volume id', type=int).completer = VolumeCompleter
+        p_mod_vol.add_argument('-m', '--minor', type=rangecheck(0, 1048575))
+        p_mod_vol.set_defaults(func=self.cmd_modify_volume)
+
         # remove-volume
-        p_mod_res = subp.add_parser('remove-volume',
+        p_rm_res = subp.add_parser('remove-volume',
                                     aliases=['rv', 'delete-volume', 'dv'],
                                     description='Removes a volume from the drbdmanage cluster, and removes '
                                     'the volume definition from the resource definition. The volume is '
@@ -424,16 +448,16 @@ class DrbdManage(object):
                                     "from the resource definition in drbdmanage's data tables. After all "
                                     'nodes have undeployed the volume, the volume entry is removed from '
                                     'the resource definition.')
-        p_mod_res.add_argument('-q', '--quiet', action="store_true",
+        p_rm_res.add_argument('-q', '--quiet', action="store_true",
                                help='Unless this option is used, drbdmanage will issue a safety question '
                                'that must be answered with yes, otherwise the operation is canceled.')
-        p_mod_res.add_argument('-f', '--force', action="store_true",
+        p_rm_res.add_argument('-f', '--force', action="store_true",
                                help='If present, then the volume entry is removed from the resource '
                                'definition immediately, without taking any action on the cluster nodes '
                                'that have the volume deployed.')
-        p_mod_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
-        p_mod_res.add_argument('id', help='Volume ID', type=int).completer = VolumeCompleter
-        p_mod_res.set_defaults(func=self.cmd_remove_volume)
+        p_rm_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
+        p_rm_res.add_argument('vol-id', help='Volume ID', type=int).completer = VolumeCompleter
+        p_rm_res.set_defaults(func=self.cmd_remove_volume)
 
         # connect
         p_conn = subp.add_parser('connect-resource', description='Connect resource on node',
@@ -1354,6 +1378,7 @@ class DrbdManage(object):
                     )
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
+            # FIXME: args.command?
             self.cmd_help(args)
 
         return fn_rc
@@ -1371,6 +1396,7 @@ class DrbdManage(object):
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
+            # FIXME: args.command?
             self.cmd_help(args)
         return fn_rc
 
@@ -1402,19 +1428,80 @@ class DrbdManage(object):
 
         return size
 
+    def cmd_modify_node(self, args):
+        fn_rc = 1
+
+        try:
+            props = dbus.Dictionary(signature="ss")
+            if args.address_family is not None:
+                props[NODE_AF] = args.address_family
+            if args.address is not None:
+                props[NODE_ADDR] = args.address
+            if args.storage is not None:
+                props[FLAG_STORAGE] = args.storage
+
+            if len(props) == 0:
+                raise SyntaxException
+
+            self.dbus_init()
+            server_rc = self._server.modify_node(
+                dbus.String(args.name), 0, props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            args.command = "modify-node"
+            # FIXME: args.command?
+            self.cmd_help(args)
+
+        return fn_rc
+
     def cmd_modify_resource(self, args):
         fn_rc = 1
-        name = args.name
-        port = args.port if args.port else RES_PORT_NR_AUTO
 
-        props = dbus.Dictionary(signature="ss")
-        props[RES_PORT] = str(port)
+        try:
+            props = dbus.Dictionary(signature="ss")
+            if args.port is not None:
+                try:
+                    props[RES_PORT] = str(args.port)
+                except ValueError:
+                    raise SyntaxException
 
-        self.dbus_init()
-        server_rc = self._server.modify_resource(
-            dbus.String(name), props
-        )
-        fn_rc = self._list_rc_entries(server_rc)
+            if len(props) == 0:
+                raise SyntaxException
+
+            self.dbus_init()
+            server_rc = self._server.modify_resource(
+                dbus.String(args.name), 0, props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            args.command = "modify-resource"
+            # FIXME: args.command?
+            self.cmd_help(args)
+        return fn_rc
+
+    def cmd_modify_volume(self, args):
+        fn_rc = 1
+        try:
+            props = dbus.Dictionary(signature="ss")
+            if args.minor is not None:
+                try:
+                    props[VOL_MINOR] = str(args.minor)
+                except ValueError:
+                    raise SyntaxException
+
+            if len(props) == 0:
+                raise SyntaxException
+
+            self.dbus_init()
+            server_rc = self._server.modify_volume(
+                dbus.String(args.name), dbus.Int32(args.id), 0, props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            args.command = "modify-volume"
+            # FIXME: args.command?
+            self.cmd_help(args)
         return fn_rc
 
     def cmd_remove_node(self, args):
