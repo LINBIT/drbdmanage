@@ -1078,11 +1078,7 @@ class DrbdManage(object):
         return parser
 
     def parse(self, pargs):
-        devnull = open(os.devnull, "w")
-        stderr = sys.stderr
-        sys.stderr = devnull
         args = self._parser.parse_args(pargs)
-        sys.stderr = stderr
         args.func(args)
 
     def parser_cmds(self):
@@ -1177,6 +1173,8 @@ class DrbdManage(object):
                         if cmd not in all_cmds:
                             unknown(cmd)
                 elif cmd in all_cmds:
+                    if '-h' in cmds or '--help' in cmds:
+                        return
                     sys.stdout.write("\nWrong synopsis. Use the command as follows:\n")
                     parsecatch(["help", cmd], stoprec=True)
                 else:
