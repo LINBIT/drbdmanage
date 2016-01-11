@@ -164,7 +164,7 @@ class DrbdManage(object):
         subp = parser.add_subparsers(title='subcommands',
                                      description='valid subcommands',
                                      help='Use the list command to print a '
-                                     'nicer looking overview about all valid '
+                                     'nicer looking overview of all valid '
                                      'commands')
 
         # interactive mode
@@ -185,7 +185,7 @@ class DrbdManage(object):
 
         # exit
         p_exit = subp.add_parser('exit', aliases=['quit'],
-                                 description='Only useful in interacive mode')
+                                 description='Only useful in interactive mode')
         p_exit.set_defaults(func=self.cmd_exit)
 
         # poke
@@ -233,14 +233,14 @@ class DrbdManage(object):
         p_new_node.add_argument('-q', '--quiet', action="store_true")
         p_new_node.add_argument('-l', '--satellite',
                                 action="store_true",
-                                help='This node does not have a control volume'
-                                ' on its own. It is used as a satellite node')
+                                help='This node does not have a copy of the control volume'
+                                ' in persistent storage. It is used as a satellite node')
         p_new_node.add_argument('-c', '--control-node',
-                                help='Node name of the control node (the one with access to control volume).'
+                                help='Node name of the control node (the one with access to a control volume).'
                                 ' Only valid if "--satellite" was given. By default the hostname of the node'
                                 ' where this command was executed.').completer = NodeCompleter
         p_new_node.add_argument('-e', '--external', action="store_true",
-                                help='External node that is whether a control node nor a satellite')
+                                help='External node that is neither a control node nor a satellite')
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
         p_new_node.add_argument('name', help='Name of the new node')
@@ -430,7 +430,7 @@ class DrbdManage(object):
         ).completer = SizeCompleter
         p_resize_vol.set_defaults(func=self.cmd_resize_volume)
 
-        # modify-resource
+        # modify-volume
         p_mod_vol = subp.add_parser('modify-volume',
                                     aliases=['mv'],
                                     description='Modifies a DRBD volume.')
@@ -541,8 +541,8 @@ class DrbdManage(object):
         # deploy
         p_deploy = subp.add_parser('deploy-resource',
                                    aliases=['deploy'],
-                                   description='Deploys a resource on "N" automatically selected nodes '
-                                   "of the drbdmanage cluster.Using the information in drbdmanage's data "
+                                   description='Deploys a resource on n automatically selected nodes '
+                                   "of the drbdmanage cluster. Using the information in drbdmanage's data "
                                    'tables, the drbdmanage server tries to find n nodes that have enough '
                                    'free storage capacity to deploy the resource resname.')
         p_deploy.add_argument('resource').completer = ResourceCompleter
@@ -1199,7 +1199,7 @@ class DrbdManage(object):
                 elif cmd in all_cmds:
                     if '-h' in cmds or '--help' in cmds:
                         return
-                    sys.stdout.write("\nWrong synopsis. Use the command as follows:\n")
+                    sys.stdout.write("\nIncorrect syntax. Use the command as follows:\n")
                     parsecatch(["help", cmd], stoprec=True)
                 else:
                     unknown(cmd)
