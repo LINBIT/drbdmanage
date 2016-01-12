@@ -1242,7 +1242,7 @@ class DrbdManage(object):
     def cmd_help(self, args):
         self.parse([args.command, "-h"])
 
-    def cmd_exit(self, _, __):
+    def cmd_exit(self, _):
         exit(0)
 
     def run(self):
