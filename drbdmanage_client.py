@@ -143,7 +143,7 @@ class DrbdManage(object):
                 handler_function=signal_handler_fn,
                 signal_name=signal_name_arg,
                 dbus_interface=None,
-                bus_name=DbusServer.DBUS_DRBDMANAGED,
+                bus_name=DBusServer.DBUS_DRBDMANAGED,
                 path=DBusServer.DBUS_SERVICE
             )
         else:
