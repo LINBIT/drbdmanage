@@ -1975,6 +1975,7 @@ class DrbdManage(object):
         self.dbus_init()
         server_rc = self._server.resume_all()
         fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
 
     def cmd_shutdown(self, args):
         quiet = args.quiet
