@@ -3320,6 +3320,10 @@ Confirm:
         res_file = 'drbdmanage_' + args.resource + '.res'
         conf_path = self._get_conf_path(conf)
         res_file = os.path.join(conf_path, res_file)
+        if not os.path.isfile(res_file):
+            sys.stderr.write('Resource file "' + res_file + '" does not exist\n')
+            sys.exit(1)
+
         common_file = os.path.join(conf_path, FILE_GLOBAL_COMMON_CONF)
 
         def highlight(option_type, color, found):
