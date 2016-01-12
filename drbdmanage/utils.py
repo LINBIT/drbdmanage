@@ -418,7 +418,7 @@ def load_server_conf_file(localonly=False):
 def filter_new_args(unsetprefix, args):
     new = dict()
     for k, v in args.__dict__.iteritems():
-        if v is not None and k != "func" and k != "optsobj" and k != "common":
+        if v is not None and k != "func" and k != "optsobj" and k != "common" and k != "command":
             key = k.replace('_', '-')
 
             # handle --unset

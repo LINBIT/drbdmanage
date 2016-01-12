@@ -249,9 +249,10 @@ class DrbdManage(object):
         p_new_node.set_defaults(func=self.cmd_new_node)
 
         # modify-node
-        p_mod_node = subp.add_parser('modify-node',
-                                    aliases=['mn'],
-                                    description='Modifies a drbdmanage node.')
+        p_mod_node_command = 'modify-node'
+        p_mod_node = subp.add_parser(p_mod_node_command,
+                                     aliases=['mn'],
+                                     description='Modifies a drbdmanage node.')
         p_mod_node.add_argument('-a', '--address-family', metavar="FAMILY",
                                 choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
@@ -260,6 +261,7 @@ class DrbdManage(object):
         p_mod_node.add_argument('--address',
                                 help='Network address of the node').completer = IPCompleter("name")
         p_mod_node.set_defaults(func=self.cmd_modify_node)
+        p_mod_node.set_defaults(command=p_mod_node_command)
 
         # remove-node
         p_rm_node = subp.add_parser('remove-node',
@@ -327,13 +329,14 @@ class DrbdManage(object):
             return possible
 
         # modify-resource
-        p_mod_res = subp.add_parser('modify-resource',
+        p_mod_res_command = 'modify-resource'
+        p_mod_res = subp.add_parser(p_mod_res_command,
                                     aliases=['mr'],
                                     description='Modifies a DRBD resource.')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
         p_mod_res.add_argument('name', help='Name of the resource').completer = ResourceCompleter
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
-
+        p_mod_res.set_defaults(command=p_mod_res_command)
 
         # remove-resource
         p_rm_res = subp.add_parser('remove-resource',
@@ -371,7 +374,8 @@ class DrbdManage(object):
 
             return [digits + u for u in p_units]
 
-        p_new_vol = subp.add_parser('add-volume',
+        p_new_vol_command = 'add-volume'
+        p_new_vol = subp.add_parser(p_new_vol_command,
                                     aliases=['nv', 'new-volume', 'av'],
                                     description='Defines a volume with a capacity of size for use with '
                                     'drbdmanage. If the resource resname exists already, a new volume is '
@@ -395,6 +399,7 @@ class DrbdManage(object):
             'accomodate a volume of the requested size in the specified size unit.'
         ).completer = SizeCompleter
         p_new_vol.set_defaults(func=self.cmd_new_volume)
+        p_new_vol.set_defaults(command=p_new_vol_command)
 
         def VolumeCompleter(prefix, parsed_args, **kwargs):
             server_rc, res_list = self.__list_resources(True)
@@ -410,7 +415,8 @@ class DrbdManage(object):
             return possible
 
         # resize-volume
-        p_resize_vol = subp.add_parser('resize-volume',
+        p_resize_vol_command = 'resize-volume'
+        p_resize_vol = subp.add_parser(p_resize_vol_command,
                                        aliases=['resize'],
                                        description='Resizes a volume to the specified size, which must be'
                                        'greater than the current size of the volume.')
@@ -429,15 +435,18 @@ class DrbdManage(object):
             'accomodate a volume of the requested size in the specified size unit.'
         ).completer = SizeCompleter
         p_resize_vol.set_defaults(func=self.cmd_resize_volume)
+        p_resize_vol.set_defaults(command=p_resize_vol_command)
 
         # modify-volume
-        p_mod_vol = subp.add_parser('modify-volume',
+        p_mod_vol_command = 'modify-volume'
+        p_mod_vol = subp.add_parser(p_mod_vol_command,
                                     aliases=['mv'],
                                     description='Modifies a DRBD volume.')
         p_mod_vol.add_argument('name', help='Name of the resource').completer = ResourceCompleter
         p_mod_vol.add_argument('id', help='Volume id', type=int).completer = VolumeCompleter
         p_mod_vol.add_argument('-m', '--minor', type=rangecheck(0, 1048575))
         p_mod_vol.set_defaults(func=self.cmd_modify_volume)
+        p_mod_vol.set_defaults(command=p_mod_vol_command)
 
         # remove-volume
         p_rm_res = subp.add_parser('remove-volume',
@@ -1378,7 +1387,6 @@ class DrbdManage(object):
                     )
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            # FIXME: args.command?
             self.cmd_help(args)
 
         return fn_rc
@@ -1396,7 +1404,6 @@ class DrbdManage(object):
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            # FIXME: args.command?
             self.cmd_help(args)
         return fn_rc
 
@@ -1449,8 +1456,6 @@ class DrbdManage(object):
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            args.command = "modify-node"
-            # FIXME: args.command?
             self.cmd_help(args)
 
         return fn_rc
@@ -1475,8 +1480,6 @@ class DrbdManage(object):
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            args.command = "modify-resource"
-            # FIXME: args.command?
             self.cmd_help(args)
         return fn_rc
 
@@ -1499,8 +1502,6 @@ class DrbdManage(object):
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
-            args.command = "modify-volume"
-            # FIXME: args.command?
             self.cmd_help(args)
         return fn_rc
 
