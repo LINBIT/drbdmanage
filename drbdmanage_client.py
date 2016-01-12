@@ -463,7 +463,7 @@ class DrbdManage(object):
                               'definition immediately, without taking any action on the cluster nodes '
                               'that have the volume deployed.')
         p_rm_res.add_argument('name', help='Name of the resource').completer = res_completer
-        p_rm_res.add_argument('vol-id', help='Volume ID', type=int).completer = vol_completer
+        p_rm_res.add_argument('vol_id', help='Volume ID', type=int).completer = vol_completer
         p_rm_res.set_defaults(func=self.cmd_remove_volume)
 
         # connect
@@ -1568,7 +1568,7 @@ class DrbdManage(object):
         fn_rc = 1
 
         vol_name = args.name
-        vol_id = args.id
+        vol_id = args.vol_id
         force = args.force
         quiet = args.quiet
         if not quiet:
