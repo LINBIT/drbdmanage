@@ -18,12 +18,13 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import base64
 import os
 import socket
 import SocketServer
-import threading
-import base64
 import struct
+import threading
+
 
 from drbdmanage.consts import (
     KEY_S_CMD_INIT,
@@ -120,7 +121,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                 if opcode == opcodes[KEY_S_ANS_E_COMM]:
                     # break out of handler, which automatically starts a new server thread
                     break
-        except:
+        except Exception:
             pass
         finally:
             self.server.set_current_server_socket(None)
@@ -248,7 +249,7 @@ class DrbdManageProxy(object):
         try:
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
-        except:
+        except Exception:
             pass
 
     def shutdown(self):
@@ -302,7 +303,7 @@ class DrbdManageProxy(object):
             # the easy solution is to split one send into two.
             sock.sendall(data[:header])
             sock.sendall(data[header:])
-        except:
+        except Exception:
             return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
 
         return self.opcodes[KEY_S_ANS_OK], 0, ''
@@ -317,7 +318,7 @@ class DrbdManageProxy(object):
         while bytes_recvd < header:
             try:
                 chunk = sock.recv(header - bytes_recvd)
-            except:
+            except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
             if chunk == '':
                 if self.event_shutdown_init.is_set():
@@ -343,7 +344,7 @@ class DrbdManageProxy(object):
         while bytes_recvd < length:
             try:
                 chunk = sock.recv(min(length - bytes_recvd, 4096))
-            except:
+            except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
             if chunk == '':
                 if self.event_shutdown_init.is_set():
@@ -382,7 +383,7 @@ class DrbdManageProxy(object):
             self._satsockets[satellite_name] = sock
             try:
                 sock.connect((satellite_name, port))
-            except:
+            except Exception:
                 self._shutdown_and_close(self._satsockets[satellite_name])
                 del self._satsockets[satellite_name]
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
