@@ -282,8 +282,10 @@ class DrbdManage(object):
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
         # Quorum control, completion of the action parameter
+        quorum_completer_possible = ('ignore', 'unignore')
+
         def quorum_action_completer(prefix, **kwargs):
-            possible = ["ignore", "unignore"]
+            possible = list(quorum_completer_possible)
             if prefix is not None and prefix != "":
                 possible = [item for item in possible if item.startswith(prefix)]
             return possible
@@ -294,7 +296,7 @@ class DrbdManage(object):
         p_quorum.add_argument('-o', '--override', action="store_true",
                               help="Override change protection in a partition without quorum")
         p_quorum.add_argument(
-            "action", help="The action to perform on the affected nodes"
+            "action", choices=quorum_completer_possible, help="The action to perform on the affected nodes"
         ).completer = quorum_action_completer
         p_quorum.add_argument(
             "name", nargs="+", help="Name of the affected node or nodes"
