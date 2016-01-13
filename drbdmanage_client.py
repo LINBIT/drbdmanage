@@ -285,7 +285,7 @@ class DrbdManage(object):
         def quorum_action_completer(prefix, **kwargs):
             possible = ["ignore", "unignore"]
             if prefix is not None and prefix != "":
-                possible = [item for item in possible if possible.startswith(prefix)]
+                possible = [item for item in possible if item.startswith(prefix)]
             return possible
 
         p_quorum = subp.add_parser("quorum-control",
