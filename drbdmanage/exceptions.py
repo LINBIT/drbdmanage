@@ -146,9 +146,10 @@ class DrbdManageException(Exception):
     Base class for exceptions
     """
 
+    error_code = DM_DEBUG
+
     def __init__(self):
         super(DrbdManageException, self).__init__()
-
 
     def __str__(self):
         exception = self.__class__.__name__
@@ -168,6 +169,12 @@ class DrbdManageException(Exception):
 
         return formatted_exc
 
+    def add_rc_entry(self, fn_rc):
+        fn_rc.append([self.error_code, dm_exc_text(self.error_code), []])
+
+    def add_rc_entry_message(self, fn_rc, message, args):
+        fn_rc.append([self.error_code, message, args])
+
 
 class InvalidNameException(DrbdManageException):
 
@@ -178,6 +185,7 @@ class InvalidNameException(DrbdManageException):
 
     def __init__(self):
         super(InvalidNameException, self).__init__()
+        self.error_code = DM_ENAME
 
 
 class InvalidAddrFamException(DrbdManageException):
@@ -188,6 +196,7 @@ class InvalidAddrFamException(DrbdManageException):
 
     def __init__(self):
         super(InvalidAddrFamException, self).__init__()
+        self.error_code = DM_EINVAL
 
 
 class VolSizeRangeException(DrbdManageException):
@@ -198,6 +207,7 @@ class VolSizeRangeException(DrbdManageException):
 
     def __init__(self):
         super(VolSizeRangeException, self).__init__()
+        self.error_code = DM_EVOLSZ
 
 
 class InvalidMinorNrException(DrbdManageException):
@@ -208,6 +218,7 @@ class InvalidMinorNrException(DrbdManageException):
 
     def __init__(self):
         super(InvalidMinorNrException, self).__init__()
+        self.error_code = DM_EMINOR
 
 
 class InvalidMajorNrException(DrbdManageException):
@@ -218,6 +229,7 @@ class InvalidMajorNrException(DrbdManageException):
 
     def __init__(self):
         super(InvalidMajorNrException, self).__init__()
+        self.error_code = DM_EINVAL
 
 
 class IncompatibleDataException(DrbdManageException):
@@ -234,6 +246,7 @@ class IncompatibleDataException(DrbdManageException):
 
     def __init__(self):
         super(IncompatibleDataException, self).__init__()
+        self.error_code = DM_EINVAL
 
 
 class SyntaxException(DrbdManageException):
@@ -254,6 +267,7 @@ class PersistenceException(DrbdManageException):
 
     def __init__(self):
         super(PersistenceException, self).__init__()
+        self.error_code = DM_EPERSIST
 
 
 class QuorumException(DrbdManageException):
@@ -264,6 +278,7 @@ class QuorumException(DrbdManageException):
 
     def __init__(self):
         super(QuorumException, self).__init__()
+        self.error_code = DM_EQUORUM
 
 
 class PluginException(DrbdManageException):
@@ -274,6 +289,7 @@ class PluginException(DrbdManageException):
 
     def __init__(self):
         super(PluginException, self).__init__()
+        self.error_code = DM_EPLUGIN
 
 
 class AbortException(DrbdManageException):
@@ -294,6 +310,7 @@ class DeployerException(DrbdManageException):
 
     def __init__(self):
         super(DeployerException, self).__init__()
+        self.error_code = DM_EPLUGIN
 
 
 class DebugException(DrbdManageException):
@@ -304,3 +321,6 @@ class DebugException(DrbdManageException):
 
     def __init__(self):
         super(DebugException, self).__init__()
+        # Set this again just in case that the default value
+        # in the super-class was changed
+        self.error_code = DM_DEBUG
