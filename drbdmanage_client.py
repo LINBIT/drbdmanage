@@ -2741,6 +2741,17 @@ Confirm:
                     ["drbdsetup", "secondary", DRBDCTRL_RES_NAME]
                 )
 
+                # Shutdown a running drbdmanaged server process before continuing
+                self.dbus_init()
+                props = dbus.Dictionary(signature="ss")
+                props[KEY_S_CMD_SHUTDOWN] = BOOL_TRUE
+                try:
+                    self._server.shutdown(props)
+                except dbus.exceptions.DBusException:
+                    # Shutdown always causes an exception,
+                    # because the server does not answer
+                    pass
+
                 props = {}
                 props[NODE_ADDR] = address
                 props[NODE_AF] = af
@@ -2750,7 +2761,11 @@ Confirm:
                 if not flag_storage:
                     props[FLAG_STORAGE] = bool_to_string(flag_storage)
                 # Startup the drbdmanage server and add the current node
-                self.dbus_init()
+                # Previous DBus connection is gone after shutdown,
+                # must run dbus_init() again
+                self._server = self._dbus.get_object(
+                    DBusServer.DBUS_DRBDMANAGED, DBusServer.DBUS_SERVICE
+                )
                 server_rc = self._server.init_node(
                     dbus.String(node_name), props
                 )
