@@ -1319,7 +1319,12 @@ class DrbdManage(object):
         server_rc = self._server.create_node(name, props)
         fn_rc = self._list_rc_entries(server_rc)
 
-        if fn_rc == 0:
+        if fn_rc == 0:  # join node
+            if satellite:
+                sys.stdout.write('Node ' + name + ' is a satellite node!\n')
+                sys.stdout.write('Just make sure drbdmanaged is running on ' + name + '\n')
+                return fn_rc
+
             server_rc, joinc = self._server.text_query(["joinc", name])
             joinc_text = str(" ".join(joinc))
 
