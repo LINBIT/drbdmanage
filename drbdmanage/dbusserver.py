@@ -103,29 +103,6 @@ class DBusServer(dbus.service.Object):
         return self._server.create_resource(res_name, dict(props))
 
 
-    @dbus.service.method(DBUS_DRBDMANAGED,
-      in_signature="sta{ss}", out_signature="a(isa(ss))")
-    def modify_resource(self, res_name, serial, props):
-        """
-        D-Bus interface for DrbdManageServer.modify_resource(...)
-        """
-        return self._server.modify_resource(res_name, serial, dict(props))
-
-
-    @dbus.service.method(
-        DBUS_DRBDMANAGED,
-        in_signature="sita{ss}",
-        out_signature="a(isa(ss))"
-    )
-    def modify_volume(self, res_name, vol_id, serial, props):
-        """
-        D-Bus interface for DrbdManageServer.modify_volume(...)
-        """
-        return self._server.modify_volume(
-            res_name, vol_id, serial, dict(props)
-        )
-
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sittt",
@@ -238,14 +215,14 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="ssa{ss}",
+        in_signature="ssta{ss}",
         out_signature="a(isa(ss))"
     )
-    def modify_assignment(self, node_name, res_name, props):
+    def modify_assignment(self, res_name, node_name, serial, props):
         """
         D-Bus interface for DrbdManageServer.modify_state(...)
         """
-        return self._server.modify_state(node_name, res_name, dict(props))
+        return self._server.modify_assignment(res_name, node_name, serial, dict(props))
 
 
     @dbus.service.method(
