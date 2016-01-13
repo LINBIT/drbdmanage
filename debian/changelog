@@ -1,3 +1,38 @@
+drbdmanage (0.91-1) experimental; urgency=medium
+
+  [ Philipp Marek ]
+  * Fallback to UUID if /dev/urandom is inaccessible.
+  * Fixed a few small pep8 issues.
+
+  [ Roland Kammerer ]
+  * removed drbdmanaged.conf
+  * fix execution on busybox
+  * fix PATH handling
+  * get rid of hand-rolled get random bytes code
+  * fix error msgs on argparse failures
+  * minor indenting fixes
+  * fix help msgs in case of SyntaxExceptions
+  * cmd_resume_all: add missing return
+  * fixed undefined name in subscribe()
+  * client: fixed most pep-8 warnings
+  * cmd_remove_volume: fixed ID parameter
+  * cmd_exit: fixed number of parameters
+  * cmd_list_options: check if file exists
+  * use static choices for quorum-control subcommand
+  * avoid "error" message on new-node for satellites
+
+  [ Robert Altnoeder ]
+  * Implemented modify node/resource/volume commands
+  * Fixed some text errors
+  * Added DrbdManageException capability to add server return codes
+  * Added DBus API modify_assignment(), removed duplicate definitions
+  * Added server API modify_assignment()
+  * Added client command modify-assignment
+  * Fixed incorrect usage of list instead of string in QuorumCompleter
+  * Shutdown a running drbdmanaged server before running 'init'
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 13 Jan 2016 14:57:00 +0100
+
 drbdmanage (0.90-1) experimental; urgency=medium
   * Release codename: "Butters Stotch".
 
