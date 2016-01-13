@@ -2237,6 +2237,102 @@ class DrbdManageServer(object):
         return fn_rc
 
     @no_satellite
+    def modify_assignment(self, res_name, node_name, serial, props):
+        """
+        Modifies assignment properties
+
+        @return: standard return code defined in drbdmanage.exceptions
+        """
+        fn_rc = []
+        persist = None
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                state_float = 0
+                state_set   = 1
+                state_unset = -1
+
+                overwrite = state_float
+                discard   = state_float
+
+                resource = None
+                try:
+                    resource = self._resources[res_name]
+                except ValueError as not_found:
+                    add_rc_entry(fn_rc, DM_ENOENT, "Resource '%(resource)' not found", [["resource", res_name]])
+                    raise not_found
+
+                node = None
+                try:
+                    node = self._nodes[node_name]
+                except ValueError as not_found:
+                    add_rc_entry(fn_rc, DM_ENOENT, "Node '%(node)' not found", [["node", node_name]])
+                    raise not_found
+
+                assignment = node.get_assignment(resource.get_name())
+                if assignment is None:
+                    add_rc_entry(fn_rc, DM_ENOENT, "Resource '%(resource)' is not assigned to node '%(node)'",
+                                 [["resource", res_name], ["node", node_name]])
+                    raise ValueError
+
+                for key, value in props.iteritems():
+                    # currently, all values are booleans
+                    flag = self._get_props_bool(key, value, fn_rc)
+                    if key == FLAG_OVERWRITE:
+                        if flag:
+                            overwrite = state_set
+                        else:
+                            overwrite = state_unset
+                    elif key == FLAG_DISCARD:
+                        if flag:
+                            discard = state_set
+                        else:
+                            discard = state_unset
+                    else:
+                        add_rc_entry(fn_rc, DM_EINVAL, "Invalid property name '%(key)' ignored", [["key", key]])
+
+                    if overwrite == state_set:
+                        if discard == state_set:
+                            add_rc_entry(fn_rc, DM_EINVAL,
+                                         "Conflicting flags '" + FLAG_OVERWRITE + "' and '" +
+                                         FLAG_DISCARD + "'")
+                            raise ValueError
+                        assignment.set_tstate_flags(Assignment.FLAG_OVERWRITE)
+                    elif overwrite == state_unset or discard == state_set:
+                        assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
+
+                    if discard == state_set:
+                        assignment.set_tstate_flags(Assignment.FLAG_DISCARD)
+                    elif discard == state_unset or overwrite == state_set:
+                        assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
+
+                    self.save_conf_data(persist)
+            else:
+                raise PersistenceException
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
+        except ValueError:
+            # Return code set earlier
+            pass
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.end_modify_conf(persist)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+    def _get_props_bool(self, key, value, fn_rc):
+        flag = False
+        try:
+            flag = string_to_bool(value)
+        except ValueError as value_error:
+            add_rc_entry(fn_rc, DM_EINVAL, "Invalid value '%(value)' for boolean type argument '%(key)'",
+                         [["value", value], ["key", key]])
+            raise value_error
+        return flag
+
+    @no_satellite
     def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB):
         """
         Resizes a volume
