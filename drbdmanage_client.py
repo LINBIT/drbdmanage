@@ -446,6 +446,18 @@ class DrbdManage(object):
         p_mod_vol.set_defaults(func=self.cmd_modify_volume)
         p_mod_vol.set_defaults(command=p_mod_vol_command)
 
+        # modify-assignment
+        p_mod_assg_command = 'modify-assignment'
+        p_mod_assg = subp.add_parser(p_mod_assg_command,
+                                    aliases=['ma'],
+                                    description='Modifies a drbdmanage assignment.')
+        p_mod_assg.add_argument('resource', help='Name of the resource').completer = res_completer
+        p_mod_assg.add_argument('node', help='Name of the node').completer = node_completer
+        p_mod_assg.add_argument('-o', '--overwrite')
+        p_mod_assg.add_argument('-d', '--discard')
+        p_mod_assg.set_defaults(func=self.cmd_modify_assignment)
+        p_mod_assg.set_defaults(command=p_mod_assg_command)
+
         # remove-volume
         p_rm_res = subp.add_parser('remove-volume',
                                    aliases=['rv', 'delete-volume', 'dv'],
@@ -1497,6 +1509,28 @@ class DrbdManage(object):
             self.dbus_init()
             server_rc = self._server.modify_volume(
                 dbus.String(args.name), dbus.Int32(args.id), 0, props
+            )
+            fn_rc = self._list_rc_entries(server_rc)
+        except SyntaxException:
+            self.cmd_help(args)
+        return fn_rc
+
+    def cmd_modify_assignment(self, args):
+        fn_rc = 1
+
+        try:
+            props = dbus.Dictionary(signature="ss")
+            if args.overwrite is not None:
+                props[FLAG_OVERWRITE] = self._args_bool_to_string(args.overwrite)
+            if args.discard is not None:
+                props[FLAG_DISCARD] = self._args_bool_to_string(args.discard)
+
+            if len(props) == 0:
+                raise SyntaxException
+
+            self.dbus_init()
+            server_rc = self._server.modify_assignment(
+                dbus.String(args.resource), dbus.String(args.node), 0, props
             )
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
@@ -3633,6 +3667,17 @@ Confirm:
             return "N/A"
         else:
             return text
+
+    def _args_bool_to_string(self, arg):
+        arg = arg.lower()
+        text = None
+        if arg == BOOL_TRUE or arg == "yes" or arg == "on":
+            text = BOOL_TRUE
+        elif arg == BOOL_FALSE or arg == "no" or arg == "off":
+            text = BOOL_FALSE
+        else:
+            raise SyntaxException
+        return text
 
     def _drbdctrl_init(self, drbdctrl_file):
         fn_rc = 1
