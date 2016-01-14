@@ -1,14 +1,12 @@
 #!/usr/bin/env python2
 
-import socket
 import fcntl
+import socket
 import struct
 
 
 def get_ip_address(ifname):
-    """
-    Returns the IP address of the specified interface
-    """
+    """Returns the IP address of the specified interface"""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # 0x8915 is SIOCGIFADDR
     return socket.inet_ntoa(
@@ -18,9 +16,7 @@ def get_ip_address(ifname):
 
 
 def get_interface_of_default_route():
-    """
-    Reads the default gateway directly from /proc
-    """
+    """Reads the default gateway directly from /proc"""
     interface = None
     try:  # might fail because '/proc/net/route' does not exist.
         with open("/proc/net/route") as fh:
@@ -28,16 +24,14 @@ def get_interface_of_default_route():
                 fields = line.strip().split()
                 if fields[1] == '00000000' and int(fields[3], 16) & 2 != 0:
                     interface = fields[0]
-    except:  # catch all, IOError is the most likely one (which is very unlikely) ;-)
+    except Exception:  # catch all, IOError is the most likely one (which is very unlikely) ;-)
         pass
 
     return interface
 
 
 def default_ip():
-    """
-    Returns the IP address of the default route interface
-    """
+    """Returns the IP address of the default route interface"""
     ipaddress = None
     interface = get_interface_of_default_route()
     if interface is not None:
@@ -46,4 +40,4 @@ def default_ip():
 
 
 if __name__ == "__main__":
-    print default_ip()
+    print(default_ip())
