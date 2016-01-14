@@ -364,7 +364,7 @@ def check_max_drbd_kiB(size_kiB):
             % (size_kiB, MetaData.DRBD_MAX_kiB)
         )
 
-class MetaDataException(Exception):
+class MetaDataException(dmexc.DrbdManageException):
 
     message = ""
 
@@ -372,6 +372,13 @@ class MetaDataException(Exception):
         super(MetaDataException, self).__init__()
         if message is not None:
             self.message = message
+        self.error_code = dmexc.DM_EINVAL
+
+    def add_rc_entry(self, fn_rc):
+        error_text = dmexc.dm_exc_text(self.error_code)
+        if len(self.message) > 0:
+            error_text += ": " + self.message
+        fn_rc.append([self.error_code, error_text, []])
 
 
 class MinSizeException(MetaDataException):
