@@ -1541,10 +1541,8 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -1693,10 +1691,8 @@ class DrbdManageServer(object):
 
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -1742,10 +1738,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -1939,10 +1933,8 @@ class DrbdManageServer(object):
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
                          [ [ NODE_NAME, node_name ] ])
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -1973,10 +1965,8 @@ class DrbdManageServer(object):
                                  dm_exc_text(DM_SUCCESS))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -2108,10 +2098,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except ValueError:
             # Return code set earlier
             pass
@@ -2162,10 +2150,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except ValueError:
             # Return code set earlier
             pass
@@ -2221,10 +2207,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except ValueError:
             # Return code set earlier
             pass
@@ -2421,15 +2405,8 @@ class DrbdManageServer(object):
         except ValueError:
             # Error code set by caller
             pass
-        except md.MetaDataException:
-            add_rc_entry(
-                fn_rc, DM_EINVAL,
-                "DRBD device size / meta data size out of range"
-            )
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -2469,10 +2446,8 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -2535,16 +2510,8 @@ class DrbdManageServer(object):
                         self.schedule_run_changes()
             else:
                 raise PersistenceException
-        except InvalidNameException:
-            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME))
-        except InvalidMinorNrException:
-            add_rc_entry(fn_rc, DM_EMINOR, dm_exc_text(DM_EMINOR))
-        except VolSizeRangeException:
-            add_rc_entry(fn_rc, DM_EVOLSZ, dm_exc_text(DM_EVOLSZ))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -2588,12 +2555,8 @@ class DrbdManageServer(object):
                 raise PersistenceException
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -2697,10 +2660,8 @@ class DrbdManageServer(object):
                                 )
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except ValueError:
             add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
         except Exception as exc:
@@ -2751,10 +2712,8 @@ class DrbdManageServer(object):
                             add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3149,12 +3108,8 @@ class DrbdManageServer(object):
         except (ValueError, DeployerException):
             # add_rc_entry() error message set by exception generator
             pass
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
-        except PluginException:
-            add_rc_entry(fn_rc, DM_EPLUGIN, dm_exc_text(DM_EPLUGIN))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3191,10 +3146,8 @@ class DrbdManageServer(object):
             self.schedule_run_changes()
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3271,10 +3224,8 @@ class DrbdManageServer(object):
                         self.schedule_run_changes()
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3316,10 +3267,8 @@ class DrbdManageServer(object):
                         self.schedule_run_changes()
             else:
                 raise PersistenceException
-        except PersistenceException:
-            pass
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3357,10 +3306,8 @@ class DrbdManageServer(object):
                         self.schedule_run_changes()
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3403,10 +3350,8 @@ class DrbdManageServer(object):
                             self.schedule_run_changes()
                             add_rc_entry(fn_rc, DM_SUCCESS,
                                          dm_exc_text(DM_SUCCESS))
-        except PersistenceException:
-            pass
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -3449,10 +3394,8 @@ class DrbdManageServer(object):
                             self.schedule_run_changes()
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4178,14 +4121,10 @@ class DrbdManageServer(object):
                 assignment.add_snaps_assg(snaps_assg)
             self.save_conf_data(persist)
             self.schedule_run_changes()
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
-        except InvalidNameException:
-            add_rc_entry(fn_rc, DM_ENAME, dm_exc_text(DM_ENAME))
         except AbortException:
             pass
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4434,14 +4373,10 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except InvalidMinorNrException:
-            add_rc_entry(fn_rc, DM_EMINOR, dm_exc_text(DM_EMINOR))
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4483,10 +4418,8 @@ class DrbdManageServer(object):
             self.get_serial()
             self.save_conf_data(persist)
             self.schedule_run_changes()
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4525,10 +4458,8 @@ class DrbdManageServer(object):
             self.cleanup()
             self.get_serial()
             self.save_conf_data(persist)
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4602,10 +4533,8 @@ class DrbdManageServer(object):
             self.cleanup()
             self.get_serial()
             self.save_conf_data(persist)
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4640,10 +4569,8 @@ class DrbdManageServer(object):
                         raise PersistenceException
                 else:
                     raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4676,10 +4603,8 @@ class DrbdManageServer(object):
                         raise PersistenceException
                 else:
                     raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -4867,10 +4792,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
-        except QuorumException:
-            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -5031,8 +4954,8 @@ class DrbdManageServer(object):
             self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
             self._drbd_mgr.reconfigure()
             self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         if len(fn_rc) == 0:
@@ -5085,8 +5008,8 @@ class DrbdManageServer(object):
                     add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
@@ -5163,8 +5086,8 @@ class DrbdManageServer(object):
                     raise PersistenceException
             else:
                 raise PersistenceException
-        except PersistenceException:
-            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
