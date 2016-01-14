@@ -1770,9 +1770,9 @@ class DrbdResource(GenericDrbdObject):
 
     NAME_MAXLEN  = consts.RES_NAME_MAXLEN
     # Valid characters in addition to [a-zA-Z0-9]
-    NAME_VALID_CHARS      = "_"
+    NAME_VALID_CHARS = consts.RES_NAME_VALID_CHARS
     # Additional valid characters, but not allowed as the first character
-    NAME_VALID_INNER_CHARS = "-"
+    NAME_VALID_INNER_CHARS = consts.RES_NAME_VALID_INNER_CHARS
 
     _name        = None
     _secret      = None
@@ -2304,9 +2304,9 @@ class DrbdNode(GenericDrbdObject):
 
     NAME_MAXLEN = consts.NODE_NAME_MAXLEN
     # Valid characters in addition to [a-zA-Z0-9]
-    NAME_VALID_CHARS      = "_"
+    NAME_VALID_CHARS = consts.NODE_NAME_VALID_CHARS
     # Additional valid characters, but not allowed as the first character
-    NAME_VALID_INNER_CHARS = ".-"
+    NAME_VALID_INNER_CHARS = consts.NODE_NAME_VALID_INNER_CHARS
 
     AF_IPV4 = 4
     AF_IPV6 = 6

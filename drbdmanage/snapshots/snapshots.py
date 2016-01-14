@@ -27,11 +27,9 @@ import drbdmanage.utils as dmutils
 
 class DrbdSnapshot(drbdcommon.GenericDrbdObject):
 
-    NAME_MAXLEN  = consts.SNAPS_NAME_MAXLEN
-    # Valid characters in addition to [a-zA-Z0-9]
-    NAME_VALID_CHARS      = "_"
-    # Additional valid characters, but not allowed as the first character
-    NAME_VALID_INNER_CHARS = "-"
+    NAME_MAXLEN = consts.SNAPS_NAME_MAXLEN
+    NAME_VALID_CHARS = consts.SNAPS_NAME_VALID_CHARS
+    NAME_VALID_INNER_CHARS = consts.SNAPS_NAME_VALID_INNER_CHARS
 
     _name        = None
     _resource    = None

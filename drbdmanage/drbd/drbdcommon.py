@@ -2,6 +2,7 @@
 
 import drbdmanage.propscontainer as propscon
 import drbdmanage.exceptions as dmexc
+from drbdmanage.utils import checkname
 
 class GenericDrbdObject(object):
 
@@ -41,31 +42,11 @@ class GenericDrbdObject(object):
                             in addition to [a-zA-Z0-9] and the characters
                             already specified in valid_chars
         """
-        if name == None or max_length == None:
-            raise TypeError
-        name_b   = bytearray(str(name), "utf-8")
-        name_len = len(name_b)
-        if name_len < 1 or name_len > max_length:
+        # might raise a TypeError
+        name = checkname(name, max_length, valid_chars, valid_inner_chars)
+        if not name:
             raise dmexc.InvalidNameException
-        alpha = False
-        idx = 0
-        while idx < name_len:
-            item = name_b[idx]
-            if item >= ord('a') and item <= ord('z'):
-                alpha = True
-            elif item >= ord('A') and item <= ord('Z'):
-                alpha = True
-            else:
-                if (not (item >= ord('0') and item <= ord('9') and idx >= 1)):
-                    letter = chr(item)
-                    if (not (letter in valid_chars or
-                        (letter in valid_inner_chars and idx >= 1))):
-                        # Illegal character in name
-                        raise dmexc.InvalidNameException
-            idx += 1
-        if not alpha:
-            raise dmexc.InvalidNameException
-        return str(name_b)
+        return name
 
 
     def get_props(self):

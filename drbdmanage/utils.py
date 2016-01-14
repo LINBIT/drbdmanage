@@ -36,7 +36,12 @@ import logging
 import ConfigParser
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
-                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8)
+                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8,
+                               RES_NAME, SNAPS_NAME,  # NODE_NAME (# to avoid warning
+                               NODE_NAME_MAXLEN, RES_NAME_MAXLEN, SNAPS_NAME_MAXLEN,
+                               NODE_NAME_VALID_CHARS, RES_NAME_VALID_CHARS, SNAPS_NAME_VALID_CHARS,
+                               NODE_NAME_VALID_INNER_CHARS, RES_NAME_VALID_INNER_CHARS,
+                               SNAPS_NAME_VALID_INNER_CHARS,)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -338,10 +343,12 @@ def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
     return False
 
 
+# base range check
 def checkrange(v, i, j):
     return i <= v <= j
 
 
+# "type" used for argparse
 def rangecheck(i, j):
     def range(v):
         import argparse.argparse as argparse
@@ -352,12 +359,89 @@ def rangecheck(i, j):
     return range
 
 
+def checkname(name, max_length, valid_chars, valid_inner_chars):
+    """
+    Check the validity of a string for use as a name for
+    objects like nodes or volumes.
+    A valid name must match these conditions:
+      * must at least be 1 byte long
+      * must not be longer than specified by the caller
+      * contains a-z, A-Z, 0-9, and the characters allowed
+        by the caller only
+      * contains at least one alpha character (a-z, A-Z)
+      * must not start with a numeric character
+      * must not start with a character allowed by the caller as
+        an inner character only (valid_inner_chars)
+    @param name         the name to check
+    @param max_length   the maximum permissible length of the name
+    @param valid_chars  list of characters allowed in addition to
+                        [a-zA-Z0-9]
+    @param valid_inner_chars    list of characters allowed in any
+                        position in the name other than the first,
+                        in addition to [a-zA-Z0-9] and the characters
+                        already specified in valid_chars
+    returns a valid string or "" (which can be if-checked)
+    """
+    if name is None or max_length is None:
+        raise TypeError
+    name_b = bytearray(str(name), "utf-8")
+    name_len = len(name_b)
+    if name_len < 1 or name_len > max_length:
+        return ''
+    alpha = False
+    idx = 0
+    while idx < name_len:
+        item = name_b[idx]
+        if item >= ord('a') and item <= ord('z'):
+            alpha = True
+        elif item >= ord('A') and item <= ord('Z'):
+            alpha = True
+        else:
+            if (not (item >= ord('0') and item <= ord('9') and idx >= 1)):
+                letter = chr(item)
+                if (not (letter in valid_chars or (letter in valid_inner_chars and idx >= 1))):
+                    # Illegal character in name
+                    return ''
+        idx += 1
+    if not alpha:
+        return ''
+    return str(name_b)
+
+
+# "type" used for argparse
+def namecheck(checktype):
+    if checktype == RES_NAME:
+        max_length = RES_NAME_MAXLEN
+        valid_chars = RES_NAME_VALID_CHARS
+        valid_inner_chars = RES_NAME_VALID_INNER_CHARS
+    elif checktype == SNAPS_NAME:
+        max_length = SNAPS_NAME_MAXLEN
+        valid_chars = SNAPS_NAME_VALID_CHARS
+        valid_inner_chars = SNAPS_NAME_VALID_INNER_CHARS
+    else:  # checktype == NODE_NAME, use that as rather arbitrary default
+        max_length = NODE_NAME_MAXLEN
+        valid_chars = NODE_NAME_VALID_CHARS
+        valid_inner_chars = NODE_NAME_VALID_INNER_CHARS
+
+    def check(name):
+        import argparse.argparse as argparse
+        if not checkname(name, max_length, valid_chars, valid_inner_chars):
+            raise argparse.ArgumentTypeError('Name: %s not valid' % (name))
+        return name
+    return check
+
+
 def get_uname():
     node_name = None
     try:
         uname = os.uname()
         if len(uname) >= 2:
             node_name = uname[1]
+        max_length = NODE_NAME_MAXLEN
+        valid_chars = NODE_NAME_VALID_CHARS
+        valid_inner_chars = NODE_NAME_VALID_INNER_CHARS
+        if not checkname(node_name, max_length, valid_chars, valid_inner_chars):
+            return None
     except OSError:
         pass
     return node_name
