@@ -64,6 +64,9 @@ KEY_DRBD_KERNEL_GIT_HASH = "drbd_kernel_git_hash"
 KEY_DRBD_UTILS_VERSION   = "drbd_utils_version"
 KEY_DRBD_UTILS_GIT_HASH  = "drbd_utils_git_hash"
 
+# Shut down resources on drbdmanage server shutdown
+KEY_SHUTDOWN_RES = "shutdown-res"
+
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
 NODE_NAME_MAXLEN = 128

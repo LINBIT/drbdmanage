@@ -53,6 +53,7 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_SHUTDOWN, SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP,
+    KEY_SHUTDOWN_RES
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
@@ -6536,11 +6537,31 @@ class DrbdManageServer(object):
         """
         Stops this drbdmanage server instance
         """
-        logging.info("server shutdown (requested by function call)")
-        if KEY_S_CMD_SHUTDOWN in props and string_to_bool(props[KEY_S_CMD_SHUTDOWN]):
-            for satellite in [s for s, state in self.sat_state_ctrlvol.items() if state == SAT_CON_ESTABLISHED or
-                              state == SAT_CON_SHUTDOWN]:
-                self._proxy.send_cmd(satellite, KEY_S_CMD_SHUTDOWN)
+        logging.info("server shutdown (requested by shutdown API call)")
+        try:
+            shutdown_sat_str = props.get(KEY_S_CMD_SHUTDOWN)
+            if shutdown_sat_str is not None:
+                shutdown_sat = string_to_bool(shutdown_sat_str)
+                if shutdown_sat:
+                    logging.info("shutting down satellites")
+                    for satellite in [sat for sat, state in self.sat_state_ctrlvol.items()
+                                      if state == SAT_CON_ESTABLISHED or state == SAT_CON_SHUTDOWN]:
+                        self._proxy.send_cmd(satellite, KEY_S_CMD_SHUTDOWN)
+        except ValueError:
+            # raised if string_to_bool() is supplied with an invalid value
+            pass
+
+        try:
+            shutdown_res_str = props.get(KEY_SHUTDOWN_RES)
+            if shutdown_res_str is not None:
+                shutdown_res = string_to_bool(shutdown_res_str)
+                if shutdown_res:
+                    logging.info("shutting down drbdmanage-controlled resources")
+                    self._drbd_mgr.final_down()
+        except ValueError:
+            # string_to_bool() again
+            pass
+
         logging.info("shutting down the TCPServer")
         if self._proxy:
             self._proxy.shutdown()
@@ -6550,12 +6571,14 @@ class DrbdManageServer(object):
             self._drbd_mgr.down_drbdctrl()
         except:
             pass
+
         logging.info("shutting down DRBD events processing")
         # Shutdown events processing and the associated child process
         try:
             self.uninit_events()
         except:
             pass
+
         logging.info("server shutdown complete, exiting")
         exit(0)
 

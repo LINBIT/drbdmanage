@@ -52,7 +52,7 @@ from drbdmanage.consts import (
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
     NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN, KEY_ISSATELLITE,
-    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME,
+    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -722,10 +722,14 @@ class DrbdManage(object):
         p_shutdown = subp.add_parser('shutdown',
                                      description='Stops the local drbdmanage server process.')
         p_shutdown.add_argument('-l', '--satellite', action="store_true",
-                                help='If given, also send a shutdown command to connected satellites.')
+                                help='If given, also send a shutdown command to connected satellites.',
+                                default=False)
         p_shutdown.add_argument('-q', '--quiet', action="store_true",
                                 help='Unless this option is used, drbdmanage will issue a safety question '
                                 'that must be answered with yes, otherwise the operation is canceled.')
+        p_shutdown.add_argument('-r', '--resources', action="store_true",
+                                help='Shutdown all drbdmanage-controlled resources too',
+                                default=False)
         p_shutdown.set_defaults(func=self.cmd_shutdown)
 
         # nodes
@@ -2032,8 +2036,10 @@ class DrbdManage(object):
     def cmd_shutdown(self, args):
         quiet = args.quiet
         satellites = args.satellite
+        resources = args.resources
         props = dbus.Dictionary(signature="ss")
         props[KEY_S_CMD_SHUTDOWN] = bool_to_string(satellites)
+        props[KEY_SHUTDOWN_RES] = bool_to_string(resources)
         if not quiet:
             quiet = self.user_confirm(
                 "You are going to shut down the drbdmanaged server "

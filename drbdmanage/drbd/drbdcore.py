@@ -868,6 +868,26 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Exit function initial_up()")
 
 
+    def final_down(self):
+        """
+        Attempts to shut down all resources
+        Used when the drbdmanage server shuts down.
+        """
+        logging.debug("DrbdManager: Enter function final_down()")
+        node = self._server.get_instance_node()
+        if node is not None:
+            for assg in node.iterate_assignments():
+                try:
+                    self._down_resource(assg)
+                except Exception as exc:
+                    logging.debug(
+                        "failed to shut down resource '%s', "
+                        "unhandled exception: %s"
+                        % (assg.get_resource().get_name(), str(exc))
+                    )
+        logging.debug("DrbdManager: Exit function final_down()")
+
+
     def _up_resource(self, assignment):
         """
         Brings up DRBD resources
@@ -919,7 +939,7 @@ class DrbdManager(object):
         # bd_mgr   = self._server.get_bd_mgr()
         resource = assignment.get_resource()
 
-        logging.info("stopping resource '%s'" % (resource.get_name()))
+        logging.info("DrbdManager: Stopping resource '%s'" % (resource.get_name()))
 
         # call drbdadm to bring up the resource
         drbd_proc = self._drbdadm.down(resource.get_name())
