@@ -34,14 +34,15 @@ import uuid
 import drbdmanage.consts as consts
 import logging
 import ConfigParser
-from drbdmanage.exceptions import SyntaxException
+from drbdmanage.exceptions import SyntaxException, InvalidNameException
 from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
                                KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8,
-                               RES_NAME, SNAPS_NAME,  # NODE_NAME (# to avoid warning
-                               NODE_NAME_MAXLEN, RES_NAME_MAXLEN, SNAPS_NAME_MAXLEN,
-                               NODE_NAME_VALID_CHARS, RES_NAME_VALID_CHARS, SNAPS_NAME_VALID_CHARS,
-                               NODE_NAME_VALID_INNER_CHARS, RES_NAME_VALID_INNER_CHARS,
-                               SNAPS_NAME_VALID_INNER_CHARS,)
+                               RES_NAME, SNAPS_NAME,  NODE_NAME,
+                               NODE_NAME_MINLEN, NODE_NAME_MAXLEN,
+                               RES_NAME_MINLEN, RES_NAME_MAXLEN,
+                               SNAPS_NAME_MINLEN, SNAPS_NAME_MAXLEN,
+                               RES_NAME_VALID_CHARS, SNAPS_NAME_VALID_CHARS,
+                               RES_NAME_VALID_INNER_CHARS, SNAPS_NAME_VALID_INNER_CHARS)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -359,7 +360,7 @@ def rangecheck(i, j):
     return range
 
 
-def checkname(name, max_length, valid_chars, valid_inner_chars):
+def check_name(name, min_length, max_length, valid_chars, valid_inner_chars):
     """
     Check the validity of a string for use as a name for
     objects like nodes or volumes.
@@ -382,12 +383,15 @@ def checkname(name, max_length, valid_chars, valid_inner_chars):
                         already specified in valid_chars
     returns a valid string or "" (which can be if-checked)
     """
-    if name is None or max_length is None:
-        raise TypeError
+    checked_name = None
+    if min_length is None or max_length is None:
+        raise ValueError
+    if name is None:
+        raise InvalidNameException
     name_b = bytearray(str(name), "utf-8")
     name_len = len(name_b)
-    if name_len < 1 or name_len > max_length:
-        return ''
+    if name_len < min_length or name_len > max_length:
+        raise InvalidNameException
     alpha = False
     idx = 0
     while idx < name_len:
@@ -401,50 +405,92 @@ def checkname(name, max_length, valid_chars, valid_inner_chars):
                 letter = chr(item)
                 if (not (letter in valid_chars or (letter in valid_inner_chars and idx >= 1))):
                     # Illegal character in name
-                    return ''
+                    raise InvalidNameException
         idx += 1
     if not alpha:
-        return ''
-    return str(name_b)
+        raise InvalidNameException
+    checked_name = str(name_b)
+    return checked_name
+
+
+def check_node_name(name):
+    """
+    RFC952 / RFC1123 internet host name validity check
+
+    @returns Valid host name or raises drbdmanage.exceptions.InvalidNameException
+    """
+    if name is None:
+        raise InvalidNameException
+    name_b = bytearray(str(name), "utf-8")
+    name_len = len(name_b)
+    if name_len < NODE_NAME_MINLEN or name_len > NODE_NAME_MAXLEN:
+        raise InvalidNameException
+    idx = 0
+    while idx < name_len:
+        letter = name_b[idx]
+        if not ((letter >= ord('a') and letter <= ord('z')) or
+            (letter >= ord('A') and letter <= ord('Z')) or
+            (letter >= ord('0') and letter <= ord('9'))):
+            # special characters allowed depending on position within the string
+            if idx == 0 or idx + 1 == name_len:
+                raise InvalidNameException
+            else:
+                if not (letter == ord('.') or letter == ord('-')):
+                    raise InvalidNameException
+        idx += 1
+    checked_name = str(name_b)
+    return checked_name
 
 
 # "type" used for argparse
 def namecheck(checktype):
+    # Define variables in this scope (Python 3.x compatibility)
+    min_length = 0
+    max_length = 0
+    valid_chars = ""
+    valid_inner_chars = ""
+
     if checktype == RES_NAME:
+        min_length = RES_NAME_MINLEN
         max_length = RES_NAME_MAXLEN
         valid_chars = RES_NAME_VALID_CHARS
         valid_inner_chars = RES_NAME_VALID_INNER_CHARS
     elif checktype == SNAPS_NAME:
+        min_length = SNAPS_NAME_MINLEN
         max_length = SNAPS_NAME_MAXLEN
         valid_chars = SNAPS_NAME_VALID_CHARS
         valid_inner_chars = SNAPS_NAME_VALID_INNER_CHARS
     else:  # checktype == NODE_NAME, use that as rather arbitrary default
+        min_length = NODE_NAME_MINLEN
         max_length = NODE_NAME_MAXLEN
-        valid_chars = NODE_NAME_VALID_CHARS
-        valid_inner_chars = NODE_NAME_VALID_INNER_CHARS
 
     def check(name):
         import argparse.argparse as argparse
-        if not checkname(name, max_length, valid_chars, valid_inner_chars):
+        try:
+            if checktype == NODE_NAME:
+                name = check_node_name(name)
+            else:
+                name = check_name(name, min_length, max_length, valid_chars, valid_inner_chars)
+        except InvalidNameException:
             raise argparse.ArgumentTypeError('Name: %s not valid' % (name))
         return name
     return check
 
 
 def get_uname():
-    node_name = None
+    checked_node_name = None
     try:
+        node_name = None
         uname = os.uname()
         if len(uname) >= 2:
             node_name = uname[1]
-        max_length = NODE_NAME_MAXLEN
-        valid_chars = NODE_NAME_VALID_CHARS
-        valid_inner_chars = NODE_NAME_VALID_INNER_CHARS
-        if not checkname(node_name, max_length, valid_chars, valid_inner_chars):
-            return None
+        try:
+            checked_node_name = check_node_name(node_name)
+        except InvalidNameException:
+            pass
     except OSError:
         pass
-    return node_name
+    return checked_node_name
 
 
 def load_server_conf_file(localonly=False):

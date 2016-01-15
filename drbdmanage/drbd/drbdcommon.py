@@ -2,7 +2,7 @@
 
 import drbdmanage.propscontainer as propscon
 import drbdmanage.exceptions as dmexc
-from drbdmanage.utils import checkname
+from drbdmanage.utils import check_name
 
 class GenericDrbdObject(object):
 
@@ -20,7 +20,7 @@ class GenericDrbdObject(object):
 
 
     @staticmethod
-    def name_check(name, max_length, valid_chars, valid_inner_chars):
+    def name_check(name, min_length, max_length, valid_chars, valid_inner_chars):
         """
         Check the validity of a string for use as a name for
         objects like nodes or volumes.
@@ -43,9 +43,7 @@ class GenericDrbdObject(object):
                             already specified in valid_chars
         """
         # might raise a TypeError
-        name = checkname(name, max_length, valid_chars, valid_inner_chars)
-        if not name:
-            raise dmexc.InvalidNameException
+        name = check_name(name, min_length, max_length, valid_chars, valid_inner_chars)
         return name
 
 

@@ -45,7 +45,7 @@ from drbdmanage.exceptions import (
     InvalidAddrFamException, VolSizeRangeException, PersistenceException, QuorumException
 )
 from drbdmanage.exceptions import DM_SUCCESS, DM_ESTORAGE
-from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset
+from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset, check_node_name
 
 
 class DrbdManager(object):
@@ -1788,6 +1788,7 @@ class DrbdCommon(GenericDrbdObject):
 
 class DrbdResource(GenericDrbdObject):
 
+    NAME_MINLEN  = 1
     NAME_MAXLEN  = consts.RES_NAME_MAXLEN
     # Valid characters in addition to [a-zA-Z0-9]
     NAME_VALID_CHARS = consts.RES_NAME_VALID_CHARS
@@ -1874,7 +1875,7 @@ class DrbdResource(GenericDrbdObject):
 
     def name_check(self, name):
         checked_name = GenericDrbdObject.name_check(
-            name, DrbdResource.NAME_MAXLEN,
+            name, DrbdResource.NAME_MINLEN, DrbdResource.NAME_MAXLEN,
             DrbdResource.NAME_VALID_CHARS, DrbdResource.NAME_VALID_INNER_CHARS
         )
         # A resource can not be named "all", because that is a
@@ -2322,11 +2323,8 @@ class DrbdNode(GenericDrbdObject):
     Represents a drbdmanage host node in drbdmanage's object model.
     """
 
+    NAME_MINLEN = consts.NODE_NAME_MINLEN
     NAME_MAXLEN = consts.NODE_NAME_MAXLEN
-    # Valid characters in addition to [a-zA-Z0-9]
-    NAME_VALID_CHARS = consts.NODE_NAME_VALID_CHARS
-    # Additional valid characters, but not allowed as the first character
-    NAME_VALID_INNER_CHARS = consts.NODE_NAME_VALID_INNER_CHARS
 
     AF_IPV4 = 4
     AF_IPV6 = 6
@@ -2505,10 +2503,7 @@ class DrbdNode(GenericDrbdObject):
 
 
     def name_check(self, name):
-        return GenericDrbdObject.name_check(
-            name, DrbdNode.NAME_MAXLEN,
-            DrbdNode.NAME_VALID_CHARS, DrbdNode.NAME_VALID_INNER_CHARS
-        )
+        return check_node_name(name)
 
 
     def init_add_assignment(self, assignment):

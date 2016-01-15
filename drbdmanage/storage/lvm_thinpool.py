@@ -1171,6 +1171,7 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
     # up to 16 characters are required for the time value, so the maximum
     # length of a thin pool name must be allowed to be 19 characters longer
     # than a resource name.
+    THINPOOL_NAME_MINLEN = 1
     THINPOOL_NAME_MAXLEN = consts.RES_NAME_MAXLEN + 19
     # Valid characters in addition to [a-zA-Z0-9]
     NAME_VALID_CHARS      = "_"
@@ -1184,7 +1185,7 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
     def __init__(self, name, size_kiB):
         super(ThinPool, self).__init__(size_kiB)
         self._name = drbdmanage.drbd.drbdcommon.GenericDrbdObject.name_check(
-            name, ThinPool.THINPOOL_NAME_MAXLEN,
+            name, ThinPool.THINPOOL_NAME_MINLEN, ThinPool.THINPOOL_NAME_MAXLEN,
             ThinPool.NAME_VALID_CHARS, ThinPool.NAME_VALID_INNER_CHARS
         )
         self._volumes = {}

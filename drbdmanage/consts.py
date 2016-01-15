@@ -69,12 +69,16 @@ KEY_SHUTDOWN_RES = "shutdown-res"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
-NODE_NAME_MAXLEN = 128
-NODE_NAME_VALID_CHARS = "_"
-NODE_NAME_VALID_INNER_CHARS = ".-"
+# RFC952 / RFC1123 host name constraints; do not change
+NODE_NAME_MINLEN = 2
+NODE_NAME_MAXLEN = 255
+
+# drbdmanage object name constraints
+RES_NAME_MINLEN = 1
 RES_NAME_MAXLEN = 48    # Enough for a UUID string plus prefix
 RES_NAME_VALID_CHARS = "_"
 RES_NAME_VALID_INNER_CHARS = "-"
+SNAPS_NAME_MINLEN = 1
 SNAPS_NAME_MAXLEN = 48
 SNAPS_NAME_VALID_CHARS = "_"
 SNAPS_NAME_VALID_INNER_CHARS = "-"

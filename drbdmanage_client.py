@@ -278,7 +278,7 @@ class DrbdManage(object):
                                help='The node entry and all associated assignment entries are removed from '
                                "drbdmanage's data tables immediately, without taking any action on the "
                                'cluster node that the node entry refers to.')
-        p_rm_node.add_argument('name', type=namecheck(NODE_NAME), nargs="+",
+        p_rm_node.add_argument('name', nargs="+",
                                help='Name of the node to remove').completer = node_completer
         p_rm_node.set_defaults(func=self.cmd_remove_node)
 
@@ -356,7 +356,7 @@ class DrbdManage(object):
                               "entries are removed from drbdmanage's data tables immediately, without "
                               'taking any action on the cluster nodes that have the resource deployed.')
         p_rm_res.add_argument('name',
-                              nargs="+", type=namecheck(RES_NAME),
+                              nargs="+",
                               help='Name of the resource to delete').completer = res_completer
         p_rm_res.set_defaults(func=self.cmd_remove_resource)
 
@@ -480,7 +480,8 @@ class DrbdManage(object):
                               help='If present, then the volume entry is removed from the resource '
                               'definition immediately, without taking any action on the cluster nodes '
                               'that have the volume deployed.')
-        p_rm_vol.add_argument('name', type=namecheck(RES_NAME),
+
+        p_rm_vol.add_argument('name',
                               help='Name of the resource').completer = res_completer
         p_rm_vol.add_argument('vol_id', help='Volume ID', type=int).completer = vol_completer
         p_rm_vol.set_defaults(func=self.cmd_remove_volume)
