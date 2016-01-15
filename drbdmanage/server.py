@@ -1886,6 +1886,7 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
+                node = self._nodes[node_name]
                 drbdctrl_flag = False
                 ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
 
@@ -1902,7 +1903,6 @@ class DrbdManageServer(object):
                         ctrl_node_props.set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
                                                  os.path.join(ns, satellite_name))
 
-                node = self._nodes[node_name]
                 if (not force) and (node.has_assignments() or self.get_satellite_names(node)):
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
