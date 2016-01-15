@@ -1027,9 +1027,9 @@ class DrbdManageServer(object):
                 # only makes sense in drbdmanaged.cfg
                 elif k == KEY_SAT_CFG_ROLE:
                     if v == KEY_SAT_CFG_SATELLITE:
-                        self._forced_is_satellite == SAT_SATELLITE
+                        self._forced_is_satellite = SAT_SATELLITE
                     elif v == KEY_SAT_CFG_CONTROL_NODE:
-                        self._forced_is_satellite == SAT_CONTROL_NODE
+                        self._forced_is_satellite = SAT_CONTROL_NODE
 
             for plugin_name in cfg['plugins']:
                 for k, v in cfg['plugins'][plugin_name].items():
