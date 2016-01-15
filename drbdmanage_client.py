@@ -465,7 +465,7 @@ class DrbdManage(object):
         p_mod_assg.set_defaults(command=p_mod_assg_command)
 
         # remove-volume
-        p_rm_res = subp.add_parser('remove-volume',
+        p_rm_vol = subp.add_parser('remove-volume',
                                    aliases=['rv', 'delete-volume', 'dv'],
                                    description='Removes a volume from the drbdmanage cluster, and removes '
                                    'the volume definition from the resource definition. The volume is '
@@ -473,17 +473,17 @@ class DrbdManage(object):
                                    "from the resource definition in drbdmanage's data tables. After all "
                                    'nodes have undeployed the volume, the volume entry is removed from '
                                    'the resource definition.')
-        p_rm_res.add_argument('-q', '--quiet', action="store_true",
+        p_rm_vol.add_argument('-q', '--quiet', action="store_true",
                               help='Unless this option is used, drbdmanage will issue a safety question '
                               'that must be answered with yes, otherwise the operation is canceled.')
-        p_rm_res.add_argument('-f', '--force', action="store_true",
+        p_rm_vol.add_argument('-f', '--force', action="store_true",
                               help='If present, then the volume entry is removed from the resource '
                               'definition immediately, without taking any action on the cluster nodes '
                               'that have the volume deployed.')
-        p_rm_res.add_argument('name', type=namecheck(RES_NAME),
+        p_rm_vol.add_argument('name', type=namecheck(RES_NAME),
                               help='Name of the resource').completer = res_completer
-        p_rm_res.add_argument('vol_id', help='Volume ID', type=int).completer = vol_completer
-        p_rm_res.set_defaults(func=self.cmd_remove_volume)
+        p_rm_vol.add_argument('vol_id', help='Volume ID', type=int).completer = vol_completer
+        p_rm_vol.set_defaults(func=self.cmd_remove_volume)
 
         # connect
         p_conn = subp.add_parser('connect-resource', description='Connect resource on node',
