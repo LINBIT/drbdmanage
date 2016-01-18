@@ -216,7 +216,9 @@ class DrbdAdm(object):
             )
             subprocess.Popen(['logger', '-t',
                               'DRBDmanage:%d' % drbd_proc.pid],
-                             0, 'logger', stdin=drbd_proc.stderr)
+                             0, 'logger',
+                             close_fds=True,
+                             stdin=drbd_proc.stderr)
             drbd_proc.stderr.close()
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
