@@ -2337,6 +2337,9 @@ class DrbdManageServer(object):
             if persist is not None:
                 resource = self._resources[res_name]
                 volume = resource.get_volume(vol_id)
+
+                resource_assigned = resource.has_assignments()
+
                 if volume is None:
                     raise KeyError
                 if size_kiB == 0 and delta_kiB == 0:
@@ -2356,7 +2359,7 @@ class DrbdManageServer(object):
                     raise ValueError
                 cur_size_kiB = volume.get_size_kiB()
                 if size_kiB > 0:
-                    if not (size_kiB > cur_size_kiB):
+                    if size_kiB <= cur_size_kiB and resource_assigned:
                         add_rc_entry(
                             fn_rc, DM_EINVAL,
                             "The new size of the volume must be greater than its current size"
@@ -2365,7 +2368,7 @@ class DrbdManageServer(object):
                 if delta_kiB > 0:
                     size_kiB = cur_size_kiB + delta_kiB
 
-                if resource.has_assignments():
+                if resource_assigned:
                     # Check space on all nodes that have the resource assigned
                     # Calculate the gross size of the space required for resizing
                     # to the specified net size
