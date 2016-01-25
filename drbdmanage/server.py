@@ -4473,15 +4473,6 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def query_snapshot(self, res_name, snaps_name):
-        """
-        Query the state of a resource's snapshot on specific nodes
-        """
-        fn_rc = []
-        add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
-        return fn_rc
-
-
     def _set_snapshot_sources(self, dest_res, snapshot):
         """
         Sets the source volumes for creation of a resource from a snapshot

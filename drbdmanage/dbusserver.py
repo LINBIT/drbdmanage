@@ -533,18 +533,6 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ss",
-        out_signature="a(isa(ss))" "a{ss}"
-    )
-    def query_snapshot(self, res_name, snaps_name):
-        """
-        D-Bus interface for DrbdManageServer.query_snapshot(...)
-        """
-        return self._server.query_snapshot(res_name, snaps_name)
-
-
-    @dbus.service.method(
-        DBUS_DRBDMANAGED,
-        in_signature="ss",
         out_signature="a(isa(ss))"
     )
     def resume(self, node_name, res_name):
