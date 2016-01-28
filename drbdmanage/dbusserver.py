@@ -639,7 +639,7 @@ class DBusServer(dbus.service.Object):
     )
     def run_external_plugin(self, plugin_name, props):
         """
-        D-Bus interface for DrbdManageServer.create_node(...)
+        D-Bus interface for DrbdManageServer.run_external_plugin(...)
         """
         return self._server.run_external_plugin(plugin_name, dict(props))
 
