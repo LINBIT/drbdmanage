@@ -1082,19 +1082,49 @@ class DrbdManageServer(object):
     @no_satellite
     def run_external_plugin(self, plugin_name, props):
         fn_rc = []
-        ret = {}
+        ret = None
         try:
             plugin = self._pluginmgr.get_plugin_instance(plugin_name)
-            self._pluginmgr.set_plugin_config(plugin_name, props)
-            ret = plugin.run()
         except:
-            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+            add_rc_entry(fn_rc, DM_EPLUGIN, dm_exc_text(DM_EPLUGIN))
+            return (fn_rc, {})
 
-        if len(fn_rc) == 0:
+        try:
+            self._pluginmgr.set_plugin_config(plugin_name, props)
+        except:
+            add_rc_entry(fn_rc, DM_EINVAL, "Error configuring plugin")
+            return (fn_rc, {})
+
+        try:
+            ret = plugin.run()
+
+            if ret and len(ret) == 2:
+                return (ret[0], ret[1])
+
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
 
-        ret = ret if isinstance(ret, dict) else {}
-        return (fn_rc, ret)
+            if isinstance(ret, dict):
+                data = ret
+            else:
+                data = {}
+
+            return (fn_rc, data)
+
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            add_rc_entry(fn_rc, DM_EINVAL,
+                    "Error running plugin: %(e)s",
+                    [ ["msg", str(e)],
+                      ["repr", repr(e)],
+                      ["backtrace", "".join(traceback.format_tb(exc_traceback))],
+                    ] )
+            return (fn_rc, {})
+
+        # Error (-in-error) case
+
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_EPLUGIN, "error running plugin")
+        return (fn_rc, {})
 
     def peek_serial(self):
         """
