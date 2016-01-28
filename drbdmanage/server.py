@@ -4651,9 +4651,7 @@ class DrbdManageServer(object):
         self._pluginmgr.get_plugin_instance(self._conf[self.KEY_STOR_NAME])
 
         loaded_plugins = self._pluginmgr.get_loaded_plugins()
-        for plugin in loaded_plugins:
-            plugin_path = plugin[self._pluginmgr.KEY_PLUGIN_PATH]
-            plugin_name = plugin[self._pluginmgr.KEY_PLUGIN_NAME]
+        for (plugin_path, plugin_name) in loaded_plugins:
             self._pluginmgr.set_plugin_config(plugin_path, self._plugin_conf[plugin_name])
 
     def load_conf_data(self, persist):

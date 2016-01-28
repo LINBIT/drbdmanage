@@ -25,24 +25,23 @@ except ImportError:
 
 
 class PluginManager():
-    KEY_PLUGIN_PATH, KEY_PLUGIN_NAME = range(2)
 
     def __init__(self, server):
         self._server = server
-        self._known = [
-            ('drbdmanage.deployers.BalancedDeployer', 'balanced-deployer'),
-            ('drbdmanage.storage.lvm.Lvm', 'LVM'),
-            ('drbdmanage.storage.lvm_thinlv.LvmThinLv', 'ThinLV'),
-            ('drbdmanage.storage.lvm_thinpool.LvmThinPool', 'ThinPool'),
-        ]
+        self._known = {
+            'drbdmanage.deployers.BalancedDeployer':		'balanced-deployer',
+            'drbdmanage.storage.lvm.Lvm':			'LVM',
+            'drbdmanage.storage.lvm_thinlv.LvmThinLv':		'ThinLV',
+            'drbdmanage.storage.lvm_thinpool.LvmThinPool':	'ThinPool',
+        }
 
-        self._loaded = dict([(k[self.KEY_PLUGIN_PATH], None) for k in self._known])
+        self._loaded = dict()
 
     def get_known_plugins(self):
         return self._known
 
     def get_loaded_plugins(self):
-        return [p for p, loaded in self._loaded if loaded is not None]
+        return [(p, self._known.get(p, p)) for p in self._loaded.keys()]
 
     def _get_new_instance(self, plugin_path):
         instance = None
@@ -56,11 +55,9 @@ class PluginManager():
         return instance
 
     def _get_name(self, plugin_path):
-        for i in self._known:
-            if i[self.KEY_PLUGIN_PATH] == plugin_path:
-                return i[self.KEY_PLUGIN_NAME]
-
-        return ''
+	# if no "nice" name is defined, return the path, to have an unique ID.
+	return self._known.get(plugin_path, plugin_path)
+	return ''
 
     def _get_plugin_default_config(self, plugin_path):
         """
@@ -87,8 +84,8 @@ class PluginManager():
                 return [ret]
 
         configs = []
-        for plugin in self._known:
-            ret = self._get_plugin_default_config(plugin[0])
+        for plugin in self._known.keys():
+            ret = self._get_plugin_default_config(plugin)
             if ret:
                 configs.append(ret)
         return configs
@@ -113,7 +110,7 @@ class PluginManager():
         Returns existing plugin instance, or registers a new instance
         """
         instance = None
-        if self._loaded[plugin_path] is not None:
+        if self._loaded.get(plugin_path, None) is not None:
             instance = self._loaded[plugin_path]
         else:
             instance = self._get_new_instance(plugin_path)
