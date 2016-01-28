@@ -1091,8 +1091,14 @@ class DrbdManageServer(object):
 
         try:
             self._pluginmgr.set_plugin_config(plugin_name, props)
-        except:
-            add_rc_entry(fn_rc, DM_EINVAL, "Error configuring plugin")
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            add_rc_entry(fn_rc, DM_EINVAL,
+                    "Error configuring plugin: %(e)s",
+                    [ ["msg", str(e)],
+                      ["repr", repr(e)],
+                      ["backtrace", "".join(traceback.format_tb(exc_traceback))],
+                    ] )
             return (fn_rc, {})
 
         try:
