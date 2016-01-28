@@ -23,8 +23,6 @@ try:
 except ImportError:
     import drbdmanage.importlib as importlib
 
-from drbdmanage.plugins.externalplugins import get_external
-
 
 class PluginManager():
     KEY_PLUGIN_PATH, KEY_PLUGIN_NAME = range(2)
@@ -38,19 +36,13 @@ class PluginManager():
             ('drbdmanage.storage.lvm_thinpool.LvmThinPool', 'ThinPool'),
         ]
 
-        external_plugins = get_external()
-        for external_plugin in external_plugins:
-            if '/' in external_plugin[1]:
-                continue
-            self._known.append(external_plugin)
-
         self._loaded = dict([(k[self.KEY_PLUGIN_PATH], None) for k in self._known])
 
     def get_known_plugins(self):
         return self._known
 
     def get_loaded_plugins(self):
-        return [p for p in self._known if self._loaded[p[self.KEY_PLUGIN_PATH]] is not None]
+        return [p for p, loaded in self._loaded if loaded is not None]
 
     def _get_new_instance(self, plugin_path):
         instance = None
@@ -121,10 +113,9 @@ class PluginManager():
         Returns existing plugin instance, or registers a new instance
         """
         instance = None
-        if plugin_path in [k[self.KEY_PLUGIN_PATH] for k in self._known]:
-            if self._loaded[plugin_path] is not None:
-                instance = self._loaded[plugin_path]
-            else:
-                instance = self._get_new_instance(plugin_path)
-                self._loaded[plugin_path] = instance
+        if self._loaded[plugin_path] is not None:
+            instance = self._loaded[plugin_path]
+        else:
+            instance = self._get_new_instance(plugin_path)
+            self._loaded[plugin_path] = instance
         return instance
