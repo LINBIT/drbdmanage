@@ -113,7 +113,7 @@ class PluginManager():
         Sets the configuration of a plugin if this plugin is loaded AND the configuration changed
         """
         current_config = self.get_plugin_config(plugin_path)
-        if current_config and current_config != config:
+        if current_config != config:
             self.get_plugin_instance(plugin_path).set_config(config)
 
     def get_plugin_instance(self, plugin_path):
