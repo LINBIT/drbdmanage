@@ -815,7 +815,7 @@ def add_rc_entry(fn_rc, err_code, err_msg, args=[]):
             key, value = item
             if not isinstance(key, str):
                 raise TypeError("key should be str, is %s" % type(key))
-            if not isinstance(value, (str, int, dbus.String)):
+            if not isinstance(value, (str, int, float, dbus.String)):
                 raise TypeError("value should be str, is %s" % type(value))
 
             s_args.append([str(key), str(value)])
