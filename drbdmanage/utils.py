@@ -37,7 +37,7 @@ import ConfigParser
 from drbdmanage.exceptions import SyntaxException, InvalidNameException
 from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
                                KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8,
-                               RES_NAME, SNAPS_NAME,  NODE_NAME,
+                               RES_NAME, SNAPS_NAME, NODE_NAME, KEY_LOGLEVEL,
                                NODE_NAME_MINLEN, NODE_NAME_MAXLEN,
                                RES_NAME_MINLEN, RES_NAME_MAXLEN,
                                SNAPS_NAME_MINLEN, SNAPS_NAME_MAXLEN,
@@ -510,6 +510,7 @@ def load_server_conf_file(localonly=False):
                 if not cfg.has_option(section, 'force'):
                     final_config = filter_allowed(in_file_cfg.copy(), (KEY_DRBDCTRL_VG,
                                                                        'extend-path',
+                                                                       KEY_LOGLEVEL,
                                                                        KEY_SAT_CFG_ROLE,
                                                                        KEY_DRBD_CONFPATH,
                                                                        KEY_COLORS,
