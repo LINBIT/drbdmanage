@@ -911,7 +911,7 @@ class DrbdManageServer(object):
         Adjust the loglevel to the one specified in the server's configuration
         """
         try:
-            loglevel_conf = str.upper(self._conf[self.KEY_LOGLEVEL])
+            loglevel_conf = str.upper(self._conf[KEY_LOGLEVEL])
             loglevel_id   = self.DM_LOGLEVELS[loglevel_conf]
             self._root_logger.setLevel(loglevel_id)
         except KeyError:
