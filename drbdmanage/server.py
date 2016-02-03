@@ -37,7 +37,7 @@ import drbdmanage.quorum
 import drbdmanage.drbd.metadata as md
 
 from drbdmanage.consts import (
-    SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR,
+    SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR, VOL_ID,
     DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
@@ -2503,6 +2503,7 @@ class DrbdManageServer(object):
         @return: standard return code defined in drbdmanage.exceptions
         """
         fn_rc   = []
+        fn_info = []
         volume  = None
         persist = None
         try:
@@ -2547,6 +2548,10 @@ class DrbdManageServer(object):
                                 vol_st.attach()
                         self.save_conf_data(persist)
                         self.schedule_run_changes()
+                        add_rc_entry(fn_info, DM_INFO, 'create_volume',
+                                     [[VOL_MINOR, str(minor)],
+                                      [VOL_ID, str(vol_id)],
+                                      [SERIAL, str(chg_serial)]])
             else:
                 raise PersistenceException
         except DrbdManageException as server_exc:
@@ -2557,7 +2562,7 @@ class DrbdManageServer(object):
             self.cond_end_modify_conf(persist)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-        return fn_rc
+        return fn_rc + fn_info
 
     @no_satellite
     def remove_volume(self, res_name, vol_id, force):
