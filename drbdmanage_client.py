@@ -3681,11 +3681,12 @@ Confirm:
         return fn_rc
 
     def error_msg_text(self, error):
-        if error == 0:
+        if error >= 100:
             prefix = ""
         else:
             prefix = "Error: "
-        sys.stderr.write("%s%s\n" % (prefix, dm_exc_text(error)))
+        if error > 0 and error < 100:
+            sys.stderr.write("%s%s\n" % (prefix, dm_exc_text(error)))
 
     def color(self, col):
         if self._colors:

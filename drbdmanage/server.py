@@ -66,7 +66,7 @@ from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOSPC, DM_EQUORUM,
-    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE,
+    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE, DM_INFO
 )
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,

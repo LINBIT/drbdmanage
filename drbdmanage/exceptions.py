@@ -33,12 +33,19 @@ import traceback
 # return code for successful operations
 DM_SUCCESS  = 0
 
+# return code for supplemental information
+DM_INFO     = 1
+
 # ========================================
 # return codes for failed operations
 # ========================================
 
 # function not implemented
 DM_ENOTIMPL = 0x7fffffff
+
+# Messages for return codes 1 to 99 are commonly
+# not displayed by the drbdmanage client, and are
+# not considered an error.
 
 # invalid name for an object
 DM_ENAME    = 100
@@ -102,6 +109,7 @@ DM_DEBUG    = 1023
 
 _DM_EXC_TEXTS = {}
 _DM_EXC_TEXTS[DM_SUCCESS]  = "Operation completed successfully"
+_DM_EXC_TEXTS[DM_INFO]     = "(Additional information included)"
 _DM_EXC_TEXTS[DM_ENAME]    = "Invalid name"
 _DM_EXC_TEXTS[DM_ENOENT]   = "Object not found"
 _DM_EXC_TEXTS[DM_EEXIST]   = "Object already exists"
