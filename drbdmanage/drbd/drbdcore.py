@@ -3085,12 +3085,6 @@ class Assignment(GenericDrbdObject):
         return self._resource
 
 
-    # used by AssignmentPersistence
-    def add_volume_state(self, vol_state):
-        self._vol_states[vol_state.get_id()] = vol_state
-        self.get_props().new_serial()
-
-
     def iterate_volume_states(self):
         return self._vol_states.itervalues()
 
