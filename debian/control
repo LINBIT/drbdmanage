@@ -1,20 +1,30 @@
 Source: drbdmanage
 Maintainer: LINBIT HA Solutions GmbH <drbd-dev@lists.linbit.com>
-Uploaders:
- Robert Altnoeder <robert.altnoeder@linbit.com>
- Roland Kammerer <roland.kammerer@linbit.com>
+Uploaders: Roland Kammerer <roland.kammerer@linbit.com>,
+           Robert Altnoeder <robert.altnoeder@linbit.com>
 Section: python
 Priority: optional
-Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 9), xsltproc, help2man, python-gobject
 # Currently, we do not include dh-python (as suggested by jessie),
 # because it is not available on unbuntu 12.04
 # Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 9), dh-python, ...
 # We include python-gobject, because the client (which depends on it) is started for manpage generation
+Build-Depends: debhelper (>= 9),
+               help2man,
+               python-all (>= 2.6.6-3),
+               python-gobject,
+               xsltproc
 Standards-Version: 3.9.6
 
 Package: python-drbdmanage
 Architecture: all
-Depends: ${misc:Depends}, ${python:Depends}, python-gobject, python-dbus, dbus, drbd-utils (>= 8.9.4), lvm2, thin-provisioning-tools
+Depends: dbus,
+         drbd-utils (>= 8.9.6),
+         lvm2,
+         python-dbus,
+         python-gobject,
+         thin-provisioning-tools,
+         ${misc:Depends},
+         ${python:Depends}
 Description: DRBD distributed resource management utility
  Drbdmanage is a daemon and a command line utility that manages DRBD
  replicated LVM volumes across a group of machines.

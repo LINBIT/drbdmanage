@@ -1,3 +1,47 @@
+drbdmanage (0.92-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * MANIFEST.in: add missing file: setup.cfg.sles11
+  * added stricter name checking in argparse
+  * server: fix bug in server role assignment
+  * allow "loglevel" in drbdmanaged.cfg
+  * storage: remove old configuration artifacts
+  * implemented export/import-ctrlvol
+  * debian: use dh_bash-completion
+
+  [ Robert Altnoeder ]
+  * Turned MetaDataException into a subclass of DrbdManageException
+  * Simplified exception handling
+  * shutdown(): Add capability to shutdown all resources
+  * remove_node(): check whether the node exists before calling is_satellite()
+  * Fix variable name for the remove-volume command parser
+  * RFC952 / RFC1123 internet host name validity check
+  * Allow decreasing the size of unused volumes
+  * Introduced DM_INFO return code
+  * Fixed superfluous "self" prefix for KEY_LOGLEVEL
+  * Fixed logic bugs when listing errors in drbdmanage_client
+  * Fixed superfluous return code entry in create_resource()
+  * Update configuration files before starting resources
+  * Handle exception when exceeding the max nr. of volumes per resource
+  * Removed superfluous semicolons
+  * TQ_get_path(): access to protected object member replaced by function call
+
+  [ Philipp Marek ]
+  * pep8/flake8 for another file.
+  * Fix filehandle leak that made eg. "drbdadm" wait on fh 0.
+  * Remove unimplemented function query_snapshot().
+  * Fix comment.
+  * Plugins: Allow replacing an empty configuration.
+  * add_rc_entry(): Autoconvert float to str, too.
+  * Fix run_external_plugin() dbus command.
+  * Dropped the "externalplugins" concept; they're addressed "normally".
+  * Return good error data when configuring a plugin fails, too.
+  * Make PluginManager._known a dict, and fix users.
+  * Removed unused method Assignment.add_volume_state().
+  * First user of DM_INFO.
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 11 Feb 2016 11:57:05 +0100
+
 drbdmanage (0.91-1) experimental; urgency=medium
 
   [ Philipp Marek ]
