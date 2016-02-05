@@ -719,19 +719,28 @@ class DrbdManage(object):
                                        description="Resumes all failed assignments")
         p_resume_all.set_defaults(func=self.cmd_resume_all)
 
+        def shutdown_restart(command, description, func, aliases=False):
+            if aliases:
+                p_cmd = subp.add_parser(command, aliases=aliases, description=description)
+            else:
+                p_cmd = subp.add_parser(command, description=description)
+            p_cmd.add_argument('-l', '--satellite', action="store_true",
+                               help='If given, also send a shutdown command to connected satellites.',
+                               default=False)
+            p_cmd.add_argument('-q', '--quiet', action="store_true",
+                               help='Unless this option is used, drbdmanage will issue a safety question '
+                               'that must be answered with yes, otherwise the operation is canceled.')
+            p_cmd.add_argument('-r', '--resources', action="store_true",
+                               help='Shutdown all drbdmanage-controlled resources too',
+                               default=False)
+            p_cmd.set_defaults(func=func)
+
         # shutdown
-        p_shutdown = subp.add_parser('shutdown',
-                                     description='Stops the local drbdmanage server process.')
-        p_shutdown.add_argument('-l', '--satellite', action="store_true",
-                                help='If given, also send a shutdown command to connected satellites.',
-                                default=False)
-        p_shutdown.add_argument('-q', '--quiet', action="store_true",
-                                help='Unless this option is used, drbdmanage will issue a safety question '
-                                'that must be answered with yes, otherwise the operation is canceled.')
-        p_shutdown.add_argument('-r', '--resources', action="store_true",
-                                help='Shutdown all drbdmanage-controlled resources too',
-                                default=False)
-        p_shutdown.set_defaults(func=self.cmd_shutdown)
+        shutdown_restart('shutdown', description='Stops the local drbdmanage server process.',
+                         func=self.cmd_shutdown)
+        # restart
+        shutdown_restart('restart', description='Restarts the local drbdmanage server process.',
+                         func=self.cmd_restart)
 
         # nodes
         nodesverbose = ('Family', 'IP', 'Site', 'CTRL_Node')
@@ -862,7 +871,7 @@ class DrbdManage(object):
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
         # export
-        p_export = subp.add_parser('export',
+        p_export = subp.add_parser('export-res', aliases=['export'],
                                    description='Exports the configuration files of the specified '
                                    'drbdmanage resource for use with drbdadm. If "*" is used as '
                                    'resource name, the configuration files of all drbdmanage resources '
@@ -1137,6 +1146,24 @@ class DrbdManage(object):
         p_assign_satellite.add_argument('controlnode', type=namecheck(NODE_NAME),
                                         help='Name of the control node').completer = node_completer
         p_assign_satellite.set_defaults(func=self.cmd_assign_satellite)
+
+        # export ctrl-vol
+        p_exportctrlvol = subp.add_parser('export-ctrlvol',
+                                          description='Export drbdmanage control volume as json blob')
+        p_exportctrlvol.add_argument('--file', '-f',
+                                     help='File to save configuration json blob, if not given: stdout')
+        p_exportctrlvol.set_defaults(func=self.cmd_export_ctrlvol)
+
+        # import ctrl-vol
+        p_importctrlvol = subp.add_parser('import-ctrlvol',
+                                          description='Import drbdmanage control volume from json blob')
+        p_importctrlvol.add_argument('-q', '--quiet', action="store_true",
+                                     help='Unless this option is used, drbdmanage will issue a safety '
+                                     'question that must be answered with yes, otherwise the operation '
+                                     'is canceled.')
+        p_importctrlvol.add_argument('--file', '-f',
+                                     help='File to load configuration json blob, if not given: stdin')
+        p_importctrlvol.set_defaults(func=self.cmd_import_ctrlvol)
 
         argcomplete.autocomplete(parser)
 
@@ -2034,7 +2061,7 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
-    def cmd_shutdown(self, args):
+    def cmd_shutdown(self, args, doexit=True):
         quiet = args.quiet
         satellites = args.satellite
         resources = args.resources
@@ -2056,8 +2083,14 @@ class DrbdManage(object):
                 pass
             # Continuing the client without a server
             # does not make sense, therefore exit
-            exit(0)
+            if doexit:
+                exit(0)
         return 0
+
+    def cmd_restart(self, args):
+        self.cmd_shutdown(args, doexit=False)
+        self._server = None
+        self.cmd_startup(None)
 
     def _get_nodes(self, sort=False, node_filter=[]):
         self.dbus_init()
@@ -2699,6 +2732,8 @@ class DrbdManage(object):
 
     def cmd_startup(self, args):
         fn_rc = 1
+        # if we start using args, check for 'None', because
+        # restart might call us with 'None' args
         try:
             sys.stdout.write(
                 "Attempting to startup the server through "
@@ -3648,6 +3683,44 @@ Confirm:
 
         if fn_rc == 0:
             pass
+
+        return fn_rc
+
+    def cmd_export_ctrlvol(self, args):
+        fn_rc = 1
+        outf = sys.stdout
+
+        if args.file:
+            outf = open(args.file, 'w')
+
+        self.dbus_init()
+
+        server_rc, jsonblob = self._server.get_ctrlvol()
+        fn_rc = self._list_rc_entries(server_rc)
+        if fn_rc == 0:
+            outf.write(jsonblob)
+        if outf != sys.stdout:
+            outf.close()
+
+        return fn_rc
+
+    def cmd_import_ctrlvol(self, args):
+        fn_rc = 0
+        if not args.quiet and not self.user_confirm('Did you read the according section in the user guide? '
+                                                    'Are you sure you understand the consequences?'):
+            return fn_rc
+
+        inf = sys.stdin
+        if args.file:
+            inf = open(args.file)
+
+        jsonblob = inf.read()
+        if inf != sys.stdin:
+            inf.close()
+
+        self.dbus_init()
+        server_rc = self._server.set_ctrlvol(jsonblob)
+        fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
 

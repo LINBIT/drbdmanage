@@ -287,6 +287,7 @@ class DrbdManageServer(object):
             'dbus_save_conf': KEY_NOTHING,
             'detach': KEY_NOTHING,
             'disconnect': KEY_NOTHING,
+            'get_ctrlvol': KEY_NOTHING,
             'init_node': KEY_NOTHING,
             'join_node': KEY_NOTHING,
             'modify_resource': KEY_NOTHING,
@@ -302,6 +303,7 @@ class DrbdManageServer(object):
             'resize_volume': KEY_NOTHING,
             'restore_snapshot': KEY_NOTHING,
             'run_external_plugin': KEY_NOTHING,
+            'set_ctrlvol': KEY_NOTHING,
             'set_drbdsetup_props': KEY_NOTHING,
             'unassign': KEY_NOTHING,
             'update_pool': KEY_NOTHING,
@@ -5492,6 +5494,41 @@ class DrbdManageServer(object):
                         pass
         return fn_rc
 
+    @no_satellite
+    def get_ctrlvol(self):
+        # basically would be allowed on satellites, but:
+        # we send ctrlvol data to satellites only if the need it (e.g., new volume to deploy)
+        # this avoids unneccessary network traffic, but ctrlvol on satellites might be "outdated"
+        fn_rc = []
+        self._persist.json_export(self._objects_root)
+        jsonblob = self._persist.get_json_data()
+        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return (fn_rc, jsonblob)
+
+    @no_satellite
+    def set_ctrlvol(self, jsonblob):
+        fn_rc = []
+        try:
+            persist = self.begin_modify_conf()
+            if persist is not None:
+                self._persist.set_json_data(jsonblob)
+                self._persist.json_import(self._objects_root)
+                self.save_conf_data(persist)
+                self.reconfigure_drbdctrl()
+            else:
+                raise PersistenceException
+        except KeyError:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except DrbdManageException as server_exc:
+            server_exc.add_rc_entry(fn_rc)
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+            self.schedule_run_changes()
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
 
     def debug_console(self, cmdline):
         """

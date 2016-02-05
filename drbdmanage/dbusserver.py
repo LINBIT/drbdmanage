@@ -684,6 +684,21 @@ class DBusServer(dbus.service.Object):
         """
         return 0
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))" "s"
+    )
+    def get_ctrlvol(self):
+        return self._server.get_ctrlvol()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="s",
+        out_signature="a(isa(ss))"
+    )
+    def set_ctrlvol(self, jsonblob):
+        return self._server.set_ctrlvol(jsonblob)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
