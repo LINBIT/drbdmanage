@@ -1997,8 +1997,6 @@ class DrbdManageServer(object):
                 if resource is not None:
                     self._resources[resource.get_name()] = resource
                     self.save_conf_data(persist)
-                    add_rc_entry(fn_rc, DM_SUCCESS,
-                                 dm_exc_text(DM_SUCCESS))
             else:
                 raise PersistenceException
         except DrbdManageException as server_exc:
