@@ -55,8 +55,7 @@ class LvmThinPool(lvmcom.LvmCommon):
     # size of the volume the thin pool is allocated for
     DEFAULT_POOL_RATIO = 135
 
-    # Paths to configuration and state files of this module
-    LVM_CONFFILE  = "/etc/drbdmanaged-lvm-thinpool.conf"
+    # Path to state file of this module
     LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm-thinpool.local.json"
 
     # Command names of LVM utilities
@@ -1044,14 +1043,6 @@ class LvmThinPool(lvmcom.LvmCommon):
         finally:
             if state_file is not None:
                 state_file.close()
-
-
-    def _load_conf(self):
-        """
-        Loads settings from the module configuration file
-        """
-        return self.load_conf(LvmThinPool.LVM_CONFFILE, "LvmThinPool")
-
 
     def _check_lv_exists(self, lv_name):
         """

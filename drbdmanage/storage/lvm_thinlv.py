@@ -48,8 +48,7 @@ class LvmThinLv(lvmcom.LvmCommon):
     KEY_LVM_PATH   = "lvm-path"
     KEY_POOL_NAME  = "pool-name"
 
-    # Paths to configuration and state files of this module
-    LVM_CONFFILE  = "/etc/drbdmanaged-lvm-thinlv.conf"
+    # Path to state file of this module
     LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm-thinlv.local.json"
 
     # Command names of LVM utilities
@@ -935,10 +934,3 @@ class LvmThinLv(lvmcom.LvmCommon):
         finally:
             if state_file is not None:
                 state_file.close()
-
-
-    def _load_conf(self):
-        """
-        Loads settings from the module configuration file
-        """
-        return self.load_conf(LvmThinLv.LVM_CONFFILE, "LvmThinLv")

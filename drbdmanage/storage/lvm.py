@@ -47,8 +47,7 @@ class Lvm(lvmcom.LvmCommon):
     KEY_DEV_PATH = "dev-path"
     KEY_LVM_PATH = "lvm-path"
 
-    # Paths to configuration and state files of this module
-    LVM_CONFFILE  = "/etc/drbdmanaged-lvm.conf"
+    # Path state file of this module
     LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
 
     # Command names of LVM utilities
@@ -613,10 +612,3 @@ class Lvm(lvmcom.LvmCommon):
         finally:
             if state_file is not None:
                 state_file.close()
-
-
-    def _load_conf(self):
-        """
-        Loads settings from the module configuration file
-        """
-        return self.load_conf(Lvm.LVM_CONFFILE, "Lvm")
