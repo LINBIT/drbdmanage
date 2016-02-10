@@ -297,7 +297,7 @@ class BasePersistence(object):
         objects_root[drbdmanage.server.DrbdManageServer.OBJ_COMMON_NAME]    = loaded_common_conf
         # NOTE: Caller must update the server's objects directory cache
 
-        self._server.update_objects();
+        self._server.update_objects()
 
         # Quorum: Clear the quorum-ignore flag on each node that is
         #         currently connected and update the number of
@@ -415,7 +415,7 @@ class SatellitePersistence(BasePersistence):
 
 
     def open(self, modify):
-        return True;
+        return True
 
 
     def get_hash_obj(self):
@@ -447,10 +447,10 @@ class ServerDualPersistence(BasePersistence):
     """
 
     # crc32 of "drbdmanage control volume"
-    PERSISTENCE_MAGIC   = "\x1a\xdb\x98\xa2";
+    PERSISTENCE_MAGIC   = "\x1a\xdb\x98\xa2"
 
     # serial number, big-endian
-    PERSISTENCE_VERSION = "\x00\x00\x00\x02";
+    PERSISTENCE_VERSION = "\x00\x00\x00\x02"
 
     _load_file     = None
     _save_file     = None
