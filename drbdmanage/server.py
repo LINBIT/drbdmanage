@@ -2533,25 +2533,31 @@ class DrbdManageServer(object):
                         add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
                         chg_serial = self.get_serial()
-                        volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
-                                            0, self.get_serial, None, None)
-                        # Merge only auxiliary properties into the
-                        # DrbdVolume's properties container
-                        aux_props = aux_props_selector(props)
-                        volume.get_props().merge_gen(aux_props)
-                        resource.add_volume(volume)
-                        for assg in resource.iterate_assignments():
-                            assg.update_volume_states(chg_serial)
-                            vol_st = assg.get_volume_state(volume.get_id())
-                            if vol_st is not None:
-                                vol_st.deploy()
-                                vol_st.attach()
+                        volume = None
+                        try:
+                            volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
+                                                0, self.get_serial, None, None)
+                        except ValueError:
+                            # Maximum number of volumes per resource exceeded
+                            add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
+                        if volume is not None:
+                            # Merge only auxiliary properties into the
+                            # DrbdVolume's properties container
+                            aux_props = aux_props_selector(props)
+                            volume.get_props().merge_gen(aux_props)
+                            resource.add_volume(volume)
+                            for assg in resource.iterate_assignments():
+                                assg.update_volume_states(chg_serial)
+                                vol_st = assg.get_volume_state(volume.get_id())
+                                if vol_st is not None:
+                                    vol_st.deploy()
+                                    vol_st.attach()
+                            self.schedule_run_changes()
+                            add_rc_entry(fn_info, DM_INFO, 'create_volume',
+                                         [[VOL_MINOR, str(minor)],
+                                          [VOL_ID, str(vol_id)],
+                                          [SERIAL, str(chg_serial)]])
                         self.save_conf_data(persist)
-                        self.schedule_run_changes()
-                        add_rc_entry(fn_info, DM_INFO, 'create_volume',
-                                     [[VOL_MINOR, str(minor)],
-                                      [VOL_ID, str(vol_id)],
-                                      [SERIAL, str(chg_serial)]])
             else:
                 raise PersistenceException
         except DrbdManageException as server_exc:
