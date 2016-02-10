@@ -917,6 +917,9 @@ class DrbdManager(object):
                             % (res_name, bd_name)
                         )
 
+            # update the configuration file
+            self._server.export_assignment_conf(assignment)
+
             # call drbdadm to bring up the resource
             drbd_proc = self._drbdadm.adjust(resource.get_name())
             if drbd_proc is not None:
