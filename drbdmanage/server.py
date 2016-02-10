@@ -5247,7 +5247,7 @@ class DrbdManageServer(object):
         if resource is None:
             return ["Resource not found"]
         vol_id = int(vol_id_arg)
-        volume = resource._volumes.get(vol_id)
+        volume = resource.get_volume(vol_id)
         if volume is None:
             return ["Invalid volume id"]
         return [volume.get_path()]
