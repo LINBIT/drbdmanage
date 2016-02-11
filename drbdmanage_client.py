@@ -1049,49 +1049,53 @@ class DrbdManage(object):
 
         # disk-options
         do = DrbdSetupOpts('disk-options')
-        p_do = do.genArgParseSubcommand(subp)
-        p_do.add_argument('--common', action="store_true")
-        p_do.add_argument('--resource', type=namecheck(RES_NAME),
-                          help='Name of the resource to modify').completer = res_completer
-        p_do.add_argument('--volume',
-                          help='Name of the volume to modify').completer = res_vol_completer
-        p_do.set_defaults(optsobj=do)
-        p_do.set_defaults(type="disko")
-        p_do.set_defaults(func=self.cmd_disk_options)
+        if do.ok:
+            p_do = do.genArgParseSubcommand(subp)
+            p_do.add_argument('--common', action="store_true")
+            p_do.add_argument('--resource', type=namecheck(RES_NAME),
+                              help='Name of the resource to modify').completer = res_completer
+            p_do.add_argument('--volume',
+                              help='Name of the volume to modify').completer = res_vol_completer
+            p_do.set_defaults(optsobj=do)
+            p_do.set_defaults(type="disko")
+            p_do.set_defaults(func=self.cmd_disk_options)
 
         # peer-device-options (shares func with disk-options)
         pdo = DrbdSetupOpts('peer-device-options')
-        p_pdo = pdo.genArgParseSubcommand(subp)
-        p_pdo.add_argument('--common', action="store_true")
-        p_pdo.add_argument('--resource', type=namecheck(RES_NAME),
-                           help='Name of the resource to modify').completer = res_completer
-        p_pdo.add_argument('--volume',
-                           help='Name of the volume to modify').completer = res_vol_completer
-        p_pdo.set_defaults(optsobj=pdo)
-        p_pdo.set_defaults(type="peerdisko")
-        p_pdo.set_defaults(func=self.cmd_disk_options)
+        if pdo.ok:
+            p_pdo = pdo.genArgParseSubcommand(subp)
+            p_pdo.add_argument('--common', action="store_true")
+            p_pdo.add_argument('--resource', type=namecheck(RES_NAME),
+                               help='Name of the resource to modify').completer = res_completer
+            p_pdo.add_argument('--volume',
+                               help='Name of the volume to modify').completer = res_vol_completer
+            p_pdo.set_defaults(optsobj=pdo)
+            p_pdo.set_defaults(type="peerdisko")
+            p_pdo.set_defaults(func=self.cmd_disk_options)
 
         # resource-options
         ro = DrbdSetupOpts('resource-options')
-        p_ro = ro.genArgParseSubcommand(subp)
-        p_ro.add_argument('resource', type=namecheck(RES_NAME),
-                          help='Name of the resource').completer = res_completer
-        p_ro.set_defaults(optsobj=ro)
-        p_ro.set_defaults(func=self.cmd_res_options)
+        if ro.ok:
+            p_ro = ro.genArgParseSubcommand(subp)
+            p_ro.add_argument('resource', type=namecheck(RES_NAME),
+                              help='Name of the resource').completer = res_completer
+            p_ro.set_defaults(optsobj=ro)
+            p_ro.set_defaults(func=self.cmd_res_options)
 
         # net-options
         # TODO: not allowed to set per connection, drbdmanage currently has no notion of a
         # connection in its object model.
         #
         no = DrbdSetupOpts('net-options')
-        p_no = no.genArgParseSubcommand(subp)
-        p_no.add_argument('--common', action="store_true")
-        p_no.add_argument('--resource', type=namecheck(RES_NAME),
-                          help='Name of the resource to modify').completer = res_completer
-        p_no.add_argument('--sites',
-                          help='Set net options between sites (SiteA:SiteB)')
-        p_no.set_defaults(optsobj=no)
-        p_no.set_defaults(func=self.cmd_net_options)
+        if no.ok:
+            p_no = no.genArgParseSubcommand(subp)
+            p_no.add_argument('--common', action="store_true")
+            p_no.add_argument('--resource', type=namecheck(RES_NAME),
+                              help='Name of the resource to modify').completer = res_completer
+            p_no.add_argument('--sites',
+                              help='Set net options between sites (SiteA:SiteB)')
+            p_no.set_defaults(optsobj=no)
+            p_no.set_defaults(func=self.cmd_net_options)
 
         # handlers
         # currently we do not parse the xml-output because drbd-utils are not ready for it

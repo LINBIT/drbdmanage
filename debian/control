@@ -11,6 +11,7 @@ Priority: optional
 Build-Depends: debhelper (>= 9),
                help2man,
                python-all (>= 2.6.6-3),
+               python-dbus,
                python-gobject,
                xsltproc
 Standards-Version: 3.9.6

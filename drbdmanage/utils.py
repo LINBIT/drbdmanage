@@ -579,6 +579,7 @@ class DrbdSetupOpts():
         self.command = command
         self.config = {}
         self.unsetprefix = 'unset'
+        self.ok = False
 
         out = False
         for cmd in ('drbdsetup', '/sbin/drbdsetup'):
@@ -589,7 +590,7 @@ class DrbdSetupOpts():
                 pass
         if not out:
             sys.stderr.write("Could not execute drbdsetup\n")
-            sys.exit(1)
+            return
 
         root = ET.fromstring(out)
 
@@ -613,6 +614,7 @@ class DrbdSetupOpts():
                         val = child.find(v)
                         if val is not None:
                             self.config[opt][v] = val.text
+        self.ok = True
 
     def genArgParseSubcommand(self, subp):
         sp = subp.add_parser(self.command, description=self.config['help'])
