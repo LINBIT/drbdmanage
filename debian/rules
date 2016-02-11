@@ -1,18 +1,25 @@
 #!/usr/bin/make -f
 
 WITH_SYSTEMD=$(shell dh --list 2>/dev/null | sed -ne 's/^systemd$$/--with systemd/p')
+WITH_BASHCOMPL=$(shell dh --list 2>/dev/null | sed -ne 's/^bash-completion$$/--with bash-completion/p')
 
 %:
-	dh $@ --with python2 --buildsystem=python_distutils $(WITH_SYSTEMD)
+	dh $@ --with python2 --buildsystem=python_distutils $(WITH_SYSTEMD) $(WITH_BASHCOMPL)
 
 override_dh_auto_build:
 	dh_auto_build
 	python setup.py build_man
 
+override_dh_install:
+	dh_install --fail-missing
+ifneq ($(WITH_BASHCOMPL),)
+	# installed by setup.py to /etc/bash_completion.d/
+	# let dh_bash-completion handle it
+	rm -rf $(CURDIR)/debian/python-drbdmanage/etc/bash_completion.d
+endif
 ifneq ($(WITH_SYSTEMD),)
-# Place the systemd service script ...
-mv $(CURDIR)/debian/python-drbdmanage/lib/systemd/system/drbdmanaged.service $(CURDIR)/debian/ || :
-
+	# Place the systemd service script ...
+	mv $(CURDIR)/debian/python-drbdmanage/lib/systemd/system/drbdmanaged.service $(CURDIR)/debian/ || :
 override_dh_installinit:
 	dh_installinit --name=drbdmanaged --no-start
 endif
