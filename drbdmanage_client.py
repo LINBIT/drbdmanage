@@ -107,13 +107,27 @@ class DrbdManage(object):
     UMHELPER_WAIT_TIME = 5.0
 
     def __init__(self):
-        self._parser = self.setup_parser()
+        try:
+            self._parser = self.setup_parser()
+        except dbus.exceptions.DBusException as exc:
+            self._print_dbus_exception(exc)
+            exit(1)
         self._all_commands = self.parser_cmds()
         self._config = load_server_conf_file(localonly=True)
         if KEY_COLORS in self._config:
             self._colors = True if self._config[KEY_COLORS].strip().lower() == 'yes' else False
         if KEY_UTF8 in self._config:
             self._utf8 = True if self._config[KEY_UTF8].strip().lower() == 'yes' else False
+
+    def _print_dbus_exception(self, exc):
+        sys.stderr.write(
+            "\nError: Cannot connect to the drbdmanaged process using DBus\n"
+        )
+        sys.stderr.write(
+            "The DBus subsystem returned the following "
+            "error description:\n"
+        )
+        sys.stderr.write("%s\n" % (str(exc)))
 
     def dbus_init(self):
         try:
@@ -124,14 +138,7 @@ class DrbdManage(object):
                     DBusServer.DBUS_DRBDMANAGED, DBusServer.DBUS_SERVICE
                 )
         except dbus.exceptions.DBusException as exc:
-            sys.stderr.write(
-                "Error: Cannot connect to the drbdmanaged process using DBus\n"
-            )
-            sys.stderr.write(
-                "The DBus subsystem returned the following "
-                "error description:\n"
-            )
-            sys.stderr.write("%s\n" % (str(exc)))
+            self._print_dbus_exception(exc)
             exit(1)
 
     def subscribe(self, signal_name_arg, signal_handler_fn):
@@ -1307,7 +1314,11 @@ class DrbdManage(object):
         exit(0)
 
     def run(self):
-        self.parse(sys.argv[1:])
+        try:
+            self.parse(sys.argv[1:])
+        except dbus.exceptions.DBusException as exc:
+            self._print_dbus_exception(exc)
+            exit(1)
 
     def cmd_poke(self, args):
         fn_rc = 1
