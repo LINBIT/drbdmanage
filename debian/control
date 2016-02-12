@@ -8,7 +8,8 @@ Priority: optional
 # because it is not available on unbuntu 12.04
 # Build-Depends: python-all (>= 2.6.6-3), debhelper (>= 9), dh-python, ...
 # We include python-gobject, because the client (which depends on it) is started for manpage generation
-Build-Depends: debhelper (>= 9),
+Build-Depends: bash-completion,
+               debhelper (>= 9),
                help2man,
                python-all (>= 2.6.6-3),
                python-dbus,
