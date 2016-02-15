@@ -198,14 +198,13 @@ class DrbdManageProxy(object):
         # which is perfectly fine in our 1:1 mapping
         # probably we remove this choice in the future
         self._blocking = True
+        self.lock = threading.Lock()
+        self.event_shutdown_init = threading.Event()
+        self.event_shutdown_done = threading.Event()
 
     def start(self):
         if self._tcp_server:
             return
-
-        self.lock = threading.Lock()
-        self.event_shutdown_init = threading.Event()
-        self.event_shutdown_done = threading.Event()
 
         # server type selection
         if os.environ.get('LISTEN_PID', None) == str(os.getpid()):

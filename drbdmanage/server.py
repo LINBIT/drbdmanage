@@ -479,13 +479,13 @@ class DrbdManageServer(object):
 
         self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
 
+        # Set the full member count for quorum tracking
+        self._quorum.readjust_full_member_count()
+
         if self._is_satellite == SAT_CONTROL_NODE:
             self.update_satellite_states()
             self._persist.json_export(self._objects_root)
             self.send_init_satellites()
-
-        # Set the full member count for quorum tracking
-        self._quorum.readjust_full_member_count()
 
         # Create drbdmanage objects
         #
@@ -1467,27 +1467,26 @@ class DrbdManageServer(object):
 
         needs_change = False
 
-        wanted = [s for s, state in self.sat_state_ctrlvol.items() if state == SAT_CON_STARTUP or state == SAT_CON_ESTABLISHED]
+        wanted = [s for s, state in self.sat_state_ctrlvol.items()
+                  if state == SAT_CON_STARTUP or state == SAT_CON_ESTABLISHED]
 
         instance_node = self.get_instance_node()
         for satellite in [s for s in wanted if s not in self._proxy.get_established()]:
             skip = False
             for node in self.iterate_nodes():
-                if node is instance_node:  # can never send init to myself
-                    continue
-                if node.get_props().get_prop(KEY_ISSATELLITE, os.path.join(ns, satellite)):
+                # node != instance_node: can never send init to myself
+                if (node is not instance_node and
+                    node.get_props().get_prop(KEY_ISSATELLITE, os.path.join(ns, satellite)) is not None):
                     skip = True  # somebody else is responsible for that satellite
                     needs_change = True  # give it a hint to shutdown
                     break
-            if skip:
-                continue
-
-            opcode, length, data = self._proxy.send_cmd(satellite, KEY_S_CMD_INIT)
-            if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
-                self.sat_state_ctrlvol[satellite] = SAT_CON_ESTABLISHED
-                node_props = self.get_instance_node().get_props()
-                node_props.set_prop(KEY_ISSATELLITE, SAT_CON_ESTABLISHED, os.path.join(ns, satellite))
-                needs_change = True
+            if not skip:
+                opcode, length, data = self._proxy.send_cmd(satellite, KEY_S_CMD_INIT)
+                if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                    self.sat_state_ctrlvol[satellite] = SAT_CON_ESTABLISHED
+                    node_props = self.get_instance_node().get_props()
+                    node_props.set_prop(KEY_ISSATELLITE, SAT_CON_ESTABLISHED, os.path.join(ns, satellite))
+                    needs_change = True
 
         return needs_change
 
