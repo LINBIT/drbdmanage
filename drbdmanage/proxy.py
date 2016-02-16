@@ -379,10 +379,14 @@ class DrbdManageProxy(object):
         payload = ''
 
         if satellite_name not in self._satsockets:
+            satellite_node = self._dmserver.get_node(satellite_name)
+            if satellite_node is None:
+                return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
+            satellite_ip = satellite_node.get_addr()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._satsockets[satellite_name] = sock
             try:
-                sock.connect((satellite_name, port))
+                sock.connect((satellite_ip, port))
             except Exception:
                 self._shutdown_and_close(self._satsockets[satellite_name])
                 del self._satsockets[satellite_name]
