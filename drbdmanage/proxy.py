@@ -330,8 +330,8 @@ class DrbdManageProxy(object):
 
         data = bytearray(''.join(chunks))
 
-        opcode = struct.unpack("!H", data[0:self.OP_LEN])
-        length = struct.unpack("!I", data[self.OP_LEN:self.OP_LEN + self.LEN_LEN])
+        opcode = struct.unpack("!H", str(data[0:self.OP_LEN]))
+        length = struct.unpack("!I", str(data[self.OP_LEN:self.OP_LEN + self.LEN_LEN]))
         opcode = opcode[0]
         length = length[0]
 
