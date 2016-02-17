@@ -1,5 +1,6 @@
 SHELL=/bin/bash
 GIT = git
+INSTALLFILES=.installfiles
 override GITHEAD := $(shell test -e .git && $(GIT) rev-parse HEAD)
 
 U := $(shell ./setup.py versionup2date >/dev/null 2>&1; echo $$?;)
@@ -11,7 +12,11 @@ doc:
 	python setup.py build_man
 
 install: drbdmanage/consts_githash.py
-	python setup.py install
+	python setup.py install --record $(INSTALLFILES)
+
+uninstall:
+	test -f $(INSTALLFILES) && cat $(INSTALLFILES) | xargs rm -rf || true
+	rm -f $(INSTALLFILES)
 
 ifneq ($(U),0)
 up2date:
