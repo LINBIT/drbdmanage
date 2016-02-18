@@ -4893,10 +4893,8 @@ class DrbdManageServer(object):
         """
         fn_rc = 0
         resource = assignment.get_resource()
-        file_path = self._conf[self.KEY_DRBD_CONFPATH]
-        if not file_path.endswith("/"):
-            file_path += "/"
-        file_path += "drbdmanage_" + resource.get_name() + ".res"
+        file_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                 "drbdmanage_" + resource.get_name() + ".res")
 
         global_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
                                    FILE_GLOBAL_COMMON_CONF)
@@ -4932,10 +4930,8 @@ class DrbdManageServer(object):
         @return: 0 on success, 1 on error
         """
         fn_rc = 0
-        file_path = self._conf[self.KEY_DRBD_CONFPATH]
-        if not file_path.endswith("/"):
-            file_path += "/"
-        file_path += "drbdmanage_" + resource_name + ".res"
+        file_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                 "drbdmanage_" + resource_name + ".res")
         try:
             os.unlink(file_path)
         except OSError as oserr:
@@ -5467,11 +5463,11 @@ class DrbdManageServer(object):
                 if port is None:
                     port = str(DRBDCTRL_DEFAULT_PORT)
                 if bdev_0 is None:
-                    bdev_0 = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
-                              "/" + DRBDCTRL_LV_NAME_0)
+                    bdev_0 = os.path.join("/dev/", self.get_conf_value(KEY_DRBDCTRL_VG),
+                                          DRBDCTRL_LV_NAME_0)
                 if bdev_1 is None:
-                    bdev_1 = ("/dev/" + self.get_conf_value(KEY_DRBDCTRL_VG) +
-                              "/" + DRBDCTRL_LV_NAME_1)
+                    bdev_1 = os.path.join("/dev/", self.get_conf_value(KEY_DRBDCTRL_VG),
+                                          DRBDCTRL_LV_NAME_1)
                 if secret is None:
                     secret = generate_secret()
 

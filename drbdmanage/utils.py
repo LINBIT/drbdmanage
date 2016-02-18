@@ -752,12 +752,10 @@ def build_path(prefix, filename):
     @return: path assembled from prefix and file name
     @rtype:  str
     """
-    full_path = filename
-    if prefix is not None:
-        if len(prefix) > 0 and (not prefix.endswith("/")):
-            prefix += "/"
-        full_path = prefix + filename
-    return full_path
+    if prefix is not None and len(prefix) > 0:
+        return os.path.join(prefix, filename)
+    else:
+        return filename
 
 
 def extend_path(orig_path, ext_path):
