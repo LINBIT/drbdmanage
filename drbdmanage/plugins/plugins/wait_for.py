@@ -101,7 +101,7 @@ class PolicyBase(object):
         timeo = cnf.get('timeout', None)
         if start and timeo:
             now = time.time()
-            end = int(start) + int(timeo)
+            end = float(start) + float(timeo)
 
             if now >= end:
                 return self.success("""Timed out: %(start)d + %(t-o)d before now \
@@ -181,27 +181,29 @@ class WaitForResource(PolicyBase):
 
         for a in res.iterate_assignments():
             tstate = a.get_tstate()
-            # TODO(pm): check cstate, too?
+
             if dm_utils.is_set(tstate, a.FLAG_DISKLESS):
                 continue
 
-            for vol in a.iterate_volumes():
-                vid = vol.get_id()
+            for vol_state in a.iterate_volume_states():
+                vid = vol_state.get_id()
 
                 # Only "interesting" volumes
                 if isinstance(vol_spec, long):
                     if vid != vol_spec:
                         continue
 
-                if (len(diskful) < vid) or (not diskful[vid]):
-                    diskful[vid] = []
+                while (len(diskful) <= vid):
+                    diskful.append([])
 
-                diskful[vid].append(a.is_deployed())
+                diskful[vid].append(dm_utils.is_set(vol_state.get_cstate(), vol_state.FLAG_DEPLOY) and
+                                    dm_utils.is_set(vol_state.get_tstate(), vol_state.FLAG_DEPLOY))
+
 
         # look for the most scarce volume, and return its statistics
         min_depl = 1000
         ret = []
-        for v, deployed_l in diskful.items():
+        for v, deployed_l in enumerate(diskful):
             deployed = sum(deployed_l)
             assert(deployed >= 0 and deployed <= 63)
 
