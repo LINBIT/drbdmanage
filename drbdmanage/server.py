@@ -482,11 +482,6 @@ class DrbdManageServer(object):
         # Set the full member count for quorum tracking
         self._quorum.readjust_full_member_count()
 
-        if self._is_satellite == SAT_CONTROL_NODE:
-            self.update_satellite_states()
-            self._persist.json_export(self._objects_root)
-            self.send_init_satellites()
-
         # Create drbdmanage objects
         #
         # Block devices manager (manages backend storage devices)
@@ -507,6 +502,27 @@ class DrbdManageServer(object):
         # Read the status report and setup quorum
         if self._is_satellite == SAT_CONTROL_NODE:
             self._drbd_event_initial_status()
+            persist = None
+            try:
+                persist = self.begin_modify_conf()
+                if persist is not None:
+                    self.update_satellite_states()
+                    self._persist.json_export(self._objects_root)
+                    _, need_save = self.send_init_satellites()
+                    if need_save:
+                        self.save_conf_data(persist)
+                else:
+                    raise PersistenceException
+            except PersistenceException:
+                logging.error("Cannot save updated satellite properties")
+            except QuorumException:
+                logging.error("Cannot initialize satellite properties, partition does not have a quorum")
+            except Exception as exc:
+                # Log any otherwise unhandled exceptions, but attempt to
+                # continue startup anyway
+                self.catch_internal_error(exc)
+            finally:
+                self.end_modify_conf(persist)
 
         # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
@@ -1466,6 +1482,7 @@ class DrbdManageServer(object):
         self._persist.json_export(self._objects_root)
 
         needs_change = False
+        needs_save = False
 
         wanted = [s for s, state in self.sat_state_ctrlvol.items()
                   if state == SAT_CON_STARTUP or state == SAT_CON_ESTABLISHED]
@@ -1487,8 +1504,9 @@ class DrbdManageServer(object):
                     node_props = self.get_instance_node().get_props()
                     node_props.set_prop(KEY_ISSATELLITE, SAT_CON_ESTABLISHED, os.path.join(ns, satellite))
                     needs_change = True
+                    needs_save = True
 
-        return needs_change
+        return needs_change, needs_save
 
     def _remove_satellites(self, satellite_names, node_names=[]):
         # persistence has to be opened by caller

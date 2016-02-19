@@ -301,7 +301,7 @@ class DrbdManager(object):
                 state_changed = True
 
             # send CMD_INIT to ones not already inited
-            need_change = self._server.send_init_satellites()
+            need_change, _ = self._server.send_init_satellites()
             if need_change:
                 state_changed = True
 
