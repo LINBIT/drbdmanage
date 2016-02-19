@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-HEADER = """
+HEADER = r"""
 [31m #######  ######  ######  ######
 [31m ##	# #	# #	# #	#[32m  #    #   ##	 #    #	  ##	 ####	#####
 [31m ##	# #	# #	# #	#[32m  ##  ##  #  #	 ##   #	 #  #	#    #	#
@@ -62,7 +62,7 @@ my @node = map {
 } (sort keys %$n_o);
 
 $node[$_] = " " x $nodelen for (@node .. 9);
-substr($node[9], 0, 3) = "..." if $node[10];
+$node[9] = sprintf("%-*s", $nodelen, " ... ") if $node[10];
 
 my $string = " @node "; # needed for perl-5.10.1-136.el6.i686; else the node list is just "hash"
 
@@ -91,7 +91,7 @@ my @res_l2 = map {
 	$a cmp $b;
 } keys %res;
 $res_l2[$_] = " " x $reslen for (@res_l2 .. 19);
-substr($res_l2[19], 0, 3) = "..." if $res_l2[20];
+$res_l2[19] = sprintf("%-*s", $reslen, " ... ") if $res_l2[20];
 
 
 $DRBDmgr =~ s/^.*\n//;
