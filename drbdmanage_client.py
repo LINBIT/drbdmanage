@@ -405,7 +405,7 @@ class DrbdManage(object):
             'Kibibyte (2 ^ 10 bytes). All other unit specifications are implicitly '
             'converted to Kibibyte, so that the actual size value used by drbdmanage '
             'is the smallest natural number of Kibibytes that is large enough to '
-            'accomodate a volume of the requested size in the specified size unit.'
+            'accommodate a volume of the requested size in the specified size unit.'
         ).completer = size_completer
         p_new_vol.set_defaults(func=self.cmd_new_volume)
         p_new_vol.set_defaults(command=p_new_vol_command)
@@ -441,7 +441,7 @@ class DrbdManage(object):
             'Kibibyte (2 ^ 10 bytes). All other unit specifications are implicitly '
             'converted to Kibibyte, so that the actual size value used by drbdmanage '
             'is the smallest natural number of Kibibytes that is large enough to '
-            'accomodate a volume of the requested size in the specified size unit.'
+            'accommodate a volume of the requested size in the specified size unit.'
         ).completer = size_completer
         p_resize_vol.set_defaults(func=self.cmd_resize_volume)
         p_resize_vol.set_defaults(command=p_resize_vol_command)
@@ -954,7 +954,7 @@ class DrbdManage(object):
 
         # ping
         p_ping = subp.add_parser('ping', description='Pings the server. The '
-                                 'server should anser with a "pong"')
+                                 'server should answer with a "pong"')
         p_ping.set_defaults(func=self.cmd_ping)
 
         # startup
@@ -2795,7 +2795,7 @@ or the drbdmanage server.
 
             if not quiet:
                 quiet = self.user_confirm("""
-You are going to initalize a new drbdmanage cluster.
+You are going to initialize a new drbdmanage cluster.
 CAUTION! Note that:
   * Any previous drbdmanage cluster information may be removed
   * Any remaining resources managed by a previous drbdmanage installation
@@ -3148,7 +3148,7 @@ Confirm:
 
         if not quiet:
             quiet = self.user_confirm(
-                "You are going to initalize a new "
+                "You are going to initialize a new "
                 "drbdmanage control volume on:\n"
                 "  %s\n"
                 "CAUTION! Note that:\n"
