@@ -29,10 +29,10 @@ class PluginManager():
     def __init__(self, server):
         self._server = server
         self._known = {
-            'drbdmanage.deployers.BalancedDeployer':		'balanced-deployer',
-            'drbdmanage.storage.lvm.Lvm':			'LVM',
-            'drbdmanage.storage.lvm_thinlv.LvmThinLv':		'ThinLV',
-            'drbdmanage.storage.lvm_thinpool.LvmThinPool':	'ThinPool',
+            'drbdmanage.deployers.BalancedDeployer':        'balanced-deployer',
+            'drbdmanage.storage.lvm.Lvm':                   'LVM',
+            'drbdmanage.storage.lvm_thinlv.LvmThinLv':      'ThinLV',
+            'drbdmanage.storage.lvm_thinpool.LvmThinPool':  'ThinPool',
         }
 
         self._loaded = dict()
@@ -55,9 +55,8 @@ class PluginManager():
         return instance
 
     def _get_name(self, plugin_path):
-	# if no "nice" name is defined, return the path, to have an unique ID.
-	return self._known.get(plugin_path, plugin_path)
-	return ''
+        # if no "nice" name is defined, return the path, to have an unique ID.
+        return self._known.get(plugin_path, plugin_path)
 
     def _get_plugin_default_config(self, plugin_path):
         """
