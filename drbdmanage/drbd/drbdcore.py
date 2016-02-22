@@ -1618,19 +1618,22 @@ class DrbdManager(object):
         fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
         # do not attach clients, because there is no local storage on clients
-        drbd_proc = self._drbdadm.attach(
-            resource.get_name(),
-            vol_state.get_id()
-        )
-        if drbd_proc is not None:
-            self._resconf.write(drbd_proc.stdin, assignment, False)
-            drbd_proc.stdin.close()
-            fn_rc = drbd_proc.wait()
-            if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
-                # TODO: order drbdadm to attach the volume
-                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
+            drbd_proc = self._drbdadm.attach(
+                resource.get_name(),
+                vol_state.get_id()
+            )
+            if drbd_proc is not None:
+                self._resconf.write(drbd_proc.stdin, assignment, False)
+                drbd_proc.stdin.close()
+                fn_rc = drbd_proc.wait()
+                if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
+                    # TODO: order drbdadm to attach the volume
+                    vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            else:
+                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
         else:
-            fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+            vol_state.clear_tstate_flags(DrbdVolumeState.FLAG_ATTACH)
 
         logging.debug("DrbdManager: Exit function _attach()")
         return fn_rc
