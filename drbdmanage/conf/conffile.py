@@ -353,16 +353,26 @@ class DrbdAdmConf(object):
                     else:
                         clients.append(node)
 
+            # Generate connections configuration
             conn_conf = DrbdConnectionConf(servers, clients, self.objects_root, stream, self.target_node)
             nodes_interesting = conn_conf.generate_conf()
 
-            # begin resource/nodes
             local_node = assignment.get_node()
+            # If there are no servers at all, generate a valid
+            # single-node connection mesh
+            if len(servers) == 0:
+                stream.write(
+                    "    connection-mesh {\n"
+                    "        hosts " + local_node.get_name() + ";\n"
+                    "    }\n"
+                )
+
+            # begin resource/nodes
             for assg in resource.iterate_assignments():
                 diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
                 if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or undeployed_flag):
                     node = assg.get_node()
-                    if node not in nodes_interesting:
+                    if node not in nodes_interesting and node is not local_node:
                         continue
                     stream.write(
                         "    on %s {\n"
@@ -555,6 +565,12 @@ class DrbdAdmConf(object):
                             % (client_name, server_node.get_name())
                         )
                 # end resource/connection
+            else:
+                stream.write(
+                    "    connection-mesh {\n"
+                    "        hosts " + local_node.get_name() + ";\n"
+                    "    }\n"
+                )
 
             stream.write("}\n")
             # end resource
