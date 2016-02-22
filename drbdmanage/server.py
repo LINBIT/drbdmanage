@@ -1102,8 +1102,14 @@ class DrbdManageServer(object):
         ret = None
         try:
             plugin = self._pluginmgr.get_plugin_instance(plugin_name)
-        except:
-            add_rc_entry(fn_rc, DM_EPLUGIN, dm_exc_text(DM_EPLUGIN))
+        except Exception as e:
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            add_rc_entry(fn_rc, DM_EPLUGIN,
+                         "Error loading plugin: %(msg)s, in %(backtrace)s",
+                         [["msg", str(e)],
+                          ["repr", repr(e)],
+                          ["backtrace", "".join(traceback.format_tb(exc_traceback))],
+                          ])
             return (fn_rc, {})
 
         try:
@@ -1111,11 +1117,11 @@ class DrbdManageServer(object):
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             add_rc_entry(fn_rc, DM_EINVAL,
-                    "Error configuring plugin: %(e)s",
-                    [ ["msg", str(e)],
-                      ["repr", repr(e)],
-                      ["backtrace", "".join(traceback.format_tb(exc_traceback))],
-                    ] )
+                         "Error configuring plugin: %(msg)s, in %(backtrace)s",
+                         [["msg", str(e)],
+                          ["repr", repr(e)],
+                          ["backtrace", "".join(traceback.format_tb(exc_traceback))],
+                          ])
             return (fn_rc, {})
 
         try:
@@ -1136,11 +1142,11 @@ class DrbdManageServer(object):
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             add_rc_entry(fn_rc, DM_EINVAL,
-                    "Error running plugin: %(e)s",
-                    [ ["msg", str(e)],
-                      ["repr", repr(e)],
-                      ["backtrace", "".join(traceback.format_tb(exc_traceback))],
-                    ] )
+                         "Error running plugin: %(msg)s, in %(backtrace)s",
+                         [["msg", str(e)],
+                          ["repr", repr(e)],
+                          ["backtrace", "".join(traceback.format_tb(exc_traceback))],
+                          ])
             return (fn_rc, {})
 
         # Error (-in-error) case
