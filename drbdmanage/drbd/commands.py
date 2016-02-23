@@ -34,6 +34,8 @@ class DrbdAdm(object):
     EXECUTABLE      = "drbdadm"
     RES_ALL_KEYWORD = "all"
 
+    FALLBACK_EXECUTABLE = "drbdsetup"
+
     def __init__(self):
         pass
 
@@ -103,6 +105,24 @@ class DrbdAdm(object):
         logging.debug("DrbdAdm: down %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "down", res_name]
         return self._run_drbdadm(exec_args)
+
+
+    def fallback_down(self, res_name):
+        """
+        Shuts down (unconfigures) a DRBD resource
+
+        @return: True if the fallback executable exited with exit code 0, False otherwise
+        """
+        fallback_ok = False
+        logging.debug("DrbdAdm: fallback_down(%s)" % (res_name))
+        exec_args = [self.FALLBACK_EXECUTABLE, "down", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+        try:
+            subprocess.check_call(exec_args)
+            fallback_ok = True
+        except subprocess.CalledProcessError:
+            pass
+        return fallback_ok
 
 
     def primary(self, res_name, force):

@@ -1459,12 +1459,13 @@ class DrbdManager(object):
         logging.debug("DrbdManager: Enter function _undeploy_assignment()")
         bd_mgr = self._server.get_bd_mgr()
         resource = assignment.get_resource()
+        res_name = resource.get_name()
 
         ud_errors = False
         # No actions are required for empty assignments
         if not assignment.is_empty():
             # call drbdadm to stop the DRBD on top of the blockdevice
-            drbd_proc = self._drbdadm.down(resource.get_name())
+            drbd_proc = self._drbdadm.down(res_name)
             if drbd_proc is not None:
                 local_node = self._server.get_instance_node()
                 nodes = [ local_node ]
@@ -1477,6 +1478,12 @@ class DrbdManager(object):
                 )
                 drbd_proc.stdin.close()
                 fn_rc = drbd_proc.wait()
+
+                if fn_rc != 0:
+                    # drbdadm did not work, fall back to a more direct way
+                    # of shutting down resources
+                    if (self._drbdadm.fallback_down(res_name)):
+                        fn_rc = 0
 
                 if fn_rc == 0:
                     # if the assignment was diskless, mark all
