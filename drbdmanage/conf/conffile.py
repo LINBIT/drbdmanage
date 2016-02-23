@@ -177,6 +177,11 @@ class DrbdConnectionConf(object):
         if len(self._all_nodes) == 1:
             self._gen_mesh_conf(self._all_nodes, False)
             return self._all_nodes
+        # or consists only of clients
+        if len(self.servers) == 0:
+            self._all_nodes = [self._get_server_instance()]
+            self._gen_mesh_conf(self._all_nodes, False)
+            return self._all_nodes
 
         # populate self._meshes with nodes that can be added to 'connection-mesh'
         # these are nodes that have the same site config and are not diskless
@@ -357,22 +362,14 @@ class DrbdAdmConf(object):
             conn_conf = DrbdConnectionConf(servers, clients, self.objects_root, stream, self.target_node)
             nodes_interesting = conn_conf.generate_conf()
 
-            local_node = assignment.get_node()
-            # If there are no servers at all, generate a valid
-            # single-node connection mesh
-            if len(servers) == 0:
-                stream.write(
-                    "    connection-mesh {\n"
-                    "        hosts " + local_node.get_name() + ";\n"
-                    "    }\n"
-                )
-
             # begin resource/nodes
+            local_node = assignment.get_node()
+
             for assg in resource.iterate_assignments():
                 diskless = is_set(assg.get_tstate(), assg.FLAG_DISKLESS)
                 if ((assg.get_tstate() & assg.FLAG_DEPLOY != 0) or undeployed_flag):
                     node = assg.get_node()
-                    if node not in nodes_interesting and node is not local_node:
+                    if node not in nodes_interesting:
                         continue
                     stream.write(
                         "    on %s {\n"
