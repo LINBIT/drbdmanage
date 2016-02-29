@@ -26,6 +26,7 @@ except ImportError:
 from drbdmanage.storage.lvm import Lvm
 from drbdmanage.storage.lvm_thinlv import LvmThinLv
 from drbdmanage.storage.lvm_thinpool import LvmThinPool
+from drbdmanage.storage.zvol import Zvol
 
 
 class PluginManager():
@@ -37,6 +38,7 @@ class PluginManager():
             'drbdmanage.storage.lvm.Lvm': Lvm.NAME,
             'drbdmanage.storage.lvm_thinlv.LvmThinLv': LvmThinLv.NAME,
             'drbdmanage.storage.lvm_thinpool.LvmThinPool': LvmThinPool.NAME,
+            'drbdmanage.storage.zvol.Zvol': Zvol.NAME,
         }
 
         self._loaded = dict()
