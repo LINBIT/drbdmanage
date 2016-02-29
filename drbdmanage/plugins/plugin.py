@@ -23,16 +23,20 @@ try:
 except ImportError:
     import drbdmanage.importlib as importlib
 
+from drbdmanage.storage.lvm import Lvm
+from drbdmanage.storage.lvm_thinlv import LvmThinLv
+from drbdmanage.storage.lvm_thinpool import LvmThinPool
+
 
 class PluginManager():
 
     def __init__(self, server):
         self._server = server
         self._known = {
-            'drbdmanage.deployers.BalancedDeployer':        'balanced-deployer',
-            'drbdmanage.storage.lvm.Lvm':                   'LVM',
-            'drbdmanage.storage.lvm_thinlv.LvmThinLv':      'ThinLV',
-            'drbdmanage.storage.lvm_thinpool.LvmThinPool':  'ThinPool',
+            'drbdmanage.deployers.BalancedDeployer': 'balanced-deployer',
+            'drbdmanage.storage.lvm.Lvm': Lvm.NAME,
+            'drbdmanage.storage.lvm_thinlv.LvmThinLv': LvmThinLv.NAME,
+            'drbdmanage.storage.lvm_thinpool.LvmThinPool': LvmThinPool.NAME,
         }
 
         self._loaded = dict()

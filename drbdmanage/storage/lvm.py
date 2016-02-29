@@ -19,17 +19,14 @@
 """
 
 import os
-import time
-import json
 import logging
 import subprocess
-import drbdmanage.storage.storagecore as storcore
-import drbdmanage.storage.persistence as storpers
 import drbdmanage.storage.lvm_common as lvmcom
+from drbdmanage.storage.storageplugin_common import (
+    StoragePluginException, StoragePluginUnmanagedVolumeException)
 
 import drbdmanage.consts as consts
 import drbdmanage.exceptions as exc
-import drbdmanage.storage.lvm_exceptions as lvmexc
 import drbdmanage.utils as utils
 
 
@@ -43,12 +40,14 @@ class Lvm(lvmcom.LvmCommon):
     logical volume manager (LVM).
     """
 
+    NAME = 'Lvm'
+
     # Configuration file keys
     KEY_DEV_PATH = "dev-path"
     KEY_LVM_PATH = "lvm-path"
 
     # Path state file of this module
-    LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
+    STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm.local.json"
 
     # Command names of LVM utilities
     LVM_CREATE = "lvcreate"
@@ -89,11 +88,7 @@ class Lvm(lvmcom.LvmCommon):
     _cmd_vgs     = None
     _subproc_env = None
 
-
     def __init__(self, server):
-        """
-        Initializes a new instance
-        """
         super(Lvm, self).__init__()
         self.reconfigure()
 
@@ -108,9 +103,6 @@ class Lvm(lvmcom.LvmCommon):
         return True
 
     def reconfigure(self, config=None):
-        """
-        Reconfigures the module and reloads state information
-        """
         try:
             # Setup the environment for subprocesses
             self._subproc_env = dict(os.environ.items())
@@ -121,7 +113,6 @@ class Lvm(lvmcom.LvmCommon):
                 self._conf = config
             else:
                 self._conf = Lvm.CONF_DEFAULTS.copy()
-
 
             # Setup cached settings
             self._vg_path = utils.build_path(
@@ -134,11 +125,11 @@ class Lvm(lvmcom.LvmCommon):
             self._cmd_vgs    = utils.build_path(self._conf[Lvm.KEY_LVM_PATH], Lvm.LVM_VGS)
 
             # Load the saved state
-            self._volumes = self._load_state()
+            self._volumes = self.load_state()
         except exc.PersistenceException as pers_exc:
             logging.warning(
                 "Lvm plugin: Cannot load state file '%s'"
-                % (Lvm.LVM_STATEFILE)
+                % (Lvm.STATEFILE)
             )
             raise pers_exc
         except Exception as unhandled_exc:
@@ -149,307 +140,7 @@ class Lvm(lvmcom.LvmCommon):
             # Re-raise
             raise unhandled_exc
 
-
-    def create_blockdevice(self, name, vol_id, size):
-        """
-        Allocates a block device as backing storage for a DRBD volume
-
-        @param   name: resource name; subject to name constraints
-        @type    name: str
-        @param   id: volume id
-        @type    id: int
-        @param   size: size of the block device in kiB (binary kilobytes)
-        @type    size: long
-        @return: block device of the specified size
-        @rtype:  BlockDevice object; None if the allocation fails
-        """
-        blockdev = None
-        lv_name = self.lv_name(name, vol_id)
-
-        try:
-            # Remove any existing LV
-            tries = 0
-            # Check whether an LV with that name exists already
-            lv_exists = self._check_lv_exists(lv_name)
-            if lv_exists:
-                if self._volumes.get(lv_name) is None:
-                    # Unknown LV, possibly user-generated and not managed
-                    # by drbdmanage. Abort.
-                    raise lvmexc.LvmUnmanagedVolumeException
-                logging.warning(
-                    "Lvm: LV '%s' exists already, attempting to remove it."
-                    % (lv_name)
-                )
-            while lv_exists and tries < Lvm.MAX_RETRIES:
-                if tries > 0:
-                    try:
-                        time.sleep(Lvm.RETRY_DELAY)
-                    except OSError:
-                        pass
-
-                # LV exists, maybe from an earlier attempt at creating
-                # the volume. Remove existing LV and recreate it.
-                logging.warning(
-                    "Lvm: Attempt %d of %d: "
-                    "Removal of LV '%s' failed."
-                    % (tries + 1, Lvm.MAX_RETRIES, lv_name)
-                )
-                self._remove_lv(lv_name)
-                # Check whether the removal was successful
-                lv_exists = self._check_lv_exists(lv_name)
-                if not lv_exists:
-                    try:
-                        del self._volumes[lv_name]
-                    except KeyError:
-                        pass
-                    self._save_state(self._volumes)
-                tries += 1
-
-            # Create the LV, unless the removal of any existing LV under
-            # the specified name was unsuccessful
-            if not lv_exists:
-                tries = 0
-                while blockdev is None and tries < Lvm.MAX_RETRIES:
-                    if tries > 0:
-                        try:
-                            time.sleep(Lvm.RETRY_DELAY)
-                        except OSError:
-                            pass
-
-                    self._create_lv(lv_name, size)
-                    lv_exists = self._check_lv_exists(lv_name)
-                    if lv_exists:
-                        # LVM reports that the LV exists, create the
-                        # blockdevice object representing the LV in
-                        # drbdmanage and register it in the LVM module's
-                        # persistent data structures
-                        blockdev = storcore.BlockDevice(
-                            lv_name, size,
-                            self._vg_path + lv_name
-                        )
-                        self._volumes[lv_name] = blockdev
-                        self._save_state(self._volumes)
-                    else:
-                        logging.error(
-                            "Lvm: Attempt %d of %d: "
-                            "Creation of LV '%s' failed."
-                            % (tries + 1, Lvm.MAX_RETRIES, lv_name)
-                        )
-                    tries += 1
-            else:
-                logging.error(
-                    "Lvm: Removal of an existing LV '%s' failed, aborting "
-                    "creation of the LV"
-                    % (lv_name)
-                )
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
-            # Unable to run one of the LVM commands
-            # The error is reported by the corresponding function
-            #
-            # Abort
-            pass
-        except exc.PersistenceException:
-            # save_state() failed
-            # If the LV was created, attempt to roll back
-            if blockdev is not None:
-                try:
-                    self._remove_lv(lv_name)
-                except lvmexc.LvmException:
-                    pass
-                try:
-                    lv_exists = self._check_lv_exists(lv_name)
-                    if not lv_exists:
-                        blockdev = None
-                        del self._volumes[lv_name]
-                except (lvmexc.LvmCheckFailedException, KeyError):
-                    pass
-        except lvmexc.LvmUnmanagedVolumeException:
-            # Collision with a volume not managed by drbdmanage
-            logging.error(
-                "Lvm: LV '%s' exists already, but is unknown to "
-                "drbdmanage's storage subsystem. Aborting."
-                % (lv_name)
-            )
-        except Exception as unhandled_exc:
-            logging.error(
-                "Lvm: Block device creation failed, "
-                "unhandled exception: %s"
-                % (str(unhandled_exc))
-            )
-
-        return blockdev
-
-
-    def extend_blockdevice(self, blockdevice, size):
-        """
-        Deallocates a block device
-
-        @param   blockdevice: the block device to deallocate
-        @type    blockdevice: BlockDevice object
-        @param   size: new size of the block device in kiB (binary kilobytes)
-        @type    size: long
-        @return: standard return code (see drbdmanage.exceptions)
-        """
-        fn_rc = exc.DM_ESTORAGE
-        lv_name = blockdevice.get_name()
-
-        try:
-            if self._volumes.get(lv_name) is not None:
-                if self._extend_lv(lv_name, size):
-                    fn_rc = exc.DM_SUCCESS
-            else:
-                raise lvmexc.LvmUnmanagedVolumeException
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
-            # Unable to run one of the LVM commands
-            # The error is reported by the corresponding function
-            #
-            # Abort
-            pass
-        except lvmexc.LvmUnmanagedVolumeException:
-            # Collision with a volume not managed by drbdmanage
-            logging.error(
-                "Lvm: LV '%s' is unknown to drbdmanage's storage subsystem. "
-                "Aborting extend operation."
-            )
-        except exc.PersistenceException:
-            # save_state() failed
-            # If the module has an LV listed although it has actually been
-            # removed successfully, then that can easily be corrected later
-            pass
-        except Exception as unhandled_exc:
-            logging.error(
-                "Lvm: Removal of a block device failed, "
-                "unhandled exception: %s"
-                % (str(unhandled_exc))
-            )
-        return fn_rc
-
-
-    def remove_blockdevice(self, blockdevice):
-        """
-        Deallocates a block device
-
-        @param   blockdevice: the block device to deallocate
-        @type    blockdevice: BlockDevice object
-        @return: standard return code (see drbdmanage.exceptions)
-        """
-        fn_rc = exc.DM_ESTORAGE
-        lv_name = blockdevice.get_name()
-
-        try:
-            if self._volumes.get(lv_name) is not None:
-                tries = 0
-                lv_exists = self._check_lv_exists
-                while lv_exists and tries < Lvm.MAX_RETRIES:
-                    if tries > 0:
-                        try:
-                            time.sleep(Lvm.RETRY_DELAY)
-                        except OSError:
-                            pass
-
-                    self._remove_lv(lv_name)
-                    # Check whether the removal was successful
-                    lv_exists = self._check_lv_exists(lv_name)
-                    if not lv_exists:
-                        # Removal successful. Any potential further errors,
-                        # e.g. with saving the state, can be corrected later.
-                        fn_rc = exc.DM_SUCCESS
-                        try:
-                            del self._volumes[lv_name]
-                        except KeyError:
-                            pass
-                        self._save_state(self._volumes)
-                    else:
-                        logging.warning(
-                            "Lvm: Attempt %d of %d: "
-                            "Removal of LV '%s' failed"
-                            % (tries + 1, Lvm.MAX_RETRIES, lv_name)
-                        )
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
-            # Unable to run one of the LVM commands
-            # The error is reported by the corresponding function
-            #
-            # Abort
-            pass
-        except lvmexc.LvmUnmanagedVolumeException:
-            # FIXME: this exception does not seem to be thrown anywhere?
-            #
-            # Collision with a volume not managed by drbdmanage
-            logging.error(
-                "Lvm: LV '%s' exists, but is unknown to "
-                "drbdmanage's storage subsystem. Aborting removal."
-            )
-        except exc.PersistenceException:
-            # save_state() failed
-            # If the module has an LV listed although it has actually been
-            # removed successfully, then that can easily be corrected later
-            pass
-        except Exception as unhandled_exc:
-            logging.error(
-                "Lvm: Removal of a block device failed, "
-                "unhandled exception: %s"
-                % (str(unhandled_exc))
-            )
-
-        if fn_rc != exc.DM_SUCCESS:
-            logging.error(
-                "Lvm: Removal of LV '%s' failed"
-                % (lv_name)
-            )
-
-        return fn_rc
-
-
-    def get_blockdevice(self, bd_name):
-        """
-        Retrieves a registered BlockDevice object
-
-        The BlockDevice object allocated and registered under the supplied
-        resource name and volume id is returned.
-
-        @return: the specified block device; None on error
-        @rtype:  BlockDevice object
-        """
-        blockdev = None
-        try:
-            blockdev = self._volumes[bd_name]
-        except KeyError:
-            pass
-        return blockdev
-
-
-    def up_blockdevice(self, blockdev):
-        """
-        Activates a block device (e.g., connects an iSCSI resource)
-
-        @param blockdevice: the block device to deactivate
-        @type  blockdevice: BlockDevice object
-        """
-        return exc.DM_SUCCESS
-
-
-    def down_blockdevice(self, blockdev):
-        """
-        Deactivates a block device (e.g., disconnects an iSCSI resource)
-
-        @param blockdevice: the block device to deactivate
-        @type  blockdevice: BlockDevice object
-        """
-        return exc.DM_SUCCESS
-
-
     def update_pool(self, node):
-        """
-        Updates the DrbdNode object with the current storage status
-
-        Determines the current total and free space that is available for
-        allocation on the host this instance of the drbdmanage server is
-        running on and updates the DrbdNode object with that information.
-
-        @param   node: The node to update
-        @type    node: DrbdNode object
-        @return: standard return code (see drbdmanage.exceptions)
-        """
         fn_rc     = exc.DM_ESTORAGE
         pool_size = -1
         pool_free = -1
@@ -504,11 +195,7 @@ class Lvm(lvmcom.LvmCommon):
 
         return (fn_rc, pool_size, pool_free)
 
-
-    def _create_lv(self, lv_name, size):
-        """
-        Creates an LVM logical volume
-        """
+    def _create_vol(self, lv_name, size):
         try:
             exec_args = [
                 self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
@@ -526,89 +213,18 @@ class Lvm(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmException
+            raise StoragePluginException
 
-
-    def _extend_lv(self, lv_name, size):
-        """
-        Extends an LVM logical volume
-        """
+    def _extend_vol(self, lv_name, size):
         return self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
                               self._cmd_extend, self._subproc_env, "Lvm")
 
-
-    def _remove_lv(self, lv_name):
-        """
-        Removes an LVM logical volume
-        """
+    def _remove_vol(self, lv_name):
         self.remove_lv(lv_name, self._conf[consts.KEY_VG_NAME],
                        self._cmd_remove, self._subproc_env, "Lvm")
 
-
-    def _check_lv_exists(self, lv_name):
-        """
-        Check whether an LVM logical volume exists
-
-        @returns: True if the LV exists, False if the LV does not exist
-        Throws an LvmCheckFailedException if the check itself fails
-        """
+    def _check_vol_exists(self, lv_name):
         return self.check_lv_exists(
             lv_name, self._conf[consts.KEY_VG_NAME],
             self._cmd_lvs, self._subproc_env, "Lvm"
         )
-
-
-    def _load_state(self):
-        """
-        Load the saved state of this module's managed logical volumes
-        """
-        return self.load_state(Lvm.LVM_STATEFILE, "Lvm")
-
-
-    def _save_state(self, save_objects):
-        """
-        Save the state of this module's managed logical volumes
-        """
-        state_file = None
-        try:
-            save_bd_properties = {}
-            for blockdev in save_objects.itervalues():
-                bd_persist = storpers.BlockDevicePersistence(blockdev)
-                bd_persist.save(save_bd_properties)
-            try:
-                state_file = open(Lvm.LVM_STATEFILE, "w")
-                data_hash = utils.DataHash()
-                save_data = json.dumps(
-                    save_bd_properties, indent=4, sort_keys=True
-                )
-                save_data += "\n"
-                data_hash.update(save_data)
-                state_file.write(save_data)
-                state_file.write("sig:%s\n" % (data_hash.get_hex_hash()))
-            except IOError as io_err:
-                logging.error(
-                    "Lvm: Saving to the state file '%s' failed due to an "
-                    "I/O error, error message from the OS: %s"
-                    % (Lvm.LVM_STATEFILE, str(io_err))
-                )
-                raise exc.PersistenceException
-            except OSError as os_err:
-                logging.error(
-                    "Lvm: Saving to the state file '%s' failed, "
-                    "error message from the OS: %s"
-                    % (Lvm.LVM_STATEFILE, str(os_err))
-                )
-                raise exc.PersistenceException
-        except exc.PersistenceException as pers_exc:
-            # re-raise
-            raise pers_exc
-        except Exception as unhandled_exc:
-            logging.error(
-                "Lvm: Saving to the state file '%s' failed, "
-                "unhandled exception: %s"
-                % (Lvm.LVM_STATEFILE, str(unhandled_exc))
-            )
-            raise exc.PersistenceException
-        finally:
-            if state_file is not None:
-                state_file.close()

@@ -20,8 +20,6 @@
 
 import os
 import time
-import json
-import errno
 import logging
 import subprocess
 import drbdmanage.drbd.drbdcommon
@@ -32,8 +30,10 @@ import drbdmanage.storage.lvm_common as lvmcom
 
 import drbdmanage.consts as consts
 import drbdmanage.exceptions as exc
-import drbdmanage.storage.lvm_exceptions as lvmexc
 import drbdmanage.utils as utils
+
+from drbdmanage.storage.storageplugin_common import (
+    StoragePluginException, StoragePluginCheckFailedException, StoragePluginUnmanagedVolumeException)
 
 
 class LvmThinPool(lvmcom.LvmCommon):
@@ -46,6 +46,9 @@ class LvmThinPool(lvmcom.LvmCommon):
     volume group of the logical volume manager (LVM)
     """
 
+    NAME = 'ThinPool'
+    SAVE_POOLS, SAVE_VOLUMES = range(2)
+
     # Configuration file keys
     KEY_DEV_PATH   = "dev-path"
     KEY_LVM_PATH   = "lvm-path"
@@ -56,7 +59,7 @@ class LvmThinPool(lvmcom.LvmCommon):
     DEFAULT_POOL_RATIO = 135
 
     # Path to state file of this module
-    LVM_STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm-thinpool.local.json"
+    STATEFILE = "/var/lib/drbdmanage/drbdmanaged-lvm-thinpool.local.json"
 
     # Command names of LVM utilities
     LVM_CREATE    = "lvcreate"
@@ -78,9 +81,9 @@ class LvmThinPool(lvmcom.LvmCommon):
 
     # Module configuration defaults
     CONF_DEFAULTS = {
-        KEY_DEV_PATH:   "/dev/",
-        consts.KEY_VG_NAME:    consts.DEFAULT_VG,
-        KEY_LVM_PATH:   "/sbin",
+        KEY_DEV_PATH: "/dev/",
+        consts.KEY_VG_NAME: consts.DEFAULT_VG,
+        KEY_LVM_PATH: "/sbin",
         KEY_POOL_RATIO: str(DEFAULT_POOL_RATIO)
     }
 
@@ -91,7 +94,7 @@ class LvmThinPool(lvmcom.LvmCommon):
     _volumes = None
 
     # Map of pools allocated by the plugin
-    _pools   = None
+    _pools = None
 
     # Lookup table for finding the pool that contains a volume
     _pool_lookup = None
@@ -109,9 +112,6 @@ class LvmThinPool(lvmcom.LvmCommon):
     _subproc_env  = None
 
     def __init__(self, server):
-        """
-        Initializes a new instance
-        """
         super(LvmThinPool, self).__init__()
         self.reconfigure()
 
@@ -126,9 +126,6 @@ class LvmThinPool(lvmcom.LvmCommon):
         return True
 
     def reconfigure(self, config=None):
-        """
-        Reconfigures the module and reloads state information
-        """
         try:
             # Setup the environment for subprocesses
             self._subproc_env = dict(os.environ.items())
@@ -153,11 +150,11 @@ class LvmThinPool(lvmcom.LvmCommon):
             self._cmd_vgs      = utils.build_path(self._conf[LvmThinPool.KEY_LVM_PATH], LvmThinPool.LVM_VGS)
 
             # Load the saved state
-            self._pools, self._volumes, self._pool_lookup = self._load_state()
+            self._pools, self._volumes, self._pool_lookup = self.load_state()
         except exc.PersistenceException as pers_exc:
             logging.warning(
                 "LvmThinPool plugin: Cannot load state file '%s'"
-                % (LvmThinPool.LVM_STATEFILE)
+                % (self.STATEFILE)
             )
             raise pers_exc
         except Exception as unhandled_exc:
@@ -167,25 +164,6 @@ class LvmThinPool(lvmcom.LvmCommon):
             )
             # Re-raise
             raise unhandled_exc
-
-
-    def get_blockdevice(self, bd_name):
-        """
-        Retrieves a registered BlockDevice object
-
-        The BlockDevice object allocated and registered under the supplied
-        resource name and volume id is returned.
-
-        @return: the specified block device; None on error
-        @rtype:  BlockDevice object
-        """
-        blockdev = None
-        try:
-            blockdev = self._volumes[bd_name]
-        except KeyError:
-            pass
-        return blockdev
-
 
     def create_blockdevice(self, name, vol_id, size):
         """
@@ -220,11 +198,11 @@ class LvmThinPool(lvmcom.LvmCommon):
             pool_size = long(size * (pool_ratio / 100))
 
             # Generate the volume and pool names
-            lv_name   = self.lv_name(name, vol_id)
+            lv_name = self.vol_name(name, vol_id)
             pool_name = ThinPool.generate_pool_name(name, vol_id)
 
             # Check for collisions (very unlikely)
-            pool_exists = self._check_lv_exists(pool_name)
+            pool_exists = self._check_vol_exists(pool_name)
             if not pool_exists:
                 tries = 0
                 while pool is None and tries < LvmThinPool.MAX_RETRIES:
@@ -236,8 +214,8 @@ class LvmThinPool(lvmcom.LvmCommon):
                     tries += 1
 
                     # Create the thin pool
-                    self._create_pool(pool_name, pool_size)
-                    pool_exists = self._check_lv_exists(pool_name)
+                    self.__create_pool(pool_name, pool_size)
+                    pool_exists = self._check_vol_exists(pool_name)
                     if pool_exists:
                         pool = ThinPool(pool_name, pool_size)
                         self._pools[pool_name] = pool
@@ -261,8 +239,8 @@ class LvmThinPool(lvmcom.LvmCommon):
                         tries += 1
 
                         # Create the logical volume
-                        self._create_lv(lv_name, pool_name, size)
-                        lv_exists = self._check_lv_exists(lv_name)
+                        self._create_vol(lv_name, pool_name, size)
+                        lv_exists = self._check_vol_exists(lv_name)
                         if lv_exists:
                             # LVM reports that the LV exists, create the
                             # blockdevice object representing the LV in
@@ -291,13 +269,13 @@ class LvmThinPool(lvmcom.LvmCommon):
                     "automatically resolved later)"
                     % (pool_name)
                 )
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+        except (StoragePluginCheckFailedException, StoragePluginException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except lvmexc.LvmUnmanagedVolumeException:
+        except StoragePluginUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPool: LV '%s' exists already, but is unknown to "
@@ -312,7 +290,7 @@ class LvmThinPool(lvmcom.LvmCommon):
             )
         try:
             if save_state_flag:
-                self._save_state(self._pools, self._volumes)
+                self.save_state([self._pools, self._volumes])
         except exc.PersistenceException:
             # save_state() failed
             # If the LV was created, attempt to roll back
@@ -320,22 +298,22 @@ class LvmThinPool(lvmcom.LvmCommon):
                 lv_name   = blockdev.get_name()
                 pool_name = pool.get_name()
                 try:
-                    self._remove_lv(lv_name)
-                except lvmexc.LvmException:
+                    self._remove_vol(lv_name)
+                except StoragePluginException:
                     pass
                 try:
-                    self._remove_lv(pool_name)
-                except lvmexc.LvmException:
+                    self._remove_vol(pool_name)
+                except StoragePluginException:
                     pass
                 try:
-                    lv_exists = self._check_lv_exists(lv_name)
+                    lv_exists = self._check_vol_exists(lv_name)
                     if not lv_exists:
                         blockdev = None
                         try:
                             del self._volumes[lv_name]
                         except KeyError:
                             pass
-                    pool_exists = self._check_lv_exists(pool_name)
+                    pool_exists = self._check_vol_exists(pool_name)
                     if not pool_exists:
                         pool.remove_volume(lv_name)
                         try:
@@ -346,56 +324,10 @@ class LvmThinPool(lvmcom.LvmCommon):
                             del self._pools[pool_name]
                         except KeyError:
                             pass
-                except (lvmexc.LvmCheckFailedException, KeyError):
+                except (StoragePluginCheckFailedException, KeyError):
                     pass
 
         return blockdev
-
-
-    def extend_blockdevice(self, blockdevice, size):
-        """
-        Deallocates a block device
-
-        @param   blockdevice: the block device to deallocate
-        @type    blockdevice: BlockDevice object
-        @param   size: new size of the block device in kiB (binary kilobytes)
-        @type    size: long
-        @return: standard return code (see drbdmanage.exceptions)
-        """
-        fn_rc = exc.DM_ESTORAGE
-        lv_name = blockdevice.get_name()
-
-        try:
-            if self._volumes.get(lv_name) is not None:
-                if self._extend_lv(lv_name, size):
-                    fn_rc = exc.DM_SUCCESS
-            else:
-                raise lvmexc.LvmUnmanagedVolumeException
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
-            # Unable to run one of the LVM commands
-            # The error is reported by the corresponding function
-            #
-            # Abort
-            pass
-        except lvmexc.LvmUnmanagedVolumeException:
-            # Collision with a volume not managed by drbdmanage
-            logging.error(
-                "LvmThinPool: LV '%s' is unknown to drbdmanage's storage subsystem. "
-                "Aborting extend operation."
-            )
-        except exc.PersistenceException:
-            # save_state() failed
-            # If the module has an LV listed although it has actually been
-            # removed successfully, then that can easily be corrected later
-            pass
-        except Exception as unhandled_exc:
-            logging.error(
-                "LvmThinPool: Removal of a block device failed, "
-                "unhandled exception: %s"
-                % (str(unhandled_exc))
-            )
-        return fn_rc
-
 
     def remove_blockdevice(self, blockdev):
         """
@@ -428,7 +360,7 @@ class LvmThinPool(lvmcom.LvmCommon):
                     )
 
                 tries = 0
-                lv_exists = self._check_lv_exists(lv_name)
+                lv_exists = self._check_vol_exists(lv_name)
                 while lv_exists and tries < LvmThinPool.MAX_RETRIES:
                     if tries > 0:
                         try:
@@ -437,8 +369,8 @@ class LvmThinPool(lvmcom.LvmCommon):
                             pass
                     tries += 1
 
-                    self._remove_lv(lv_name)
-                    lv_exists = self._check_lv_exists(lv_name)
+                    self._remove_vol(lv_name)
+                    lv_exists = self._check_vol_exists(lv_name)
                     if lv_exists:
                         logging.warning(
                             "LvmThinPool: Attempt %d of %d: "
@@ -478,8 +410,8 @@ class LvmThinPool(lvmcom.LvmCommon):
                                         pass
                                 pool_tries += 1
 
-                                self._remove_lv(pool_name)
-                                pool_exists = self._check_lv_exists(
+                                self._remove_vol(pool_name)
+                                pool_exists = self._check_vol_exists(
                                     pool_name
                                 )
                                 if not pool_exists:
@@ -509,14 +441,14 @@ class LvmThinPool(lvmcom.LvmCommon):
                         #       be better to return an error here
                         fn_rc = exc.DM_SUCCESS
             else:
-                raise lvmexc.LvmUnmanagedVolumeException
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+                raise StoragePluginUnmanagedVolumeException
+        except (StoragePluginCheckFailedException, StoragePluginException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except lvmexc.LvmUnmanagedVolumeException:
+        except StoragePluginUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPool: LV '%s' exists, but is unknown to "
@@ -536,7 +468,7 @@ class LvmThinPool(lvmcom.LvmCommon):
 
         try:
             if save_state_flag:
-                self._save_state(self._pools, self._volumes)
+                self.save_state([self._pools, self._volumes])
         except exc.PersistenceException:
             # save_state() failed
             # Can be corrected later, whenever the plugin figures out that
@@ -545,7 +477,6 @@ class LvmThinPool(lvmcom.LvmCommon):
             pass
 
         return fn_rc
-
 
     def create_snapshot(self, name, vol_id, source_blockdev):
         """
@@ -577,7 +508,7 @@ class LvmThinPool(lvmcom.LvmCommon):
 
         try:
             if pool is not None:
-                snaps_base_name = self.lv_name(name, vol_id)
+                snaps_base_name = self.vol_name(name, vol_id)
                 snaps_suffix    = pool.extract_pool_name_suffix()
                 snaps_name      = snaps_base_name + snaps_suffix
 
@@ -590,8 +521,8 @@ class LvmThinPool(lvmcom.LvmCommon):
                             pass
                     tries += 1
 
-                    self._create_snapshot(snaps_name, lv_name)
-                    snaps_exists = self._check_lv_exists(snaps_name)
+                    self._create_snapshot_impl(snaps_name, lv_name)
+                    snaps_exists = self._check_vol_exists(snaps_name)
                     if snaps_exists:
                         size = source_blockdev.get_size_kiB()
                         blockdev = storcore.BlockDevice(
@@ -602,14 +533,14 @@ class LvmThinPool(lvmcom.LvmCommon):
                         self._volumes[snaps_name] = blockdev
                         self._pool_lookup[snaps_name] = pool_name
                         self.up_blockdevice(blockdev)
-                        self._save_state(self._pools, self._volumes)
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+                        self.save_state([self._pools, self._volumes])
+        except (StoragePluginCheckFailedException, StoragePluginException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
             # Abort
             pass
-        except lvmexc.LvmUnmanagedVolumeException:
+        except StoragePluginUnmanagedVolumeException:
             # Collision with a volume not managed by drbdmanage
             logging.error(
                 "LvmThinPool: LV '%s' exists already, but is unknown to "
@@ -620,13 +551,13 @@ class LvmThinPool(lvmcom.LvmCommon):
             # save_state() failed
             # If the snapshot was created, attempt to roll back
             if blockdev is not None:
-                snaps_name   = blockdev.get_name()
+                snaps_name = blockdev.get_name()
                 try:
-                    self._remove_lv(snaps_name)
-                except lvmexc.LvmException:
+                    self._remove_vol(snaps_name)
+                except StoragePluginException:
                     pass
                 try:
-                    snaps_exists = self._check_lv_exists(snaps_name)
+                    snaps_exists = self._check_vol_exists(snaps_name)
                     if not snaps_exists:
                         blockdev = None
                         try:
@@ -642,14 +573,14 @@ class LvmThinPool(lvmcom.LvmCommon):
                                     pass
                         except KeyError:
                             pass
-                    pool_exists = self._check_lv_exists(pool_name)
+                    pool_exists = self._check_vol_exists(pool_name)
                     if not pool_exists:
                         pool.remove_volume(lv_name)
                         try:
                             del self._pools[pool_name]
                         except KeyError:
                             pass
-                except (lvmexc.LvmCheckFailedException, KeyError):
+                except (StoragePluginCheckFailedException, KeyError):
                     pass
         except Exception as unhandled_exc:
             logging.error(
@@ -660,33 +591,13 @@ class LvmThinPool(lvmcom.LvmCommon):
 
         return blockdev
 
-
     def restore_snapshot(self, name, vol_id, source_blockdev):
-        """
-        Restore a snapshot; currently an alias for create_snapshot()
-        """
         return self.create_snapshot(name, vol_id, source_blockdev)
 
-
-
-    def remove_snapshot(self, blockdevice):
-        """
-        Deallocates a snapshot block device
-
-        @param   blockdevice: the block device to deallocate
-        @type    blockdevice: BlockDevice object
-        @return: standard return code (see drbdmanage.exceptions)
-        """
+    def _remove_snapshot(self, blockdevice):
         return self.remove_blockdevice(blockdevice)
 
-
     def up_blockdevice(self, blockdevice):
-        """
-        Activates a block device (e.g., connects an iSCSI resource)
-
-        @param blockdevice: the block device to deactivate
-        @type  blockdevice: BlockDevice object
-        """
         fn_rc = exc.DM_ESTORAGE
         try:
             lv_name   = blockdevice.get_name()
@@ -720,7 +631,7 @@ class LvmThinPool(lvmcom.LvmCommon):
                     "from the OS: %s"
                     % (self._cmd_vgchange, str(os_err))
                 )
-                raise lvmexc.LvmException
+                raise StoragePluginException
 
             if pool_name is not None:
                 try:
@@ -744,7 +655,7 @@ class LvmThinPool(lvmcom.LvmCommon):
                         "from the OS: %s"
                         % (self._cmd_lvchange, str(os_err))
                     )
-                    raise lvmexc.LvmException
+                    raise StoragePluginException
             else:
                 logging.error(
                     "LvmThinPool: Incomplete activation of volume '%s', "
@@ -771,10 +682,10 @@ class LvmThinPool(lvmcom.LvmCommon):
                     "external program '%s', error message from the OS: %s"
                     % (self._cmd_lvchange, str(os_err))
                 )
-                raise lvmexc.LvmException
+                raise StoragePluginException
             if vg_activated and pool_activated and lv_activated:
                 fn_rc = exc.DM_SUCCESS
-        except (lvmexc.LvmCheckFailedException, lvmexc.LvmException):
+        except (StoragePluginCheckFailedException, StoragePluginException):
             # Unable to run one of the LVM commands
             # The error is reported by the corresponding function
             #
@@ -788,17 +699,6 @@ class LvmThinPool(lvmcom.LvmCommon):
             )
 
         return fn_rc
-
-
-    def down_blockdevice(self, blockdevice):
-        """
-        Deactivates a block device (e.g., disconnects an iSCSI resource)
-
-        @param blockdevice: the block device to deactivate
-        @type  blockdevice: BlockDevice object
-        """
-        return exc.DM_SUCCESS
-
 
     def update_pool(self, node):
         """
@@ -866,201 +766,63 @@ class LvmThinPool(lvmcom.LvmCommon):
 
         return (fn_rc, pool_size, pool_free)
 
-
-    def _load_state(self):
-        """
-        Load the saved state of this module's managed logical volumes
-        """
-        loaded_pools   = {}
+    def _deserialize(self, data):
+        loaded_pools = {}
         loaded_volumes = {}
-        loaded_lookup  = {}
-        state_file     = None
-        try:
-            state_file  = open(LvmThinPool.LVM_STATEFILE, "r")
+        loaded_lookup = {}
+        if not data:
+            return loaded_pools, loaded_volumes, loaded_lookup
 
-            loaded_data = state_file.read()
-
-            state_file.close()
-            state_file = None
-
-            stored_hash = None
-            line_begin  = 0
-            line_end    = 0
-            while line_end >= 0 and stored_hash is None:
-                line_end = loaded_data.find("\n", line_begin)
-                if line_end != -1:
-                    line = loaded_data[line_begin:line_end]
-                else:
-                    line = loaded_data[line_begin:]
-                if line.startswith("sig:"):
-                    stored_hash = line[4:]
-                else:
-                    line_begin = line_end + 1
-            if stored_hash is not None:
-                # truncate load_data so it does not contain the signature line
-                loaded_data = loaded_data[:line_begin]
-                data_hash = utils.DataHash()
-                data_hash.update(loaded_data)
-                computed_hash = data_hash.get_hex_hash()
-                if computed_hash != stored_hash:
-                    logging.warning(
-                        "LvmThinPool: Data in state file '%s' has "
-                        "an invalid signature, this file may be corrupt"
-                        % (LvmThinPool.LVM_STATEFILE)
-                    )
+        # Deserialize the block devices from the volumes map
+        volumes_con = data["volumes"]
+        for properties in volumes_con.itervalues():
+            blockdev = storpers.BlockDevicePersistence.load(properties)
+            if blockdev is not None:
+                loaded_volumes[blockdev.get_name()] = blockdev
             else:
-                logging.warning(
-                    "LvmThinPool: Data in state file '%s' is unsigned"
-                    % (LvmThinPool.LVM_STATEFILE)
-                )
-
-            # Load the state from the JSON data
-            state_con = json.loads(loaded_data)
-
-            # Deserialize the block devices from the volumes map
-            volumes_con = state_con["volumes"]
-            for properties in volumes_con.itervalues():
-                blockdev = storpers.BlockDevicePersistence.load(properties)
-                if blockdev is not None:
-                    loaded_volumes[blockdev.get_name()] = blockdev
-                else:
-                    raise exc.PersistenceException
-
-            # Deserialize the thin pools from the pools map
-            pools_con = state_con["pools"]
-            for properties in pools_con.itervalues():
-                thin_pool = ThinPoolPersistence.load(properties)
-                if thin_pool is not None:
-                    loaded_pools[thin_pool.get_name()] = thin_pool
-                else:
-                    raise exc.PersistenceException
-
-            # Build the pool lookup table
-            for pool in loaded_pools.itervalues():
-                pool_name = pool.get_name()
-                for volume_name in pool.iterate_volumes():
-                    loaded_lookup[volume_name] = pool_name
-
-        except exc.PersistenceException as pers_exc:
-            # re-raise
-            raise pers_exc
-        except IOError as io_err:
-            if io_err.errno == errno.ENOENT:
-                # State file does not exist, probably because the module
-                # is being used for the first time.
-                #
-                # Ignore and continue with an empty configuration
-                pass
-            else:
-                logging.error(
-                    "LvmThinPool: Loading the state file '%s' failed "
-                    "due to an I/O error, error message from the OS: %s"
-                    % (LvmThinPool.LVM_STATEFILE, io_err.strerror)
-                )
                 raise exc.PersistenceException
-        except OSError as os_err:
-            logging.error(
-                "LvmThinPool: Loading the state file '%s' failed, "
-                "error message from the OS: %s"
-                % (LvmThinPool.LVM_STATEFILE, str(os_err))
-            )
-            raise exc.PersistenceException
-        except Exception as unhandled_exc:
-            logging.error(
-                "LvmThinPool: Loading the state file '%s' failed, "
-                "unhandled exception: %s"
-                % (LvmThinPool.LVM_STATEFILE, str(unhandled_exc))
-            )
-            raise exc.PersistenceException
-        finally:
-            if state_file is not None:
-                state_file.close()
+
+        # Deserialize the thin pools from the pools map
+        pools_con = data["pools"]
+        for properties in pools_con.itervalues():
+            thin_pool = ThinPoolPersistence.load(properties)
+            if thin_pool is not None:
+                loaded_pools[thin_pool.get_name()] = thin_pool
+            else:
+                raise exc.PersistenceException
+
+        # Build the pool lookup table
+        for pool in loaded_pools.itervalues():
+            pool_name = pool.get_name()
+            for volume_name in pool.iterate_volumes():
+                loaded_lookup[volume_name] = pool_name
 
         return loaded_pools, loaded_volumes, loaded_lookup
 
+    def _serialize(self, save_objects):
+        save_pools = save_objects[self.SAVE_POOLS]
+        save_volumes = save_objects[self.SAVE_VOLUMES]
+        state_con = {}
 
-    def _save_state(self, save_pools, save_volumes):
-        """
-        Saves the blockdevices & pools map
-        """
-        state_file = None
-        try:
-            state_con  = {}
+        # Serialize the block devices into the volumes map
+        volumes_con = {}
+        for blockdev in save_volumes.itervalues():
+            bd_persist = storpers.BlockDevicePersistence(blockdev)
+            bd_persist.save(volumes_con)
 
-            # Serialize the block devices into the volumes map
-            volumes_con = {}
-            for blockdev in save_volumes.itervalues():
-                bd_persist = storpers.BlockDevicePersistence(blockdev)
-                bd_persist.save(volumes_con)
+        # Save the volumes map to the state map
+        state_con["volumes"] = volumes_con
 
-            # Save the volumes map to the state map
-            state_con["volumes"] = volumes_con
+        # Save the thin pools to the state map
+        pools_con = {}
+        for thin_pool in save_pools.itervalues():
+            p_thin_pool = ThinPoolPersistence(thin_pool)
+            p_thin_pool.save(pools_con)
+        state_con["pools"] = pools_con
 
-            # Save the thin pools to the state map
-            pools_con = {}
-            for thin_pool in save_pools.itervalues():
-                p_thin_pool = ThinPoolPersistence(thin_pool)
-                p_thin_pool.save(pools_con)
-            state_con["pools"] = pools_con
+        return state_con
 
-            # Save the state to the file
-            try:
-                state_file = open(self.LVM_STATEFILE, "w")
-
-                data_hash = utils.DataHash()
-                save_data = json.dumps(
-                    state_con, indent=4, sort_keys=True
-                )
-                save_data += "\n"
-                data_hash.update(save_data)
-
-                state_file.write(save_data)
-                state_file.write("sig:%s\n" % (data_hash.get_hex_hash()))
-            except IOError as io_err:
-                logging.error(
-                    "LvmThinPool: Saving to the state file '%s' failed "
-                    "due to an I/O error, error message from the OS: %s"
-                    % (LvmThinPool.LVM_STATEFILE, str(io_err))
-                )
-                raise exc.PersistenceException
-            except OSError as os_err:
-                logging.error(
-                    "LvmThinPool: Saving to the state file '%s' failed, "
-                    "error message from the OS: %s"
-                    % (LvmThinPool.LVM_STATEFILE, str(os_err))
-                )
-                raise exc.PersistenceException
-        except exc.PersistenceException as pers_exc:
-            # re-raise
-            raise pers_exc
-        except Exception as unhandled_exc:
-            logging.error(
-                "LvmThinPool: Saving to the state file '%s' failed, "
-                "unhandled exception: %s"
-                % (LvmThinPool.LVM_STATEFILE, str(unhandled_exc))
-            )
-            raise exc.PersistenceException
-        finally:
-            if state_file is not None:
-                state_file.close()
-
-    def _check_lv_exists(self, lv_name):
-        """
-        Check whether an LVM logical volume exists
-
-        @returns: True if the LV exists, False if the LV does not exist
-        Throws an LvmCheckFailedException if the check itself fails
-        """
-        return self.check_lv_exists(
-            lv_name, self._conf[consts.KEY_VG_NAME],
-            self._cmd_lvs, self._subproc_env, "LvmThinPool"
-        )
-
-
-    def _create_lv(self, lv_name, pool_name, size):
-        """
-        Creates an LVM logical volume backed by a newly created LVM thin pool
-        """
+    def _create_vol(self, lv_name, pool_name, size):
         try:
             exec_args = [
                 self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
@@ -1079,22 +841,24 @@ class LvmThinPool(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmException
+            raise StoragePluginException
 
+    def _check_vol_exists(self, lv_name):
+        return self.check_lv_exists(
+            lv_name, self._conf[consts.KEY_VG_NAME],
+            self._cmd_lvs, self._subproc_env, "LvmThinPool"
+        )
 
-    def _extend_lv(self, lv_name, size):
-        """
-        Extends an LVM logical volume
-        """
+    def _extend_vol(self, lv_name, size):
         return self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
                               self._cmd_extend, self._subproc_env, "LvmThinPool")
 
+    def _remove_vol(self, lv_name):
+        self.remove_lv(lv_name, self._conf[consts.KEY_VG_NAME],
+                       self._cmd_remove, self._subproc_env, "LvmThinPool")
 
-    def _create_snapshot(self, snaps_name, lv_name):
-        """
-        Creates an LVM snapshot LV of an existing LV
-        """
-        #"LVMThinPool: exec: %s -s %s/%s -n %s"
+    def _create_snapshot_impl(self, snaps_name, lv_name):
+        # "LVMThinPool: exec: %s -s %s/%s -n %s"
         #    % (lvcreate, self._conf[consts.KEY_VG_NAME], lv_name, snaps_name)
         try:
             exec_args = [
@@ -1114,10 +878,9 @@ class LvmThinPool(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmException
+            raise StoragePluginException
 
-
-    def _create_pool(self, pool_name, size):
+    def __create_pool(self, pool_name, size):
         """
         Creates an LVM thin pool
         """
@@ -1138,15 +901,7 @@ class LvmThinPool(lvmcom.LvmCommon):
                 "external program '%s', error message from the OS: %s"
                 % (self._cmd_create, str(os_err))
             )
-            raise lvmexc.LvmException
-
-
-    def _remove_lv(self, lv_name):
-        """
-        Removes an LVM logical volume
-        """
-        self.remove_lv(lv_name, self._conf[consts.KEY_VG_NAME],
-                       self._cmd_remove, self._subproc_env, "LvmThinPool")
+            raise StoragePluginException
 
 
 class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
@@ -1172,7 +927,6 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
     _name    = None
     _volumes = None
 
-
     def __init__(self, name, size_kiB):
         super(ThinPool, self).__init__(size_kiB)
         self._name = drbdmanage.drbd.drbdcommon.GenericDrbdObject.name_check(
@@ -1181,14 +935,11 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
         )
         self._volumes = {}
 
-
     def get_name(self):
         return self._name
 
-
     def add_volume(self, name):
         self._volumes[name] = None
-
 
     def remove_volume(self, name):
         try:
@@ -1196,17 +947,14 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
         except KeyError:
             pass
 
-
     def iterate_volumes(self):
         return self._volumes.iterkeys()
-
 
     def is_empty(self):
         """
         Indicates whether the thinpool contains any volumes
         """
         return False if len(self._volumes) > 0 else True
-
 
     @classmethod
     def generate_pool_name(cls, name, vol_id):
@@ -1215,7 +963,6 @@ class ThinPool(drbdmanage.storage.storagecommon.GenericStorage):
             % (name, vol_id, long(time.strftime("%Y%m%d%H%M%S")))
         )
         return pool_name
-
 
     def extract_pool_name_suffix(self):
         index  = self._name.rfind("_")
@@ -1233,10 +980,8 @@ class ThinPoolPersistence(storpers.GenericPersistence):
 
     SERIALIZABLE = ["_name", "_size_kiB"]
 
-
     def __init__(self, thin_pool):
         super(ThinPoolPersistence, self).__init__(thin_pool)
-
 
     def save(self, container):
         thin_pool  = self.get_object()
@@ -1246,7 +991,6 @@ class ThinPoolPersistence(storpers.GenericPersistence):
             volume_con.append(volume_name)
         properties["volumes"] = volume_con
         container[thin_pool.get_name()] = properties
-
 
     @classmethod
     def load(cls, properties):

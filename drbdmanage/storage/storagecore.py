@@ -478,13 +478,13 @@ class StoragePlugin(object):
     about the class hierarchy of objects as long as it finds all the
     functions it looks for.
     """
+    NAME = 'unknown'
 
     def __init__(self):
         """
         Initializes the storage plugin
         """
-        pass
-
+        self._volumes = []
 
     def get_blockdevice(self, bd_name):
         """
@@ -497,7 +497,6 @@ class StoragePlugin(object):
         @rtype:  BlockDevice object
         """
         raise NotImplementedError
-
 
     def create_blockdevice(self, name, vol_id, size):
         """
@@ -514,7 +513,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def extend_blockdevice(self, blockdevice, size):
         """
         Deallocates a block device
@@ -527,7 +525,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def remove_blockdevice(self, blockdevice):
         """
         Deallocates a block device
@@ -538,7 +535,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def up_blockdevice(self, blockdevice):
         """
         Activates a block device (e.g., connects an iSCSI resource)
@@ -548,7 +544,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def down_blockdevice(self, blockdevice):
         """
         Deactivates a block device (e.g., disconnects an iSCSI resource)
@@ -557,7 +552,6 @@ class StoragePlugin(object):
         @type  blockdevice: BlockDevice object
         """
         raise NotImplementedError
-
 
     def create_snapshot(self, name, vol_id, blockdevice):
         """
@@ -574,7 +568,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def restore_snapshot(self, name, vol_id, blockdevice):
         """
         Creates a snapshot of a volume under a new resource prefix name
@@ -590,7 +583,6 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def remove_snapshot(self, blockdevice):
         """
         Deallocates a snapshot block device
@@ -600,7 +592,6 @@ class StoragePlugin(object):
         @return: standard return code (see drbdmanage.exceptions)
         """
         raise NotImplementedError
-
 
     def update_pool(self, drbdnode):
         """
@@ -616,9 +607,34 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-
     def reconfigure(self):
         """
         Reconfigures the storage plugin
         """
         raise NotImplementedError
+
+    # additionally, we expect these methods that implement the low level bits
+    def _create_vol(self, vol_name, size):
+        raise NotImplementedError
+
+    def _extend_vol(self, vol_name, size):
+        raise NotImplementedError
+
+    def _remove_vol(self, vol_name):
+        raise NotImplementedError
+
+    def _check_vol_exists(self, vol_name):
+        raise NotImplementedError
+
+    # and for snapshotting
+    def _create_snapshot(self, vol_name, source_blockdev):
+        raise NotImplementedError
+
+    def _create_snapshot_impl(self, snaps_name, lv_name):
+        raise NotImplementedError
+
+    def _remove_snapshot(self, blockdevice):
+        raise NotImplementedError
+
+    def _restore_snapshot(self, vol_name, source_blockdev):
+        return self._create_snapshot(vol_name, source_blockdev)
