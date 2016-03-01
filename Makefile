@@ -1,4 +1,3 @@
-SHELL=/bin/bash
 GIT = git
 INSTALLFILES=.installfiles
 override GITHEAD := $(shell test -e .git && $(GIT) rev-parse HEAD)
@@ -36,6 +35,7 @@ debrelease: up2date
 	git checkout MANIFEST.in
 
 deb: up2date
+	[ -d ./debian ] || (echo "Your checkout/tarball does not contain a debian directory" && false)
 	debuild -i -us -uc -b
 
 # it is up to you (or the buildenv) to provide a distri specific setup.cfg
