@@ -19,6 +19,7 @@
 """
 import sys
 import os
+import errno
 import signal
 import time
 import gobject
@@ -4959,12 +4960,13 @@ class DrbdManageServer(object):
         try:
             os.unlink(file_path)
         except OSError as oserr:
-            logging.error(
-                "cannot remove configuration file '%s', "
-                "error returned by the OS is: %s"
-                % (file_path, oserr.strerror)
-            )
-            fn_rc = 1
+            if oserr.errno != errno.ENOENT:
+                logging.error(
+                    "cannot remove configuration file '%s', "
+                    "error returned by the OS is: %s"
+                    % (file_path, oserr.strerror)
+                )
+                fn_rc = 1
         return fn_rc
 
 
