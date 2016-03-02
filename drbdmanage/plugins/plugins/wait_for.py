@@ -117,9 +117,9 @@ class PolicyBase(object):
         # wrong message for snapshots
 
         if len(assignments) == 0:
-            return ([dm_exc.DM_ENOENT,
-                     'Resource %(res) has no diskful assignments',
-                     {'res': res_name}],
+            return ([(dm_exc.DM_ENOENT,
+                      'Resource %(res) has no diskful assignments',
+                      [['res', res_name]])],
                     {})
 
         # Main code
@@ -145,8 +145,8 @@ class PolicyBase(object):
                                     result=True)
 
         if not policies:
-            return ([dm_exc.DM_ENOTIMPL,
-                     'No known policy given', {}],
+            return ([(dm_exc.DM_ENOTIMPL,
+                      'No known policy given', [])],
                     {})
 
         return self.success('No policy (last was %(pol)s) acknowledged deployment \
@@ -158,9 +158,9 @@ class PolicyBase(object):
     def get_resource(self, res_name):
         res = self._server._resources.get(res_name)
         if not res:
-            return ([dm_exc.DM_ENOENT,
-                     'Resource %(res)s not found',
-                     [['res', res_name]]],
+            return ([(dm_exc.DM_ENOENT,
+                      'Resource %(res)s not found',
+                      [['res', res_name]])],
                     {}), False
         return res, True
 
@@ -278,9 +278,9 @@ class WaitForSnapshot(PolicyBase):
 
         snap = res.get_snapshot(snap_name)
         if not snap:
-            return ([dm_exc.DM_ENOENT,
-                     'Snapshot "%(sn)s" in resource "%(res)s" not found',
-                     [['res', res_name], ['sn', snap_name]]],
+            return ([(dm_exc.DM_ENOENT,
+                      'Snapshot "%(sn)s" in resource "%(res)s" not found',
+                      [['res', res_name], ['sn', snap_name]])],
                     {})
 
         snaps = self._get_assignments(snap)
@@ -309,9 +309,9 @@ class WaitForVolumeSize(PolicyBase):
 
         vol = res.get_volume(volnr)
         if not vol:
-            return ([dm_exc.DM_ENOENT,
-                     'Volume "%(vol)d" in resource "%(res)s" not found',
-                     [['res', res_name], ['vol', volnr]]],
+            return ([(dm_exc.DM_ENOENT,
+                      'Volume "%(vol)d" in resource "%(res)s" not found',
+                      [['res', res_name], ['vol', volnr]])],
                     {})
 
         # Check timeout
