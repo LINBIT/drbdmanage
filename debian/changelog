@@ -1,3 +1,39 @@
+drbdmanage (0.93-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * client: avoid stack traces from unprivileged user
+  * doc: fix man page generation while packaging
+  * debian: make bash-completion a build dependency
+  * satellite: connect by IP rather than by name
+  * satellite: fix bug on struct.unpack()
+  * build: added uninstall target
+  * use os.path.join instead of handcrafted code
+  * partial revert of 66ed23f4a3
+  * build: drop bash, check for debian directory
+  * refactoring of storage plugin layer
+  * storage plugin: zfs backend
+
+  [ Philipp Marek ]
+  * "query_deployment" plugin, for use in the various clients.
+  * Some fixes for the wait_for plugin.
+  * Fix DRBDmanage's storage header.
+  * Enhance error reporting when calling plugins.
+  * Whitespace fixups - tabs vs. spaces.
+  * Fix return structures in wait_for plugins.
+
+  [ Robert Altnoeder ]
+  * Variable scope fix, earlier quorum init, some code restructured
+  * Run send_init_satellites() inside a persistence block during startup
+  * Write a single-node connection mesh if a client has no servers
+  * Ignore attach actions for diskless assignments
+  * Added fallback code for failed 'drbdadm down' runs
+  * Ignore error when trying to remove a config file that does not exist
+
+  [ Hayley Swimelar ]
+  * fixed typos
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 02 Mar 2016 14:05:36 +0100
+
 drbdmanage (0.92-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
