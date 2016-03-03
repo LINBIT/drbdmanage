@@ -4140,7 +4140,13 @@ class DrbdManageServer(object):
             # Ensure that the specified resource is assigned to all
             # selected nodes
             for node in node_list:
-                if node.get_assignment(res_name) is None:
+                assg = node.get_assignment(res_name)
+                if assg is None:
+                    add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                    raise AbortException
+                elif is_set(assg.get_tstate(), Assignment.FLAG_DISKLESS):
+                    # Diskless node (DRBD9 client) selected as a target node
+                    # for creating a snapshot
                     add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
                     raise AbortException
 
