@@ -48,7 +48,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
     # Path state file of this module
     STATEFILE = '/var/lib/drbdmanage/drbdmanaged-zvol.local.json'
 
-    # Command names of LVM utilities
+    # Command names of zfs utilities
     ZFS_BASE = "zfs"
     ZVOL_VGS = "zpool"
     ZFS_CREATE = "create"
@@ -127,7 +127,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
         except exc.PersistenceException as pers_exc:
             logging.warning(
                 "Zvol plugin: Cannot load state file '%s'"
-                % (Zvol.LVM_STATEFILE)
+                % (Zvol.STATEFILE)
             )
             raise pers_exc
         except Exception as unhandled_exc:

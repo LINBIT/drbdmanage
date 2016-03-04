@@ -143,7 +143,7 @@ class LvmThinLv(lvmcom.LvmCommon):
         except exc.PersistenceException as pers_exc:
             logging.warning(
                 "LvmThinLv plugin: Cannot load state file '%s'"
-                % (LvmThinLv.LVM_STATEFILE)
+                % (LvmThinLv.STATEFILE)
             )
             raise pers_exc
         except Exception as unhandled_exc:
