@@ -104,10 +104,10 @@ class PolicyBase(object):
             end = float(start) + float(timeo)
 
             if now >= end:
-                return self.success("""Timed out: %(start)d + %(t-o)d before now \
-                                    (%(now)d), end was %(end)d""",
-                                    [['start', start], ['t-o', timeo],
-                                     ['now', now], ['end', end]],
+                return self.success("""Timed out: %(start)s + %(t_o)s before now \
+                                    (%(now)s), end was %(end)s""",
+                                    [['start', start], ['t_o', timeo],
+                                     ['now', str(now)], ['end', str(end)]],
                                     timeout=True)
 
         return None
@@ -118,7 +118,7 @@ class PolicyBase(object):
 
         if len(assignments) == 0:
             return ([(dm_exc.DM_ENOENT,
-                      'Resource %(res) has no diskful assignments',
+                      'Resource %(res)s has no diskful assignments',
                       [['res', res_name]])],
                     {})
 
@@ -300,8 +300,8 @@ class WaitForVolumeSize(PolicyBase):
         cnf = self._conf
 
         res_name = cnf['resource']
-        volnr = cnf['volnr']
-        req_size = cnf['req_size']
+        volnr = int(cnf['volnr'])
+        req_size = int(cnf['req_size'])
 
         res, okay = self.get_resource(res_name)
         if not okay:
@@ -310,8 +310,8 @@ class WaitForVolumeSize(PolicyBase):
         vol = res.get_volume(volnr)
         if not vol:
             return ([(dm_exc.DM_ENOENT,
-                      'Volume "%(vol)d" in resource "%(res)s" not found',
-                      [['res', res_name], ['vol', volnr]])],
+                      'Volume "%(res)s/%(vol)s" in not found',
+                      [['res', res_name], ['vol', str(volnr)]])],
                     {})
 
         # Check timeout
@@ -319,8 +319,9 @@ class WaitForVolumeSize(PolicyBase):
         if to:
             return to
 
-        size = vol.size()
-        return self.success("size is %(sz)d, req %(rq)d",
-                            [['sz', size], ['rq', req_size]],
+        size = vol.get_size_kiB()
+        # TODO(LINBIT): using ">=" means that shrinking is not supported (yet)
+        return self.success("size is %(sz)s, req %(rq)s",
+                            [['sz', str(size)], ['rq', str(req_size)]],
                             policy="size",
-                            result=(size == req_size))
+                            result=(size >= req_size))
