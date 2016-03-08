@@ -167,12 +167,14 @@ class BlockDeviceManager(object):
                         % (bd_name, status, fn_rc)
                     )
                 else:
-                    logging.debug(
-                        "BlockDeviceManager: remove_blockdevice('%s'): "
+                    logging.warning(
+                        "BlockDeviceManager: Warning: remove_blockdevice('%s'): "
                         "Cannot find the corresponding BlockDevice object"
                         % (bd_name)
                     )
-                    fn_rc = DM_ENOENT
+                    # If the block device to be removed cannot be found,
+                    # assume there is nothing to remove and continue
+                    fn_rc = DM_SUCCESS
             except NotImplementedError:
                 self._log_not_implemented("remove_blockdevice")
                 fn_rc = DM_ENOTIMPL
