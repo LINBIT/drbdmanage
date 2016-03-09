@@ -918,7 +918,11 @@ class DrbdManageServer(object):
         Initialize global logging
         """
         self._root_logger = logging.getLogger("")
-        syslog_h = logging.handlers.SysLogHandler(address="/dev/log")
+        try:
+            syslog_h = logging.handlers.SysLogHandler(address="/dev/log")
+        except:
+            syslog_h = logging.NullHandler()
+
         syslog_f = logging.Formatter(fmt=self.LOGGING_FORMAT)
         syslog_h.setFormatter(syslog_f)
         self._root_logger.addHandler(syslog_h)
