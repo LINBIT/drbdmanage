@@ -878,6 +878,11 @@ class DrbdManage(object):
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
         # export
+        def exportnamecheck(name):
+            if name == '*':
+                return name
+            return namecheck(RES_NAME)(name)
+
         p_export = subp.add_parser('export-res', aliases=['export'],
                                    description='Exports the configuration files of the specified '
                                    'drbdmanage resource for use with drbdadm. If "*" is used as '
@@ -885,7 +890,7 @@ class DrbdManage(object):
                                    'deployed on the local node are exported. The configuration files will '
                                    'be created (or updated) in the drbdmanage directory for temporary '
                                    'configuration files, typically /var/lib/drbd.d.')
-        p_export.add_argument('resource', nargs="+", type=namecheck(RES_NAME),
+        p_export.add_argument('resource', nargs="+", type=exportnamecheck,
                               help='Name of the resource').completer = res_completer
         p_export.set_defaults(func=self.cmd_export_conf)
 
