@@ -307,7 +307,7 @@ class DrbdManage(object):
             "action", choices=quorum_completer_possible, help="The action to perform on the affected nodes"
         ).completer = quorum_action_completer
         p_quorum.add_argument(
-            "name", nargs="+",type=namecheck(NODE_NAME), help="Name of the affected node or nodes"
+            "name", nargs="+", type=namecheck(NODE_NAME), help="Name of the affected node or nodes"
         ).completer = node_completer
         p_quorum.set_defaults(func=self.cmd_quorum_control)
 
