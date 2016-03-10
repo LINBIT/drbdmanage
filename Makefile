@@ -19,7 +19,7 @@ uninstall:
 
 ifneq ($(U),0)
 up2date:
-		$(error "Update your Version strings/Changelogs")
+	$(error "Update your Version strings/Changelogs")
 else
 up2date: drbdmanage/consts_githash.py
 	$(info "Version strings/Changelogs up to date")
