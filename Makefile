@@ -25,10 +25,10 @@ up2date: drbdmanage/consts_githash.py
 	$(info "Version strings/Changelogs up to date")
 endif
 
-release: up2date
+release: up2date clean
 	python setup.py sdist
 
-debrelease: up2date
+debrelease: up2date clean
 	echo 'recursive-include debian *' >> MANIFEST.in
 	dh_clean
 	make release
