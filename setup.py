@@ -34,6 +34,12 @@ def get_version():
     return DM_VERSION
 
 
+# used to overwrite version tag by internal build tools
+# keep it, even if you don't understand it.
+def get_setup_version():
+    return get_version()
+
+
 class CheckUpToDate(Command):
     description = "Check if version strings are up to date"
     user_options = []
@@ -183,7 +189,7 @@ def gen_data_files():
 
 setup(
     name="drbdmanage",
-    version=get_version(),
+    version=get_setup_version(),
     description="DRBD distributed resource management utility",
     long_description="Drbdmanage is a daemon and a command line utility that manages DRBD\n" +
     "replicated LVM volumes across a group of machines.\n" +
