@@ -2889,7 +2889,8 @@ Confirm:
             if shutdown:
                 try:
                     self.dbus_init()
-                    self._server.shutdown()
+                    props = dbus.Dictionary(signature="ss")
+                    self._server.shutdown(props)
                 except dbus.exceptions.DBusException:
                     # The server does not answer after a shutdown,
                     # or it might not have been running in the first place,
