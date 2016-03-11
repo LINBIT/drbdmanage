@@ -222,6 +222,11 @@ class DrbdManage(object):
 
             return possible
 
+        # type checkers (generate them only once)
+        check_node_name = namecheck(NODE_NAME)
+        check_res_name = namecheck(RES_NAME)
+        check_snaps_name = namecheck(SNAPS_NAME)
+
         p_new_node = subp.add_parser('add-node',
                                      aliases=['nn', 'new-node', 'an'],
                                      description='Creates a node entry for a node that participates in the '
@@ -247,7 +252,7 @@ class DrbdManage(object):
                                 help='External node that is neither a control node nor a satellite')
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
         p_new_node.add_argument('-j', '--no-autojoin', action="store_true")
-        p_new_node.add_argument('name', help='Name of the new node', type=namecheck(NODE_NAME))
+        p_new_node.add_argument('name', help='Name of the new node', type=check_node_name)
         p_new_node.add_argument('ip',
                                 help='IP address of the new node').completer = ip_completer("name")
         p_new_node.set_defaults(func=self.cmd_new_node)
@@ -261,7 +266,7 @@ class DrbdManage(object):
                                 choices=['ipv4', 'ipv6'],
                                 help='FAMILY: "ipv4" (default) or "ipv6"')
         p_mod_node.add_argument('-s', '--storage')
-        p_mod_node.add_argument('name', type=namecheck(NODE_NAME),
+        p_mod_node.add_argument('name', type=check_node_name,
                                 help='Name of the node').completer = node_completer
         p_mod_node.add_argument('--address',
                                 help='Network address of the node').completer = ip_completer("name")
@@ -307,7 +312,7 @@ class DrbdManage(object):
             "action", choices=quorum_completer_possible, help="The action to perform on the affected nodes"
         ).completer = quorum_action_completer
         p_quorum.add_argument(
-            "name", nargs="+", type=namecheck(NODE_NAME), help="Name of the affected node or nodes"
+            "name", nargs="+", type=check_node_name, help="Name of the affected node or nodes"
         ).completer = node_completer
         p_quorum.set_defaults(func=self.cmd_quorum_control)
 
@@ -318,7 +323,7 @@ class DrbdManage(object):
                                     'Unless a specific IP port-number is supplied, the port-number is '
                                     'automatically selected by the drbdmanage server on the current node. ')
         p_new_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
-        p_new_res.add_argument('name', type=namecheck(RES_NAME), help='Name of the new resource')
+        p_new_res.add_argument('name', type=check_res_name, help='Name of the new resource')
         p_new_res.set_defaults(func=self.cmd_new_resource)
 
         # modify-resource
@@ -342,7 +347,7 @@ class DrbdManage(object):
                                     aliases=['mr'],
                                     description='Modifies a DRBD resource.')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
-        p_mod_res.add_argument('name', type=namecheck(RES_NAME),
+        p_mod_res.add_argument('name', type=check_res_name,
                                help='Name of the resource').completer = res_completer
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
         p_mod_res.set_defaults(command=p_mod_res_command)
@@ -394,7 +399,7 @@ class DrbdManage(object):
                                     'drbdmanage server.')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
-        p_new_vol.add_argument('name', type=namecheck(RES_NAME),
+        p_new_vol.add_argument('name', type=check_res_name,
                                help='Name of a new/existing resource').completer = res_completer
         p_new_vol.add_argument(
             'size',
@@ -429,7 +434,7 @@ class DrbdManage(object):
                                        aliases=['resize'],
                                        description='Resizes a volume to the specified size, which must be'
                                        'greater than the current size of the volume.')
-        p_resize_vol.add_argument('name', type=namecheck(RES_NAME),
+        p_resize_vol.add_argument('name', type=check_res_name,
                                   help='Name of the resource').completer = res_completer
         p_resize_vol.add_argument('id', help='Volume ID', type=int).completer = vol_completer
         p_resize_vol.add_argument(
@@ -451,7 +456,7 @@ class DrbdManage(object):
         p_mod_vol = subp.add_parser(p_mod_vol_command,
                                     aliases=['mv'],
                                     description='Modifies a DRBD volume.')
-        p_mod_vol.add_argument('name', type=namecheck(RES_NAME),
+        p_mod_vol.add_argument('name', type=check_res_name,
                                help='Name of the resource').completer = res_completer
         p_mod_vol.add_argument('id', help='Volume id', type=int).completer = vol_completer
         p_mod_vol.add_argument('-m', '--minor', type=rangecheck(0, 1048575))
@@ -463,7 +468,7 @@ class DrbdManage(object):
         p_mod_assg = subp.add_parser(p_mod_assg_command,
                                      aliases=['ma'],
                                      description='Modifies a drbdmanage assignment.')
-        p_mod_assg.add_argument('resource', type=namecheck(RES_NAME),
+        p_mod_assg.add_argument('resource', type=check_res_name,
                                 help='Name of the resource').completer = res_completer
         p_mod_assg.add_argument('node', help='Name of the node').completer = node_completer
         p_mod_assg.add_argument('-o', '--overwrite')
@@ -496,30 +501,30 @@ class DrbdManage(object):
         # connect
         p_conn = subp.add_parser('connect-resource', description='Connect resource on node',
                                  aliases=['connect'])
-        p_conn.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
-        p_conn.add_argument('node', type=namecheck(NODE_NAME)).completer = node_completer
+        p_conn.add_argument('resource', type=check_res_name).completer = res_completer
+        p_conn.add_argument('node', type=check_node_name).completer = node_completer
         p_conn.set_defaults(func=self.cmd_connect)
 
         # reconnect
         p_reconn = subp.add_parser('reconnect-resource', description='Reconnect resource on node',
                                    aliases=['reconnect'])
-        p_reconn.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
-        p_reconn.add_argument('node', type=namecheck(NODE_NAME)).completer = node_completer
+        p_reconn.add_argument('resource', type=check_res_name).completer = res_completer
+        p_reconn.add_argument('node', type=check_node_name).completer = node_completer
         p_reconn.set_defaults(func=self.cmd_reconnect)
 
         # disconnect
         p_disconn = subp.add_parser('disconnect-resource', description='Disconnect resource on node',
                                     aliases=['disconnect'])
-        p_disconn.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
-        p_disconn.add_argument('node', type=namecheck(NODE_NAME)).completer = node_completer
+        p_disconn.add_argument('resource', type=check_res_name).completer = res_completer
+        p_disconn.add_argument('node', type=check_node_name).completer = node_completer
         p_disconn.set_defaults(func=self.cmd_disconnect)
 
         # flags
         p_flags = subp.add_parser('set-flags', description='Set flags of resource on node',
                                   aliases=['flags'])
-        p_flags.add_argument('resource', type=namecheck(RES_NAME),
+        p_flags.add_argument('resource', type=check_res_name,
                              help='Name of the resource').completer = res_completer
-        p_flags.add_argument('node', type=namecheck(NODE_NAME),
+        p_flags.add_argument('node', type=check_node_name,
                              help='Name of the node').completer = node_completer
         p_flags.add_argument('--reconnect', choices=(0, 1), type=int)
         p_flags.add_argument('--updcon', choices=(0, 1), type=int)
@@ -530,16 +535,16 @@ class DrbdManage(object):
         # attach
         p_attach = subp.add_parser('attach-volume', description='Attach volume from node',
                                    aliases=['attach'])
-        p_attach.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
+        p_attach.add_argument('resource', type=check_res_name).completer = res_completer
         p_attach.add_argument('id', help='Volume ID', type=int).completer = vol_completer
-        p_attach.add_argument('node', type=namecheck(NODE_NAME)).completer = node_completer
+        p_attach.add_argument('node', type=check_node_name).completer = node_completer
         p_attach.set_defaults(func=self.cmd_attach_detach, fname='attach')
         # detach
         p_detach = subp.add_parser('detach-volume', description='Detach volume from node',
                                    aliases=['detach'])
-        p_detach.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
+        p_detach.add_argument('resource', type=check_res_name).completer = res_completer
         p_detach.add_argument('id', help='Volume ID', type=int).completer = vol_completer
-        p_detach.add_argument('node', type=namecheck(NODE_NAME)).completer = node_completer
+        p_detach.add_argument('node', type=check_node_name).completer = node_completer
         p_detach.set_defaults(func=self.cmd_attach_detach, fname='detach')
 
         # assign
@@ -554,8 +559,8 @@ class DrbdManage(object):
         p_assign.add_argument('--discard', action="store_true",
                               help='If specified, drbdmanage will issue a "drbdadm -- --discard-my-data" '
                               'connect after the resource has been started.')
-        p_assign.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
-        p_assign.add_argument('node', type=namecheck(NODE_NAME), nargs="+").completer = node_completer
+        p_assign.add_argument('resource', type=check_res_name).completer = res_completer
+        p_assign.add_argument('node', type=check_node_name, nargs="+").completer = node_completer
         p_assign.set_defaults(func=self.cmd_assign)
 
         # free space
@@ -581,7 +586,7 @@ class DrbdManage(object):
                                    "of the drbdmanage cluster. Using the information in drbdmanage's data "
                                    'tables, the drbdmanage server tries to find n nodes that have enough '
                                    'free storage capacity to deploy the resource resname.')
-        p_deploy.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
+        p_deploy.add_argument('resource', type=check_res_name).completer = res_completer
         p_deploy.add_argument('-i', '--increase', action="store_true",
                               help='Increase the redundancy count relative to'
                               ' the currently set value by a number of'
@@ -604,7 +609,7 @@ class DrbdManage(object):
                                      "definition is still kept in drbdmanage's data tables.")
         p_undeploy.add_argument('-q', '--quiet', action="store_true")
         p_undeploy.add_argument('-f', '--force', action="store_true")
-        p_undeploy.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
+        p_undeploy.add_argument('resource', type=check_res_name).completer = res_completer
         p_undeploy.set_defaults(func=self.cmd_undeploy)
 
         # update-pool
@@ -649,8 +654,8 @@ class DrbdManage(object):
                                 help="If present, the assignment entry will be removed from drbdmanage's "
                                 'data tables immediately, without taking any action on the node where '
                                 'the resource is been deployed.')
-        p_unassign.add_argument('resource', type=namecheck(RES_NAME)).completer = res_completer
-        p_unassign.add_argument('node', type=namecheck(NODE_NAME), nargs="+").completer = node_completer
+        p_unassign.add_argument('resource', type=check_res_name).completer = res_completer
+        p_unassign.add_argument('node', type=check_node_name, nargs="+").completer = node_completer
         p_unassign.set_defaults(func=self.cmd_unassign)
 
         # new-snapshot
@@ -658,10 +663,10 @@ class DrbdManage(object):
                                   aliases=['ns', 'create-snapshot', 'cs',
                                            'new-snapshot', 'as'],
                                   description='Create a LVM snapshot')
-        p_nsnap.add_argument('snapshot', type=namecheck(SNAPS_NAME), help='Name of the snapshot')
-        p_nsnap.add_argument('resource', type=namecheck(RES_NAME),
+        p_nsnap.add_argument('snapshot', type=check_snaps_name, help='Name of the snapshot')
+        p_nsnap.add_argument('resource', type=check_res_name,
                              help='Name of the resource').completer = res_completer
-        p_nsnap.add_argument('nodes', type=namecheck(NODE_NAME),
+        p_nsnap.add_argument('nodes', type=check_node_name,
                              help='List of nodes', nargs='+').completer = node_completer
         p_nsnap.set_defaults(func=self.cmd_new_snapshot)
 
@@ -688,9 +693,9 @@ class DrbdManage(object):
                                    aliases=['delete-snapshot', 'ds'],
                                    description='Remove LVM snapshot of a resource')
         p_rmsnap.add_argument('-f', '--force', action="store_true")
-        p_rmsnap.add_argument('resource', type=namecheck(RES_NAME),
+        p_rmsnap.add_argument('resource', type=check_res_name,
                               help='Name of the resource').completer = res_completer
-        p_rmsnap.add_argument('snapshot', type=namecheck(SNAPS_NAME), nargs="+",
+        p_rmsnap.add_argument('snapshot', type=check_snaps_name, nargs="+",
                               help='Name of the snapshot').completer = snaps_completer
         p_rmsnap.set_defaults(func=self.cmd_remove_snapshot)
 
@@ -701,11 +706,11 @@ class DrbdManage(object):
                                               'dsa'],
                                      description='Remove snapshot assignment')
         p_rmsnapas.add_argument('-f', '--force', action="store_true")
-        p_rmsnapas.add_argument('resource', type=namecheck(RES_NAME),
+        p_rmsnapas.add_argument('resource', type=check_res_name,
                                 help='Name of the resource').completer = res_completer
-        p_rmsnapas.add_argument('snapshot', type=namecheck(SNAPS_NAME),
+        p_rmsnapas.add_argument('snapshot', type=check_snaps_name,
                                 help='Name of the snapshot').completer = snaps_completer
-        p_rmsnapas.add_argument('node', type=namecheck(NODE_NAME),
+        p_rmsnapas.add_argument('node', type=check_node_name,
                                 help='Name of the node').completer = node_completer
         p_rmsnapas.set_defaults(func=self.cmd_remove_snapshot_assignment)
 
@@ -713,11 +718,11 @@ class DrbdManage(object):
         p_restsnap = subp.add_parser('restore-snapshot',
                                      aliases=['rs'],
                                      description='Restore snapshot')
-        p_restsnap.add_argument('resource', type=namecheck(RES_NAME),
+        p_restsnap.add_argument('resource', type=check_res_name,
                                 help='Name of the new resource that gets created from existing snapshot')
-        p_restsnap.add_argument('snapshot_resource', type=namecheck(RES_NAME),
+        p_restsnap.add_argument('snapshot_resource', type=check_res_name,
                                 help='Name of the resource that was snapshoted').completer = res_completer
-        p_restsnap.add_argument('snapshot', type=namecheck(SNAPS_NAME),
+        p_restsnap.add_argument('snapshot', type=check_snaps_name,
                                 help='Name of the snapshot').completer = snaps_completer
         p_restsnap.set_defaults(func=self.cmd_restore_snapshot)
 
@@ -780,7 +785,7 @@ class DrbdManage(object):
                               choices=nodesverbose).completer = nodes_verbose_completer
         p_lnodes.add_argument('-g', '--groupby', nargs='+',
                               choices=nodesgroupby).completer = nodes_group_completer
-        p_lnodes.add_argument('-N', '--nodes', nargs='+', type=namecheck(NODE_NAME),
+        p_lnodes.add_argument('-N', '--nodes', nargs='+', type=check_node_name,
                               help='Filter by list of nodes').completer = node_completer
         p_lnodes.add_argument('--separators', action="store_true")
         p_lnodes.set_defaults(func=self.cmd_list_nodes)
@@ -799,7 +804,7 @@ class DrbdManage(object):
                               choices=resverbose).completer = res_verbose_completer
         p_lreses.add_argument('-g', '--groupby', nargs='+',
                               choices=resgroupby).completer = res_group_completer
-        p_lreses.add_argument('-R', '--resources', nargs='+', type=namecheck(RES_NAME),
+        p_lreses.add_argument('-R', '--resources', nargs='+', type=check_res_name,
                               help='Filter by list of resources').completer = res_completer
         p_lreses.add_argument('--separators', action="store_true")
         p_lreses.set_defaults(func=self.cmd_list_resources)
@@ -817,7 +822,7 @@ class DrbdManage(object):
         p_lvols.add_argument('-g', '--groupby', nargs='+',
                              choices=volgroupby).completer = vol_group_completer
         p_lvols.add_argument('--separators', action="store_true")
-        p_lvols.add_argument('-R', '--resources', nargs='+', type=namecheck(RES_NAME),
+        p_lvols.add_argument('-R', '--resources', nargs='+', type=check_res_name,
                              help='Filter by list of resources').completer = res_completer
         p_lvols.set_defaults(func=self.cmd_list_volumes)
 
@@ -831,7 +836,7 @@ class DrbdManage(object):
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
                               choices=snapgroupby).completer = snap_group_completer
         p_lsnaps.add_argument('--separators', action="store_true")
-        p_lsnaps.add_argument('-R', '--resources', nargs='+', type=namecheck(RES_NAME),
+        p_lsnaps.add_argument('-R', '--resources', nargs='+', type=check_res_name,
                               help='Filter by list of resources').completer = res_completer
         p_lsnaps.set_defaults(func=self.cmd_list_snapshots)
 
@@ -846,9 +851,9 @@ class DrbdManage(object):
         p_lsnapas.add_argument('-g', '--groupby', nargs='+',
                                choices=snapasgroupby).completer = snapas_group_completer
         p_lsnapas.add_argument('--separators', action="store_true")
-        p_lsnapas.add_argument('-N', '--nodes', nargs='+', type=namecheck(NODE_NAME),
+        p_lsnapas.add_argument('-N', '--nodes', nargs='+', type=check_node_name,
                                help='Filter by list of nodes').completer = node_completer
-        p_lsnapas.add_argument('-R', '--resources', nargs='+', type=namecheck(RES_NAME),
+        p_lsnapas.add_argument('-R', '--resources', nargs='+', type=check_res_name,
                                help='Filter by list of resources').completer = res_completer
         p_lsnapas.set_defaults(func=self.cmd_list_snapshot_assignments)
 
@@ -871,9 +876,9 @@ class DrbdManage(object):
         p_assignments.add_argument('-g', '--groupby', nargs='+',
                                    choices=assigngroupby).completer = ass_group_completer
         p_assignments.add_argument('--separators', action="store_true")
-        p_assignments.add_argument('-N', '--nodes', nargs='+', type=namecheck(NODE_NAME),
+        p_assignments.add_argument('-N', '--nodes', nargs='+', type=check_node_name,
                                    help='Filter by list of nodes').completer = node_completer
-        p_assignments.add_argument('-R', '--resources', nargs='+', type=namecheck(RES_NAME),
+        p_assignments.add_argument('-R', '--resources', nargs='+', type=check_res_name,
                                    help='Filter by list of resources').completer = res_completer
         p_assignments.set_defaults(func=self.cmd_list_assignments)
 
@@ -881,7 +886,7 @@ class DrbdManage(object):
         def exportnamecheck(name):
             if name == '*':
                 return name
-            return namecheck(RES_NAME)(name)
+            return check_res_name(name)
 
         p_export = subp.add_parser('export-res', aliases=['export'],
                                    description='Exports the configuration files of the specified '
@@ -899,7 +904,7 @@ class DrbdManage(object):
                                       description='Print the command to'
                                       ' execute on the given node in order to'
                                       ' join the cluster')
-        p_howtojoin.add_argument('node', type=namecheck(NODE_NAME),
+        p_howtojoin.add_argument('node', type=check_node_name,
                                  help='Name of the node to join').completer = node_completer
         p_howtojoin.add_argument('-q', '--quiet', action="store_true",
                                  help="If the --quiet option is used, the join command is printed "
@@ -951,9 +956,9 @@ class DrbdManage(object):
                                       description='Print the DRBD'
                                       ' configuration file for a given'
                                       ' resource on a given node')
-        p_queryconf.add_argument('node', type=namecheck(NODE_NAME),
+        p_queryconf.add_argument('node', type=check_node_name,
                                  help='Name of the node').completer = node_completer
-        p_queryconf.add_argument('resource', type=namecheck(RES_NAME),
+        p_queryconf.add_argument('resource', type=check_res_name,
                                  help='Name of the resource').completer = res_completer
         p_queryconf.set_defaults(func=self.cmd_query_conf)
 
@@ -1022,7 +1027,7 @@ class DrbdManage(object):
         p_join.add_argument('-q', '--quiet', action="store_true")
         p_join.add_argument('local_ip')
         p_join.add_argument('local_node_id')
-        p_join.add_argument('peer_name', type=namecheck(NODE_NAME))
+        p_join.add_argument('peer_name', type=check_node_name)
         p_join.add_argument('peer_ip').completer = ip_completer("peer_ip")
         p_join.add_argument('peer_node_id')
         p_join.add_argument('secret')
@@ -1057,7 +1062,7 @@ class DrbdManage(object):
         if do.ok:
             p_do = do.genArgParseSubcommand(subp)
             p_do.add_argument('--common', action="store_true")
-            p_do.add_argument('--resource', type=namecheck(RES_NAME),
+            p_do.add_argument('--resource', type=check_res_name,
                               help='Name of the resource to modify').completer = res_completer
             p_do.add_argument('--volume',
                               help='Name of the volume to modify').completer = res_vol_completer
@@ -1070,7 +1075,7 @@ class DrbdManage(object):
         if pdo.ok:
             p_pdo = pdo.genArgParseSubcommand(subp)
             p_pdo.add_argument('--common', action="store_true")
-            p_pdo.add_argument('--resource', type=namecheck(RES_NAME),
+            p_pdo.add_argument('--resource', type=check_res_name,
                                help='Name of the resource to modify').completer = res_completer
             p_pdo.add_argument('--volume',
                                help='Name of the volume to modify').completer = res_vol_completer
@@ -1082,7 +1087,7 @@ class DrbdManage(object):
         ro = DrbdSetupOpts('resource-options')
         if ro.ok:
             p_ro = ro.genArgParseSubcommand(subp)
-            p_ro.add_argument('resource', type=namecheck(RES_NAME),
+            p_ro.add_argument('resource', type=check_res_name,
                               help='Name of the resource').completer = res_completer
             p_ro.set_defaults(optsobj=ro)
             p_ro.set_defaults(func=self.cmd_res_options)
@@ -1095,7 +1100,7 @@ class DrbdManage(object):
         if no.ok:
             p_no = no.genArgParseSubcommand(subp)
             p_no.add_argument('--common', action="store_true")
-            p_no.add_argument('--resource', type=namecheck(RES_NAME),
+            p_no.add_argument('--resource', type=check_res_name,
                               help='Name of the resource to modify').completer = res_completer
             p_no.add_argument('--sites',
                               help='Set net options between sites (SiteA:SiteB)')
@@ -1113,7 +1118,7 @@ class DrbdManage(object):
         p_handlers = subp.add_parser('handlers',
                                      description='Set or unset event handlers.')
         p_handlers.add_argument('--common', action="store_true")
-        p_handlers.add_argument('--resource', type=namecheck(RES_NAME),
+        p_handlers.add_argument('--resource', type=check_res_name,
                                 help='Name of the resource to modify').completer = res_completer
         for handler in handlers:
             p_handlers.add_argument('--' + handler, help='Please refer to drbd.conf(5)', metavar='cmd')
@@ -1124,7 +1129,7 @@ class DrbdManage(object):
         p_listopts = subp.add_parser('list-options',
                                      description='List drbd options set',
                                      aliases=['show-options'])
-        p_listopts.add_argument('resource', type=namecheck(RES_NAME),
+        p_listopts.add_argument('resource', type=check_res_name,
                                 help='Name of the resource to show').completer = res_completer
         p_listopts.set_defaults(func=self.cmd_list_options)
         p_listopts.set_defaults(doobj=do)
@@ -1137,7 +1142,7 @@ class DrbdManage(object):
                                      description='Modify drbdmanage configuration',
                                      aliases=['edit-config'])
         # p_editconf.add_argument('config', choices=('drbdmanage',))
-        p_editconf.add_argument('--node', '-n', type=namecheck(NODE_NAME),
+        p_editconf.add_argument('--node', '-n', type=check_node_name,
                                 help='Name of the node. This enables node specific options '
                                 '(e.g. plugin settings)').completer = node_completer
         p_editconf.set_defaults(func=self.cmd_edit_config)
@@ -1147,7 +1152,7 @@ class DrbdManage(object):
         p_exportconf = subp.add_parser('export-config',
                                        description='Export drbdmanage configuration',
                                        aliases=['cat-config'])
-        p_exportconf.add_argument('--node', '-n', type=namecheck(NODE_NAME),
+        p_exportconf.add_argument('--node', '-n', type=check_node_name,
                                   help='Name of the node.').completer = node_completer
         p_exportconf.add_argument('--file', '-f',
                                   help='File to save configuration')
@@ -1157,9 +1162,9 @@ class DrbdManage(object):
         # assign-satellite
         p_assign_satellite = subp.add_parser('assign-satellite',
                                              description='Assingn a satellite node to a control node')
-        p_assign_satellite.add_argument('satellite', type=namecheck(NODE_NAME),
+        p_assign_satellite.add_argument('satellite', type=check_node_name,
                                         help='Name of the satellite node').completer = node_completer
-        p_assign_satellite.add_argument('controlnode', type=namecheck(NODE_NAME),
+        p_assign_satellite.add_argument('controlnode', type=check_node_name,
                                         help='Name of the control node').completer = node_completer
         p_assign_satellite.set_defaults(func=self.cmd_assign_satellite)
 
