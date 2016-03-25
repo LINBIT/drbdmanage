@@ -1,3 +1,29 @@
+drbdmanage (0.94-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Prevent selection of diskless nodes for snapshot creation
+  * Ignore non-existent backend storage when undeploying volumes
+  * Fix server shutdown in cmd_uninit()
+
+  [ Roland Kammerer ]
+  * storage plugins: fixed STATEFILE in error path
+  * add hint for admin to not edit generated res files
+  * server: fall back to logging.NullHandler
+  * build: whitespace fix
+  * client: allow '*' for export-res
+  * space after ',' fix
+  * client: generate check functions once
+  * build: make it easier to overwrite version
+  * build: add 'clean' to release targets
+
+  [ Philipp Marek ]
+  * Fixed format and args, we can only pass strings across our DBus API.
+
+  [ Hayley Swimelar ]
+  * Minor spelling/grammar fixes
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 25 Mar 2016 09:47:46 +0100
+
 drbdmanage (0.93-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
