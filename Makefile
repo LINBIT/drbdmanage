@@ -27,6 +27,7 @@ endif
 
 release: up2date clean
 	python setup.py sdist
+	@echo && echo "Did you run distclean?"
 
 debrelease: up2date clean
 	echo 'recursive-include debian *' >> MANIFEST.in
@@ -57,3 +58,6 @@ endif
 clean:
 	python setup.py clean
 	rm -f man-pages/*.gz
+
+distclean: clean
+	git clean -d -f || true
