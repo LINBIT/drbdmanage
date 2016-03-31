@@ -3765,10 +3765,10 @@ Confirm:
             if len(answer) != 0:
                 if answer.endswith("\n"):
                     answer = answer[:len(answer) - 1]
-                if answer == "yes":
+                if answer.lower() == "yes":
                     fn_rc = True
                     break
-                elif answer == "no":
+                elif answer.lower() == "no":
                     break
                 else:
                     sys.stdout.write("Please answer \"yes\" or \"no\": ")
