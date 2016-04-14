@@ -356,6 +356,10 @@ class DrbdManager(object):
         state_changed  = False
         pool_changed   = False
         failed_actions = False
+
+        assg_cstate = assg.get_cstate()
+        assg_tstate = assg.get_tstate()
+
         act_flag = assg.requires_action()
         if act_flag and assg.is_empty():
             if assg.requires_undeploy():
@@ -371,9 +375,9 @@ class DrbdManager(object):
                     failed_actions = True
         elif act_flag:
             logging.debug(
-                "assigned resource %s cstate(%x)->tstate(%x)"
+                "DrbdManager: Assigned resource '%s' cstate(%x) -> tstate(%x)"
                 % (assg.get_resource().get_name(),
-                   assg.get_cstate(), assg.get_tstate())
+                   assg_cstate, assg_tstate)
             )
 
             """
@@ -450,6 +454,29 @@ class DrbdManager(object):
                 ============================================================
                 """
 
+                # Finishes transitions between server assignments and
+                # diskless client assignments
+                if (is_set(assg_tstate, Assignment.FLAG_DISKLESS) and
+                    is_unset(assg_cstate, Assignment.FLAG_DISKLESS)):
+                    # Check whether all volume states indicate diskless
+                    has_disks = False
+                    for vol_state in assg.iterate_volume_states():
+                        if vol_state.get_bd_name() is not None:
+                            has_disks = True
+                            break
+                    if not has_disks:
+                        assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
+                elif (is_unset(assg_tstate, Assignment.FLAG_DISKLESS) and
+                      is_set(assg_cstate, Assignment.FLAG_DISKLESS)):
+                    # Check whether all volume states indicate a disk
+                    has_disks = True
+                    for vol_state in assg.iterate_volume_states():
+                        if vol_state.get_bd_name() is None:
+                            has_disks = False
+                            break
+                    if has_disks:
+                        assg.clear_cstate_flags(Assignment.FLAG_DISKLESS)
+
                 # FIXME: this should probably be changed so that the other
                 #        actions (deploy/connect/etc.) do not operate on the
                 #        assignment any more if it has no active volumes;
@@ -458,7 +485,7 @@ class DrbdManager(object):
                 #        make sure that it can be cleaned up as soon as its
                 #        target state changes to 0 (e.g., unassign/undeploy).
                 if assg.is_empty():
-                    if assg.get_cstate() != 0:
+                    if assg_cstate != 0:
                         state_changed = True
                         assg.undeploy_adjust_cstate()
                 else:
@@ -484,17 +511,6 @@ class DrbdManager(object):
                         if fn_rc != 0:
                             failed_actions = True
 
-                    # TODO: Check whether all volumes are actually diskless
-                    #       (e.g., bd_name/bd_path == NULL)
-
-                    assg_tstate = assg.get_tstate()
-                    assg_cstate = assg.get_cstate()
-                    if (is_set(assg_tstate, Assignment.FLAG_DISKLESS) and
-                        is_unset(assg_cstate, Assignment.FLAG_DISKLESS)):
-                        # Set the current state to diskless too
-                        state_changed = True
-                        assg.set_cstate_flags(Assignment.FLAG_DISKLESS)
-
             if failed_actions:
                 assg.increase_fail_count()
         if state_changed:
@@ -510,6 +526,9 @@ class DrbdManager(object):
         state_changed  = False
         pool_changed   = False
         failed_actions = False
+
+        assg_cstate = assg.get_cstate()
+        assg_tstate = assg.get_tstate()
 
         max_peers = self._server.DEFAULT_MAX_PEERS
         try:
@@ -576,13 +595,39 @@ class DrbdManager(object):
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
                         failed_actions = True
-                elif vol_state.requires_detach():
+                elif (vol_state.requires_detach()):
                     state_changed = True
                     fn_rc = self._detach(assg, vol_state)
                     assg.set_rc(fn_rc)
                     if fn_rc != 0:
                         failed_actions = True
 
+            """
+            Transition from diskless client to server or vice-versa
+            """
+            if (not failed_actions):
+                if (is_set(assg_tstate, Assignment.FLAG_DISKLESS) and
+                    is_unset(assg_cstate, Assignment.FLAG_DISKLESS)):
+                    # Server -> diskless client transition
+                    if vol_state.get_bd_name() is not None:
+                        state_changed = True
+                        vol_state.clear_tstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                        fn_rc = self._undeploy_volume(assg, vol_state)
+                        if fn_rc != 0:
+                            failed_actions = True
+                elif (is_unset(assg_tstate, Assignment.FLAG_DISKLESS) and
+                      is_set(assg_cstate, Assignment.FLAG_DISKLESS)):
+                    # Diskless client -> server transition
+                    if vol_state.get_bd_name() is None:
+                        state_changed = True
+                        # Remove any previously set snapshot restoration properties
+                        vol_state.get_props().remove_prop(consts.SNAPS_SRC_BLOCKDEV)
+                        vol_state.set_tstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                        fn_rc = self._deploy_volume_actions(assg, vol_state, max_peers)
+                        if fn_rc != 0:
+                            failed_actions = True
+
+        logging.debug("DrbdManager: Exit function _volume_actions()")
         return (state_changed, pool_changed, failed_actions)
 
     @log_in_out
@@ -1288,9 +1333,16 @@ class DrbdManager(object):
             # are currently deployed and not marked for becoming undeployed
             #
             # Adjust the resource
-            fn_rc = self._drbdadm.adjust(res_name)
-            if fn_rc == 0:
-                vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            # FIXME: sometimes drbdadm tries to resize for no reason,
+            #        but only once, so try that a couple times if
+            #        it fails
+            retries = 0
+            while retries < 3:
+                fn_rc = self._drbdadm.adjust(res_name)
+                if fn_rc == 0:
+                    vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                    break
+                retries += 1
         else:
             # There are no volumes left in the resource,
             # stop the entire resource
@@ -1314,8 +1366,9 @@ class DrbdManager(object):
             if fn_rc == DM_SUCCESS or bd_name is None:
                 fn_rc = 0
                 vol_state.set_bd(None, None)
-                vol_state.set_cstate(0)
-                vol_state.set_tstate(0)
+                if is_unset(vol_state.get_tstate(), DrbdVolumeState.FLAG_DEPLOY):
+                    vol_state.set_cstate(0)
+                    vol_state.set_tstate(0)
                 if not keep_conf:
                     # there are no volumes left in the resource, set the
                     # assignment's current state to 0 to enable

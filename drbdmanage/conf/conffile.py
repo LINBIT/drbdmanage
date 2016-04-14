@@ -391,7 +391,7 @@ class DrbdAdmConf(object):
                                 raise InvalidMinorNrException
                             bd_path = vol_state.get_bd_path()
                             if bd_path is None:
-                                if node is local_node:
+                                if diskless or node is local_node:
                                     # If the local node has no
                                     # backend storage, configure it as
                                     # a DRBD client
@@ -507,7 +507,7 @@ class DrbdAdmConf(object):
                         if minor is None:
                             raise InvalidMinorNrException
                         bd_path = vol_state.get_bd_path()
-                        if bd_path is None:
+                        if diskless or bd_path is None:
                             if node is local_node:
                                 # If the local node has no backend storage,
                                 # configure it as a DRBD client
