@@ -600,6 +600,7 @@ class DrbdManage(object):
                               ' of nodes to which the resource should be'
                               ' deployed. It must be at least 1 and at most'
                               ' the number of nodes in the cluster')
+        p_deploy.add_argument('--with-clients', action="store_true")
         p_deploy.set_defaults(func=self.cmd_deploy)
 
         # undeploy
@@ -1884,6 +1885,7 @@ class DrbdManage(object):
         res_name = args.resource
         count = args.redundancy_count
         delta = 0
+        site_clients = args.with_clients
 
         if args.decrease:
             count *= -1
@@ -1894,7 +1896,7 @@ class DrbdManage(object):
         self.dbus_init()
         server_rc = self._server.auto_deploy(
             dbus.String(res_name), dbus.Int32(count),
-            dbus.Int32(delta), dbus.Boolean(False)
+            dbus.Int32(delta), dbus.Boolean(site_clients)
         )
         fn_rc = self._list_rc_entries(server_rc)
 
