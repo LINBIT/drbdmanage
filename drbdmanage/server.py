@@ -2982,6 +2982,7 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         try:
+            save_changes = False
             if ((count == 0 and delta == 0) or count < 0):
                 add_rc_entry(
                     fn_rc, DM_EINVAL,
@@ -3115,8 +3116,7 @@ class DrbdManageServer(object):
                                 Assignment.FLAG_CONNECT,
                                 DrbdNode.NODE_ID_NONE
                             )
-                        self.save_conf_data(persist)
-                        self.schedule_run_changes()
+                        save_changes = True
                     else:
                         add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
                         raise DeployerException
@@ -3173,14 +3173,18 @@ class DrbdManageServer(object):
                                 assg.deploy_client()
                             else:
                                 self._unassign(assg, False)
-                    self.save_conf_data(persist)
-                    self.schedule_run_changes()
+                    save_changes = True
 
             # condition (final_count == assigned_count) is successful, too
 
             if site_clients:
                 # turn all remaining nodes into clients
-                self._site_clients(resource, None)
+                if self._site_clients(resource, None):
+                    save_changes = True
+
+            if save_changes:
+                self.save_conf_data(persist)
+                self.schedule_run_changes()
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
         except (ValueError, DeployerException):
@@ -3239,9 +3243,11 @@ class DrbdManageServer(object):
         """
         Turn all nodes that do replicate a resource into clients
         """
+        assg_changed = False
         for node in self._nodes.itervalues():
             assg = node.get_assignment(resource.get_name())
             if assg is None:
+                assg_changed = True
                 self._assign(
                     node, resource,
                     0,
@@ -3252,7 +3258,9 @@ class DrbdManageServer(object):
             else:
                 tstate = assg.get_tstate()
                 if is_unset(tstate, Assignment.FLAG_DEPLOY):
+                    assg_changed = True
                     assg.deploy_client()
+        return assg_changed
 
     @no_satellite
     def modify_state(self, node_name, res_name,
