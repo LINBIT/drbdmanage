@@ -54,7 +54,7 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_SHUTDOWN, SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP,
-    KEY_SHUTDOWN_RES
+    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
@@ -2763,31 +2763,35 @@ class DrbdManageServer(object):
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
-                node = None
-                try:
-                    node = self._nodes[node_name]
-                except KeyError:
+                node = self._nodes.get(node_name)
+                if node is not None:
+                    if res_name.lower() == RES_ALL_KEYWORD:
+                        for assignment in node.iterate_assignments():
+                            sub_rc = self._unassign(assignment, force)
+                            if sub_rc != DM_SUCCESS:
+                                resource = assignment.get_resource()
+                                add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc),
+                                             [["resource", resource.get_name()]])
+                        self.save_conf_data(persist)
+                        self.schedule_run_changes()
+                    else:
+                        resource = self._resources.get(res_name)
+                        if resource is not None:
+                            assignment = node.get_assignment(resource.get_name())
+                            if assignment is None:
+                                add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+                            else:
+                                sub_rc = self._unassign(assignment, force)
+                                if sub_rc != DM_SUCCESS:
+                                    add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
+                                self.save_conf_data(persist)
+                                self.schedule_run_changes()
+                        else:
+                            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
+                                         [ [ RES_NAME, res_name ] ])
+                else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
                                  [ [ NODE_NAME, node_name ] ])
-                resource = None
-                try:
-                    resource = self._resources[res_name]
-                except KeyError:
-                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
-                                 [ [ RES_NAME, res_name ] ])
-                if node is None or resource is None:
-                    add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-                else:
-                    assignment = node.get_assignment(resource.get_name())
-                    if assignment is None:
-                        add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-                    else:
-                        sub_rc = self._unassign(assignment, force)
-                        if sub_rc == DM_SUCCESS:
-                            self.save_conf_data(persist)
-                            self.schedule_run_changes()
-                        else:
-                            add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
             else:
                 raise PersistenceException
         except DrbdManageException as server_exc:

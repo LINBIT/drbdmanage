@@ -1893,7 +1893,7 @@ class DrbdResource(GenericDrbdObject):
         )
         # A resource can not be named "all", because that is a
         # keyword in the drbdsetup/drbdadm utilities
-        if checked_name.lower() == drbdcmd.DrbdAdm.RES_ALL_KEYWORD:
+        if checked_name.lower() == consts.RES_ALL_KEYWORD:
             raise dmexc.InvalidNameException
         return checked_name
 

@@ -32,7 +32,6 @@ class DrbdAdm(object):
     """
 
     EXECUTABLE      = "drbdadm"
-    RES_ALL_KEYWORD = "all"
 
     FALLBACK_EXECUTABLE = "drbdsetup"
 
