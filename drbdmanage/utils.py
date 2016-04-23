@@ -72,7 +72,7 @@ DEFAULT_TERM_HEIGHT = 25
 
 
 class Table():
-    def __init__(self, colors=True, utf8=False):
+    def __init__(self, colors=True, utf8=False, pastable=False):
         self.r_just = False
         self.got_column = False
         self.got_row = False
@@ -82,8 +82,14 @@ class Table():
         self.coloroverride = []
         self.view = None
         self.showseps = False
-        self.colors = colors
-        self.utf8 = utf8
+        self.maxwidth = 0  # if 0, determine terminal width automatically
+        if pastable:
+            self.colors = False
+            self.utf8 = False
+            self.maxwidth = 78
+        else:
+            self.colors = colors
+            self.utf8 = utf8
 
     def add_column(self, name, color=False, just_col='<', just_txt='<'):
         self.got_column = True
@@ -159,8 +165,11 @@ class Table():
                     row.pop(pidx)
 
         columnmax = [0] * len(self.header)
-        term_width, _ = get_terminal_size()
-        maxwidth = 110 if term_width > 110 else term_width
+        if self.maxwidth:
+            maxwidth = self.maxwidth
+        else:
+            term_width, _ = get_terminal_size()
+            maxwidth = 110 if term_width > 110 else term_width
 
         # color overhead
         co = len(COLOR_RED) + len(COLOR_NONE)

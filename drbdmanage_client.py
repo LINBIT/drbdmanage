@@ -782,6 +782,7 @@ class DrbdManage(object):
                                    description='Prints a list of all cluster nodes known to drbdmanage. '
                                    'By default, the list is printed as a human readable table.')
         p_lnodes.add_argument('-m', '--machine-readable', action="store_true")
+        p_lnodes.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_lnodes.add_argument('-s', '--show', nargs='+',
                               choices=nodesverbose).completer = nodes_verbose_completer
         p_lnodes.add_argument('-g', '--groupby', nargs='+',
@@ -801,6 +802,7 @@ class DrbdManage(object):
                                    description='Prints a list of all resource definitions known to '
                                    'drbdmanage. By default, the list is printed as a human readable table.')
         p_lreses.add_argument('-m', '--machine-readable', action="store_true")
+        p_lreses.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_lreses.add_argument('-s', '--show', nargs='+',
                               choices=resverbose).completer = res_verbose_completer
         p_lreses.add_argument('-g', '--groupby', nargs='+',
@@ -818,6 +820,7 @@ class DrbdManage(object):
                                   description=' Prints a list of all volume definitions known to drbdmanage. '
                                   'By default, the list is printed as a human readable table.')
         p_lvols.add_argument('-m', '--machine-readable', action="store_true")
+        p_lvols.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_lvols.add_argument('-s', '--show', nargs='+',
                              choices=resverbose).completer = res_verbose_completer
         p_lvols.add_argument('-g', '--groupby', nargs='+',
@@ -834,6 +837,7 @@ class DrbdManage(object):
         p_lsnaps = subp.add_parser('list-snapshots', aliases=['s', 'snapshots'],
                                    description='List available snapshots')
         p_lsnaps.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnaps.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_lsnaps.add_argument('-g', '--groupby', nargs='+',
                               choices=snapgroupby).completer = snap_group_completer
         p_lsnaps.add_argument('--separators', action="store_true")
@@ -849,6 +853,7 @@ class DrbdManage(object):
         p_lsnapas = subp.add_parser('list-snapshot-assignments', aliases=['sa', 'snapshot-assignments'],
                                     description='List snapshot assignments')
         p_lsnapas.add_argument('-m', '--machine-readable', action="store_true")
+        p_lsnapas.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_lsnapas.add_argument('-g', '--groupby', nargs='+',
                                choices=snapasgroupby).completer = snapas_group_completer
         p_lsnapas.add_argument('--separators', action="store_true")
@@ -872,6 +877,7 @@ class DrbdManage(object):
                                         "list. By default, the list is printed as a human readable table.")
         p_assignments.add_argument('-m', '--machine-readable',
                                    action="store_true")
+        p_assignments.add_argument('-p', '--pastable', action="store_true", help='Generate pastable output')
         p_assignments.add_argument('-s', '--show', nargs='+',
                                    choices=assignverbose).completer = ass_verbose_completer
         p_assignments.add_argument('-g', '--groupby', nargs='+',
@@ -2138,6 +2144,9 @@ class DrbdManage(object):
         color = self.color
 
         machine_readable = args.machine_readable
+        pastable = args.pastable
+        if pastable:
+            self._colors = False
 
         node_filter_arg = [] if args.nodes is None else args.nodes
 
@@ -2148,7 +2157,7 @@ class DrbdManage(object):
             sys.stdout.write("No nodes defined\n")
             return 0
 
-        t = Table(colors=self._colors, utf8=self._utf8)
+        t = Table(colors=self._colors, utf8=self._utf8, pastable=pastable)
         if not args.groupby:
             groupby = ["Name"]
         else:
@@ -2287,6 +2296,9 @@ class DrbdManage(object):
         color = self.color
 
         machine_readable = args.machine_readable
+        pastable = args.pastable
+        if pastable:
+            self._colors = False
 
         resource_filter_arg = [] if args.resources is None else args.resources
 
@@ -2298,7 +2310,7 @@ class DrbdManage(object):
                 sys.stdout.write("No resources defined\n")
                 return 0
 
-        t = Table(colors=self._colors, utf8=self._utf8)
+        t = Table(colors=self._colors, utf8=self._utf8, pastable=pastable)
 
         if not args.groupby:
             groupby = ["Name"]
@@ -2421,6 +2433,9 @@ class DrbdManage(object):
         color = self.color
 
         machine_readable = args.machine_readable
+        pastable = args.pastable
+        if pastable:
+            self._colors = False
 
         resource_filter_arg = [] if args.resources is None else args.resources
 
@@ -2432,7 +2447,7 @@ class DrbdManage(object):
             sys.stdout.write("Snapshot list is empty\n")
             return 0
 
-        t = Table(colors=self._colors, utf8=self._utf8)
+        t = Table(colors=self._colors, utf8=self._utf8, pastable=pastable)
         if not args.groupby:
             groupby = ["Resource"]
         else:
@@ -2466,6 +2481,9 @@ class DrbdManage(object):
         self.dbus_init()
 
         machine_readable = args.machine_readable
+        pastable = args.pastable
+        if pastable:
+            self._colors = False
 
         node_filter_arg = [] if args.nodes is None else args.nodes
         resource_filter_arg = [] if args.resources is None else args.resources
@@ -2483,7 +2501,7 @@ class DrbdManage(object):
             sys.stdout.write("Snapshot assignment list is empty\n")
             return 0
 
-        t = Table(colors=self._colors, utf8=self._utf8)
+        t = Table(colors=self._colors, utf8=self._utf8, pastable=pastable)
         if not args.groupby:
             groupby = ["Resource", "Name"]
         else:
@@ -2529,6 +2547,9 @@ class DrbdManage(object):
         self.dbus_init()
 
         machine_readable = args.machine_readable
+        pastable = args.pastable
+        if pastable:
+            self._colors = False
 
         node_filter_arg = [] if args.nodes is None else args.nodes
         resource_filter_arg = [] if args.resources is None else args.resources
@@ -2544,7 +2565,7 @@ class DrbdManage(object):
             sys.stdout.write("No assignments defined\n")
             return 0
 
-        t = Table(colors=self._colors, utf8=self._utf8)
+        t = Table(colors=self._colors, utf8=self._utf8, pastable=pastable)
 
         if not args.groupby:
             groupby = ["Node", "Resource"]
