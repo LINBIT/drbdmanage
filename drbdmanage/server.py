@@ -2766,7 +2766,14 @@ class DrbdManageServer(object):
                 node = self._nodes.get(node_name)
                 if node is not None:
                     if res_name.lower() == RES_ALL_KEYWORD:
+                        # Build a temporary list of assignments
+                        assg_list = []
                         for assignment in node.iterate_assignments():
+                            assg_list.append(assignment)
+                        # Iterate over the temporary list of assignments,
+                        # because the node's assignment map may change during
+                        # iteration if the 'force' flag is set
+                        for assignment in assg_list:
                             sub_rc = self._unassign(assignment, force)
                             if sub_rc != DM_SUCCESS:
                                 resource = assignment.get_resource()
