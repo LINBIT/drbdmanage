@@ -59,6 +59,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.EXECUTABLE, "down", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -68,8 +69,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: adjust %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -79,8 +80,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: resize %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "resize", res_name + "/" + str(vol_id)]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -90,8 +91,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.warning("DEPRECATED: DrbdAdm: up %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "up", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -101,8 +102,8 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: down %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "down", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -113,7 +114,6 @@ class DrbdAdm(object):
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
         fallback_ok = False
-        logging.debug("DrbdAdm: fallback_down(%s)" % (res_name))
         exec_args = [self.FALLBACK_EXECUTABLE, "down", res_name]
         utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         try:
@@ -132,16 +132,13 @@ class DrbdAdm(object):
         @param   force: if set, adds the --force flag for drbdsetup
         @return: process handle of the drbdadm process
         """
-        if force:
-            logging.debug("DrbdAdm: primary %s --force" % (res_name))
-        else:
-            logging.debug("DrbdAdm: primary %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-"]
         if force:
             exec_args.append("--")
             exec_args.append("--force")
         exec_args.append("primary")
         exec_args.append(res_name)
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -150,8 +147,8 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: secondary %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -160,16 +157,13 @@ class DrbdAdm(object):
         Connects a resource to its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        if discard:
-            logging.debug("DrbdAdm: connect %s --discard-my-data" % (res_name))
-        else:
-            logging.debug("DrbdAdm: connect %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-"]
         if discard:
             exec_args.append("--")
             exec_args.append("--discard-my-data")
         exec_args.append("connect")
         exec_args.append(res_name)
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -178,8 +172,8 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: disconnect %s" % (res_name))
         exec_args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -188,9 +182,9 @@ class DrbdAdm(object):
         Attaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: attach %s %d" % (res_name, vol_id))
         exec_args = [self.EXECUTABLE, "-c", "-", "attach",
                 res_name + "/" + str(vol_id)]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -199,9 +193,9 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: detach %s %d" % (res_name, vol_id))
         exec_args = [self.EXECUTABLE, "-c", "-", "detach",
                 res_name + "/" + str(vol_id)]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
 
@@ -210,9 +204,9 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        logging.debug("DrbdAdm: create-md %s %d" % (res_name, vol_id))
         exec_args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         return self._run_drbdadm(exec_args)
 
     def _run_drbdadm_preexec(self, args):
