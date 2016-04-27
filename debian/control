@@ -10,6 +10,7 @@ Priority: optional
 # We include python-gobject, because the client (which depends on it) is started for manpage generation
 Build-Depends: bash-completion,
                debhelper (>= 9),
+               docbook-xsl,
                help2man,
                python-all (>= 2.6.6-3),
                python-dbus,
