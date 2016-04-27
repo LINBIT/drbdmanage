@@ -1364,6 +1364,41 @@ def ceiling_divide(dividend, divisor):
         return quotient
 
 
+def approximate_size_string(size_kiB):
+    """
+    Produce human readable size information as a string
+    """
+    units = []
+    units.append("kiB")
+    units.append("MiB")
+    units.append("GiB")
+    units.append("TiB")
+    units.append("PiB")
+    max_index = len(units)
+
+    index = 0
+    counter = 1
+    magnitude = 1 << 10
+    while counter < max_index:
+        if size_kiB >= magnitude:
+            index = counter
+        else:
+            break
+        magnitude = magnitude << 10
+        counter += 1
+    magnitude = magnitude >> 10
+
+    size_str = None
+    if size_kiB % magnitude != 0:
+        size_unit = float(size_kiB) / magnitude
+        size_str = "%3.3f %s" % (size_unit, units[index])
+    else:
+        size_unit = size_kiB / magnitude
+        size_str = "%d %s" % (size_unit, units[index])
+
+    return size_str
+
+
 def debug_log_exec_args(source, exec_args):
     """
     Logs the arguments used to execute an external command

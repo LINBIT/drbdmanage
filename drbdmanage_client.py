@@ -59,7 +59,7 @@ from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
     build_path, bool_to_string, rangecheck, namecheck, ssh_exec,
-    load_server_conf_file, filter_prohibited, get_uname
+    load_server_conf_file, filter_prohibited, get_uname, approximate_size_string
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -2369,19 +2369,12 @@ class DrbdManage(object):
                             )
                             if not machine_readable:
                                 # human readable output of the volume description
-                                size_MiB = SizeCalc.convert(
-                                    vol_view.get_size_kiB(),
-                                    SizeCalc.UNIT_kiB, SizeCalc.UNIT_MiB
-                                )
-                                if size_MiB < 1:
-                                    size_MiB_str = "< 1"
-                                else:
-                                    size_MiB_str = str(size_MiB)
+                                size_info = approximate_size_string(vol_view.get_size_kiB())
                                 level, state_text = vol_view.state_info()
                                 level_color = self._level_color(level)
                                 row_data = [
                                     res_name, str(vol_view.get_id()),
-                                    size_MiB_str, v_minor, v_port, (level_color, state_text)
+                                    size_info, v_minor, v_port, (level_color, state_text)
                                 ]
                                 t.add_row(row_data)
                             else:
