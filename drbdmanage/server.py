@@ -6407,6 +6407,11 @@ class DrbdManageServer(object):
                             fn_rc = 0
                         except ValueError:
                             pass
+                    else:
+                        if re.search(r'^\d+$', val):
+                            val = int(val)
+                        node.__setattr__(key, val)
+                        fn_rc = 0
                 except IndexError:
                     self._debug_out.write("Missing argument\n")
             else:
