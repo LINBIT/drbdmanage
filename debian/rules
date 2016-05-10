@@ -22,4 +22,6 @@ ifneq ($(WITH_SYSTEMD),)
 	mv $(CURDIR)/debian/python-drbdmanage/lib/systemd/system/drbdmanaged.service $(CURDIR)/debian/ || :
 override_dh_installinit:
 	dh_installinit --name=drbdmanaged --no-start
+override_dh_systemd_start:
+	dh_systemd_start --no-start
 endif
