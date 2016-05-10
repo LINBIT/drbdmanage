@@ -1,0 +1,5 @@
+python setup.py install -O1 --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
+CONFIGFILES="\
+%config(noreplace) /etc/dbus-1/system.d/org.drbd.drbdmanaged.conf"
+
+echo "$CONFIGFILES" >> INSTALLED_FILES

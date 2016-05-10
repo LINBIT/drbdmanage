@@ -6,3 +6,4 @@ include MANIFEST.in
 include COPYING
 include Makefile
 include setup.cfg.sles11
+include install_rpm.txt
