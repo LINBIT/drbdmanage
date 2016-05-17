@@ -4715,7 +4715,15 @@ class DrbdManageServer(object):
 
         loaded_plugins = self._pluginmgr.get_loaded_plugins()
         for (plugin_path, plugin_name) in loaded_plugins:
-            self._pluginmgr.set_plugin_config(plugin_path, self._plugin_conf[plugin_name])
+            try:
+                # loaded plugins might also contain plugins that don't have a configuration in the objects root
+                # currently these are "external" plugins
+                # only known plugins like lvm, zfs, deployer have a config in self._plugin_conf
+                # self._plugin_conf[plugin_name] might therefore raise a KeyError
+                config = self._plugin_conf[plugin_name]
+            except KeyError:
+                continue
+            self._pluginmgr.set_plugin_config(plugin_path, config)
 
     def load_conf_data(self, persist):
         """
