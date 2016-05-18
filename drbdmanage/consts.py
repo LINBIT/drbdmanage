@@ -28,6 +28,9 @@ try:
 except:
     DM_GITHASH = 'GIT-hash: UNKNOWN'
 
+DBUS_DRBDMANAGED = "org.drbd.drbdmanaged"
+DBUS_SERVICE     = "/interface"
+
 SERIAL              = "serial"
 NODE_NAME           = "node_name"
 NODE_ADDR           = "addr"

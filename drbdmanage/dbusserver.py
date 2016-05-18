@@ -22,6 +22,10 @@ import logging
 import dbus
 import dbus.service
 import dbus.mainloop.glib
+from drbdmanage.consts import (
+    DBUS_DRBDMANAGED,
+    DBUS_SERVICE,
+)
 
 
 class DBusServer(dbus.service.Object):
@@ -30,9 +34,6 @@ class DBusServer(dbus.service.Object):
     dbus API to the drbdmanage server API
     """
 
-    DBUS_DRBDMANAGED = "org.drbd.drbdmanaged"
-    DBUS_SERVICE     = "/interface"
-
     _dbus   = None
     _server = None
 
@@ -40,10 +41,10 @@ class DBusServer(dbus.service.Object):
     def __init__(self, server):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self._dbus = dbus.service.BusName(
-            self.DBUS_DRBDMANAGED,
+            DBUS_DRBDMANAGED,
             bus=dbus.SystemBus()
         )
-        dbus.service.Object.__init__(self, self._dbus, self.DBUS_SERVICE)
+        dbus.service.Object.__init__(self, self._dbus, DBUS_SERVICE)
         self._server = server
 
 
@@ -744,7 +745,7 @@ class DBusSignal(dbus.service.Object):
             logging.debug("DBusSignal: Dummy instance created (no valid path specified)")
 
 
-    @dbus.service.signal(DBusServer.DBUS_DRBDMANAGED)
+    @dbus.service.signal(DBUS_DRBDMANAGED)
     def notify_changed(self):
         """
         Signal to notify subscribers of a change
@@ -755,7 +756,7 @@ class DBusSignal(dbus.service.Object):
         logging.debug("DBusSignal '%s': notify_changed()" % self._path)
 
 
-    @dbus.service.signal(DBusServer.DBUS_DRBDMANAGED)
+    @dbus.service.signal(DBUS_DRBDMANAGED)
     def notify_removed(self):
         """
         Signal to notify subscribers to unsubscribe

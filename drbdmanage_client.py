@@ -42,7 +42,7 @@ import drbdmanage.argcomplete as argcomplete
 import gobject
 
 from drbdmanage.consts import (
-    KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT,
+    KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DBUS_DRBDMANAGED, DBUS_SERVICE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
@@ -135,7 +135,7 @@ class DrbdManage(object):
                 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
                 self._dbus = dbus.SystemBus()
                 self._server = self._dbus.get_object(
-                    DBusServer.DBUS_DRBDMANAGED, DBusServer.DBUS_SERVICE
+                    DBUS_DRBDMANAGED, DBUS_SERVICE
                 )
         except dbus.exceptions.DBusException as exc:
             self._print_dbus_exception(exc)
@@ -149,8 +149,8 @@ class DrbdManage(object):
                 handler_function=signal_handler_fn,
                 signal_name=signal_name_arg,
                 dbus_interface=None,
-                bus_name=DBusServer.DBUS_DRBDMANAGED,
-                path=DBusServer.DBUS_SERVICE
+                bus_name=DBUS_DRBDMANAGED,
+                path=DBUS_SERVICE
             )
         else:
             sys.stderr.write(
@@ -923,7 +923,7 @@ class DrbdManage(object):
             # needed to wait for completion
             self._server.Introspect()
             fns = []
-            expected = DBusServer.DBUS_DRBDMANAGED + "."
+            expected = DBUS_DRBDMANAGED + "."
             expected_len = len(expected)
             for fn in self._server._introspect_method_map.iterkeys():
                 if not fn.startswith(expected):
@@ -2870,7 +2870,7 @@ Confirm:
                 # Previous DBus connection is gone after shutdown,
                 # must run dbus_init() again
                 self._server = self._dbus.get_object(
-                    DBusServer.DBUS_DRBDMANAGED, DBusServer.DBUS_SERVICE
+                    DBUS_DRBDMANAGED, DBUS_SERVICE
                 )
                 server_rc = self._server.init_node(
                     dbus.String(node_name), props
