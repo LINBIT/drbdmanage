@@ -22,6 +22,7 @@ import os
 import logging
 import subprocess
 import drbdmanage.storage.lvm_common as lvmcom
+import drbdmanage.storage.storagecore as storcore
 from drbdmanage.storage.storageplugin_common import (
     StoragePluginException, StoragePluginUnmanagedVolumeException)
 
@@ -90,6 +91,7 @@ class Lvm(lvmcom.LvmCommon):
 
     def __init__(self, server):
         super(Lvm, self).__init__()
+        self.traits[storcore.StoragePlugin.KEY_PROV_TYPE] = storcore.StoragePlugin.PROV_TYPE_FAT
         self.reconfigure()
 
     def get_default_config(self):

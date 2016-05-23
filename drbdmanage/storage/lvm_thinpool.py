@@ -113,6 +113,7 @@ class LvmThinPool(lvmcom.LvmCommon):
 
     def __init__(self, server):
         super(LvmThinPool, self).__init__()
+        self.traits[storcore.StoragePlugin.KEY_PROV_TYPE] = storcore.StoragePlugin.PROV_TYPE_THIN
         self.reconfigure()
 
     def get_default_config(self):

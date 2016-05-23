@@ -57,8 +57,12 @@ class StoragePluginUnmanagedVolumeException(Exception):
 
 
 class StoragePluginCommon(object):
+
+    # Traits map, str = str key/value pairs
+    traits = None
+
     def __init__(self):
-        pass
+        self.traits = {}
 
     def _deserialize(self, data):
         """
@@ -696,3 +700,6 @@ class StoragePluginCommon(object):
             return self._remove_snapshot(blockdevice)
         except NotImplementedError:
             raise NotImplementedError
+
+    def get_trait(self, key):
+        return self.traits.get(key)

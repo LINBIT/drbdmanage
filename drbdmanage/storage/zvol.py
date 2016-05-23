@@ -88,6 +88,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
     _subproc_env = None
 
     def __init__(self, server):
+        self.traits[storcore.StoragePlugin.KEY_PROV_TYPE] = storcore.StoragePlugin.PROV_TYPE_FAT
         self.reconfigure()
 
     def get_default_config(self):

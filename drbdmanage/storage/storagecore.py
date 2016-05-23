@@ -382,6 +382,14 @@ class BlockDeviceManager(object):
             self._log_no_plugin()
         return fn_rc
 
+    def get_trait(self, key):
+        """
+        Returns the StoragePlugin's trait value for the specified key, otherwise None
+        """
+        value = None
+        if self._plugin is not None:
+            value = self._plugin.get_trait(key)
+        return value
 
     def _log_not_implemented(self, function_name):
         logging.error(
@@ -481,6 +489,10 @@ class StoragePlugin(object):
     functions it looks for.
     """
     NAME = 'unknown'
+
+    KEY_PROV_TYPE  = "provisioning-type"
+    PROV_TYPE_FAT  = "fat"
+    PROV_TYPE_THIN = "thin"
 
     def __init__(self):
         """
@@ -606,6 +618,12 @@ class StoragePlugin(object):
         @param   node: The node to update
         @type    node: DrbdNode object
         @return: standard return code, pool total size, pool free space
+        """
+        raise NotImplementedError
+
+    def get_trait(self, key):
+        """
+        Returns the trait value selected by the key, otherwise None
         """
         raise NotImplementedError
 
