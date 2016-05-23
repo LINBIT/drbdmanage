@@ -609,7 +609,7 @@ class StoragePlugin(object):
         """
         raise NotImplementedError
 
-    def reconfigure(self):
+    def reconfigure(self, config=None):
         """
         Reconfigures the storage plugin
         """
