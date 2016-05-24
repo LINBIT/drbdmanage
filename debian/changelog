@@ -1,3 +1,27 @@
+drbdmanage (0.96-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * client: add pastable tables
+  * debian: add docbook-xsl as build dependency
+  * rpm: keep dbus configuration file on upgrades
+  * debian: do not start service/socket
+  * plugins: don't call set_plugin_conf for ext. plugins
+  * move DBUS constants to consts.py
+  * introduce a DrbdManageClientHelper class
+
+  [ Robert Altnoeder ]
+  * Fix the 'unassign --force all' command
+  * DrbdAdm class: More accurate logging
+  * CLI: output human-readable volume size in an appropriate unit
+  * StoragePlugin interface: Fixed reconfigure() arguments
+  * LvmThinLv: Fixed free space estimate
+  * Added StoragePlugin get_trait() function; added Lvm provisioning-type trait
+
+  [ Philipp Marek ]
+  * _debug_set_node: set arbitrary properties.
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 24 May 2016 14:59:23 +0200
+
 drbdmanage (0.95-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
