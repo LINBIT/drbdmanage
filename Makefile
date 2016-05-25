@@ -1,17 +1,18 @@
 GIT = git
 INSTALLFILES=.installfiles
+PYTHON = python2
 override GITHEAD := $(shell test -e .git && $(GIT) rev-parse HEAD)
 
-U := $(shell ./setup.py versionup2date >/dev/null 2>&1; echo $$?;)
+U := $(shell $(PYTHON) ./setup.py versionup2date >/dev/null 2>&1; echo $$?;)
 
 all: doc
-	python setup.py build
+	$(PYTHON) setup.py build
 
 doc:
-	python setup.py build_man
+	$(PYTHON) setup.py build_man
 
 install: drbdmanage/consts_githash.py
-	python setup.py install --record $(INSTALLFILES)
+	$(PYTHON) setup.py install --record $(INSTALLFILES)
 
 uninstall:
 	test -f $(INSTALLFILES) && cat $(INSTALLFILES) | xargs rm -rf || true
@@ -26,7 +27,7 @@ up2date: drbdmanage/consts_githash.py
 endif
 
 release: up2date clean
-	python setup.py sdist
+	$(PYTHON) setup.py sdist
 	@echo && echo "Did you run distclean?"
 
 debrelease: up2date clean
@@ -41,7 +42,7 @@ deb: up2date
 
 # it is up to you (or the buildenv) to provide a distri specific setup.cfg
 rpm: up2date doc
-	python setup.py bdist_rpm
+	$(PYTHON) setup.py bdist_rpm
 
 .PHONY: drbdmanage/consts_githash.py
 ifdef GITHEAD
@@ -56,7 +57,7 @@ drbdmanage/consts_githash.py:
 endif
 
 clean:
-	python setup.py clean
+	$(PYTHON) setup.py clean
 	rm -f man-pages/*.gz
 
 distclean: clean
