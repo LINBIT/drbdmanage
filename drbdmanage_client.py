@@ -432,7 +432,7 @@ class DrbdManage(object):
         p_resize_vol_command = 'resize-volume'
         p_resize_vol = subp.add_parser(p_resize_vol_command,
                                        aliases=['resize'],
-                                       description='Resizes a volume to the specified size, which must be'
+                                       description='Resizes a volume to the specified size, which must be '
                                        'greater than the current size of the volume.')
         p_resize_vol.add_argument('name', type=check_res_name,
                                   help='Name of the resource').completer = res_completer
