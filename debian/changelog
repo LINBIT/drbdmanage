@@ -1,3 +1,10 @@
+drbdmanage (0.96.1-1) experimental; urgency=medium
+
+  * build: set python to python2
+  * zfs: fix regression introduced in 860426f
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 31 May 2016 12:39:23 +0200
+
 drbdmanage (0.96-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
