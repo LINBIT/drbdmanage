@@ -412,6 +412,7 @@ class StoragePluginCommon(object):
                             "Removal of vol '%s' failed"
                             % (self.NAME, tries + 1, self.MAX_RETRIES, vol_name)
                         )
+                    tries += 1
             else:
                 raise StoragePluginUnmanagedVolumeException
         except (StoragePluginCheckFailedException, StoragePluginException):
