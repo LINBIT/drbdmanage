@@ -2883,8 +2883,7 @@ class DrbdManageServer(object):
             self.get_serial()
             node = assignment.get_node()
             resource = assignment.get_resource()
-            if (not force) and assignment.is_deployed():
-                assignment.disconnect()
+            if not force:
                 assignment.undeploy()
             else:
                 assignment.notify_removed()
@@ -3228,8 +3227,7 @@ class DrbdManageServer(object):
             resource = self._resources[res_name]
             removable = []
             for assg in resource.iterate_assignments():
-                if (not force) and assg.is_deployed():
-                    assg.disconnect()
+                if not force:
                     assg.undeploy()
                 else:
                     removable.append(assg)

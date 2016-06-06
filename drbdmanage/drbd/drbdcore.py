@@ -360,9 +360,13 @@ class DrbdManager(object):
                 # Assignment has no volumes deployed and is effectively
                 # disabled; Nothing to do, except for setting the correct
                 # state, so the assignment can be cleaned up
-                assg.set_tstate(0)
+                pool_changed = True
                 state_changed = True
+                fn_rc = self._undeploy_assignment(assg)
+                assg.set_rc(fn_rc)
                 assg.undeploy_adjust_cstate()
+                if fn_rc != 0:
+                    failed_actions = True
         elif act_flag:
             logging.debug(
                 "assigned resource %s cstate(%x)->tstate(%x)"
@@ -3364,6 +3368,12 @@ class Assignment(GenericDrbdObject):
         Used to indicate that an assignment's volumes should be undeployed
         (removed) from a node
         """
+        # Always pretend the assignment is deployed before trying to undeploy,
+        # so it will not be cleaned up if a previous attempt to deploy the
+        # assignment failed, but its DRBD resource configuration file is still
+        # present on some node and therefore requires the node to run its
+        # undeploy operations
+        self._cstate |= self.FLAG_DEPLOY
         if self._tstate != 0:
             self._tstate = 0
             self.get_props().new_serial()
