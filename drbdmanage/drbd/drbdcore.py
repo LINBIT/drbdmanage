@@ -1493,25 +1493,21 @@ class DrbdManager(object):
                     ud_errors = True
 
             if fn_rc == 0:
-                # if the assignment was diskless, mark all
-                # volumes as undeployed
-                cstate = assignment.get_cstate()
-                if is_set(cstate, Assignment.FLAG_DISKLESS):
-                    for vol_state in assignment.iterate_volume_states():
+                for vol_state in assignment.iterate_volume_states():
+                    bd_name = vol_state.get_bd_name()
+                    if bd_name is not None:
+                        # volume has a block device
+                        stor_rc = bd_mgr.remove_blockdevice(bd_name)
+                        if stor_rc == DM_SUCCESS:
+                            vol_state.set_bd(None, None)
+                            vol_state.set_cstate(0)
+                            vol_state.set_tstate(0)
+                        else:
+                            ud_errors = True
+                    else:
+                        # volume has no block device, nothing to do
                         vol_state.set_cstate(0)
                         vol_state.set_tstate(0)
-                else:
-                    # undeploy all non-diskless volumes
-                    for vol_state in assignment.iterate_volume_states():
-                        bd_name = vol_state.get_bd_name()
-                        if bd_name is not None:
-                            stor_rc = bd_mgr.remove_blockdevice(bd_name)
-                            if stor_rc == DM_SUCCESS:
-                                vol_state.set_bd(None, None)
-                                vol_state.set_cstate(0)
-                                vol_state.set_tstate(0)
-                            else:
-                                ud_errors = True
         if not ud_errors:
             # Remove the external configuration file
             self._server.remove_assignment_conf(resource.get_name())
