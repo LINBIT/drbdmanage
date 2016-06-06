@@ -382,14 +382,11 @@ class DrbdManageProxy(object):
             if satellite_node is None:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
             satellite_ip = satellite_node.get_addr()
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._satsockets[satellite_name] = sock
             try:
-                sock.connect((satellite_ip, port))
+                sock = socket.create_connection((satellite_ip, port), timeout=6)
             except Exception:
-                self._shutdown_and_close(self._satsockets[satellite_name])
-                del self._satsockets[satellite_name]
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
+            self._satsockets[satellite_name] = sock
 
         if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE:
             # self._dmserver._persist.json_export(self._dmserver._objects_root)
@@ -410,14 +407,14 @@ class DrbdManageProxy(object):
         # cleanup if communication failed.
         if opcode == self.opcodes[KEY_S_ANS_E_COMM]:
             self._shutdown_and_close(self._satsockets[satellite_name])
-            del self._satsockets[satellite_name]
+            self._satsockets.pop(satellite_name, None)
 
         return opcode, length, payload
 
     def shutdown_connection(self, satellite_name):
         if satellite_name in self._satsockets:
             self._shutdown_and_close(self._satsockets[satellite_name])
-            del self._satsockets[satellite_name]
+            self._satsockets.pop(satellite_name, None)
         return KEY_S_ANS_OK, 0, ''
 
     # used to encode/encrypt
