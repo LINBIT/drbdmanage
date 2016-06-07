@@ -355,6 +355,9 @@ class BasePersistence(object):
         except PersistenceException as pers_exc:
             # Rethrow
             raise pers_exc
+        except ValueError:
+            # this happens on satellite startup, don't panic
+            pass
         except Exception:
             exc_type, exc_obj, exc_tb = sys.exc_info()
             logging.error(
