@@ -3514,7 +3514,7 @@ Confirm:
         for k, v in colors.items():
             sys.stdout.write(v + k + COLOR_NONE + "\n")
         sys.stdout.write("\nNote: Do not directly edit these auto-generated"
-                         "files as they will be overwritten.\n")
+                         " files as they will be overwritten.\n")
         sys.stdout.write("Use the according drbdmange sub-commands to set/unset options.\n")
 
     def cmd_edit_config(self, args):
