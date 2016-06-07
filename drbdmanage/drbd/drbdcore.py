@@ -1073,48 +1073,51 @@ class DrbdManager(object):
                     assignment, vol_state, max_peers, nodes, vol_states,
                     thin_flag, initial_flag
                 )
+                if fn_rc != 0:
+                    failed_actions = True
 
-            # ============================================================
-            # DRBD initialization
-            # ============================================================
-            # FIXME: this does not need to run if metadata
-            #        creation failed
-            # Adjust the DRBD resource to configure the volume
-            res_name = resource.get_name()
-            drbd_proc = self._drbdadm.adjust(res_name)
-            if drbd_proc is not None:
-                self._resconf.write_excerpt(drbd_proc.stdin, assignment,
-                                            nodes, vol_states, self._get_global_conf())
-                drbd_proc.stdin.close()
-                fn_rc = drbd_proc.wait()
-                if fn_rc == 0:
-                    if diskless:
-                        # Successful "drbdadm adjust" is sufficient for a
-                        # diskless client to become deployed
-                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
-                        fn_rc = 0
-                    else:
-                        # FIXME: if the blockdevice is missing or meta-data
-                        #        creation failed, "drbdadm adjust" should have
-                        #        failed, too, but it would probably be better
-                        #        to check those cases explicitly
-                        vol_state.set_cstate_flags(
-                            DrbdVolumeState.FLAG_ATTACH |
-                            DrbdVolumeState.FLAG_DEPLOY
-                        )
-                        fn_rc = 0
-                    # "drbdadm adjust" implicitly connects the resource
-                    assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
-            else:
-                fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-
-            # Run new-current-uuid on initial deployment of a thinly provisioned volume
-            if initial_flag and thin_flag:
-                new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_state.get_id())
-                if new_gi_check:
-                    fn_rc = 0
+            if (not failed_actions):
+                # ============================================================
+                # DRBD initialization
+                # ============================================================
+                # FIXME: this does not need to run if metadata
+                #        creation failed
+                # Adjust the DRBD resource to configure the volume
+                res_name = resource.get_name()
+                drbd_proc = self._drbdadm.adjust(res_name)
+                if drbd_proc is not None:
+                    self._resconf.write_excerpt(drbd_proc.stdin, assignment,
+                                                nodes, vol_states, self._get_global_conf())
+                    drbd_proc.stdin.close()
+                    fn_rc = drbd_proc.wait()
+                    if fn_rc == 0:
+                        if diskless:
+                            # Successful "drbdadm adjust" is sufficient for a
+                            # diskless client to become deployed
+                            vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                            fn_rc = 0
+                        else:
+                            # FIXME: if the blockdevice is missing or meta-data
+                            #        creation failed, "drbdadm adjust" should have
+                            #        failed, too, but it would probably be better
+                            #        to check those cases explicitly
+                            vol_state.set_cstate_flags(
+                                DrbdVolumeState.FLAG_ATTACH |
+                                DrbdVolumeState.FLAG_DEPLOY
+                            )
+                            fn_rc = 0
+                        # "drbdadm adjust" implicitly connects the resource
+                        assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
                 else:
                     fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+                # Run new-current-uuid on initial deployment of a thinly provisioned volume
+                if initial_flag and thin_flag:
+                    new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_state.get_id())
+                    if new_gi_check:
+                        fn_rc = 0
+                    else:
+                        fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
         logging.debug("DrbdManager: Exit function _deploy_volume_actions()")
         return fn_rc
