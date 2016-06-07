@@ -1094,9 +1094,11 @@ class DrbdManage(object):
         ro = DrbdSetupOpts('resource-options')
         if ro.ok:
             p_ro = ro.genArgParseSubcommand(subp)
-            p_ro.add_argument('resource', type=check_res_name,
-                              help='Name of the resource').completer = res_completer
+            p_ro.add_argument('--common', action="store_true")
+            p_ro.add_argument('--resource', type=check_res_name,
+                              help='Name of the resource to modify').completer = res_completer
             p_ro.set_defaults(optsobj=ro)
+            p_ro.set_defaults(type="reso")
             p_ro.set_defaults(func=self.cmd_res_options)
 
         # net-options
@@ -3396,7 +3398,8 @@ Confirm:
 
     def cmd_res_options(self, args):
         fn_rc = 1
-        target = "resource"
+        target = self._checkmutex(args,
+                                  ("common", "resource"))
 
         newopts = args.optsobj.filterNew(args)
         if not newopts:
@@ -3404,7 +3407,7 @@ Confirm:
             return fn_rc
 
         newopts["target"] = target
-        newopts["type"] = "reso"
+        newopts["type"] = args.type
 
         return self._set_drbdsetup_props(newopts)
 

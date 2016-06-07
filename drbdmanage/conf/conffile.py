@@ -287,14 +287,17 @@ class DrbdAdmConf(object):
                 for k, v in peerdiskopts.items():
                     diskopts[k] = v
                 netopts = self._get_setup_props(common, "/neto/")
+                resopts = self._get_setup_props(common, "/reso/")
                 handlers = self._get_setup_props(common, "/handlers/")
                 if globalstream:
                     globalstream.write('common {\n')
-                    if diskopts or netopts or handlers:
+                    if diskopts or netopts or resopts or handlers:
                         if diskopts:
                             self._write_section('disk', globalstream, diskopts, 1)
                         if netopts:
                             self._write_section('net', globalstream, netopts, 1)
+                        if resopts:
+                            self._write_section('options', globalstream, resopts, 1)
                         if handlers:
                             self._write_section('handlers', globalstream, handlers, 1)
                     else:
