@@ -624,6 +624,14 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))" "s"
+    )
+    def role(self):
+        return self._server.role()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="a{ss}",
         out_signature="a(isa(ss))"
     )

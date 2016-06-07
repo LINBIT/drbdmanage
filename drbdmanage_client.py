@@ -1195,6 +1195,11 @@ class DrbdManage(object):
                                      help='File to load configuration json blob, if not given: stdin')
         p_importctrlvol.set_defaults(func=self.cmd_import_ctrlvol)
 
+        # role
+        p_role = subp.add_parser('role',
+                                 description='Show role of local drbdmanaged (controlnode/satellite/unknown)')
+        p_role.set_defaults(func=self.cmd_role)
+
         argcomplete.autocomplete(parser)
 
         return parser
@@ -3728,6 +3733,17 @@ Confirm:
 
         if fn_rc == 0:
             pass
+
+        return fn_rc
+
+    def cmd_role(self, args):
+        fn_rc = 1
+        self.dbus_init()
+        server_rc, role = self._server.role()
+        fn_rc = self._list_rc_entries(server_rc)
+
+        if fn_rc == 0:
+            sys.stdout.write('%s\n' % (role))
 
         return fn_rc
 

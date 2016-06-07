@@ -1620,6 +1620,17 @@ class DrbdManageServer(object):
 
         return fn_rc
 
+    def role(self):
+        fn_rc = []
+        role = 'unknown'
+        if self._is_satellite == SAT_SATELLITE:
+            role = 'satellite'
+        elif self._is_satellite == SAT_CONTROL_NODE:
+            role = 'controlnode'
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc, role
+
     @no_satellite
     def set_cluster_config(self, cfgdict):
         # for persistence see create_node
