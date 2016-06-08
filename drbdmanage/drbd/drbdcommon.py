@@ -88,3 +88,12 @@ class GenericDrbdObject(object):
                     match = True
                     break
         return match
+
+
+    def copy_drbd_options(self, src_obj):
+        """
+        Copy drbdsetup options from another object
+        """
+        props_namespace = propscon.PropsContainer.NAMESPACES[propscon.PropsContainer.KEY_SETUPOPT]
+        src_props = src_obj.get_props()
+        self._props.merge_gen(src_props.iteritems(props_namespace), namespace=props_namespace)

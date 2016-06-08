@@ -4442,7 +4442,11 @@ class DrbdManageServer(object):
                                     # DrbdVolume's properties container
                                     aux_props = aux_props_selector(v_props)
                                     volume.get_props().merge_gen(aux_props)
-                                resource.add_volume(volume)
+                                # Copy the drbdsetup options from the original volume
+                                src_volume = snaps_res.get_volume(vol_id)
+                                if src_volume is not None:
+                                    volume.copy_drbd_options(src_volume)
+                                    resource.add_volume(volume)
                             # Break out of the loop after processing all
                             # snapshot volume states of the first
                             # snapshot assignment
@@ -4450,6 +4454,8 @@ class DrbdManageServer(object):
                             #        where different snapshot assignments do
                             #        not have the same volumes
                             break
+                        # Copy the drbdsetup options from the original resource
+                        resource.copy_drbd_options(snaps_res)
                         # FIXME: If the following assignment fails (although,
                         #        actually, it should never fail), saving the
                         #        resource definition should probably be
