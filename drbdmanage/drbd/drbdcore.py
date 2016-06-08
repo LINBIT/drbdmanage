@@ -34,6 +34,7 @@ import drbdmanage.propscontainer
 # because Python does not know the difference between variables, constants,
 # class members and instance members anyway
 # import drbdmanage.server
+import drbdmanage.storage.storagecore as storcore
 
 """
 WARNING!
@@ -45,7 +46,7 @@ from drbdmanage.exceptions import (
     InvalidAddrFamException, VolSizeRangeException, PersistenceException, QuorumException
 )
 from drbdmanage.exceptions import DM_SUCCESS, DM_ESTORAGE
-from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset, check_node_name
+from drbdmanage.utils import Selector, bool_to_string, is_set, is_unset, check_node_name, generate_gi_hex_string
 
 
 class DrbdManager(object):
@@ -1065,9 +1066,12 @@ class DrbdManager(object):
             # Meta-data creation
             # ============================================================
             # Meta data creation for assignments that have local storage
+            thin_flag = self._is_thin_provisioning()
+            initial_flag = self._is_initial_deployer(assignment, vol_state)
             if (not failed_actions) and (not diskless) and src_bd_name is None:
                 fn_rc = self._deploy_volume_metadata(
-                    assignment, vol_state, max_peers, nodes, vol_states
+                    assignment, vol_state, max_peers, nodes, vol_states,
+                    thin_flag, initial_flag
                 )
 
             # ============================================================
@@ -1076,7 +1080,8 @@ class DrbdManager(object):
             # FIXME: this does not need to run if metadata
             #        creation failed
             # Adjust the DRBD resource to configure the volume
-            drbd_proc = self._drbdadm.adjust(resource.get_name())
+            res_name = resource.get_name()
+            drbd_proc = self._drbdadm.adjust(res_name)
             if drbd_proc is not None:
                 self._resconf.write_excerpt(drbd_proc.stdin, assignment,
                                             nodes, vol_states, self._get_global_conf())
@@ -1102,6 +1107,14 @@ class DrbdManager(object):
                     assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             else:
                 fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+            # Run new-current-uuid on initial deployment of a thinly provisioned volume
+            if initial_flag and thin_flag:
+                new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_state.get_id())
+                if new_gi_check:
+                    fn_rc = 0
+                else:
+                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
         logging.debug("DrbdManager: Exit function _deploy_volume_actions()")
         return fn_rc
@@ -1192,7 +1205,7 @@ class DrbdManager(object):
 
 
     def _deploy_volume_metadata(self, assignment, vol_state, max_peers,
-                                nodes, vol_states):
+                                nodes, vol_states, thin_flag, initial_flag):
         """
         Creates DRBD metadata on a volume
         """
@@ -1204,6 +1217,7 @@ class DrbdManager(object):
         drbd_proc = self._drbdadm.create_md(
             resource.get_name(), vol_state.get_id(), max_peers
         )
+
         if drbd_proc is not None:
             self._resconf.write_excerpt(drbd_proc.stdin, assignment,
                                         nodes, vol_states, self._get_global_conf())
@@ -1211,6 +1225,35 @@ class DrbdManager(object):
             fn_rc = drbd_proc.wait()
         else:
             fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+
+        if initial_flag or thin_flag:
+            # Set the DRBD current generation identifier if it is set on the volume
+            volume = resource.get_volume(vol_state.get_id())
+            if volume is not None:
+                initial_gi = volume.get_props().get_prop(DrbdVolume.KEY_CURRENT_GI)
+                if initial_gi is not None:
+                    set_gi_check = False
+                    volume = vol_state.get_volume()
+                    node_id = assignment.get_node_id()
+                    minor_nr = volume.get_minor().get_value()
+                    bd_path = vol_state.get_bd_path()
+                    if thin_flag:
+                        # Thin provisioning deployment
+                        set_gi_check = self._drbdadm.set_gi(
+                            str(node_id), str(minor_nr), bd_path,
+                            initial_gi
+                        )
+                    else:
+                        # Fat provisioning initial deployment (first deployer of the volume)
+                        set_gi_check = self._drbdadm.set_gi(
+                            str(node_id), str(minor_nr), bd_path,
+                            generate_gi_hex_string(), history_1_gi=initial_gi, set_flags=True
+                        )
+
+                    if set_gi_check:
+                        fn_rc = 0
+                    else:
+                        fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
 
         logging.debug("DrbdManager: Exit function _deploy_volume_metadata()")
         return fn_rc
@@ -1406,7 +1449,6 @@ class DrbdManager(object):
         deploy_fail = False
         resource = assignment.get_resource()
         tstate   = assignment.get_tstate()
-        primary  = self.primary_deployment(assignment)
         empty    = True
         for vol_state in assignment.iterate_volume_states():
             vol_tstate = vol_state.get_tstate()
@@ -1425,26 +1467,6 @@ class DrbdManager(object):
                 is_unset(vol_cstate, DrbdVolumeState.FLAG_DEPLOY)):
                     deploy_fail = True
         if not empty:
-            if primary:
-                drbd_proc = self._drbdadm.primary(resource.get_name(), True)
-                if drbd_proc is not None:
-                    self._resconf.write(drbd_proc.stdin, assignment, False)
-                    drbd_proc.stdin.close()
-                    fn_rc = drbd_proc.wait()
-                    drbd_proc = self._drbdadm.secondary(resource.get_name())
-                    if drbd_proc is not None:
-                        self._resconf.write(drbd_proc.stdin, assignment, False)
-                        drbd_proc.stdin.close()
-                        fn_rc = drbd_proc.wait()
-                    else:
-                        deploy_fail = True
-                        fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-                else:
-                    deploy_fail = True
-                    fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
-                assignment.clear_tstate_flags(Assignment.FLAG_OVERWRITE)
-            elif is_set(tstate, Assignment.FLAG_DISCARD):
-                fn_rc = self._reconnect(assignment)
             if deploy_fail:
                 fn_rc = -1
             else:
@@ -1743,6 +1765,19 @@ class DrbdManager(object):
                             # Do not assume the primary role
                             primary = False
                             break
+        # Do not switch to the primary role if the current gi
+        # property is set on all volumes
+        if primary and not force_primary:
+            have_gi = True
+            resource = assignment.get_resource()
+            for volume in resource.iterate_volumes():
+                vol_props = volume.get_props()
+                current_gi = vol_props.get_prop(DrbdVolume.KEY_CURRENT_GI)
+                if current_gi is None:
+                    have_gi = False
+                    break
+            if have_gi:
+                primary = False
         logging.debug("DrbdManager: Exit function primary_deployment()")
         return primary
 
@@ -1773,6 +1808,36 @@ class DrbdManager(object):
             except (ValueError, TypeError):
                 pass
         return max_fail_count
+
+
+    def _is_initial_deployer(self, assignment, vol_state):
+        """
+        Indicates whether this node is the first to deploy a volume
+        """
+        first_flag = True
+        resource = assignment.get_resource()
+        vol_id = vol_state.get_id()
+        # If the deploy flag is set on one of the peers' assignment's volume state,
+        # then this node is not the initial deployer of the volume
+        for peer_assg in resource.iterate_assignments():
+            if assignment is not peer_assg:
+                peer_vol_state = peer_assg.get_volume_state(vol_id)
+                if is_set(peer_vol_state.get_cstate(), DrbdVolumeState.FLAG_DEPLOY):
+                    first_flag = False
+        return first_flag
+
+
+    def _is_thin_provisioning(self):
+        """
+        Indicates whether the local node is using thin provisioning
+        """
+        thin_flag = False
+        bd_mgr = self._server.get_bd_mgr()
+        prov_type = bd_mgr.get_trait(storcore.StoragePlugin.KEY_PROV_TYPE)
+        if prov_type is not None:
+            if prov_type == storcore.StoragePlugin.PROV_TYPE_THIN:
+                thin_flag = True
+        return thin_flag
 
 
     def reconfigure(self):
@@ -2166,6 +2231,9 @@ class DrbdVolume(GenericStorage, GenericDrbdObject):
 
     # Target size of a resize action
     KEY_RESIZE_VALUE = "resize-value"
+
+    # Current generation identifier - PropsContainer key
+    KEY_CURRENT_GI = "current-gi"
 
     def __init__(self, vol_id, size_kiB, minor, state, get_serial_fn,
                  init_serial, init_props):

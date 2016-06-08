@@ -61,7 +61,7 @@ from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number,
     add_rc_entry, serial_filter, props_filter, string_to_bool, bool_to_string,
     aux_props_selector, is_set, is_unset, key_value_string, load_server_conf_file,
-    filter_prohibited, filter_allowed
+    filter_prohibited, filter_allowed, generate_gi_hex_string
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
@@ -2583,7 +2583,13 @@ class DrbdManageServer(object):
                             # Merge only auxiliary properties into the
                             # DrbdVolume's properties container
                             aux_props = aux_props_selector(props)
-                            volume.get_props().merge_gen(aux_props)
+                            vol_props = volume.get_props()
+                            vol_props.merge_gen(aux_props)
+
+                            # Set the current generation identifier to be used for
+                            # drbdadm to enable skipping the initial sync
+                            vol_props.set_prop(DrbdVolume.KEY_CURRENT_GI, generate_gi_hex_string())
+
                             resource.add_volume(volume)
                             for assg in resource.iterate_assignments():
                                 assg.update_volume_states(chg_serial)

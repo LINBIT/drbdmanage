@@ -31,9 +31,9 @@ class DrbdAdm(object):
     Calls the external drbdadm command to control DRBD
     """
 
-    EXECUTABLE      = "drbdadm"
-
-    FALLBACK_EXECUTABLE = "drbdsetup"
+    DRBDADM_UTIL   = "drbdadm"
+    DRBDMETA_UTIL  = "drbdmeta"
+    DRBDSETUP_UTIL = "drbdsetup"
 
     def __init__(self):
         pass
@@ -46,7 +46,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "adjust", res_name]
+        exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -58,7 +58,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "down", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -68,7 +68,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "adjust", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "adjust", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -78,7 +78,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "resize", res_name + "/" + str(vol_id)]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "resize", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
 
@@ -88,7 +88,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "up", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "up", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -98,7 +98,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "down", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -109,7 +109,7 @@ class DrbdAdm(object):
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
         fallback_ok = False
-        exec_args = [self.FALLBACK_EXECUTABLE, "down", res_name]
+        exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
         utils.debug_log_exec_args(self.__class__.__name__, exec_args)
         try:
             subprocess.check_call(exec_args)
@@ -127,7 +127,7 @@ class DrbdAdm(object):
         @param   force: if set, adds the --force flag for drbdsetup
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-"]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-"]
         if force:
             exec_args.append("--")
             exec_args.append("--force")
@@ -141,7 +141,7 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "secondary", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "secondary", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -150,7 +150,7 @@ class DrbdAdm(object):
         Connects a resource to its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-"]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-"]
         if discard:
             exec_args.append("--")
             exec_args.append("--discard-my-data")
@@ -164,7 +164,7 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "disconnect", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "disconnect", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -173,7 +173,7 @@ class DrbdAdm(object):
         Attaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "attach",
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "attach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
@@ -183,7 +183,7 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "detach",
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "detach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
@@ -193,9 +193,54 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.EXECUTABLE, "-c", "-", "--max-peers", str(peers),
+        exec_args = [self.DRBDADM_UTIL, "-c", "-", "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
+
+
+    def set_gi(self, node_id, minor_nr, bd_path, current_gi, history_1_gi=None, set_flags=False):
+        """
+        Calls drbdadm to create the metadata information for a volume
+        @return: process handle of the drbdadm process
+        """
+        set_gi_check = False
+        gi_data = current_gi + ":"
+        if set_flags or history_1_gi is not None:
+            if history_1_gi is None:
+                history_1_gi = "0"
+            gi_data += "0:" + history_1_gi + ":0:"
+            if set_flags:
+                gi_data += "1:1:"
+        exec_args = [
+            self.DRBDMETA_UTIL, "--force", "--node-id", node_id,
+            minor_nr, "v09", bd_path, "internal", "set-gi", gi_data
+        ]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+        try:
+            subprocess.check_call(exec_args)
+            set_gi_check = True
+        except subprocess.CalledProcessError:
+            pass
+        return set_gi_check
+
+
+    def new_current_uuid(self, res_name, vol_id):
+        """
+        Calls drbdadm to set a new current GI
+        @return: True if the command succeeded (exit code 0), False otherwise
+        """
+        cmd_check = False
+        exec_args = [
+            self.DRBDADM_UTIL, "--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)
+        ]
+        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+        try:
+            subprocess.check_call(exec_args)
+            cmd_check = True
+        except subprocess.CalledProcessError:
+            pass
+        return cmd_check
+
 
     def _run_drbdadm_preexec(self, args):
         sys.stderr.write("spawning %s" % args)
@@ -210,7 +255,7 @@ class DrbdAdm(object):
         try:
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             drbd_proc = subprocess.Popen(
-                exec_args, 0, self.EXECUTABLE,
+                exec_args, 0, self.DRBDADM_UTIL,
                 preexec_fn=lambda *rest: self._run_drbdadm_preexec(exec_args),
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE, close_fds=True

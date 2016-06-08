@@ -904,6 +904,19 @@ def generate_secret():
     return secret
 
 
+def generate_gi_hex_string():
+    """
+    Generates a DRBD generation identifier
+
+    @return: hex string representation of a DRBD generation identifier
+    """
+    gi_data = bytearray(os.urandom(8))
+    hex_str = ""
+    for value in gi_data:
+        hex_str += "%X" % (value)
+    return hex_str
+
+
 def map_val_or_dflt(map_obj, key, dflt):
     """
     Returns a map value if its key exists, otherwise return a default value
