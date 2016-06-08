@@ -326,7 +326,7 @@ class DrbdAdmConf(object):
             stream.write("resource %s {\n" % (resource.get_name()))
 
             if wrote_global:
-                stream.write('template-file "%s";\n\n' % (globalstream.name))
+                stream.write('template-file "%s";\n\n' % (self._get_stream_final_path(globalstream)))
 
             # begin resource/net-options
             netopts = self._get_setup_props(resource, "neto/")
@@ -464,7 +464,7 @@ class DrbdAdmConf(object):
             stream.write("resource %s {\n" % (resource.get_name()))
 
             if wrote_global:
-                stream.write('template-file "%s";\n\n' % (globalstream.name))
+                stream.write('template-file "%s";\n\n' % (self._get_stream_final_path(globalstream)))
 
             # begin resource/net-options
             netopts = self._get_setup_props(resource, "neto/")
@@ -581,6 +581,12 @@ class DrbdAdmConf(object):
         except Exception as exc:
             logging.error("Cannot generate configuration file, "
                           "unhandled exception: %s" % str(exc))
+
+    def _get_stream_final_path(self, stream):
+        path = stream.name
+        if path.endswith(".tmp"):
+            path = path[:-4]
+        return path
 
 
     def read_drbdctrl_params(self, stream):

@@ -72,7 +72,7 @@ from drbdmanage.exceptions import (
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
     PluginException, SyntaxException, VolSizeRangeException, AbortException, QuorumException,
-    DeployerException, InvalidAddrFamException, DebugException, dm_exc_text
+    DeployerException, InvalidAddrFamException, ResourceFileException, DebugException, dm_exc_text
 )
 from drbdmanage.drbd.drbdcore import (
     Assignment, DrbdManager, DrbdNode, DrbdResource, DrbdVolume,
@@ -4939,22 +4939,24 @@ class DrbdManageServer(object):
             if len(res_name) > 0 and res_name != "*":
                 assg = node.get_assignment(res_name)
                 if assg is not None:
-                    if self.export_assignment_conf(assg) != 0:
-                        add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+                    try:
+                        self.export_assignment_conf(assg)
+                    except ResourceFileException as res_exc:
+                        res_exc.add_rc_entry(fn_rc)
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT),
                                  [ [ RES_NAME, res_name ] ])
             else:
                 for assg in node.iterate_assignments():
-                    if self.export_assignment_conf(assg) != 0:
-                        add_rc_entry(fn_rc, DM_DEBUG, dm_exc_text(DM_DEBUG))
+                    try:
+                        self.export_assignment_conf(assg)
+                    except ResourceFileException as res_exc:
+                        res_exc.add_rc_entry(fn_rc)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
 
-    # TODO: move over existing file instead of directly overwriting an
-    #       existing file
     def export_assignment_conf(self, assignment):
         """
         From an assignment object, exports a configuration file for drbdadm
@@ -4965,36 +4967,25 @@ class DrbdManageServer(object):
         The drbdmanage server uses this function to generate temporary
         configuration files for drbdadm callbacks by the DRBD kernel module
         as well.
-
-        @return: 0 on success, 1 on error
         """
-        fn_rc = 0
         resource = assignment.get_resource()
-        file_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
-                                 "drbdmanage_" + resource.get_name() + ".res")
+        res_name = resource.get_name()
 
-        global_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
-                                   FILE_GLOBAL_COMMON_CONF)
-        assg_conf = None
-        global_conf = None
+        assg_conf, global_conf = self.open_assignment_conf(res_name)
+        writer = DrbdAdmConf(self._objects_root)
+        file_written = False
         try:
-            assg_conf = open(file_path, "w")
-            global_conf = open(global_path, "w")
-            writer = DrbdAdmConf(self._objects_root)
             writer.write(assg_conf, assignment, False, global_conf)
-        except IOError as ioerr:
-            logging.error(
-                "cannot write to configuration file '%s' or '%s', error "
-                "returned by the OS is: %s"
-                % (file_path, global_path, ioerr.strerror)
+            file_written = True
+        except IOError as io_error:
+            raise ResourceFileException(
+                os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                "drbdmanage_" + res_name() + ".res")
             )
-            fn_rc = 1
         finally:
-            if assg_conf is not None:
-                assg_conf.close()
-            if global_conf is not None:
-                global_conf.close()
-        return fn_rc
+            self.close_assignment_conf(assg_conf, global_conf)
+        if file_written:
+            self.update_assignment_conf(res_name)
 
 
     def remove_assignment_conf(self, resource_name):
@@ -5020,6 +5011,119 @@ class DrbdManageServer(object):
                 )
                 fn_rc = 1
         return fn_rc
+
+
+    def open_assignment_conf(self, resource_name):
+        """
+        Opens DRBD configuration files for updating
+
+        If either file cannot be opened, both files are closed and
+        a ResourceFileException is generated
+
+        @returns: tuple(resource configuration file stream, global configuration file stream)
+        """
+        assg_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                 "drbdmanage_" + resource_name + ".res.tmp")
+        global_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                   FILE_GLOBAL_COMMON_CONF + ".tmp")
+        assg_conf = None
+        global_conf = None
+        try:
+            try:
+                assg_conf = open(assg_path, "w")
+            except OSError as os_error:
+                logging.error(
+                    "Cannot update DRBD resource file '%s', error "
+                    "returned by the OS is: %s"
+                    % (assg_path, os_error.strerror)
+                )
+                raise ResourceFileException(assg_path)
+            try:
+                global_conf = open(global_path, "w")
+            except OSError as os_error:
+                logging.error(
+                    "Cannot update DRBD global configuration file '%s', error "
+                    "returned by the OS is: %s"
+                    % (global_path, os_error.strerror)
+                )
+                raise ResourceFileException(global_path)
+        except ResourceFileException as res_file_exc:
+            if assg_conf is None:
+                try:
+                    assg_conf.close()
+                except:
+                    pass
+            if global_conf is None:
+                try:
+                    global_conf.close()
+                except:
+                    pass
+            raise res_file_exc
+        return assg_conf, global_conf
+
+
+    def update_assignment_conf(self, resource_name):
+        """
+        Update the final configuration files by moving the temporary ones
+
+        If the update fails, a ResourceFileException is generated.
+        The method always attempts to move both files. If the resource configuration file
+        cannot be moved, the exception reports the resource configuration file path. If
+        the global configuration file cannot be moved, the exception reports the global
+        configuration file path. If both files cannot be moved, the exception reports
+        the resource configuration file path.
+        """
+        assg_final_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                 "drbdmanage_" + resource_name + ".res")
+        assg_tmp_path = assg_final_path + ".tmp"
+        global_final_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
+                                   FILE_GLOBAL_COMMON_CONF)
+        global_tmp_path = global_final_path + ".tmp"
+
+        update_exception = None
+
+        # Attempt to move the resource configuration file
+        try:
+            os.rename(assg_tmp_path, assg_final_path)
+        except OSError as os_error:
+            update_exception = ResourceFileException(assg_final_path)
+
+        # Attempt to move the global configuration file
+        try:
+            os.rename(global_tmp_path, global_final_path)
+        except OSError as os_error:
+            # If the resource configuration file move generated an exception
+            # before, do not override it
+            if update_exception is None:
+                update_exception = ResourceFileException(global_final_path)
+
+        if update_exception is not None:
+            raise update_exception
+
+
+    def close_assignment_conf(self, assg_conf, global_conf):
+        """
+        Closes the resource/global configuration file streams
+        """
+        try:
+            if assg_conf is not None:
+                assg_conf.close()
+        except OSError as os_error:
+            logging.error(
+                "Cannot close DRBD resource configuration file '%s', error "
+                "returned by the OS is: %s"
+                % (assg_conf.name, os_error.strerror)
+            )
+
+        try:
+            if global_conf is not None:
+                global_conf.close()
+        except OSError as os_error:
+            logging.error(
+                "Cannot close DRBD global configuration file '%s', error "
+                "returned by the OS is: %s"
+                % (global_conf.name, os_error.strerror)
+            )
 
 
     def get_conf_hash(self):

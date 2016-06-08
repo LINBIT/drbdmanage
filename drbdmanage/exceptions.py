@@ -104,6 +104,12 @@ DM_EQUORUM  = 117
 # Operation not allowed on satellite
 DM_ESATELLITE = 118
 
+# drbdutils command failed
+DM_EDRBDCMD = 119
+
+# Unable to write the assignment configuration file
+DM_ERESFILE = 120
+
 # DEBUG value
 DM_DEBUG    = 1023
 
@@ -135,6 +141,8 @@ _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 _DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"
 _DM_EXC_TEXTS[DM_EQUORUM]  = "Partition does not have a quorum"
 _DM_EXC_TEXTS[DM_ESATELLITE]  = "Operation not allowed on satellite node"
+_DM_EXC_TEXTS[DM_EDRBDCMD] = "A drbdutils command failed"
+_DM_EXC_TEXTS[DM_ERESFILE] = "Updating a DRBD resource configuration file failed"
 
 
 def dm_exc_text(exc_id):
@@ -287,6 +295,57 @@ class QuorumException(DrbdManageException):
     def __init__(self):
         super(QuorumException, self).__init__()
         self.error_code = DM_EQUORUM
+
+
+class DrbdCommandException(DrbdManageException):
+
+    """
+    Raised if a drbdutils command fails
+    """
+
+    def __init__(self):
+        super(DrbdCommandException, self).__init__()
+        self.error_code = DM_EDRBDCMD
+
+
+class ResourceFileException(DrbdManageException):
+
+    """
+    Raised if a drbd resource configuration file cannot be updated
+    """
+
+    file_path = None
+
+    def __init__(self, file_path_arg=None):
+        super(ResourceFileException, self).__init__()
+        self.file_path = file_path_arg
+        self.error_code = DM_ERESFILE
+
+    def get_log_message(self):
+        log_message = None
+        if self.file_path is not None:
+            log_message = "Updating the DRBD resource configuration file '%s' failed" % (self.file_path)
+        else:
+            log_message = dm_exc_text(self.error_code)
+        return log_message
+
+    def add_rc_entry(self, fn_rc):
+        if self.file_path is not None:
+            fn_rc.append(
+                [
+                    self.error_code,
+                    "Updating the DRBD resource configuration file %(res_name) failed",
+                    [ ["res_name", self.file_path ] ]
+                ]
+            )
+        else:
+            fn_rc.append(
+                [
+                    self.error_code,
+                    dm_exc_text(self.error_code),
+                    []
+                ]
+            )
 
 
 class PluginException(DrbdManageException):

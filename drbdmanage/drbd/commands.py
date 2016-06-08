@@ -35,6 +35,9 @@ class DrbdAdm(object):
     DRBDMETA_UTIL  = "drbdmeta"
     DRBDSETUP_UTIL = "drbdsetup"
 
+    # Used as a return code to indicate that drbdadm could not be executed
+    DRBDADM_EXEC_FAILED = 127
+
     def __init__(self):
         pass
 
@@ -68,7 +71,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "adjust", res_name]
+        exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -78,7 +81,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "resize", res_name + "/" + str(vol_id)]
+        exec_args = [self.DRBDADM_UTIL, "resize", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
 
@@ -88,7 +91,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "up", res_name]
+        exec_args = [self.DRBDADM_UTIL, "up", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -98,7 +101,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "down", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -127,7 +130,7 @@ class DrbdAdm(object):
         @param   force: if set, adds the --force flag for drbdsetup
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-"]
+        exec_args = [self.DRBDADM_UTIL]
         if force:
             exec_args.append("--")
             exec_args.append("--force")
@@ -141,7 +144,7 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "secondary", res_name]
+        exec_args = [self.DRBDADM_UTIL, "secondary", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -150,7 +153,7 @@ class DrbdAdm(object):
         Connects a resource to its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-"]
+        exec_args = [self.DRBDADM_UTIL]
         if discard:
             exec_args.append("--")
             exec_args.append("--discard-my-data")
@@ -164,7 +167,7 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "disconnect", res_name]
+        exec_args = [self.DRBDADM_UTIL, "disconnect", res_name]
         return self._run_drbdadm(exec_args)
 
 
@@ -173,7 +176,7 @@ class DrbdAdm(object):
         Attaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "attach",
+        exec_args = [self.DRBDADM_UTIL, "attach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
@@ -183,7 +186,7 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "detach",
+        exec_args = [self.DRBDADM_UTIL, "detach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
@@ -193,7 +196,7 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-c", "-", "--max-peers", str(peers),
+        exec_args = [self.DRBDADM_UTIL, "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdadm(exec_args)
 
@@ -242,40 +245,39 @@ class DrbdAdm(object):
         return cmd_check
 
 
-    def _run_drbdadm_preexec(self, args):
-        sys.stderr.write("spawning %s" % args)
-
     def _run_drbdadm(self, exec_args):
         """
         Runs the drbdadm command as a child process with its standard input
         redirected to a pipe from the drbdmanage server
         """
         drbd_proc = None
-
+        drbdadm_rc = DrbdAdm.DRBDADM_EXEC_FAILED
         try:
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             drbd_proc = subprocess.Popen(
                 exec_args, 0, self.DRBDADM_UTIL,
-                preexec_fn=lambda *rest: self._run_drbdadm_preexec(exec_args),
-                stderr=subprocess.PIPE,
-                stdin=subprocess.PIPE, close_fds=True
+                stderr=subprocess.PIPE, close_fds=True
             )
-            subprocess.Popen(['logger', '-t',
-                              'DRBDmanage:%d' % drbd_proc.pid],
-                             0, 'logger',
-                             close_fds=True,
-                             stdin=drbd_proc.stderr)
+            subprocess.Popen(
+                [
+                    'logger', '-t', 'DRBDmanage:%d' % drbd_proc.pid
+                ],
+                0, 'logger',
+                close_fds=True,
+                stdin=drbd_proc.stderr
+            )
             drbd_proc.stderr.close()
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
-                logging.error("Cannot find the drbdadm utility, in PATH:%s", os.environ['PATH'])
+                logging.error("Cannot find the drbdadm utility, in PATH '%s'" % (os.environ['PATH']))
             elif oserr.errno == errno.EACCES:
-                logging.error(
-                    "Cannot execute the drbdadm utility, permission denied"
-                )
+                logging.error("Cannot execute the drbdadm utility, permission denied")
             else:
                 logging.error(
                     "Cannot execute the drbdadm utility, error returned by "
                     "the OS is: %s\n"
-                    % (oserr.strerror))
-        return drbd_proc
+                    % (oserr.strerror)
+                )
+        if drbd_proc is not None:
+            drbdadm_rc = drbd_proc.wait()
+        return drbdadm_rc
