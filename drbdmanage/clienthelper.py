@@ -65,7 +65,7 @@ class DrbdManageClientHelper(object):
         try:
             return fn(*args)
         except dbus.DBusException as e:
-            self.logger.warning(self._LW('Got disconnected; trying to reconnect. (%s)'), e)
+            self.logger.warning(self._LW('Got disconnected; trying to reconnect. (%s)') % e)
             self.dbus_connect()
             # Old function object is invalid, get new one.
             return getattr(self.odm, fn._method_name)(*args)
