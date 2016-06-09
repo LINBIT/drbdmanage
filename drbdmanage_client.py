@@ -3468,7 +3468,7 @@ Confirm:
         peer_device_options = args.pdoobj.get_options()
         resource_options = args.roobj.get_options()
 
-        # filter net-options drbdmange sets unconditionally.
+        # filter net-options drbdmanage sets unconditionally.
         net_options = filter_prohibited(net_options, ('shared-secret', 'cram-hmac-alg'))
 
         colors = {
@@ -3520,7 +3520,7 @@ Confirm:
             sys.stdout.write(v + k + COLOR_NONE + "\n")
         sys.stdout.write("\nNote: Do not directly edit these auto-generated"
                          " files as they will be overwritten.\n")
-        sys.stdout.write("Use the according drbdmange sub-commands to set/unset options.\n")
+        sys.stdout.write("Use the according drbdmanage sub-commands to set/unset options.\n")
 
     def cmd_edit_config(self, args):
         import ConfigParser

@@ -49,7 +49,7 @@
   <refsect1>
     <title>Configuration</title>
 	 <para>The configuration of <option>drbdmanage</option> is stored in the
-	 <option>control volume</option> of drbdmange. This has the advantage that
+	 <option>control volume</option> of drbdmanage. This has the advantage that
 	 the configuration is distributed among all nodes in the cluster without
 	 touching every node's configuration file manually. Please see
 	 <option>modify-config</option> for further details.<sbr/>
