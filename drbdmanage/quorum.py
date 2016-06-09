@@ -95,7 +95,8 @@ class Quorum(object):
                                   "quorum count unchanged"
                                   % (node_name))
             else:
-                logging.warning("Quorum: Node %s is not a registered drbdmanage node")
+                logging.warning("Quorum: Node %s is not a registered drbdmanage node"
+                                % (node_name))
         return change_flag
 
 
