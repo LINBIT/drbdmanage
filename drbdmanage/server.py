@@ -3935,14 +3935,18 @@ class DrbdManageServer(object):
             if filter_props is not None and len(filter_props) > 0:
                 selected_nodes = props_filter(selected_nodes, filter_props)
 
+            control_node = True if self._is_satellite == SAT_CONTROL_NODE else False
+
             instance_node = self.get_instance_node()
             for node in selected_nodes:
                 node_props = node.get_properties(req_props)
                 # Indicate if a node with a control volume is not connected/replicating
 
-                if node is not instance_node and is_set(node.get_state(), DrbdNode.FLAG_DRBDCTRL):
-                    if not self._quorum.is_active_member_node(node.get_name()):
-                        node_props[IND_NODE_OFFLINE] = BOOL_TRUE
+                if control_node:
+                    if (node is not instance_node and
+                        is_set(node.get_state(), DrbdNode.FLAG_DRBDCTRL)):
+                        if not self._quorum.is_active_member_node(node.get_name()):
+                            node_props[IND_NODE_OFFLINE] = BOOL_TRUE
                 node_entry = [
                     node.get_name(),
                     node_props
