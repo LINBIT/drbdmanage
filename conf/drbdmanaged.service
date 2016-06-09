@@ -1,8 +1,13 @@
 [Unit]
 Description=DRBDManage Service
+Documentation=https://www.drbd.org/en/doc/users-guide-90
+Requires=dbus.service
 
 [Service]
 ExecStart=/usr/bin/dbus-drbdmanaged-service
 User=root
+
+[Install]
+WantedBy=multi-user.target
 
 PrivateTmp=yes
