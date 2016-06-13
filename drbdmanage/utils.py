@@ -693,37 +693,37 @@ class DrbdSetupOpts():
 
 def get_free_number(min_nr, max_nr, nr_list):
     """
-    Returns the first number in the range min..max that is not in nr_list
+    Returns the first number in the range min_nr..max_nr that is not in nr_list
 
-    In the range min to max, finds and returns a number that is not in the
+    In the range min_nr to max_nr, finds and returns a number that is not in the
     supplied list of numbers.
-    min and max must be positive integers, and nr_list must be a list of
-    positive integers in the range from min to max
+    min_nr and max_nr must be >= 0, and nr_list must be a list of integer numbers
 
-    @param   min_nr:  range start, positive number, less than or equal to max
-    @param   max_nr:  range end, positive number, greater than or equal to min
-    @param   nr_list: list of numbers within the range min..max
+    @param   min_nr:  range start, >= 0
+    @param   max_nr:  range end, >= 0, greater than or equal to min_nr
+    @param   nr_list: list of integer numbers
     @type    nr_list: list of int or long values
-    @return: first free number within min..max; or -1 on error
+    @return: first free number within min_nr..max_nr; or -1 on error
     """
+    nr_list = sorted(nr_list)
     free_nr = -1
     if min_nr >= 0 and min_nr <= max_nr:
-        items = len(nr_list)
-        if items == 0:
-            free_nr = min_nr
-        else:
-            nr_list.sort()
-            idx = 0
-            last_nr = min_nr - 1
-            while free_nr == -1 and idx < items:
-                current_nr = nr_list[idx]
-                if current_nr - last_nr > 1:
-                    free_nr = last_nr + 1
-                else:
-                    idx += 1
-                    last_nr = current_nr
-            if free_nr == -1 and last_nr < max_nr:
-                free_nr = last_nr + 1
+        nr_list_length = len(nr_list)
+        index = 0
+        number = min_nr
+        while number <= max_nr and free_nr == -1:
+            occupied = False
+            while index < nr_list_length:
+                if nr_list[index] >= number:
+                    if nr_list[index] == number:
+                        occupied = True
+                    break
+                index += 1
+            if occupied:
+                index += 1
+            else:
+                free_nr = number
+            number += 1
     return free_nr
 
 
