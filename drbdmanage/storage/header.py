@@ -45,6 +45,7 @@ $idx_o = Data(0, 0x1800, 4096);
 my $n_o = Data('nodes');
 my $r_o = Data('res');
 my $a_o = Data('assg');
+my $C_o = Data('cconf');
 
 my @node = map {
 	/^(.+?)\./;
@@ -94,6 +95,10 @@ $res_l2[$_] = " " x $reslen for (@res_l2 .. 19);
 $res_l2[19] = sprintf("%-*s", $reslen, " ... ") if $res_l2[20];
 
 
+my $serial = "Ser#" . $C_o->{"serial"};
+my $serial_string = ("=" x (14 - length($serial))) . $serial;
+
+
 $DRBDmgr =~ s/^.*\n//;
 $DRBDmgr =~ s/\n$//;
 
@@ -109,7 +114,7 @@ $c0 ....|$c1 Nodes $c0|..........   ....|$c1 Resources $c0|........_............
  : $node[7] |  :@res_l2[7]:@res_l2[17]|
  : $node[8] |  :@res_l2[8]:@res_l2[18]|
  : $node[9] |  :@res_l2[9]:@res_l2[19]|
-  ======================+   ========================*========================+$cr
+  ======================+   ========================*========$serial_string==+$cr
 
 EOF
 exit;
