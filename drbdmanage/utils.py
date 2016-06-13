@@ -330,7 +330,7 @@ def check_output(*args, **kwargs):
         return _wrapcall_2_6(*args, **kwargs)
 
 
-def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
+def ssh_exec(cmdname, ip, name, cmdline, quiet=False, suppress_stderr=False):
     try:
         ssh_base = ["ssh", "-oBatchMode=yes",
                     "-oConnectTimeout=2", "root@" + ip]
@@ -344,6 +344,8 @@ def ssh_exec(cmdname, ip, name, cmdline, quiet=False):
             ssh_cmd = ssh_base + cmdline
             if quiet:
                 ssh_cmd.append("-q")
+            if suppress_stderr:
+                ssh_cmd.append('2>/dev/null')
             subprocess.check_call(ssh_cmd)
             return True
     except subprocess.CalledProcessError:

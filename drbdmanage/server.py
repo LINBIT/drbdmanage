@@ -5339,8 +5339,7 @@ class DrbdManageServer(object):
         drbdctrl_res = None
 
         if self.is_satellite(node_name):
-            return [('Error: Node "%s" is a satellite node!\nJust make sure drbdmanaged is running on %s'
-                     % (node_name, node_name))]
+            return ['drbdmanage', 'restart']
 
         conffile = DrbdAdmConf(self._objects_root)
         try:

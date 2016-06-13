@@ -1406,11 +1406,6 @@ class DrbdManage(object):
         fn_rc = self._list_rc_entries(server_rc)
 
         if fn_rc == 0:  # join node
-            if satellite:
-                sys.stdout.write('Node ' + name + ' is a satellite node!\n')
-                sys.stdout.write('Just make sure drbdmanaged is running on ' + name + '\n')
-                return fn_rc
-
             server_rc, joinc = self._server.text_query(["joinc", name])
             joinc_text = str(" ".join(joinc))
 
@@ -1421,11 +1416,11 @@ class DrbdManage(object):
             # like an error message
             if joinc_text.startswith("Error:"):
                 sys.stderr.write(joinc_text + "\n")
-            elif flag_drbdctrl:
+            else:
                 join_performed = False
                 if flag_autojoin:
                     join_performed = ssh_exec("join", ip, name, joinc,
-                                              args.quiet)
+                                              args.quiet or satellite, satellite)
                 if not join_performed:
                     sys.stdout.write("\nJoin command for node %s:\n"
                                      "%s\n" % (name, joinc_text))
@@ -2665,7 +2660,11 @@ class DrbdManage(object):
         format += "\n"
         self.dbus_init()
         server_rc, joinc = self._server.text_query(["joinc", node_name])
+        sys.stdout.write('IMPORTANT: Execute the following command only on node %s!\n' % (node_name))
         sys.stdout.write(format % " ".join(joinc))
+        if 'restart' in joinc:  # here we should query if it is a satellite node, take the easy path
+            sys.stdout.write('IMPORTANT: If your satellite node is systemd socket activated, '
+                             'do not do anything\n')
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
