@@ -1114,7 +1114,7 @@ class DrbdManageServer(object):
                           ["repr", repr(e)],
                           ["backtrace", "".join(traceback.format_tb(exc_traceback))],
                           ])
-            return (fn_rc, {})
+            return fn_rc, {}
 
         try:
             self._pluginmgr.set_plugin_config(plugin_name, props)
@@ -1126,7 +1126,7 @@ class DrbdManageServer(object):
                           ["repr", repr(e)],
                           ["backtrace", "".join(traceback.format_tb(exc_traceback))],
                           ])
-            return (fn_rc, {})
+            return fn_rc, {}
 
         try:
             ret = plugin.run()
@@ -1141,7 +1141,7 @@ class DrbdManageServer(object):
             else:
                 data = {}
 
-            return (fn_rc, data)
+            return fn_rc, data
 
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -1151,13 +1151,13 @@ class DrbdManageServer(object):
                           ["repr", repr(e)],
                           ["backtrace", "".join(traceback.format_tb(exc_traceback))],
                           ])
-            return (fn_rc, {})
+            return fn_rc, {}
 
         # Error (-in-error) case
 
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_EPLUGIN, "error running plugin")
-        return (fn_rc, {})
+        return fn_rc, {}
 
     def peek_serial(self):
         """
