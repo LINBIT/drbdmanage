@@ -272,8 +272,6 @@ class DrbdManageServer(object):
 
     def no_satellite(f):
         KEY_NOTHING = "nothing"
-        # currently not necessary, but maybe we want to wrap functions that return (nested) types
-        # in the future...
         wrapped_returns = {
             'assign': KEY_NOTHING,
             'attach': KEY_NOTHING,
@@ -288,7 +286,7 @@ class DrbdManageServer(object):
             'dbus_save_conf': KEY_NOTHING,
             'detach': KEY_NOTHING,
             'disconnect': KEY_NOTHING,
-            'get_ctrlvol': KEY_NOTHING,
+            'get_ctrlvol': '',
             'init_node': KEY_NOTHING,
             'join_node': KEY_NOTHING,
             'modify_resource': KEY_NOTHING,
