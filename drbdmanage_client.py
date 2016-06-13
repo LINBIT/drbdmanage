@@ -100,8 +100,6 @@ class DrbdManage(object):
     _utf8 = False
     _all_commands = None
 
-    VIEW_SEPARATOR_LEN = 78
-
     UMHELPER_FILE = "/sys/module/drbd/parameters/usermode_helper"
     UMHELPER_OVERRIDE = "/bin/true"
     UMHELPER_WAIT_TIME = 5.0
@@ -140,26 +138,6 @@ class DrbdManage(object):
         except dbus.exceptions.DBusException as exc:
             self._print_dbus_exception(exc)
             exit(1)
-
-    def subscribe(self, signal_name_arg, signal_handler_fn):
-        if self._dbus is not None:
-            if self._gmainloop is None:
-                self._gmainloop = gobject.MainLoop()
-            self._dbus.add_signal_receiver(
-                handler_function=signal_handler_fn,
-                signal_name=signal_name_arg,
-                dbus_interface=None,
-                bus_name=DBUS_DRBDMANAGED,
-                path=DBUS_SERVICE
-            )
-        else:
-            sys.stderr.write(
-                "Error: DrbdManageClient.subscribe() without prior dbus_init()\n"
-            )
-
-    def wait_for_signals(self):
-        if self._gmainloop is not None:
-            self._gmainloop.run()
 
     def setup_parser(self):
         parser = argparse.ArgumentParser(prog='drbdmanage')
@@ -3826,20 +3804,6 @@ Confirm:
             return col
         else:
             return ""
-
-    def split_number_unit(self, input):
-        split_idx = 0
-        for in_char in input:
-            if not (in_char >= '0'and in_char <= '9'):
-                break
-            split_idx += 1
-        number = input[:split_idx]
-        unit = input[split_idx:]
-        if len(number) == 0:
-            number = None
-        if len(unit) == 0:
-            unit = None
-        return (number, unit)
 
     def _property_text(self, text):
         if text is None:
