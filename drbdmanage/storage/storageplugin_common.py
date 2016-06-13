@@ -689,7 +689,6 @@ class StoragePluginCommon(object):
         return blockdev
 
     def remove_snapshot(self, blockdevice):
-        print "remove_snapshot", self
         """
         Deallocates a snapshot block device
 
