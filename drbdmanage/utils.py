@@ -34,6 +34,7 @@ import uuid
 import drbdmanage.consts as consts
 import logging
 import ConfigParser
+from functools import wraps
 from drbdmanage.exceptions import SyntaxException, InvalidNameException
 from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
                                KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8,
@@ -1422,3 +1423,16 @@ def debug_log_exec_args(source, exec_args):
         "%s: Running external command: %s"
         % (source, " ".join(exec_args))
     )
+
+
+def log_in_out(f):
+    @wraps(f)
+    def wrapper(*args, **kwds):
+            class_str = args[0].__class__.__name__
+            method_str = f.__name__
+            logging.getLogger("")
+            logging.debug('Entering %s.%s' % (class_str, method_str))
+            ret = f(*args, **kwds)
+            logging.debug('Exited %s.%s' % (class_str, method_str))
+            return ret
+    return wrapper
