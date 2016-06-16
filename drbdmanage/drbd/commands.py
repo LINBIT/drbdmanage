@@ -75,13 +75,17 @@ class DrbdAdm(object):
         return self._run_drbdadm(exec_args)
 
 
-    def resize(self, res_name, vol_id):
+    def resize(self, res_name, vol_id, assume_clean):
         """
         Resizes a resource
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "resize", res_name + "/" + str(vol_id)]
+        exec_args = [self.DRBDADM_UTIL, "resize"]
+        if assume_clean:
+            exec_args.append("--");
+            exec_args.append("--assume-clean")
+        exec_args.append(res_name + "/" + str(vol_id))
         return self._run_drbdadm(exec_args)
 
 

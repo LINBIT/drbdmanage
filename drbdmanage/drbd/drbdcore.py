@@ -21,6 +21,7 @@
 import sys
 import os
 import logging
+import drbdmanage.utils as utils
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
 import drbdmanage.snapshots.snapshots as snapshots
@@ -1063,6 +1064,10 @@ class DrbdManager(object):
                             DrbdVolumeState.FLAG_ATTACH |
                             DrbdVolumeState.FLAG_DEPLOY
                         )
+                        if thin_flag:
+                            vol_state.get_props().set_prop(DrbdVolumeState.KEY_IS_THIN, consts.BOOL_TRUE)
+                        else:
+                            vol_state.get_props().remove_prop(DrbdVolumeState.KEY_IS_THIN)
                         fn_rc = 0
                     # "drbdadm adjust" implicitly connects the resource
                     assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
@@ -1373,10 +1378,14 @@ class DrbdManager(object):
             except ValueError:
                 pass
 
+            # If this volume is thinly provisioned on all assigned nodes,
+            # skip resyncing the space newly allocated by the resize operation
+            assume_clean = self._is_global_thin_volume(resource, vol_id)
+
             # Update the resource configuration file
             self._server.export_assignment_conf(assignment)
 
-            fn_rc = self._drbdadm.resize(resource.get_name(), vol_state.get_id())
+            fn_rc = self._drbdadm.resize(resource.get_name(), vol_state.get_id(), assume_clean)
             if fn_rc == 0:
                 logging.debug(
                     "Resource '%s', Volume %d: finish_resize_drbd()"
@@ -1749,6 +1758,29 @@ class DrbdManager(object):
             if prov_type == storcore.StoragePlugin.PROV_TYPE_THIN:
                 thin_flag = True
         return thin_flag
+
+
+    def _is_global_thin_volume(self, resource, vol_id):
+        """
+        Indicates whether the volume is thinly provisioned on all assigned nodes
+        """
+        global_thin_flag = True
+        for assignment in resource.iterate_assignments():
+            if is_unset(assignment.get_cstate(), Assignment.FLAG_DISKLESS):
+                thin_flag = False
+                vol_state = assignment.get_volume_state(vol_id)
+                if is_set(vol_state.get_cstate(), DrbdVolumeState.FLAG_DEPLOY):
+                    thin_prop = vol_state.get_props().get_prop(DrbdVolumeState.KEY_IS_THIN)
+                    if thin_prop is not None:
+                        try:
+                            thin_flag = utils.string_to_bool(thin_prop)
+                        except ValueError:
+                            pass
+                    if not thin_flag:
+                        global_thin_flag = False
+                        break
+        return global_thin_flag
+
 
     @log_in_out
     def reconfigure(self):
@@ -2667,6 +2699,8 @@ class DrbdVolumeState(GenericDrbdObject):
     RESIZE_STAGE_DRBD = "drbd"
     # Indicates that resizing failed
     RESIZE_STAGE_FAILED = "failed"
+
+    KEY_IS_THIN = "is-thin-volume"
 
     def __init__(self, volume, cstate, tstate, bd_name, bd_path,
                  get_serial_fn, init_serial, init_props):
