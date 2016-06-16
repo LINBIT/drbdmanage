@@ -30,6 +30,8 @@ import hashlib
 import base64
 import operator
 import subprocess
+import select
+import fcntl
 import uuid
 import drbdmanage.consts as consts
 import logging
@@ -1142,6 +1144,168 @@ class NioLineReader(object):
         return line
 
 
+class ExternalCommand(object):
+
+    _args    = None
+
+    _trace_exec_args = None
+    _trace_exit_code = None
+    source           = None
+    trace_id         = None
+
+    def __init__(self, source, command_args, trace_id=None, trace_exec_args=None, trace_exit_code=None):
+        self._args = command_args
+        self._trace_exec_args = trace_exec_args
+        self._trace_exit_code = trace_exit_code
+        self.source           = source
+        self.trace_id         = trace_id
+
+    def run(self):
+        epoll = select.epoll()
+
+        # Log the command arguments
+        if self._trace_exec_args is not None:
+            self._trace_exec_args(self.source, self.trace_id, self._args)
+
+        # Spawn the process and pipe stdout/stderr
+        proc = subprocess.Popen(
+            self._args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            close_fds=True
+        )
+
+        # Get the stdout/stderr file descriptors
+        out_fd = proc.stdout.fileno()
+        err_fd = proc.stderr.fileno()
+
+        # Register the file descriptors for polling
+        poll_mask = select.EPOLLIN | select.EPOLLERR | select.EPOLLHUP
+        epoll.register(out_fd, poll_mask)
+        epoll.register(err_fd, poll_mask)
+
+        # Make the file descriptors non-blocking
+        fcntl.fcntl(out_fd, fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
+        fcntl.fcntl(err_fd, fcntl.F_SETFL, fcntl.F_GETFL | os.O_NONBLOCK)
+
+        # Set up NioLineReader instances
+        out_reader = NioLineReader(proc.stdout)
+        err_reader = NioLineReader(proc.stderr)
+
+        # Read piped stdout/stderr whenever they become ready
+        out_ok = True
+        err_ok = True
+        while out_ok or err_ok:
+            events = epoll.poll()
+            for (poll_fd, event_id) in events:
+                if event_id == select.EPOLLIN:
+                    if poll_fd == err_fd:
+                        self._read_stream(err_reader, self.stderr_handler)
+                    elif poll_fd == out_fd:
+                        self._read_stream(out_reader, self.stdout_handler)
+                else:
+                    epoll.unregister(poll_fd)
+                    if poll_fd == err_fd:
+                        err_ok = False
+                    elif poll_fd == out_fd:
+                        out_ok = False
+
+        # Close the pipes
+        proc.stdout.close()
+        proc.stderr.close()
+
+        # Wait for the external process to exit
+        exit_code = proc.wait()
+
+        # Log the command's exit code
+        if self._trace_exit_code is not None:
+            self._trace_exit_code(self.source, self.trace_id, self._args[0], exit_code)
+
+        return exit_code
+
+    def _read_stream(self, reader, handler):
+        while True:
+            line = reader.readline()
+            if line is None:
+                break
+            handler(self.source, self._args[0], self.trace_id, line)
+
+    def stdout_handler(self, source, command, trace_id, line):
+        pass
+
+    def stderr_handler(self, source, command, trace_id, line):
+        pass
+
+
+class ExternalCommandBuffer(ExternalCommand):
+
+    _out_buffer = []
+    _err_buffer = []
+    _command    = None
+
+    def __init__(self, source, command_args, trace_id=None, trace_exec_args=None, trace_exit_code=None):
+        super(ExternalCommandBuffer, self).__init__(
+            source, command_args, trace_id, trace_exec_args, trace_exit_code
+        )
+        self._command  = command_args[0]
+
+    def stdout_handler(self, source, command, trace_id, line):
+        self._out_buffer.append(line)
+
+    def stderr_handler(self, source, command, trace_id, line):
+        self._err_buffer.append(line)
+
+    def log_stdout(self, log_handler=logging.error):
+        if self.trace_id is not None:
+            for line in self._out_buffer:
+                log_handler("[trace_id %s] %s/stdout: %s"
+                            % (self.trace_id, self._command, line))
+        else:
+            for line in self._out_buffer:
+                log_handler("%s/stdout: %s"
+                            % (self._command, line))
+
+    def log_stderr(self, log_handler=logging.error):
+        if self.trace_id is not None:
+            for line in self._err_buffer:
+                log_handler("[trace_id %s] %s/stderr: %s"
+                            % (self.trace_id, self._command, line))
+        else:
+            for line in self._err_buffer:
+                log_handler("%s/stderr: %s"
+                            % (self._command, line))
+
+    def get_stdout(self):
+        return self._out_buffer
+
+    def get_stderr(self):
+        return self._err_buffer
+
+    def clear(self):
+        self._out_buffer = []
+        self._err_buffer = []
+
+
+class ExternalCommandLogger(ExternalCommand):
+
+    _log_handler = None
+
+    def __init__(self, source, command_args,
+        trace_id=None, trace_exec_args=None, trace_exit_code=None,
+        log_handler=logging.debug
+    ):
+        super(ExternalCommandLogger, self).__init__(
+            source, command_args, trace_id, trace_exec_args, trace_exit_code
+        )
+        self._log_handler = log_handler
+
+    def stdout_handler(self, source, command, trace_id, line):
+        self._log_handler("%s: [trace_id %s] %s/stdout: %s"
+                    % (source, trace_id, command, line))
+
+    def stderr_handler(self, source, command, trace_id, line):
+        self._log_handler("%s: [trace_id %s] %s/stderr: %s"
+                    % (source, trace_id, command, line))
+
+
 class SizeCalc(object):
 
     """
@@ -1417,13 +1581,87 @@ def approximate_size_string(size_kiB):
 
 def debug_log_exec_args(source, exec_args):
     """
-    Logs the arguments used to execute an external command
+    Logs the command line of external commands at the DEBUG level
     """
     logging.debug(
         "%s: Running external command: %s"
         % (source, " ".join(exec_args))
     )
 
+def info_log_exec_args(source, exec_args):
+    """
+    Logs the command line of external commands at the INFO level
+    """
+    logging.info(
+        "%s: Running external command: %s"
+        % (source, " ".join(exec_args))
+    )
+
+def debug_trace_exec_args(source, trace_id, args):
+    """
+    Logs the trace id and command line of external commands at the DEBUG level
+    """
+    generic_trace_exec_args(logging.debug, source, trace_id, args)
+
+def info_trace_exec_args(source, trace_id, args):
+    """
+    Logs the trace id and command line of external commands at the DEBUG level
+    """
+    generic_trace_exec_args(logging.info, source, trace_id, args)
+
+def generic_trace_exec_args(log_handler, source, trace_id, args):
+    """
+    Logs the trace id and command line of external commands using the specified handler function
+    """
+    if trace_id is not None:
+        log_handler(
+            "%s: [trace_id %s] Running external command: %s"
+            % (source, trace_id, " ".join(args))
+        )
+    else:
+        log_handler(
+            "%s: Running external command: %s"
+            % (source, " ".join(args))
+        )
+
+def debug_trace_exit_code(source, trace_id, command, exit_code):
+    """
+    Logs the trace id and exit code of external commands at the DEBUG level
+    """
+    generic_trace_exit_code(logging.debug, source, trace_id, command, exit_code)
+
+def info_trace_exit_code(source, trace_id, command, exit_code):
+    """
+    Logs the trace id and exit code of external commands at the INFO level
+    """
+    generic_trace_exit_code(logging.info, source, trace_id, command, exit_code)
+
+def smart_trace_exit_code(source, trace_id, command, exit_code):
+    """
+    Logs the trace id and exit code of external commands
+
+    Logs at the INFO level for exit code 0 and at the
+    ERROR level for any other exit code
+    """
+    if exit_code == 0:
+        generic_trace_exit_code(logging.info, source, trace_id, command, exit_code)
+    else:
+        generic_trace_exit_code(logging.error, source, trace_id, command, exit_code)
+
+def generic_trace_exit_code(log_handler, source, trace_id, command, exit_code):
+    """
+    Logs the trace id and exit code of external commands using the specified handler function
+    """
+    if trace_id is not None:
+        log_handler(
+            "%s: [trace_id %s] External command '%s': Exit code %d"
+            % (source, trace_id, command, exit_code)
+        )
+    else:
+        log_handler(
+            "%s: External command '%s': Exit code %d"
+            % (source, command, exit_code)
+        )
 
 def log_in_out(f):
     @wraps(f)
