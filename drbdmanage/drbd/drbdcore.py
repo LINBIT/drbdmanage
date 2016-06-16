@@ -1228,7 +1228,7 @@ class DrbdManager(object):
                     if set_gi_check:
                         fn_rc = 0
                     else:
-                        fn_rc = DrbdManager.DRBDADM_EXEC_FAILED
+                        fn_rc = drbdcmd.DrbdAdm.DRBDADM_EXEC_FAILED
 
         return fn_rc
 
