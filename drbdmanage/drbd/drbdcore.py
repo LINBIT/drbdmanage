@@ -1354,8 +1354,12 @@ class DrbdManager(object):
             bd_name = vol_state.get_bd_name()
             if bd_name is not None:
                 fn_rc = bd_mgr.extend_blockdevice(bd_name, gross_size)
-                if fn_rc == DM_SUCCESS:
-                    vol_state.finish_resize_storage()
+            else:
+                # If there is no blockdevice, then there is nothing to resize
+                fn_rc = DM_SUCCESS
+
+            if fn_rc == DM_SUCCESS:
+                vol_state.finish_resize_storage()
         except ValueError:
             vol_state.fail_resize()
 
@@ -1371,38 +1375,42 @@ class DrbdManager(object):
         vol_id = vol_state.get_id()
         volume = resource.get_volume(vol_id)
         if volume is not None:
-            saved_vol_size = volume.get_size_kiB()
-            try:
-                new_size = volume.get_resize_value()
-                volume.set_size_kiB(new_size)
-            except ValueError:
-                pass
+            if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
+                saved_vol_size = volume.get_size_kiB()
+                try:
+                    new_size = volume.get_resize_value()
+                    volume.set_size_kiB(new_size)
+                except ValueError:
+                    pass
 
-            # If this volume is thinly provisioned on all assigned nodes,
-            # skip resyncing the space newly allocated by the resize operation
-            assume_clean = self._is_global_thin_volume(resource, vol_id)
+                # If this volume is thinly provisioned on all assigned nodes,
+                # skip resyncing the space newly allocated by the resize operation
+                assume_clean = self._is_global_thin_volume(resource, vol_id)
 
-            # Update the resource configuration file
-            self._server.export_assignment_conf(assignment)
+                # Update the resource configuration file
+                self._server.export_assignment_conf(assignment)
 
-            fn_rc = self._drbdadm.resize(resource.get_name(), vol_state.get_id(), assume_clean)
-            if fn_rc == 0:
-                logging.debug(
-                    "Resource '%s', Volume %d: finish_resize_drbd()"
-                    % (resource.get_name(), vol_id)
-                )
-                resource.finish_resize_drbd(vol_id)
-                # The assigment of the resource on all nodes must be adjusted to update
-                # the size parameter in the configuration.
-                # For now, the assignment's UPD_CON flag actually causes a
-                # 'drbdadm adjust', therefore simply enable the flag
-                # FIXME: There should probably be an adjust flag for that
-                for peer_assg in resource.iterate_assignments():
-                    if not (peer_assg is assignment):
-                        peer_assg.update_config()
+                fn_rc = self._drbdadm.resize(resource.get_name(), vol_state.get_id(), assume_clean)
+                if fn_rc == 0:
+                    logging.debug(
+                        "Resource '%s', Volume %d: finish_resize_drbd()"
+                        % (resource.get_name(), vol_id)
+                    )
+                    resource.finish_resize_drbd(vol_id)
+                    # The assigment of the resource on all nodes must be adjusted to update
+                    # the size parameter in the configuration.
+                    # For now, the assignment's UPD_CON flag actually causes a
+                    # 'drbdadm adjust', therefore simply enable the flag
+                    # FIXME: There should probably be an adjust flag for that
+                    for peer_assg in resource.iterate_assignments():
+                        if not (peer_assg is assignment):
+                            peer_assg.update_config()
+                else:
+                    # Rollback the volume size change
+                    volume.set_size_kiB(saved_vol_size)
             else:
-                # Rollback the volume size change
-                volume.set_size_kiB(saved_vol_size)
+                # Client, do not initiate a resize on a client node
+                fn_rc = DM_SUCCESS
         else:
             # There is a volume state for a non-existent volume
             assignment.update_volume_states()
