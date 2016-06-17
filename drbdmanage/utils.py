@@ -1407,7 +1407,7 @@ def approximate_size_string(size_kiB):
     size_str = None
     if size_kiB % magnitude != 0:
         size_unit = float(size_kiB) / magnitude
-        size_str = "%3.3f %s" % (size_unit, units[index])
+        size_str = "%3.2f %s" % (size_unit, units[index])
     else:
         size_unit = size_kiB / magnitude
         size_str = "%d %s" % (size_unit, units[index])
