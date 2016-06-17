@@ -2465,14 +2465,54 @@ class DrbdManageServer(object):
                         md.MetaData.DEFAULT_AL_kiB
                     )
                     size_increment_kiB = gross_size_kiB - cur_gross_size_kiB
+
+                    # Check assignment sanity
                     for assignment in resource.iterate_assignments():
-                        if is_unset(assignment.get_cstate(), Assignment.FLAG_DISKLESS):
+                        assg_cstate = assignment.get_cstate()
+                        assg_tstate = assignment.get_tstate()
+                        c_diskless = (assg_cstate & Assignment.FLAG_DISKLESS)
+                        t_diskless = (assg_tstate & Assignment.FLAG_DISKLESS)
+                        if c_diskless != t_diskless:
+                            # Assignment is transitioning from or to diskless -> fail
+                            add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
+                            raise ValueError
+                        if not (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
+                                is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
+                            # Some assignment is deploying or undeploying -> fail
+                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                            raise ValueError
+
+                        vol_state = assignment.get_volume_state(vol_id)
+                        if vol_state is None:
+                            # Volume state object missing -> fail
+                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                            raise ValueError
+                        if not (is_set(vol_state.get_cstate(), DrbdVolumeState.FLAG_DEPLOY) and
+                                is_set(vol_state.get_tstate(), DrbdVolumeState.FLAG_DEPLOY)):
+                            # Some volume state is deploying or undeploying -> fail
+                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                            raise ValueError
+
+                        if c_diskless == 0:
                             node = assignment.get_node()
                             poolfree = node.get_poolfree()
                             if poolfree >= 0:
                                 if size_increment_kiB > poolfree:
                                     add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
                                     raise ValueError
+                            bd_name = vol_state.get_bd_name()
+                            if bd_name is None:
+                                # Not diskless, but no blockdevice -> fail
+                                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                                raise ValueError
+                        else:
+                            # Client assignments
+                            vol_state = assignment.get_volume_state(vol_id)
+                            bd_name = vol_state.get_bd_name()
+                            if bd_name is not None:
+                                # Diskless, but has a blockdevice -> fail
+                                add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                                raise ValueError
 
                     # Set the resize parameters
                     resource.begin_resize(vol_id, size_kiB)

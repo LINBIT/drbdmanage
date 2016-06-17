@@ -2042,14 +2042,18 @@ class DrbdResource(GenericDrbdObject):
     def begin_resize(self, vol_id, new_size_kiB):
         xact = drbdmanage.propscontainer.Props.KEY_XACT
         for assg in self.iterate_assignments():
-            vol_state = assg.get_volume_state(vol_id)
-            if vol_state is not None:
-                vs_props = vol_state.get_props()
-                vs_props.set_prop(
-                    DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_STOR,
-                    namespace=xact
-                )
-                vol_state.set_tstate_flags(DrbdVolumeState.FLAG_XACT)
+            assg_cstate = assg.get_cstate()
+            assg_tstate = assg.get_tstate()
+            if (is_unset(assg_cstate, Assignment.FLAG_DISKLESS) and
+                is_unset(assg_tstate, Assignment.FLAG_DISKLESS)):
+                vol_state = assg.get_volume_state(vol_id)
+                if vol_state is not None:
+                    vs_props = vol_state.get_props()
+                    vs_props.set_prop(
+                        DrbdVolumeState.KEY_RESIZE_STAGE, DrbdVolumeState.RESIZE_STAGE_STOR,
+                        namespace=xact
+                    )
+                    vol_state.set_tstate_flags(DrbdVolumeState.FLAG_XACT)
         volume = self.get_volume(vol_id)
         vol_props = volume.get_props()
         vol_props.set_prop(DrbdVolume.KEY_RESIZE_VALUE, str(new_size_kiB), namespace=xact)
