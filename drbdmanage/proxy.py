@@ -419,7 +419,7 @@ class DrbdManageProxy(object):
 
     # used to encode/encrypt
     def _encode_msg(self, cmd, payload):
-        payload = payload.encode('zlib')
+        payload = payload.encode('bz2')
         payload = base64.b64encode(payload)
         payload = bytearray(payload)
         opcode = bytearray(struct.pack("!H", self.opcodes[cmd]))
@@ -430,5 +430,5 @@ class DrbdManageProxy(object):
 
     def _decode_msg(self, data):
         data = base64.b64decode(data)
-        data = data.decode('zlib')
+        data = data.decode('bz2')
         return data
