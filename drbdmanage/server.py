@@ -2454,17 +2454,23 @@ class DrbdManageServer(object):
                         # Unparseable configuration entry;
                         # no-op: use default value instead
                         pass
+                    cur_gross_size_kiB = md.MetaData.get_gross_kiB(
+                        cur_size_kiB, max_peers,
+                        md.MetaData.DEFAULT_AL_STRIPES,
+                        md.MetaData.DEFAULT_AL_kiB
+                    )
                     gross_size_kiB = md.MetaData.get_gross_kiB(
                         size_kiB, max_peers,
                         md.MetaData.DEFAULT_AL_STRIPES,
                         md.MetaData.DEFAULT_AL_kiB
                     )
+                    size_increment_kiB = gross_size_kiB - cur_gross_size_kiB
                     for assignment in resource.iterate_assignments():
                         if is_unset(assignment.get_cstate(), Assignment.FLAG_DISKLESS):
                             node = assignment.get_node()
                             poolfree = node.get_poolfree()
                             if poolfree >= 0:
-                                if gross_size_kiB > poolfree:
+                                if size_increment_kiB > poolfree:
                                     add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
                                     raise ValueError
 
