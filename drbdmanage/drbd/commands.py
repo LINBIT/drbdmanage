@@ -20,7 +20,6 @@
 
 import subprocess
 import errno
-import sys
 import logging
 import os
 import drbdmanage.utils as utils
@@ -255,23 +254,23 @@ class DrbdAdm(object):
         Runs the drbdadm command as a child process with its standard input
         redirected to a pipe from the drbdmanage server
         """
-        drbd_proc = None
         drbdadm_rc = DrbdAdm.DRBDADM_EXEC_FAILED
         try:
-            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            drbd_proc = subprocess.Popen(
-                exec_args, 0, self.DRBDADM_UTIL,
-                stderr=subprocess.PIPE, close_fds=True
+            # Always log what's being executed and what the exit code was
+            drbdadm_exec = utils.ExternalCommandBuffer(
+                self.__class__.__name__, exec_args,
+                trace_exec_args=utils.info_trace_exec_args,
+                trace_exit_code=utils.smart_trace_exit_code,
             )
-            subprocess.Popen(
-                [
-                    'logger', '-t', 'DRBDmanage:%d' % drbd_proc.pid
-                ],
-                0, 'logger',
-                close_fds=True,
-                stdin=drbd_proc.stderr
-            )
-            drbd_proc.stderr.close()
+            drbdadm_rc = drbdadm_exec.run()
+            # Log stdout/stderr at the error loglevel if the
+            # command failed, otherwise log at the debug loglevel
+            if drbdadm_rc != 0:
+                drbdadm_exec.log_stdout()
+                drbdadm_exec.log_stderr()
+            else:
+                drbdadm_exec.log_stdout(log_handler=logging.debug)
+                drbdadm_exec.log_stderr(log_handler=logging.debug)
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
                 logging.error("Cannot find the drbdadm utility, in PATH '%s'" % (os.environ['PATH']))
@@ -283,6 +282,4 @@ class DrbdAdm(object):
                     "the OS is: %s\n"
                     % (oserr.strerror)
                 )
-        if drbd_proc is not None:
-            drbdadm_rc = drbd_proc.wait()
         return drbdadm_rc
