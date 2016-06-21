@@ -1078,7 +1078,7 @@ class DrbdManager(object):
                     if new_gi_check:
                         fn_rc = 0
                     else:
-                        fn_rc = drbdcmd.DrbdAdm.DRBDADM_EXEC_FAILED
+                        fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
 
         return fn_rc
 
@@ -1204,7 +1204,7 @@ class DrbdManager(object):
                     if set_gi_check:
                         fn_rc = 0
                     else:
-                        fn_rc = drbdcmd.DrbdAdm.DRBDADM_EXEC_FAILED
+                        fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
 
         if initial_flag or thin_flag:
             # Set the DRBD current generation identifier if it is set on the volume
@@ -1233,7 +1233,7 @@ class DrbdManager(object):
                     if set_gi_check:
                         fn_rc = 0
                     else:
-                        fn_rc = drbdcmd.DrbdAdm.DRBDADM_EXEC_FAILED
+                        fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
 
         return fn_rc
 

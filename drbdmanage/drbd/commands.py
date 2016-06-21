@@ -35,7 +35,7 @@ class DrbdAdm(object):
     DRBDSETUP_UTIL = "drbdsetup"
 
     # Used as a return code to indicate that drbdadm could not be executed
-    DRBDADM_EXEC_FAILED = 127
+    DRBDUTIL_EXEC_FAILED = 127
 
     def __init__(self):
         pass
@@ -49,7 +49,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def ext_conf_down(self, res_name):
@@ -61,7 +61,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "down", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def adjust(self, res_name):
@@ -71,7 +71,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def resize(self, res_name, vol_id, assume_clean):
@@ -86,7 +86,7 @@ class DrbdAdm(object):
             exec_args.append("--assume-clean")
         exec_args.append("resize")
         exec_args.append(res_name + "/" + str(vol_id))
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def up(self, res_name):
@@ -96,7 +96,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "up", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def down(self, res_name):
@@ -106,7 +106,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "down", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def fallback_down(self, res_name):
@@ -115,15 +115,9 @@ class DrbdAdm(object):
 
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
-        fallback_ok = False
         exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
-        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-        try:
-            subprocess.check_call(exec_args)
-            fallback_ok = True
-        except subprocess.CalledProcessError:
-            pass
-        return fallback_ok
+        exit_code = self._run_drbdutils(exec_args)
+        return (exit_code == 0)
 
 
     def primary(self, res_name, force):
@@ -140,7 +134,7 @@ class DrbdAdm(object):
             exec_args.append("--force")
         exec_args.append("primary")
         exec_args.append(res_name)
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def secondary(self, res_name):
@@ -149,7 +143,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "secondary", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def connect(self, res_name, discard):
@@ -163,7 +157,7 @@ class DrbdAdm(object):
             exec_args.append("--discard-my-data")
         exec_args.append("connect")
         exec_args.append(res_name)
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def disconnect(self, res_name):
@@ -172,7 +166,7 @@ class DrbdAdm(object):
         @return: process handle of the drbdadm process
         """
         exec_args = [self.DRBDADM_UTIL, "disconnect", res_name]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def attach(self, res_name, vol_id):
@@ -182,7 +176,7 @@ class DrbdAdm(object):
         """
         exec_args = [self.DRBDADM_UTIL, "attach",
                 res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def detach(self, res_name, vol_id):
@@ -192,7 +186,7 @@ class DrbdAdm(object):
         """
         exec_args = [self.DRBDADM_UTIL, "detach",
                 res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def create_md(self, res_name, vol_id, peers):
@@ -202,7 +196,7 @@ class DrbdAdm(object):
         """
         exec_args = [self.DRBDADM_UTIL, "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
-        return self._run_drbdadm(exec_args)
+        return self._run_drbdutils(exec_args)
 
 
     def set_gi(self, node_id, minor_nr, bd_path, current_gi, history_1_gi=None, set_flags=False):
@@ -210,7 +204,6 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        set_gi_check = False
         gi_data = current_gi + ":"
         if set_flags or history_1_gi is not None:
             if history_1_gi is None:
@@ -222,13 +215,8 @@ class DrbdAdm(object):
             self.DRBDMETA_UTIL, "--force", "--node-id", node_id,
             minor_nr, "v09", bd_path, "internal", "set-gi", gi_data
         ]
-        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-        try:
-            subprocess.check_call(exec_args)
-            set_gi_check = True
-        except subprocess.CalledProcessError:
-            pass
-        return set_gi_check
+        exit_code = self._run_drbdutils(exec_args)
+        return (exit_code == 0)
 
 
     def new_current_uuid(self, res_name, vol_id):
@@ -236,50 +224,46 @@ class DrbdAdm(object):
         Calls drbdadm to set a new current GI
         @return: True if the command succeeded (exit code 0), False otherwise
         """
-        cmd_check = False
         exec_args = [
             self.DRBDADM_UTIL, "--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)
         ]
-        utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-        try:
-            subprocess.check_call(exec_args)
-            cmd_check = True
-        except subprocess.CalledProcessError:
-            pass
-        return cmd_check
+        exit_code = self._run_drbdutils(exec_args)
+        return (exit_code == 0)
 
 
-    def _run_drbdadm(self, exec_args):
+    def _run_drbdutils(self, exec_args):
         """
         Runs the drbdadm command as a child process with its standard input
         redirected to a pipe from the drbdmanage server
         """
-        drbdadm_rc = DrbdAdm.DRBDADM_EXEC_FAILED
+        drbdutil_rc = DrbdAdm.DRBDUTIL_EXEC_FAILED
         try:
             # Always log what's being executed and what the exit code was
-            drbdadm_exec = utils.ExternalCommandBuffer(
+            drbdutil_exec = utils.ExternalCommandBuffer(
                 self.__class__.__name__, exec_args,
                 trace_exec_args=utils.info_trace_exec_args,
                 trace_exit_code=utils.smart_trace_exit_code,
             )
-            drbdadm_rc = drbdadm_exec.run()
+            drbdutil_rc = drbdutil_exec.run()
             # Log stdout/stderr at the error loglevel if the
             # command failed, otherwise log at the debug loglevel
-            if drbdadm_rc != 0:
-                drbdadm_exec.log_stdout()
-                drbdadm_exec.log_stderr()
+            if drbdutil_rc != 0:
+                drbdutil_exec.log_stdout()
+                drbdutil_exec.log_stderr()
             else:
-                drbdadm_exec.log_stdout(log_handler=logging.debug)
-                drbdadm_exec.log_stderr(log_handler=logging.debug)
+                drbdutil_exec.log_stdout(log_handler=logging.debug)
+                drbdutil_exec.log_stderr(log_handler=logging.debug)
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
-                logging.error("Cannot find the drbdadm utility, in PATH '%s'" % (os.environ['PATH']))
+                logging.error("Cannot find drbdutils utility '%s', in PATH '%s'"
+                              % (exec_args[0], os.environ['PATH']))
             elif oserr.errno == errno.EACCES:
-                logging.error("Cannot execute the drbdadm utility, permission denied")
+                logging.error("Cannot execute drbdutils utility '%s', permission denied"
+                              % (exec_args[0]))
             else:
                 logging.error(
-                    "Cannot execute the drbdadm utility, error returned by "
+                    "Cannot execute drbdadm utility '%s', error returned by "
                     "the OS is: %s\n"
-                    % (oserr.strerror)
+                    % (exec_args[0], oserr.strerror)
                 )
-        return drbdadm_rc
+        return drbdutil_rc
