@@ -35,6 +35,7 @@ import re
 import subprocess
 import time
 import traceback
+import locale
 import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 import drbdmanage.argparse.argparse as argparse
@@ -105,6 +106,10 @@ class DrbdManage(object):
     UMHELPER_WAIT_TIME = 5.0
 
     def __init__(self):
+        try:
+            locale.setlocale(locale.LC_ALL, '')
+        except:
+            pass
         try:
             self._parser = self.setup_parser()
         except dbus.exceptions.DBusException as exc:

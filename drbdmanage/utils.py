@@ -35,6 +35,7 @@ import fcntl
 import uuid
 import drbdmanage.consts as consts
 import logging
+import locale
 import ConfigParser
 from functools import wraps
 from drbdmanage.exceptions import SyntaxException, InvalidNameException
@@ -1571,7 +1572,8 @@ def approximate_size_string(size_kiB):
     size_str = None
     if size_kiB % magnitude != 0:
         size_unit = float(size_kiB) / magnitude
-        size_str = "%3.2f %s" % (size_unit, units[index])
+        size_loc = locale.format('%3.2f', size_unit, grouping=True)
+        size_str = "%s %s" % (size_loc, units[index])
     else:
         size_unit = size_kiB / magnitude
         size_str = "%d %s" % (size_unit, units[index])
