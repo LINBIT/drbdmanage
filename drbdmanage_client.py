@@ -58,6 +58,7 @@ from drbdmanage.consts import (
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
+from drbdmanage.utils import ExternalCommandBuffer
 from drbdmanage.utils import (
     build_path, bool_to_string, rangecheck, namecheck, ssh_exec,
     load_server_conf_file, filter_prohibited, get_uname, approximate_size_string
@@ -2869,8 +2870,9 @@ Confirm:
             else:
                 fn_rc = 0
         except AbortException:
-            sys.stderr.write("Initialization failed\n")
             self._init_join_rollback(drbdctrl_vg)
+            sys.stderr.write("%sInitialization failed%s\n"
+                             % (self.color(COLOR_RED), self.color(COLOR_NONE)))
         return fn_rc
 
     def cmd_uninit(self, args):
@@ -3109,17 +3111,29 @@ Confirm:
         Notice: Caller should handle AbortException
         """
         # Shut down any existing drbdmanage control volume
-        self._ext_command(
-            ["drbdsetup", "down", DRBDCTRL_RES_NAME]
-        )
+        try:
+            self._ext_command(
+                ["drbdsetup", "down", DRBDCTRL_RES_NAME]
+            )
+        except AbortException:
+            pass
 
-        # Delete any existing .drbdctrl LV
-        self._ext_command(
-            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0]
-        )
-        self._ext_command(
-            ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1]
-        )
+        # Delete existing .drbdctrl LV 0
+        try:
+            self._ext_command(
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0],
+                ignore_error=True
+            )
+        except AbortException:
+            pass
+        # Delete existing .drbdctrl LV 1
+        try:
+            self._ext_command(
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1],
+                ignore_error=True
+            )
+        except AbortException:
+            pass
 
         # Delete any existing configuration file
         try:
@@ -3145,13 +3159,15 @@ Confirm:
             pass
         try:
             self._ext_command(
-                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0]
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_0],
+                ignore_error=True
             )
         except AbortException:
             pass
         try:
             self._ext_command(
-                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1]
+                ["lvremove", "--force", drbdctrl_vg + "/" + DRBDCTRL_LV_NAME_1],
+                ignore_error=True
             )
         except AbortException:
             pass
@@ -3184,29 +3200,45 @@ Confirm:
             fn_rc = 0
         return fn_rc
 
-    def _ext_command(self, args):
+    def _ext_command(self, exec_args, ignore_error=False):
         """
         Run external commands in a subprocess
         """
-        proc_rc = 127
+        exit_code = 127
         try:
-            ext_proc = subprocess.Popen(args, 0, None, close_fds=True)
-            proc_rc = ext_proc.wait()
+            cmd_exec = ExternalCommandBuffer(self.__class__.__name__, exec_args)
+            exit_code = cmd_exec.run()
+            if exit_code != 0 and not ignore_error:
+                sys.stderr.write("%sError: External command failed:%s\n"
+                                 % (self.color(COLOR_RED), self.color(COLOR_NONE)))
+                sys.stderr.write("%s%s%s\n"
+                                 % (self.color(COLOR_RED), " ".join(exec_args), self.color(COLOR_NONE)))
+                sys.stderr.write("%sCommand output:%s\n"
+                                 % (self.color(COLOR_RED), self.color(COLOR_NONE)))
+                for line in cmd_exec.get_stdout():
+                    sys.stderr.write("  %s(stdout) %s%s"
+                                     % (self.color(COLOR_RED), self.color(COLOR_NONE), line))
+                for line in cmd_exec.get_stderr():
+                    sys.stderr.write("  %s(stderr) %s%s"
+                                      % (self.color(COLOR_RED), self.color(COLOR_NONE), line))
+                sys.stderr.write("%sCommand exited with exit_code %d%s\n\n"
+                                 % (self.color(COLOR_RED), exit_code, self.color(COLOR_NONE)))
+                raise AbortException
         except OSError as oserr:
             if oserr.errno == errno.ENOENT:
-                sys.stderr.write("Cannot find command: %s\n" % args[0])
+                sys.stderr.write("Cannot find command '%s'\n" % exec_args[0])
             elif oserr.errno == errno.EACCES:
                 sys.stderr.write(
-                    "Cannot execute %s, permission denied"
-                    % (args[0])
+                    "Cannot execute '%s', permission denied\n"
+                    % (exec_args[0])
                 )
             else:
                 sys.stderr.write(
-                    "Cannot execute %s, error returned by the OS is: %s\n"
-                    % (args[0], oserr.strerror)
+                    "Cannot execute '%s', error returned by the OS is: %s\n"
+                    % (exec_args[0], oserr.strerror)
                 )
             raise AbortException
-        return proc_rc
+        return exit_code
 
     def _create_drbdctrl(self, node_id, server_conf, drbdctrl_lv_0, drbdctrl_lv_1):
         drbdctrl_vg = self._get_drbdctrl_vg(server_conf)
@@ -3935,7 +3967,7 @@ Confirm:
                     drbdctrl.close()
                 except IOError:
                     pass
-        sys.stdout.write("empty drbdmanage control volume initialized.\n")
+        sys.stdout.write("Empty drbdmanage control volume initialized on '%s'.\n" % (drbdctrl_file))
 
         return fn_rc
 
