@@ -1238,14 +1238,16 @@ class ExternalCommand(object):
 
 class ExternalCommandBuffer(ExternalCommand):
 
-    _out_buffer = []
-    _err_buffer = []
+    _out_buffer = None
+    _err_buffer = None
     _command    = None
 
     def __init__(self, source, command_args, trace_id=None, trace_exec_args=None, trace_exit_code=None):
         super(ExternalCommandBuffer, self).__init__(
             source, command_args, trace_id, trace_exec_args, trace_exit_code
         )
+        self._out_buffer = []
+        self._err_buffer = []
         self._command  = command_args[0]
 
     def stdout_handler(self, source, command, trace_id, line):
