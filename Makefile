@@ -46,8 +46,9 @@ rpm: up2date doc
 
 .PHONY: drbdmanage/consts_githash.py
 ifdef GITHEAD
-override GITDIFF := $(shell $(GIT) diff --name-only HEAD 2>/dev/null |	\
-			tr -s '\t\n' '  ' |		\
+override GITDIFF := $(shell $(GIT) diff --name-only HEAD 2>/dev/null | \
+			grep -vxF "MANIFEST.in" | \
+			tr -s '\t\n' '  ' | \
 			sed -e 's/^/ /;s/ *$$//')
 drbdmanage/consts_githash.py:
 	@echo "DM_GITHASH = 'GIT-hash: $(GITHEAD)$(GITDIFF)'" > $@
