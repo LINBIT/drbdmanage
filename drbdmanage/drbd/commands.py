@@ -47,7 +47,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "adjust", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -59,7 +59,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "down", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -69,7 +69,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "adjust", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "adjust", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -79,7 +79,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
         if assume_clean:
             exec_args.append("--");
             exec_args.append("--assume-clean")
@@ -94,7 +94,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "up", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "up", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -104,7 +104,7 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "down", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -114,7 +114,7 @@ class DrbdAdm(object):
 
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
-        exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
+        exec_args = [self.DRBDSETUP_UTIL, "-vvv", "down", res_name]
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
 
@@ -127,7 +127,7 @@ class DrbdAdm(object):
         @param   force: if set, adds the --force flag for drbdsetup
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
         if force:
             exec_args.append("--")
             exec_args.append("--force")
@@ -141,7 +141,7 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "secondary", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "secondary", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -150,7 +150,7 @@ class DrbdAdm(object):
         Connects a resource to its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
         if discard:
             exec_args.append("--")
             exec_args.append("--discard-my-data")
@@ -164,7 +164,7 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "disconnect", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "disconnect", res_name]
         return self._run_drbdutils(exec_args)
 
 
@@ -173,7 +173,7 @@ class DrbdAdm(object):
         Attaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "attach",
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "attach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdutils(exec_args)
 
@@ -183,7 +183,7 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "detach",
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "detach",
                 res_name + "/" + str(vol_id)]
         return self._run_drbdutils(exec_args)
 
@@ -193,7 +193,7 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "--max-peers", str(peers),
+        exec_args = [self.DRBDADM_UTIL, "-vvv", "--max-peers", str(peers),
                 "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdutils(exec_args)
 
@@ -224,7 +224,7 @@ class DrbdAdm(object):
         @return: True if the command succeeded (exit code 0), False otherwise
         """
         exec_args = [
-            self.DRBDADM_UTIL, "--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)
+            self.DRBDADM_UTIL, "-vvv", "--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)
         ]
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
