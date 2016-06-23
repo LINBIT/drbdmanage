@@ -643,6 +643,7 @@ class DrbdManager(object):
                         state_changed = True
                         # Remove any previously set snapshot restoration properties
                         vol_state.get_props().remove_prop(consts.SNAPS_SRC_BLOCKDEV)
+                        vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
                         vol_state.set_tstate_flags(DrbdVolumeState.FLAG_ATTACH)
                         fn_rc = self._deploy_volume_actions(assg, vol_state, max_peers)
                         if fn_rc != 0:
