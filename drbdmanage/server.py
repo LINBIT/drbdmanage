@@ -145,6 +145,7 @@ class DrbdManageServer(object):
 
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
+    DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
 
     KEY_DEBUG_OUT_FILE = "debug-out-file"
 
@@ -166,7 +167,7 @@ class DrbdManageServer(object):
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
         KEY_MAX_FAIL_COUNT : str(DEFAULT_MAX_FAIL_COUNT),
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
-        KEY_DRBD_CONFPATH  : "/var/lib/drbd.d",
+        KEY_DRBD_CONFPATH  : DEFAULT_DRBD_CONFPATH,
         KEY_DRBDCTRL_VG    : DEFAULT_VG,
         KEY_DEBUG_OUT_FILE : "/dev/stderr",
         KEY_LOGLEVEL       : "INFO",
@@ -544,6 +545,14 @@ class DrbdManageServer(object):
         self.run_config()
         if self._is_satellite == SAT_SATELLITE:
             self._proxy.start()
+
+        conf_path = self._conf.get(self.KEY_DRBD_CONFPATH, self.DEFAULT_DRBD_CONFPATH)
+        for f in os.listdir(conf_path):
+            if f.endswith(".res"):
+                try:
+                    os.unlink(os.path.join(conf_path, f))
+                except:
+                    pass
 
         # gobject.MainLoop().run()
 

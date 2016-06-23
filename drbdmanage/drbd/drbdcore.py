@@ -142,6 +142,7 @@ class DrbdManager(object):
                                   "control volume (read-only)")
 
             if run_changes:
+                # self._server.export_conf('*')
                 # close the read-only stream, then lock and open the
                 # configuration for reading and writing
                 persist = self._server.begin_modify_conf()
