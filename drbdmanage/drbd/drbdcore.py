@@ -118,6 +118,7 @@ class DrbdManager(object):
         """
         persist = None
         data_changed = False
+        failed_actions = False
         logging.debug("DrbdManager: invoked")
         try:
             # Always perform changes requested for the local node if the
@@ -149,7 +150,7 @@ class DrbdManager(object):
                 if persist is not None:
                     loaded_hash = persist.get_stored_hash()
                     old_serial = self._server.peek_serial()
-                    changed    = self.perform_changes()
+                    changed, failed_actions = self.perform_changes()
                     new_serial = self._server.peek_serial()
                     if poke_cluster:
                         # increase the serial number, implicitly changing the
@@ -186,7 +187,7 @@ class DrbdManager(object):
             # read-write streams
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
-        return data_changed
+        return data_changed, failed_actions
 
 
     # FIXME
@@ -313,21 +314,40 @@ class DrbdManager(object):
             final_ctrl_vol = None
             changed_at_all = True
 
+            at_least_one_failed_cnt = 0
+            # if everything is nice and cosy, we send aroud the ctrlvolume as long till nobody has any
+            # further changes (changed_at_all). Base case how to do it.
+            # but there might be progress even though old things failed, in that case send the updated
+            # volume around for one round (every satellite adds its changes), but then break to avoid
+            # endless loops.
+
+            overall_loop_cnt = 0
             while changed_at_all:
+                overall_loop_cnt += 1
                 changed_at_all = False
                 # dont move established before send_init_satellites() <- updates sat_state_ctrlvol
                 up = [s for s, st in self._server.sat_state_ctrlvol.items() if st == consts.SAT_CON_ESTABLISHED]
+                at_least_one_failed = False
                 for satellite in up:
                     opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_E_COMM]:  # give it a second chance
                         opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
 
-                    if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED]:
+                    if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED_FAILED]:
+                        at_least_one_failed = True
+
+                    if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED] or \
+                       opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED_FAILED]:
                         changed_at_all = True
                         final_ctrl_vol = data
                         # set_json_data is required, next send_cmd() reads that value!
                         # do not remove following call:
                         self._server._persist.set_json_data(final_ctrl_vol)
+
+                if at_least_one_failed:
+                    at_least_one_failed_cnt += 1
+                if at_least_one_failed_cnt == 5 or overall_loop_cnt == 7:
+                    break
 
             if final_ctrl_vol:
                 self._server._persist.set_json_data(final_ctrl_vol)
@@ -343,7 +363,7 @@ class DrbdManager(object):
         if pool_changed:
             self._server.update_pool_data()
 
-        return state_changed
+        return state_changed, failed_actions
 
 
     @log_in_out

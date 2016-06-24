@@ -33,6 +33,7 @@ from drbdmanage.consts import (
     KEY_S_INT_SHUTDOWN,
     KEY_S_ANS_OK,
     KEY_S_ANS_CHANGED,
+    KEY_S_ANS_CHANGED_FAILED,
     KEY_S_ANS_UNCHANGED,
     KEY_S_ANS_E_OP_INVALID,
     KEY_S_ANS_E_TOO_LONG,
@@ -79,10 +80,13 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                     cmd = KEY_S_ANS_OK
                 elif opcode == opcodes[KEY_S_CMD_UPDATE]:
                     self.server.dmserver._persist.set_json_data(payload)
-                    updated = self.server.dmserver._drbd_mgr.run(False, False)
+                    updated, failed_actions = self.server.dmserver._drbd_mgr.run(False, False)
                     if updated:
-                        cmd = KEY_S_ANS_CHANGED
                         answer_payload = self.server.dmserver._persist.get_json_data()
+                        if failed_actions:
+                            cmd = KEY_S_ANS_CHANGED_FAILED
+                        else:
+                            cmd = KEY_S_ANS_CHANGED
                     else:
                         cmd = KEY_S_ANS_UNCHANGED
                 elif opcode == opcodes[KEY_S_INT_SHUTDOWN]:
@@ -184,6 +188,7 @@ class DrbdManageProxy(object):
         KEY_S_ANS_E_COMM: 34,
         KEY_S_ANS_CHANGED: 35,
         KEY_S_ANS_UNCHANGED: 36,
+        KEY_S_ANS_CHANGED_FAILED: 37,
     }
 
     def __init__(self, dmserver, host='', port=_DEFAULT_PORT_NR, blocking=True):
