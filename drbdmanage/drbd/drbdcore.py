@@ -533,6 +533,7 @@ class DrbdManager(object):
                             failed_actions = True
 
             if failed_actions:
+                logging.debug("DrbdManager: _assignment_actions(): increasing assignment fail count")
                 assg.increase_fail_count()
         if state_changed:
             assg.notify_changed()
@@ -750,6 +751,7 @@ class DrbdManager(object):
                 state_changed = True
                 snaps_assg.notify_changed()
         if failed_actions:
+            logging.debug("DrbdManager: _snapshot_actions(): increasing assignment fail count")
             assg.increase_fail_count()
         return (state_changed, pool_changed, failed_actions)
 
@@ -836,7 +838,6 @@ class DrbdManager(object):
             failed_actions = True
         if failed_actions:
             snaps_assg.set_error_code(dmexc.DM_ESTORAGE)
-            assg.increase_fail_count()
         return (pool_changed, failed_actions)
 
     @log_in_out
@@ -866,7 +867,6 @@ class DrbdManager(object):
             )
             failed_actions = True
             assg = snaps_assg.get_assignment()
-            assg.increase_fail_count()
         return (pool_changed, failed_actions)
 
     @log_in_out
@@ -1197,6 +1197,9 @@ class DrbdManager(object):
                 #        This must be redesigned with additional flags
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
                 fn_rc = 0
+            else:
+                logging.error("DrbdManager: Failed to create block device for resource '%s' volume %d"
+                              % (resource.get_name(), vol_state.get_id()))
         except md.MetaDataException as md_exc:
             logging.debug("DrbdManager: _deploy_volume_blockdev(): MetaDataException: " + md_exc.message)
 
@@ -1223,6 +1226,9 @@ class DrbdManager(object):
             bd_mgr.up_blockdevice(bd_name)
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
             fn_rc = 0
+        else:
+            logging.error("DrbdManager: Failed to restore snapshot for resource '%s' volume %d"
+                          % (resource.get_name(), vol_state.get_id()))
 
         return fn_rc, blockdev
 
@@ -1245,64 +1251,38 @@ class DrbdManager(object):
         # Initialize DRBD metadata
         fn_rc = self._drbdadm.create_md(resource.get_name(), vol_state.get_id(), max_peers)
 
-        if initial_flag or thin_flag:
-            # Set the DRBD current generation identifier if it is set on the volume
-            volume = resource.get_volume(vol_state.get_id())
-            if volume is not None:
-                initial_gi = volume.get_props().get_prop(DrbdVolume.KEY_CURRENT_GI)
-                if initial_gi is not None:
-                    set_gi_check = False
-                    volume = vol_state.get_volume()
-                    node_id = assignment.get_node_id()
-                    minor_nr = volume.get_minor().get_value()
-                    bd_path = vol_state.get_bd_path()
-                    if thin_flag:
-                        # Thin provisioning deployment
-                        set_gi_check = self._drbdadm.set_gi(
-                            str(node_id), str(minor_nr), bd_path,
-                            initial_gi
-                        )
-                    else:
-                        # Fat provisioning initial deployment (first deployer of the volume)
-                        set_gi_check = self._drbdadm.set_gi(
-                            str(node_id), str(minor_nr), bd_path,
-                            generate_gi_hex_string(), history_1_gi=initial_gi, set_flags=True
-                        )
+        if fn_rc == 0:
+            if initial_flag or thin_flag:
+                # Set the DRBD current generation identifier if it is set on the volume
+                volume = resource.get_volume(vol_state.get_id())
+                if volume is not None:
+                    initial_gi = volume.get_props().get_prop(DrbdVolume.KEY_CURRENT_GI)
+                    if initial_gi is not None:
+                        set_gi_check = False
+                        volume = vol_state.get_volume()
+                        node_id = assignment.get_node_id()
+                        minor_nr = volume.get_minor().get_value()
+                        bd_path = vol_state.get_bd_path()
+                        if thin_flag:
+                            # Thin provisioning deployment
+                            set_gi_check = self._drbdadm.set_gi(
+                                str(node_id), str(minor_nr), bd_path,
+                                initial_gi
+                            )
+                        else:
+                            # Fat provisioning initial deployment (first deployer of the volume)
+                            set_gi_check = self._drbdadm.set_gi(
+                                str(node_id), str(minor_nr), bd_path,
+                                generate_gi_hex_string(), history_1_gi=initial_gi, set_flags=True
+                            )
 
-                    if set_gi_check:
-                        fn_rc = 0
-                    else:
-                        fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
-
-        if initial_flag or thin_flag:
-            # Set the DRBD current generation identifier if it is set on the volume
-            volume = resource.get_volume(vol_state.get_id())
-            if volume is not None:
-                initial_gi = volume.get_props().get_prop(DrbdVolume.KEY_CURRENT_GI)
-                if initial_gi is not None:
-                    set_gi_check = False
-                    volume = vol_state.get_volume()
-                    node_id = assignment.get_node_id()
-                    minor_nr = volume.get_minor().get_value()
-                    bd_path = vol_state.get_bd_path()
-                    if thin_flag:
-                        # Thin provisioning deployment
-                        set_gi_check = self._drbdadm.set_gi(
-                            str(node_id), str(minor_nr), bd_path,
-                            initial_gi
-                        )
-                    else:
-                        # Fat provisioning initial deployment (first deployer of the volume)
-                        set_gi_check = self._drbdadm.set_gi(
-                            str(node_id), str(minor_nr), bd_path,
-                            generate_gi_hex_string(), history_1_gi=initial_gi, set_flags=True
-                        )
-
-                    if set_gi_check:
-                        fn_rc = 0
-                    else:
-                        fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
-
+                        if set_gi_check:
+                            fn_rc = 0
+                        else:
+                            fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
+        else:
+            logging.error("DrbdManager: Failed to create meta data for resource '%s' volume %d"
+                          % (resource.get_name(), vol_state.get_id()))
         return fn_rc
 
     @log_in_out
@@ -1351,6 +1331,8 @@ class DrbdManager(object):
                                     nodes, vol_states, global_conf)
         self._server.close_assignment_conf(assg_conf, global_conf)
         self._server.update_assignment_conf(res_name)
+
+        fn_rc = -1
         if keep_conf:
             # Adjust the resource to only keep those volumes running that
             # are currently deployed and not marked for becoming undeployed
@@ -1398,6 +1380,9 @@ class DrbdManager(object):
                     # fast cleanup of the assignment in the case that the
                     # target state changes to undeploy
                     assignment.undeploy_adjust_cstate()
+            else:
+                logging.error("DrbdManager: Undeploying resource '%s' volume %d failed"
+                              % (res_name(), vol_state.get_id()))
 
         return fn_rc
 
