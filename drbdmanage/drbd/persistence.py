@@ -521,13 +521,11 @@ class ServerDualPersistence(BasePersistence):
 
         # Prevent leaking file descriptors due to double open()
         if self._load_file is not None or self._save_file is not None:
-            # Log the error
-            logging.error(
-                "ServerDualPersistence: open(): "
-                "Double open() detected, this is a programming error. "
-                "Please report this problem to the developers."
-            )
-            # Recover and continue
+            # Since the async D-Bus calls / DrbdManager actions, this can also
+            # happen due to race conditions
+            # (e.g. GMainLoop scheduling another D-Bus call before running the
+            # DrbdManager)
+            # Therefore, recover silently from double open()
             self.close()
 
         try:
