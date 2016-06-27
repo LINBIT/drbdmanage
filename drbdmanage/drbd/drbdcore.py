@@ -1140,7 +1140,8 @@ class DrbdManager(object):
                     assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
 
                 # Run new-current-uuid on initial deployment of a thinly provisioned volume
-                if initial_flag and thin_flag:
+                vol_id = vol_state.get_id()
+                if initial_flag and thin_flag and (not self._is_snapshot_restore(resource, vol_id)):
                     new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_state.get_id())
                     if new_gi_check:
                         fn_rc = 0
@@ -1863,6 +1864,22 @@ class DrbdManager(object):
                         global_thin_flag = False
                         break
         return global_thin_flag
+
+
+    def _is_snapshot_restore(self, resource, vol_id):
+        """
+        Indicates whether this resource is restoring a snapshot on any nodes
+        """
+        restore_flag = False
+        for assignment in resource.iterate_assignments():
+            vol_state = assignment.get_volume_state(vol_id)
+            if vol_state is not None:
+                props = vol_state.get_props()
+                src_bd_name = props.get_prop(consts.SNAPS_SRC_BLOCKDEV)
+                if src_bd_name is not None:
+                    restore_flag = True
+                    break
+        return restore_flag
 
 
     @log_in_out
