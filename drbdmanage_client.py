@@ -53,14 +53,14 @@ from drbdmanage.consts import (
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
     NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN, KEY_ISSATELLITE,
-    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES
+    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, MANAGED
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
 from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import ExternalCommandBuffer
 from drbdmanage.utils import (
-    build_path, bool_to_string, rangecheck, namecheck, ssh_exec,
+    build_path, bool_to_string, string_to_bool, rangecheck, namecheck, ssh_exec,
     load_server_conf_file, filter_prohibited, get_uname, approximate_size_string
 )
 from drbdmanage.utils import (
@@ -331,6 +331,7 @@ class DrbdManage(object):
                                     aliases=['mr'],
                                     description='Modifies a DRBD resource.')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
+        p_mod_res.add_argument('-m', '--managed')
         p_mod_res.add_argument('name', type=check_res_name,
                                help='Name of the resource').completer = res_completer
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
@@ -1550,6 +1551,14 @@ class DrbdManage(object):
             if args.port is not None:
                 try:
                     props[RES_PORT] = str(args.port)
+                except ValueError:
+                    raise SyntaxException
+
+            if args.managed is not None:
+                try:
+                    managed_prop = args.managed.lower()
+                    string_to_bool(managed_prop)
+                    props[MANAGED] = managed_prop
                 except ValueError:
                     raise SyntaxException
 

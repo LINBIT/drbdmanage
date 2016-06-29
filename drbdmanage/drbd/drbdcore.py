@@ -240,6 +240,13 @@ class DrbdManager(object):
         """
         max_fail_count = self._get_max_fail_count()
         for assg in node.iterate_assignments():
+            resource = assg.get_resource()
+            managed = resource.is_managed()
+            if not managed:
+                logging.warning(
+                    "Resource '%s' is marked as unmanaged"
+                    % (resource.get_name())
+                )
             # Assignment changes
             fail_count = assg.get_fail_count()
             if fail_count < max_fail_count:
@@ -247,9 +254,15 @@ class DrbdManager(object):
                 set_pool_changed   = False
                 set_failed_actions = False
                 try:
-                    (set_state_changed, set_pool_changed, set_failed_actions) = (
-                        self._assignment_actions(assg)
-                    )
+                    if managed:
+                        (set_state_changed, set_pool_changed, set_failed_actions) = (
+                            self._assignment_actions(assg)
+                        )
+                    else:
+                        logging.debug(
+                            "Resource '%s' is marked as unmanaged, skipping _assignment_actions()"
+                            % (resource.get_name())
+                        )
                 except dmexc.ResourceFileException as res_exc:
                     log_message = "DrbdManager: %s" % (res_exc.get_log_message())
                     logging.error(log_message)
@@ -269,9 +282,15 @@ class DrbdManager(object):
             # Snapshot changes
             fail_count = assg.get_fail_count()
             if fail_count < max_fail_count:
-                (set_state_changed, set_pool_changed, set_failed_actions) = (
-                    self._snapshot_actions(assg)
-                )
+                if managed:
+                    (set_state_changed, set_pool_changed, set_failed_actions) = (
+                        self._snapshot_actions(assg)
+                    )
+                else:
+                    logging.debug(
+                        "Resource '%s' is marked as unmanaged, skipping _snapshot_actions()"
+                        % (resource.get_name())
+                    )
                 if set_state_changed:
                     state_changed = True
                 if set_pool_changed:
@@ -2159,6 +2178,23 @@ class DrbdResource(GenericDrbdObject):
         if volume is not None:
             vol_props = volume.get_props()
             vol_props.remove_prop(DrbdVolume.KEY_RESIZE_VALUE, namespace=xact)
+
+
+    def is_managed(self):
+        """
+        Indicates whether this resource is being managed or not
+
+        The resource is always managed unless the value of the property
+        consts.MANAGED is set to consts.BOOL_FALSE
+        """
+        managed = True
+        managed_prop = self.get_props().get_prop(consts.MANAGED)
+        if managed_prop is not None:
+            try:
+                managed = utils.string_to_bool(managed_prop)
+            except ValueError:
+                pass
+        return managed
 
 
     def get_state(self):

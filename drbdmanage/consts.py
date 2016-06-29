@@ -58,6 +58,7 @@ SNAPS_NAME          = "snaps_name"
 ERROR_CODE          = "error_code"
 FAIL_COUNT          = "fail-count"
 COMMON_NAME         = "common_name"
+MANAGED             = "managed"
 
 # Keys for the version text-query
 KEY_SERVER_VERSION       = "server_version"

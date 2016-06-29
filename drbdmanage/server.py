@@ -54,7 +54,7 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_SHUTDOWN, SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP,
-    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD
+    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
@@ -2224,10 +2224,25 @@ class DrbdManageServer(object):
                             raise ValueError
                     except KeyError:
                         pass
+
+                    res_props = resource.get_props()
+                    try:
+                        managed = props[MANAGED]
+                        if string_to_bool(managed):
+                            res_props.remove_prop(MANAGED)
+                        else:
+                            res_props.set_prop(MANAGED, BOOL_FALSE)
+                    except KeyError:
+                        # Property not set in props argument
+                        pass
+                    except ValueError as val_err:
+                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                        raise val_err
+
                     # Merge only auxiliary properties into the
                     # DrbdResource's properties container
                     aux_props = aux_props_selector(props)
-                    resource.get_props().merge_gen(aux_props)
+                    res_props.merge_gen(aux_props)
                     self.save_conf_data(persist)
                 else:
                     add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
@@ -4448,6 +4463,14 @@ class DrbdManageServer(object):
         """
         fn_rc = []
         persist  = None
+
+        # Force well-defined data types
+        res_name       = str(res_name)
+        snaps_res_name = str(snaps_res_name)
+        snaps_name     = str(snaps_name)
+        res_props      = dict(res_props)
+        vols_props     = dict(vols_props)
+
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
@@ -4455,6 +4478,19 @@ class DrbdManageServer(object):
                     res_name, dict(res_props), fn_rc
                 )
                 if resource is not None:
+                    try:
+                        managed = res_props[MANAGED]
+                        if string_to_bool(managed):
+                            resource.get_props().remove_prop(MANAGED)
+                        else:
+                            resource.get_props().set_prop(MANAGED, BOOL_FALSE)
+                    except KeyError:
+                        # Property not set in props argument
+                        pass
+                    except ValueError as val_err:
+                        add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                        raise val_err
+
                     snaps_res = self._resources[snaps_res_name]
                     snapshot = snaps_res.get_snapshot(snaps_name)
                     if snapshot is not None:
@@ -4471,7 +4507,7 @@ class DrbdManageServer(object):
                             sv_iter =  snaps_assg.iterate_snaps_vol_states()
                             for sv_state in sv_iter:
                                 vol_id = sv_state.get_id()
-                                v_props = vols_props_map.get(vol_id)
+                                v_props = dict(vols_props_map.get(vol_id))
                                 # Get a minor number for each volume
                                 minor = MinorNr.MINOR_NR_AUTO
                                 if v_props is not None:
@@ -4559,6 +4595,9 @@ class DrbdManageServer(object):
             server_exc.add_rc_entry(fn_rc)
         except KeyError:
             add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+        except ValueError:
+            # Return code set by exception generator
+            pass
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
         finally:
