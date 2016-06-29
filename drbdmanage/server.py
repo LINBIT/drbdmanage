@@ -39,7 +39,7 @@ import drbdmanage.drbd.metadata as md
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR, VOL_ID,
-    DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL,
+    DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL, VOL_SIZE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_STANDBY, FLAG_QIGNORE,
@@ -4507,6 +4507,8 @@ class DrbdManageServer(object):
                             sv_iter =  snaps_assg.iterate_snaps_vol_states()
                             for sv_state in sv_iter:
                                 vol_id = sv_state.get_id()
+                                # Cast to dictionary because duck typing sucks
+                                # raw eggs through a very thin straw
                                 v_props = dict(vols_props_map.get(vol_id))
                                 # Get a minor number for each volume
                                 minor = MinorNr.MINOR_NR_AUTO
@@ -4582,6 +4584,33 @@ class DrbdManageServer(object):
                                     # therefore, reaching this statement
                                     # indicates an implementation error
                                     raise DebugException
+                        # Schedule resize operations
+                        for volume in resource.iterate_volumes():
+                            vol_id = volume.get_id()
+                            #
+                            v_props = dict(vols_props_map.get(vol_id))
+                            new_size_str = v_props.get(VOL_SIZE)
+                            if new_size_str is not None:
+                                new_net_size_kiB = 0
+                                try:
+                                    new_net_size_kiB = long(new_size_str)
+                                except (ValueError, TypeError):
+                                    pass
+                                max_peers = self.DEFAULT_MAX_PEERS
+                                try:
+                                    max_peers = int(
+                                        self.get_conf_value(self.KEY_MAX_PEERS)
+                                    )
+                                except ValueError:
+                                    # Unparseable configuration entry;
+                                    # no-op: use default value instead
+                                    pass
+                                new_gross_size_kiB = md.MetaData.get_gross_kiB(
+                                    new_net_size_kiB, max_peers,
+                                    md.MetaData.DEFAULT_AL_STRIPES,
+                                    md.MetaData.DEFAULT_AL_kiB
+                                )
+                                resource.begin_resize(vol_id, new_net_size_kiB)
                         # Set the snapshot source volumes on those nodes
                         # that have a snapshot
                         self._set_snapshot_sources(resource, snapshot)
