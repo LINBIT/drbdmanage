@@ -39,14 +39,14 @@ import locale
 import ConfigParser
 from functools import wraps
 from drbdmanage.exceptions import SyntaxException, InvalidNameException
-from drbdmanage.consts import (SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH,
-                               KEY_DRBDCTRL_VG, KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8,
-                               RES_NAME, SNAPS_NAME, NODE_NAME, KEY_LOGLEVEL,
-                               NODE_NAME_MINLEN, NODE_NAME_MAXLEN,
-                               RES_NAME_MINLEN, RES_NAME_MAXLEN,
-                               SNAPS_NAME_MINLEN, SNAPS_NAME_MAXLEN,
-                               RES_NAME_VALID_CHARS, SNAPS_NAME_VALID_CHARS,
-                               RES_NAME_VALID_INNER_CHARS, SNAPS_NAME_VALID_INNER_CHARS)
+from drbdmanage.consts import (
+    SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH, KEY_DRBDCTRL_VG,
+    KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8, RES_NAME, SNAPS_NAME, NODE_NAME,
+    KEY_LOGLEVEL, NODE_NAME_MINLEN, NODE_NAME_MAXLEN, NODE_NAME_LABEL_MAXLEN,
+    RES_NAME_MINLEN, RES_NAME_MAXLEN, SNAPS_NAME_MINLEN, SNAPS_NAME_MAXLEN,
+    RES_NAME_VALID_CHARS, SNAPS_NAME_VALID_CHARS, RES_NAME_VALID_INNER_CHARS,
+    SNAPS_NAME_VALID_INNER_CHARS
+)
 
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
@@ -440,6 +440,9 @@ def check_node_name(name):
     name_len = len(name_b)
     if name_len < NODE_NAME_MINLEN or name_len > NODE_NAME_MAXLEN:
         raise InvalidNameException
+    for label in name_b.split("."):
+        if len(label) > NODE_NAME_LABEL_MAXLEN:
+            raise InvalidNameException
     idx = 0
     while idx < name_len:
         letter = name_b[idx]

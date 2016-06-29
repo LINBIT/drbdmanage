@@ -73,9 +73,10 @@ KEY_SHUTDOWN_RES = "shutdown-res"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 
-# RFC952 / RFC1123 host name constraints; do not change
+# RFC952 / RFC1035 / RFC1123 host name constraints; do not change
 NODE_NAME_MINLEN = 2
 NODE_NAME_MAXLEN = 255
+NODE_NAME_LABEL_MAXLEN = 63
 
 # drbdmanage object name constraints
 RES_NAME_MINLEN = 1
