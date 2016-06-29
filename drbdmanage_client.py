@@ -331,7 +331,7 @@ class DrbdManage(object):
                                     aliases=['mr'],
                                     description='Modifies a DRBD resource.')
         p_mod_res.add_argument('-p', '--port', type=rangecheck(1, 65535))
-        p_mod_res.add_argument('-m', '--managed')
+        p_mod_res.add_argument('-m', '--managed', choices=(BOOL_TRUE, BOOL_FALSE))
         p_mod_res.add_argument('name', type=check_res_name,
                                help='Name of the resource').completer = res_completer
         p_mod_res.set_defaults(func=self.cmd_modify_resource)
@@ -1555,12 +1555,7 @@ class DrbdManage(object):
                     raise SyntaxException
 
             if args.managed is not None:
-                try:
-                    managed_prop = args.managed.lower()
-                    string_to_bool(managed_prop)
-                    props[MANAGED] = managed_prop
-                except ValueError:
-                    raise SyntaxException
+                props[MANAGED] = args.managed
 
             if len(props) == 0:
                 raise SyntaxException
