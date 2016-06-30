@@ -164,12 +164,17 @@ class DrbdManageException(Exception):
 
     error_code = DM_DEBUG
 
-    def __init__(self):
-        super(DrbdManageException, self).__init__()
+    def __init__(self, message=None):
+        super(DrbdManageException, self).__init__(message)
 
     def __str__(self):
         exception = self.__class__.__name__
         stack_trace = []
+
+        message = self.message
+
+        if message is not None:
+            exception += ": " + message
 
         (exc_type, exc_value, exc_traceback) = sys.exc_info()
         if exc_traceback is not None:
@@ -199,8 +204,8 @@ class InvalidNameException(DrbdManageException):
     criteria as a name for an object
     """
 
-    def __init__(self):
-        super(InvalidNameException, self).__init__()
+    def __init__(self, message=None):
+        super(InvalidNameException, self).__init__(message)
         self.error_code = DM_ENAME
 
 
@@ -210,8 +215,8 @@ class InvalidAddrFamException(DrbdManageException):
     Raised if an unknown address family is specified
     """
 
-    def __init__(self):
-        super(InvalidAddrFamException, self).__init__()
+    def __init__(self, message=None):
+        super(InvalidAddrFamException, self).__init__(message)
         self.error_code = DM_EINVAL
 
 
@@ -221,8 +226,8 @@ class VolSizeRangeException(DrbdManageException):
     Raised if the size specification for a volume is out of range
     """
 
-    def __init__(self):
-        super(VolSizeRangeException, self).__init__()
+    def __init__(self, message=None):
+        super(VolSizeRangeException, self).__init__(message)
         self.error_code = DM_EVOLSZ
 
 
@@ -232,8 +237,8 @@ class InvalidMinorNrException(DrbdManageException):
     Raised if a device minor number is out of range or unparseable
     """
 
-    def __init__(self):
-        super(InvalidMinorNrException, self).__init__()
+    def __init__(self, message=None):
+        super(InvalidMinorNrException, self).__init__(message)
         self.error_code = DM_EMINOR
 
 
@@ -243,8 +248,8 @@ class InvalidMajorNrException(DrbdManageException):
     Raised if a device major number is out of range or unparseable
     """
 
-    def __init__(self):
-        super(InvalidMajorNrException, self).__init__()
+    def __init__(self, message=None):
+        super(InvalidMajorNrException, self).__init__(message)
         self.error_code = DM_EINVAL
 
 
@@ -260,8 +265,8 @@ class IncompatibleDataException(DrbdManageException):
     drbdmanage client and server, otherwise it is a bug.
     """
 
-    def __init__(self):
-        super(IncompatibleDataException, self).__init__()
+    def __init__(self, message=None):
+        super(IncompatibleDataException, self).__init__(message)
         self.error_code = DM_EINVAL
 
 
@@ -271,8 +276,8 @@ class SyntaxException(DrbdManageException):
     Raised on syntax errors in input data
     """
 
-    def __init__(self):
-        super(SyntaxException, self).__init__()
+    def __init__(self, message=None):
+        super(SyntaxException, self).__init__(message)
 
 
 class PersistenceException(DrbdManageException):
@@ -281,8 +286,8 @@ class PersistenceException(DrbdManageException):
     Raised if access to persistent storage fails
     """
 
-    def __init__(self):
-        super(PersistenceException, self).__init__()
+    def __init__(self, message=None):
+        super(PersistenceException, self).__init__(message)
         self.error_code = DM_EPERSIST
 
 
@@ -292,8 +297,8 @@ class QuorumException(DrbdManageException):
     Raised if a partition does not have a quorum
     """
 
-    def __init__(self):
-        super(QuorumException, self).__init__()
+    def __init__(self, message=None):
+        super(QuorumException, self).__init__(message)
         self.error_code = DM_EQUORUM
 
 
@@ -303,8 +308,8 @@ class DrbdCommandException(DrbdManageException):
     Raised if a drbdutils command fails
     """
 
-    def __init__(self):
-        super(DrbdCommandException, self).__init__()
+    def __init__(self, message=None):
+        super(DrbdCommandException, self).__init__(message)
         self.error_code = DM_EDRBDCMD
 
 
@@ -316,8 +321,8 @@ class ResourceFileException(DrbdManageException):
 
     file_path = None
 
-    def __init__(self, file_path_arg=None):
-        super(ResourceFileException, self).__init__()
+    def __init__(self, file_path_arg=None, message=None):
+        super(ResourceFileException, self).__init__(message)
         self.file_path = file_path_arg
         self.error_code = DM_ERESFILE
 
@@ -354,8 +359,8 @@ class PluginException(DrbdManageException):
     Raised if a plugin cannot be loaded
     """
 
-    def __init__(self):
-        super(PluginException, self).__init__()
+    def __init__(self, message=None):
+        super(PluginException, self).__init__(message)
         self.error_code = DM_EPLUGIN
 
 
@@ -365,8 +370,8 @@ class AbortException(DrbdManageException):
     Raised to abort execution of a chain of operations
     """
 
-    def __init__(self):
-        super(AbortException, self).__init__()
+    def __init__(self, message=None):
+        super(AbortException, self).__init__(message)
 
 
 class DeployerException(DrbdManageException):
@@ -375,8 +380,8 @@ class DeployerException(DrbdManageException):
     Raised if selecting nodes for deploying a resource fails
     """
 
-    def __init__(self):
-        super(DeployerException, self).__init__()
+    def __init__(self, message=None):
+        super(DeployerException, self).__init__(message)
         self.error_code = DM_EPLUGIN
 
 
@@ -386,8 +391,8 @@ class DebugException(DrbdManageException):
     Raised to indicate an implementation error
     """
 
-    def __init__(self):
-        super(DebugException, self).__init__()
+    def __init__(self, message=None):
+        super(DebugException, self).__init__(message)
         # Set this again just in case that the default value
         # in the super-class was changed
         self.error_code = DM_DEBUG
