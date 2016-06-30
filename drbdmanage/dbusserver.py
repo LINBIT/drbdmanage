@@ -22,10 +22,10 @@ import logging
 import dbus
 import dbus.service
 import dbus.mainloop.glib
-from drbdmanage.consts import (
-    DBUS_DRBDMANAGED,
-    DBUS_SERVICE,
-)
+from drbdmanage.utils import add_rc_entry
+from drbdmanage.dbustracer import DbusTracer
+from drbdmanage.consts import (DBUS_DRBDMANAGED, DBUS_SERVICE)
+from drbdmanage.exceptions import (DM_ENOENT, DM_SUCCESS, dm_exc_text)
 
 
 class DBusServer(dbus.service.Object):
@@ -36,7 +36,8 @@ class DBusServer(dbus.service.Object):
 
     _dbus   = None
     _server = None
-
+    _dbustracer = None
+    _dbustracer_running = False
 
     def __init__(self, server):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
@@ -46,7 +47,8 @@ class DBusServer(dbus.service.Object):
         )
         dbus.service.Object.__init__(self, self._dbus, DBUS_SERVICE)
         self._server = server
-
+        self._dbustracer = DbusTracer()
+        self._dbustracer_running = False
 
     def run(self):
         """
@@ -55,104 +57,146 @@ class DBusServer(dbus.service.Object):
         """
         self._server.run()
 
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="a{ss}",
+        out_signature="a(isa(ss))" "s"
+    )
+    def dbus_tracer(self, props):
+        fn_rc = []
+        fname = ''
+        succ = False
+        if props.get('start'):
+            maxlog = props.get('maxlog', 1000)
+            succ = self._dbustracer.start(maxlog)
+            if succ:
+                self._dbustracer_running = True
+        elif props.get('stop'):
+            succ, fname = self._dbustracer.stop()
+            if succ:
+                self._dbustracer_running = False
+
+        if not succ:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
+        return fn_rc, fname
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def poke(self):
+    def poke(self, message=None):
         """
         D-Bus interface for DrbdManageServer.poke(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.poke()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def create_node(self, node_name, props):
+    def create_node(self, node_name, props, message=None):
         """
         D-Bus interface for DrbdManageServer.create_node(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.create_node(node_name, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def remove_node(self, node_name, force):
+    def remove_node(self, node_name, force, message=None):
         """
         D-Bus interface for DrbdManageServer.remove_node(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.remove_node(node_name, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def create_resource(self, res_name, props):
+    def create_resource(self, res_name, props, message=None):
         """
         D-Bus interface for DrbdManageServer.create_resource(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.create_resource(res_name, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sittt",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB):
+    def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB, message=None):
         """
         D-Bus interface for DrbdManageServer.resize_volume(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.resize_volume(
             res_name, vol_id, serial, size_kiB, delta_kiB
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def remove_resource(self, res_name, force):
+    def remove_resource(self, res_name, force, message=None):
         """
         D-Bus interface for DrbdManageServer.remove_resource(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.remove_resource(res_name, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sxa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def create_volume(self, res_name, size_kiB, props):
+    def create_volume(self, res_name, size_kiB, props, message=None):
         """
         D-Bus interface for DrbdManageServer.create_volume(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.create_volume(res_name, size_kiB, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sib",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def remove_volume(self, res_name, vol_id, force):
+    def remove_volume(self, res_name, vol_id, force, message=None):
         """
         D-Bus interface for DrbdManageServer.remove_volume(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.remove_volume(res_name, vol_id, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
@@ -165,7 +209,6 @@ class DBusServer(dbus.service.Object):
         """
         return self._server.connect(node_name, res_name, reconnect)
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssb",
@@ -177,179 +220,211 @@ class DBusServer(dbus.service.Object):
         """
         return self._server.disconnect(node_name, res_name, force)
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sta{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def modify_node(self, node_name, serial, props):
+    def modify_node(self, node_name, serial, props, message=None):
         """
         D-Bus interface for DrbdManageServer.modify_node(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.modify_node(node_name, serial, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sta{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def modify_resource(self, res_name, serial, props):
+    def modify_resource(self, res_name, serial, props, message=None):
         """
         D-Bus interface for DrbdManageServer.modify_resource(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.modify_resource(res_name, serial, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sita{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def modify_volume(self, res_name, vol_id, serial, props):
+    def modify_volume(self, res_name, vol_id, serial, props, message=None):
         """
         D-Bus interface for DrbdManageServer.modify_volume(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.modify_volume(res_name, vol_id, serial, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssta{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def modify_assignment(self, res_name, node_name, serial, props):
+    def modify_assignment(self, res_name, node_name, serial, props, message=None):
         """
         D-Bus interface for DrbdManageServer.modify_state(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.modify_assignment(res_name, node_name, serial, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssi",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def attach(self, node_name, res_name, vol_id):
+    def attach(self, node_name, res_name, vol_id, message=None):
         """
         D-Bus interface for DrbdManageServer.attach(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.attach(node_name, res_name, vol_id)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssi",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def detach(self, node_name, res_name, vol_id):
+    def detach(self, node_name, res_name, vol_id, message=None):
         """
         D-Bus interface for DrbdManageServer.detach(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.detach(node_name, res_name, vol_id)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def assign(self, node_name, res_name, props):
+    def assign(self, node_name, res_name, props, message=None):
         """
         D-Bus interface for DrbdManageServer.assign(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.assign(node_name, res_name, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def unassign(self, node_name, res_name, force):
+    def unassign(self, node_name, res_name, force, message=None):
         """
         D-Bus interface for DrbdManageServer.unassign(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.unassign(node_name, res_name, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="i",
-        out_signature="a(isa(ss))" "xx"
+        out_signature="a(isa(ss))" "xx",
+        message_keyword='message',
     )
-    def cluster_free_query(self, redundancy):
+    def cluster_free_query(self, redundancy, message=None):
         """
         D-Bus interface for DrbdManageServer.cluster_free_query(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.cluster_free_query(redundancy)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="siib",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def auto_deploy(self, res_name, count, delta, site_clients):
+    def auto_deploy(self, res_name, count, delta, site_clients, message=None):
         """
         D-Bus interface for DrbdManageServer.auto_deploy(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.auto_deploy(res_name, int(count), int(delta), site_clients)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def auto_undeploy(self, res_name, force):
+    def auto_undeploy(self, res_name, force, message=None):
         """
         D-Bus interface for DrbdManageServer.auto_undeploy(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.auto_undeploy(res_name, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def update_pool_check(self):
+    def update_pool_check(self, message=None):
         """
         D-Bus interface for DrbdManageServer.update_pool_check()
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.update_pool_check()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="as",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def update_pool(self, node_names):
+    def update_pool(self, node_names, message=None):
         """
         D-Bus interface for DrbdManageServer.update_pool(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.update_pool(node_names)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="a{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def set_drbdsetup_props(self, props):
+    def set_drbdsetup_props(self, props, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.set_drbdsetup_props(dict(props))
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asta{ss}as",
-        out_signature="a(isa(ss))" "a(sa{ss})"
+        out_signature="a(isa(ss))" "a(sa{ss})",
+        message_keyword='message',
     )
-    def list_nodes(self, node_names, serial, filter_props, req_props):
+    def list_nodes(self, node_names, serial, filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_nodes(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_nodes(
             node_names, serial, filter_props, req_props
         )
@@ -357,332 +432,399 @@ class DBusServer(dbus.service.Object):
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "a{ss}"
+        out_signature="a(isa(ss))" "a{ss}",
+        message_keyword='message',
     )
-    def get_config_keys(self):
+    def get_config_keys(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_config_keys()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "aa{ss}"
+        out_signature="a(isa(ss))" "aa{ss}",
+        message_keyword='message',
     )
-    def get_plugin_default_config(self):
+    def get_plugin_default_config(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_plugin_default_config()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "a{ss}"
+        out_signature="a(isa(ss))" "a{ss}",
+        message_keyword='message',
     )
-    def get_cluster_config(self):
+    def get_cluster_config(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_cluster_config()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="as",
-        out_signature="a(isa(ss))" "a{ss}"
+        out_signature="a(isa(ss))" "a{ss}",
+        message_keyword='message',
     )
-    def get_selected_config_values(self, keys):
+    def get_selected_config_values(self, keys, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_selected_config_values(keys)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "aa{ss}"
+        out_signature="a(isa(ss))" "aa{ss}",
+        message_keyword='message',
     )
-    def get_site_config(self):
+    def get_site_config(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_site_config()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="a(s(a{ss}))",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def set_cluster_config(self, cfgdict):
+    def set_cluster_config(self, cfgdict, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.set_cluster_config(dict(cfgdict))
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asta{ss}as",
-        out_signature="a(isa(ss))" "a(sa{ss})"
+        out_signature="a(isa(ss))" "a(sa{ss})",
+        message_keyword='message',
     )
-    def list_resources(self, res_names, serial, filter_props, req_props):
+    def list_resources(self, res_names, serial, filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_resources(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_resources(
             res_names, serial, dict(filter_props), req_props
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asta{ss}as",
-        out_signature="a(isa(ss))" "a(sa{ss}a(ia{ss}))"
+        out_signature="a(isa(ss))" "a(sa{ss}a(ia{ss}))",
+        message_keyword='message',
     )
-    def list_volumes(self, res_names, serial, filter_props, req_props):
+    def list_volumes(self, res_names, serial, filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_volumes(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_volumes(
             res_names, serial, dict(filter_props), req_props
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asasta{ss}as",
-        out_signature="a(isa(ss))" "a(ssa{ss}a(ia{ss}))"
+        out_signature="a(isa(ss))" "a(ssa{ss}a(ia{ss}))",
+        message_keyword='message',
     )
     def list_assignments(self, node_names, res_names,
-                         serial, filter_props, req_props):
+                         serial, filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_assignments(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_assignments(
             node_names, res_names, serial, dict(filter_props), req_props
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssasa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def create_snapshot(self, res_name, snaps_name, node_names, props):
+    def create_snapshot(self, res_name, snaps_name, node_names, props, message=None):
         """
         D-Bus interface for DrbdManageServer.create_snapshot(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.create_snapshot(
             res_name, snaps_name, node_names, dict(props)
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asasta{ss}as",
-        out_signature="a(isa(ss))" "a(sa(sa{ss}))"
+        out_signature="a(isa(ss))" "a(sa(sa{ss}))",
+        message_keyword='message',
     )
     def list_snapshots(self, res_names, snaps_names, serial,
-                       filter_props, req_props):
+                       filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_snapshots(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_snapshots(
             res_names, snaps_names, serial, dict(filter_props), req_props
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="asasasta{ss}as",
-        out_signature="a(isa(ss))" "a(ssa(sa{ss}))"
+        out_signature="a(isa(ss))" "a(ssa(sa{ss}))",
+        message_keyword='message',
     )
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
-                                  serial, filter_props, req_props):
+                                  serial, filter_props, req_props, message=None):
         """
         D-Bus interface for DrbdManageServer.list_snapshot_assignments(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.list_snapshot_assignments(
             res_names, snaps_names, node_names, serial,
             dict(filter_props), req_props
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sssa(ss)a(ia(ss))",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
     def restore_snapshot(self, res_name, snaps_res_name, snaps_name,
-                         res_props, vols_props):
+                         res_props, vols_props, message=None):
         """
         D-Bus interface for DrbdManageServer.restore_snapshot(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.restore_snapshot(res_name, snaps_res_name,
                                              snaps_name, res_props, vols_props)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sssb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
     def remove_snapshot_assignment(self, res_name, snaps_name, node_name,
-                                   force):
+                                   force, message=None):
         """
         D-Bus interface for DrbdManageServer.remove_snapshot_assignment(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.remove_snapshot_assignment(
             res_name, snaps_name, node_name, force
         )
 
-
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ssb",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def remove_snapshot(self, res_name, snaps_name, force):
+    def remove_snapshot(self, res_name, snaps_name, force, message=None):
         """
         D-Bus interface for DrbdManageServer.remove_snapshot(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.remove_snapshot(res_name, snaps_name, force)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="ss",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def resume(self, node_name, res_name):
+    def resume(self, node_name, res_name, message=None):
         """
         Clear the fail count of a resource's assignments
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.resume(node_name, res_name)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def resume_all(self):
+    def resume_all(self, message=None):
         """
         Clear the fail count of a resource's assignments
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.resume_all()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="s",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def export_conf(self, res_name):
+    def export_conf(self, res_name, message=None):
         """
         D-Bus interface for DrbdManageServer.export_conf(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.export_conf(res_name)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sa{ss}b",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def quorum_control(self, node_name, props, override_quorum):
+    def quorum_control(self, node_name, props, override_quorum, message=None):
         """
         D-Bus interface for DrbdManageServer.quorum_control(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.quorum_control(node_name, props, override_quorum)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def reconfigure(self):
+    def reconfigure(self, message=None):
         """
         D-Bus interface for DrbdManageServer.reconfigure()
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.reconfigure()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="as",
-        out_signature="a(isa(ss))" "as"
+        out_signature="a(isa(ss))" "as",
+        message_keyword='message',
     )
-    def text_query(self, command):
+    def text_query(self, command, message=None):
         """
         D-Bus interface for DrbdManageServer.text_query(...):
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.text_query(command)
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sa{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def init_node(self, node_name, props):
+    def init_node(self, node_name, props, message=None):
         """
         D-Bus interface for DrbdManageServer.init_node(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.init_node(node_name, props)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="a{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def assign_satellite(self, props):
+    def assign_satellite(self, props, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.assign_satellite(props)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "s"
+        out_signature="a(isa(ss))" "s",
+        message_keyword='message',
     )
-    def role(self):
+    def role(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.role()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="a{ss}",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def join_node(self, props):
+    def join_node(self, props, message=None):
         """
         D-Bus interface for DrbdManageServer.join_node(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.join_node(props)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="sa{ss}",
-        out_signature="a(isa(ss))" "a{ss}"
+        out_signature="a(isa(ss))" "a{ss}",
+        message_keyword='message',
     )
-    def run_external_plugin(self, plugin_name, props):
+    def run_external_plugin(self, plugin_name, props, message=None):
         """
         D-Bus interface for DrbdManageServer.run_external_plugin(...)
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.run_external_plugin(plugin_name, dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def load_conf(self):
+    def load_conf(self, message=None):
         """
         D-Bus interface for DrbdManageServer.load_conf()
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.dbus_load_conf()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def save_conf(self):
+    def save_conf(self, message=None):
         """
         D-Bus interface for DrbdManageServer.save_conf()
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.dbus_save_conf()
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="i"
+        out_signature="i",
+        message_keyword='message',
     )
-    def ping(self):
+    def ping(self, message=None):
         """
         D-Bus ping/pong connection test
 
@@ -691,36 +833,46 @@ class DBusServer(dbus.service.Object):
         If D-Bus service activation is configured, this function can also be
         used to start the drbdmanage server.
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return 0
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="",
-        out_signature="a(isa(ss))" "s"
+        out_signature="a(isa(ss))" "s",
+        message_keyword='message',
     )
-    def get_ctrlvol(self):
+    def get_ctrlvol(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.get_ctrlvol()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="s",
-        out_signature="a(isa(ss))"
+        out_signature="a(isa(ss))",
+        message_keyword='message',
     )
-    def set_ctrlvol(self, jsonblob):
+    def set_ctrlvol(self, jsonblob, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.set_ctrlvol(jsonblob)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
         in_signature="a{ss}",
-        out_signature=""
+        out_signature="",
+        message_keyword='message',
     )
-    def shutdown(self, props):
+    def shutdown(self, props, message=None):
         """
         D-Bus interface for DrbdManageServer.shutdown()
         """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
         logging.info("server shutdown requested through D-Bus")
         self._server.shutdown(dict(props))
-
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
@@ -739,7 +891,6 @@ class DBusSignal(dbus.service.Object):
 
     _path = None
 
-
     def __init__(self, path):
         if len(path) >= 1:
             if path[0] == "/":
@@ -752,7 +903,6 @@ class DBusSignal(dbus.service.Object):
         else:
             logging.debug("DBusSignal: Dummy instance created (no valid path specified)")
 
-
     @dbus.service.signal(DBUS_DRBDMANAGED)
     def notify_changed(self):
         """
@@ -762,7 +912,6 @@ class DBusSignal(dbus.service.Object):
         the object this signal is associated with has changed
         """
         logging.debug("DBusSignal '%s': notify_changed()" % self._path)
-
 
     @dbus.service.signal(DBUS_DRBDMANAGED)
     def notify_removed(self):
@@ -775,7 +924,6 @@ class DBusSignal(dbus.service.Object):
         discard the DBusSignal instance, too)
         """
         logging.debug("DBusSignal '%s': notify_removed()" % self._path)
-
 
     def destroy(self):
         """
@@ -800,7 +948,5 @@ class DBusSignalFactory():
     def __init__(self):
         pass
 
-
     def create_signal(self, path):
         return DBusSignal(path)
-

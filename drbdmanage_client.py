@@ -1187,6 +1187,17 @@ class DrbdManage(object):
 
         argcomplete.autocomplete(parser)
 
+        # dbus-trace
+        p_dbustrace = subp.add_parser('dbus-trace',
+                                      description='Trace DBUS calls and generate python script')
+        p_dbustrace_g = p_dbustrace.add_mutually_exclusive_group()
+        p_dbustrace_g.add_argument('-s', '--start', action='store_true', help='Start a tracing')
+        p_dbustrace_g.add_argument('-p', '--stop', action='store_true', help='Stop a tracing')
+        p_dbustrace.add_argument('-m', '--maxlog', help='Maximum number of tracing entries', type=int)
+        p_dbustrace.set_defaults(func=self.cmd_dbustrace)
+
+        argcomplete.autocomplete(parser)
+
         return parser
 
     def parse(self, pargs):
@@ -3762,6 +3773,29 @@ Confirm:
 
         if fn_rc == 0:
             sys.stdout.write('%s\n' % (role))
+
+        return fn_rc
+
+    def cmd_dbustrace(self, args):
+        fn_rc = 1
+        props = {}
+
+        if args.start:
+            props["start"] = True
+            if args.maxlog:
+                props["maxlog"] = args.maxlog
+        elif args.stop:
+            props["stop"] = True
+        else:
+            sys.stderr.write('Specify one of -s or -p\n')
+            raise SyntaxException
+
+        self.dbus_init()
+        server_rc, fname = self._server.dbus_tracer(props)
+        fn_rc = self._list_rc_entries(server_rc)
+
+        if fn_rc == 0 and args.stop:
+            sys.stdout.write('Trace written (on server) to: %s\n' % (fname))
 
         return fn_rc
 
