@@ -4528,15 +4528,21 @@ class DrbdManageServer(object):
                             # FIXME: abort if none of the assignments has ever
                             #        been deployed, because then there is no
                             #        snapshot that could be restored
-                            vols_props_map = dict(vols_props)
                             sv_iter =  snaps_assg.iterate_snaps_vol_states()
                             for sv_state in sv_iter:
                                 vol_id = sv_state.get_id()
+                                minor = MinorNr.MINOR_NR_AUTO
                                 # Cast to dictionary because duck typing sucks
                                 # raw eggs through a very thin straw
-                                v_props = dict(vols_props_map.get(vol_id))
                                 # Get a minor number for each volume
-                                minor = MinorNr.MINOR_NR_AUTO
+                                v_props = None
+                                try:
+                                    v_props = dict(vols_props.get(vol_id))
+                                except:
+                                    # Whatever DBus and/or Python think is in
+                                    # vols_props today, if it does not make
+                                    # sense, noone cares
+                                    pass
                                 if v_props is not None:
                                     try:
                                         minor = int(v_props[VOL_MINOR])
@@ -4612,30 +4618,34 @@ class DrbdManageServer(object):
                         # Schedule resize operations
                         for volume in resource.iterate_volumes():
                             vol_id = volume.get_id()
-                            #
-                            v_props = dict(vols_props_map.get(vol_id))
-                            new_size_str = v_props.get(VOL_SIZE)
-                            if new_size_str is not None:
-                                new_net_size_kiB = 0
-                                try:
-                                    new_net_size_kiB = long(new_size_str)
-                                except (ValueError, TypeError):
-                                    pass
-                                max_peers = self.DEFAULT_MAX_PEERS
-                                try:
-                                    max_peers = int(
-                                        self.get_conf_value(self.KEY_MAX_PEERS)
+                            v_props = None
+                            try:
+                                v_props = dict(vols_props.get(vol_id))
+                            except:
+                                pass
+                            if v_props is not None:
+                                new_size_str = v_props.get(VOL_SIZE)
+                                if new_size_str is not None:
+                                    new_net_size_kiB = 0
+                                    try:
+                                        new_net_size_kiB = long(new_size_str)
+                                    except (ValueError, TypeError):
+                                        pass
+                                    max_peers = self.DEFAULT_MAX_PEERS
+                                    try:
+                                        max_peers = int(
+                                            self.get_conf_value(self.KEY_MAX_PEERS)
+                                        )
+                                    except ValueError:
+                                        # Unparseable configuration entry;
+                                        # no-op: use default value instead
+                                        pass
+                                    new_gross_size_kiB = md.MetaData.get_gross_kiB(
+                                        new_net_size_kiB, max_peers,
+                                        md.MetaData.DEFAULT_AL_STRIPES,
+                                        md.MetaData.DEFAULT_AL_kiB
                                     )
-                                except ValueError:
-                                    # Unparseable configuration entry;
-                                    # no-op: use default value instead
-                                    pass
-                                new_gross_size_kiB = md.MetaData.get_gross_kiB(
-                                    new_net_size_kiB, max_peers,
-                                    md.MetaData.DEFAULT_AL_STRIPES,
-                                    md.MetaData.DEFAULT_AL_kiB
-                                )
-                                resource.begin_resize(vol_id, new_net_size_kiB)
+                                    resource.begin_resize(vol_id, new_net_size_kiB)
                         # Set the snapshot source volumes on those nodes
                         # that have a snapshot
                         self._set_snapshot_sources(resource, snapshot)
