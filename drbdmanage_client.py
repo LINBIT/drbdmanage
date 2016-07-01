@@ -943,6 +943,16 @@ class DrbdManage(object):
                                            'drbdmanage server')
         p_server_version.set_defaults(func=self.cmd_server_version)
 
+        # message-log
+        p_message_log = subp.add_parser('list-message-log', aliases=['message-log', 'list-ml', 'ml'],
+                                        description='Queries the server\'s message log')
+        p_message_log.set_defaults(func=self.cmd_message_log)
+
+        # clear-message-log
+        p_message_log = subp.add_parser('clear-message-log', aliases=['clear-ml', 'cml'],
+                                        description='Queries the server\'s message log')
+        p_message_log.set_defaults(func=self.cmd_clear_message_log)
+
         # query-conf
         p_queryconf = subp.add_parser('query-conf',
                                       description='Print the DRBD'
@@ -2680,6 +2690,37 @@ class DrbdManage(object):
         for entry in version_info:
             sys.stdout.write("%s\n" % entry)
 
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_message_log(self, args):
+        """
+        Displays the server's message log
+        """
+        fn_rc = 1
+
+        self.dbus_init()
+        query = ["message_log"]
+        server_rc, messages = self._server.text_query(query)
+        if len(messages) == 0:
+            sys.stdout.write("Message log is empty.\n")
+        else:
+            for line in messages:
+                sys.stdout.write("%s\n" % (line))
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
+    def cmd_clear_message_log(self, args):
+        """
+        Clears the server's message log
+        """
+        fn_rc = 1
+
+        self.dbus_init()
+        query = ["clear_message_log"]
+        server_rc, messages = self._server.text_query(query)
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc

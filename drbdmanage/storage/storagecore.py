@@ -21,6 +21,7 @@
 
 import logging
 import drbdmanage.utils
+import drbdmanage.messagelog as msglog
 
 from drbdmanage.storage.storagecommon import GenericStorage
 from drbdmanage.exceptions import (
@@ -68,20 +69,24 @@ class BlockDevice(GenericStorage):
 
 
 class BlockDeviceManager(object):
+    _server = None
     _plugin = None
 
 
-    def __init__(self, plugin_name, plugin_mgr):
+    def __init__(self, server, plugin_name, plugin_mgr):
         """
         Creates a new instance of the BlockDeviceManager
         """
+        self._server = server
         self._plugin = plugin_mgr.get_plugin_instance(plugin_name)
         if self._plugin is None:
-            logging.error(
+            log_message = (
                 "BlockDeviceManager: Import of the "
                 "storage management plugin '%s' failed"
                 % (plugin_name)
             )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
 
     def get_blockdevice(self, bd_name):
@@ -167,11 +172,13 @@ class BlockDeviceManager(object):
                         % (bd_name, status, fn_rc)
                     )
                 else:
-                    logging.warning(
+                    log_message = (
                         "BlockDeviceManager: Warning: remove_blockdevice('%s'): "
                         "Cannot find the corresponding BlockDevice object"
                         % (bd_name)
                     )
+                    logging.warning(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
                     # If the block device to be removed cannot be found,
                     # assume there is nothing to remove and continue
                     fn_rc = DM_SUCCESS
@@ -244,12 +251,14 @@ class BlockDeviceManager(object):
                         name, vol_id, src_blockdev
                     )
                 else:
-                    logging.error(
+                    log_message = (
                         "BlockDeviceManager: Cannot find the source "
                         "BlockDevice object '%s' required for "
                         "snapshot creation"
                         % (src_bd_name)
                     )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 status_text = (
                     "successful" if blockdev is not None else "failed"
                 )
@@ -258,11 +267,13 @@ class BlockDeviceManager(object):
                     % (name, vol_id, src_bd_name, status_text)
                 )
             except NotImplementedError:
-                logging.error(
+                log_message = (
                     "BlockDeviceManager: The currently loaded storage "
                     "management plugin does not implement "
                     "snapshot capabilities"
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         else:
             self._log_no_plugin()
         return blockdev
@@ -281,12 +292,14 @@ class BlockDeviceManager(object):
                         name, vol_id, src_blockdev
                     )
                 else:
-                    logging.error(
+                    log_message = (
                         "BlockDeviceManager: Cannot find the source "
                         "BlockDevice object '%s' required for "
                         "snapshot creation"
                         % (src_bd_name)
                     )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 status_text = (
                     "successful" if blockdev is not None else "failed"
                 )
@@ -295,11 +308,13 @@ class BlockDeviceManager(object):
                     % (name, vol_id, src_bd_name, status_text)
                 )
             except NotImplementedError:
-                logging.error(
+                log_message = (
                     "BlockDeviceManager: The currently loaded storage "
                     "management plugin does not implement "
                     "snapshot capabilities"
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         else:
             self._log_no_plugin()
         return blockdev
@@ -328,11 +343,13 @@ class BlockDeviceManager(object):
                     % (bd_name, fn_rc, status_text)
                 )
             except NotImplementedError:
-                logging.error(
+                log_message = (
                     "BlockDeviceManager: The currently loaded storage "
                     "management plugin does not implement "
                     "snapshot capabilities"
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 fn_rc = DM_ENOTIMPL
         else:
             self._log_no_plugin()
@@ -352,10 +369,12 @@ class BlockDeviceManager(object):
                     self._plugin.update_pool(drbd_node)
                 )
             except NotImplementedError:
-                logging.error(
+                log_message = (
                     "BlockDeviceManager: The currently loaded storage "
                     "management plugin does not implement pool space queries"
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 fn_rc = DM_ENOTIMPL
         else:
             self._log_no_plugin()
@@ -372,11 +391,13 @@ class BlockDeviceManager(object):
                 self._plugin.reconfigure()
                 fn_rc = DM_SUCCESS
             except NotImplementedError:
-                logging.error(
+                log_message = (
                     "BlockDeviceManager: The currently loaded storage "
                     "management plugin does not support "
                     "on-the-fly reconfiguration"
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 fn_rc = DM_ENOTIMPL
         else:
             self._log_no_plugin()
@@ -392,18 +413,22 @@ class BlockDeviceManager(object):
         return value
 
     def _log_not_implemented(self, function_name):
-        logging.error(
+        log_message = (
             "BlockDeviceManager: The currently loaded storage "
             "management plugin does not implement the mandatory function %s()"
             % (function_name)
         )
+        logging.error(log_message)
+        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
 
     def _log_no_plugin(self):
-        logging.error(
+        log_message = (
             "BlockDeviceManager: No storage management plugin is loaded, "
             "storage management is inoperational"
         )
+        logging.error(log_message)
+        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
 
 class MinorNr(object):

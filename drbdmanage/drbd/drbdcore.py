@@ -29,6 +29,8 @@ import drbdmanage.exceptions as dmexc
 import drbdmanage.drbd.commands as drbdcmd
 import drbdmanage.drbd.metadata as md
 import drbdmanage.propscontainer
+import drbdmanage.messagelog as msglog
+
 # Breaks the import system; maybe one day when everything has been rewritten
 # to use only 'import xy' it might work...
 # Until then, just misuse self._server instead of DrbdManageServer.CONSTANT,
@@ -175,8 +177,12 @@ class DrbdManager(object):
             logging.debug("DrbdManager: caught PersistenceException:")
             logging.debug("Stack trace:\n%s" % (str(exc_trace)))
         except QuorumException:
-            logging.warning("DrbdManager: Check for pending actions skipped, "
-                            "partition does not have a quorum")
+            log_message = (
+                "DrbdManager: Check for pending actions skipped, "
+                "partition does not have a quorum"
+            )
+            logging.warning(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
         except Exception as exc:
             exc_type, exc_obj, exc_trace = sys.exc_info()
             logging.debug("DrbdManager: abort, unhandled exception: %s"
@@ -218,11 +224,13 @@ class DrbdManager(object):
         """
         node = self._server.get_instance_node()
         if node is None:
-            logging.warning(
+            log_message = (
                 "DrbdManager: abort, this node ('%s') has no entry in "
                 "the data tables"
                 % (self._server.get_instance_node_name())
             )
+            logging.warning(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
             return False
 
 
@@ -243,10 +251,12 @@ class DrbdManager(object):
             resource = assg.get_resource()
             managed = resource.is_managed()
             if not managed:
-                logging.warning(
+                log_message = (
                     "Resource '%s' is marked as unmanaged"
                     % (resource.get_name())
                 )
+                logging.warning(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
             # Assignment changes
             fail_count = assg.get_fail_count()
             if fail_count < max_fail_count:
@@ -834,26 +844,32 @@ class DrbdManager(object):
                         snapshots.DrbdSnapshotVolumeState.FLAG_DEPLOY
                     )
                 else:
-                    logging.error(
+                    log_message = (
                         "Failed to create snapshot %s/%s #%u "
                         "of source volume %s"
                          % (resource.get_name(), snaps_name, snaps_vol_id,
                             src_bd_name)
                     )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                     failed_actions = True
             else:
-                logging.error(
+                log_message = (
                     "Cannot create snapshot %s/%s #%u, "
                     "source volume is not deployed"
                      % (resource.get_name(), snaps_name, snaps_vol_id)
                 )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 failed_actions = True
         else:
-            logging.error(
+            log_message = (
                 "Snapshot %s/%s references non-existent volume id %d of "
                 "its source resource"
                 % (resource.get_name(), snaps.get_name(), snaps_vol_id)
             )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
             failed_actions = True
         if failed_actions:
             snaps_assg.set_error_code(dmexc.DM_ESTORAGE)
@@ -880,10 +896,12 @@ class DrbdManager(object):
             snaps_vol_state.set_cstate(0)
             snaps_vol_state.set_tstate(0)
         else:
-            logging.error(
+            log_message = (
                 "Failed to remove snapshot %s #%u block device '%s'"
                  % (snaps_name, snaps_vol_id, bd_name)
             )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
             failed_actions = True
             assg = snaps_assg.get_assignment()
         return (pool_changed, failed_actions)
@@ -975,11 +993,13 @@ class DrbdManager(object):
                 if bd_name is not None:
                     fn_rc = bd_mgr.up_blockdevice(bd_name)
                     if fn_rc != DM_SUCCESS:
-                        logging.warning(
+                        log_message = (
                             "resource '%s': attempt to start the backend "
                             "blockdevice '%s' failed"
                             % (res_name, bd_name)
                         )
+                        logging.warning(log_message)
+                        self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
 
             # update the configuration file
             self._server.export_assignment_conf(assignment)
@@ -1099,11 +1119,13 @@ class DrbdManager(object):
                         else:
                             # The volume state list should be the same for
                             # all assignments; if it is not, log an error
-                            logging.error(
+                            log_message = (
                                 "Volume state list mismatch between multiple "
                                 "assignments for resource %s"
                                 % (assg_res.get_name())
                             )
+                            logging.error(log_message)
+                            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                     vol_states[assg_node.get_name()] = assg_vol_states
 
             # ============================================================
@@ -1134,6 +1156,7 @@ class DrbdManager(object):
                 self._server.close_assignment_conf(assg_conf, global_conf)
                 self._server.update_assignment_conf(res_name)
 
+                vol_id = vol_state.get_id()
                 fn_rc = self._drbdadm.adjust(res_name)
                 if fn_rc == 0:
                     if diskless:
@@ -1157,15 +1180,27 @@ class DrbdManager(object):
                         fn_rc = 0
                     # "drbdadm adjust" implicitly connects the resource
                     assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
+                else:
+                    log_message = (
+                        "Deploying resource '%s' volume %d: DRBD adjust command failed"
+                        % (res_name, vol_id)
+                    )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
                 # Run new-current-uuid on initial deployment of a thinly provisioned volume
-                vol_id = vol_state.get_id()
                 if initial_flag and thin_flag and (not self._is_snapshot_restore(resource, vol_id)):
-                    new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_state.get_id())
+                    new_gi_check = self._drbdadm.new_current_uuid(res_name, vol_id)
                     if new_gi_check:
                         fn_rc = 0
                     else:
                         fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
+                        log_message = (
+                            "Deploying resource '%s' volume %d: DRBD new-current-uuid command failed"
+                            % (res_name, vol_id)
+                        )
+                        logging.error(log_message)
+                        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc
 
@@ -1217,10 +1252,19 @@ class DrbdManager(object):
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
                 fn_rc = 0
             else:
-                logging.error("DrbdManager: Failed to create block device for resource '%s' volume %d"
-                              % (resource.get_name(), vol_state.get_id()))
+                log_message = (
+                    "DrbdManager: Failed to create block device for resource '%s' volume %d"
+                    % (resource.get_name(), vol_state.get_id())
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         except md.MetaDataException as md_exc:
             logging.debug("DrbdManager: _deploy_volume_blockdev(): MetaDataException: " + md_exc.message)
+            log_message = (
+                "Meta data creation failed: %s"
+                % (md_exc.message)
+            )
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc, blockdev
 
@@ -1246,8 +1290,12 @@ class DrbdManager(object):
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
             fn_rc = 0
         else:
-            logging.error("DrbdManager: Failed to restore snapshot for resource '%s' volume %d"
-                          % (resource.get_name(), vol_state.get_id()))
+            log_message = (
+                "DrbdManager: Failed to restore snapshot for resource '%s' volume %d"
+                % (resource.get_name(), vol_state.get_id())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc, blockdev
 
@@ -1299,9 +1347,19 @@ class DrbdManager(object):
                             fn_rc = 0
                         else:
                             fn_rc = drbdcmd.DrbdAdm.DRBDUTIL_EXEC_FAILED
+                            log_message = (
+                                "Deploying resource '%s' volume %d: DRBD set-gi command failed"
+                                % (res_name, vol_state.get_id())
+                            )
+                            logging.error(log_message)
+                            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         else:
-            logging.error("DrbdManager: Failed to create meta data for resource '%s' volume %d"
-                          % (resource.get_name(), vol_state.get_id()))
+            log_message = (
+                "DrbdManager: Failed to create meta data for resource '%s' volume %d"
+                % (resource.get_name(), vol_state.get_id())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         return fn_rc
 
     @log_in_out
@@ -1367,6 +1425,13 @@ class DrbdManager(object):
                     vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
                     break
                 retries += 1
+            if fn_rc != 0:
+                log_message = (
+                    "Undeploying resource '%s' volume %d: DRBD adjust command failed"
+                    % (res_name, vol_state.get_id())
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         else:
             # There are no volumes left in the resource,
             # stop the entire resource
@@ -1375,6 +1440,13 @@ class DrbdManager(object):
             fn_rc = self._drbdadm.down(resource.get_name())
             if fn_rc == 0:
                 vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            else:
+                log_message = (
+                    "Undeploying resource '%s' volume %d: DRBD down command failed"
+                    % (res_name, vol_state.get_id())
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
             # FIXME: can this cause a race condition?
             #
@@ -1400,8 +1472,12 @@ class DrbdManager(object):
                     # target state changes to undeploy
                     assignment.undeploy_adjust_cstate()
             else:
-                logging.error("DrbdManager: Undeploying resource '%s' volume %d failed"
-                              % (res_name(), vol_state.get_id()))
+                log_message = (
+                    "DrbdManager: Undeploying resource '%s' volume %d failed"
+                    % (res_name(), vol_state.get_id())
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc
 
@@ -1452,6 +1528,7 @@ class DrbdManager(object):
         """
         fn_rc = -1
         resource = assignment.get_resource()
+        res_name = resource.get_name()
         vol_id = vol_state.get_id()
         volume = resource.get_volume(vol_id)
         if volume is not None:
@@ -1470,11 +1547,11 @@ class DrbdManager(object):
                 # Update the resource configuration file
                 self._server.export_assignment_conf(assignment)
 
-                fn_rc = self._drbdadm.resize(resource.get_name(), vol_state.get_id(), assume_clean)
+                fn_rc = self._drbdadm.resize(res_name, vol_state.get_id(), assume_clean)
                 if fn_rc == 0:
                     logging.debug(
                         "Resource '%s', Volume %d: finish_resize_drbd()"
-                        % (resource.get_name(), vol_id)
+                        % (res_name, vol_id)
                     )
                     resource.finish_resize_drbd(vol_id)
                     # The assigment of the resource on all nodes must be adjusted to update
@@ -1488,6 +1565,12 @@ class DrbdManager(object):
                 else:
                     # Rollback the volume size change
                     volume.set_size_kiB(saved_vol_size)
+                    log_message = (
+                        "Resizing resource '%s' volume %d: DRBD resize command failed"
+                        % (res_name, vol_id)
+                    )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
             else:
                 # Client, do not initiate a resize on a client node
                 fn_rc = DM_SUCCESS
@@ -1570,6 +1653,12 @@ class DrbdManager(object):
                 if (self._drbdadm.fallback_down(res_name)):
                     fn_rc = 0
                 else:
+                    log_message = (
+                        "Undeploying assignment '%s': DRBD down command failed"
+                        % (res_name)
+                    )
+                    logging.error(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                     ud_errors = True
 
             if fn_rc == 0:
@@ -1583,6 +1672,12 @@ class DrbdManager(object):
                             vol_state.set_cstate(0)
                             vol_state.set_tstate(0)
                         else:
+                            log_message = (
+                                "Undeploying assignment '%s': Block device removal of volume %d failed"
+                                % (res_name, vol_state.get_id())
+                            )
+                            logging.error(log_message)
+                            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                             ud_errors = True
                     else:
                         # volume has no block device, nothing to do
@@ -1615,6 +1710,13 @@ class DrbdManager(object):
         if fn_rc == 0:
             assignment.set_cstate_flags(Assignment.FLAG_CONNECT)
             assignment.clear_tstate_flags(Assignment.FLAG_DISCARD)
+        else:
+            log_message = (
+                "Connecting resource '%s' failed"
+                % (resource.get_name())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc
 
@@ -1630,6 +1732,13 @@ class DrbdManager(object):
         fn_rc = self._drbdadm.disconnect(resource.get_name())
         if fn_rc == 0:
             assignment.clear_cstate_flags(Assignment.FLAG_CONNECT)
+        else:
+            log_message = (
+                "Disconnecting resource '%s' failed"
+                % (resource.get_name())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc
 
@@ -1678,15 +1787,23 @@ class DrbdManager(object):
         """
         fn_rc = DM_SUCCESS
         resource = assignment.get_resource()
+        res_name = resource.get_name()
         # do not attach clients, because there is no local storage on clients
         if is_unset(assignment.get_tstate(), Assignment.FLAG_DISKLESS):
             self._server.export_assignment_conf(assignment)
             fn_rc = self._drbdadm.attach(
-                resource.get_name(),
+                res_name,
                 vol_state.get_id()
             )
             if fn_rc == 0:
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+            else:
+                log_message = (
+                    "Attaching resource '%s' volume %d failed"
+                    % (res_name, vol_state.get_id())
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         else:
             vol_state.clear_tstate_flags(DrbdVolumeState.FLAG_ATTACH)
 
@@ -1706,6 +1823,13 @@ class DrbdManager(object):
         )
         if fn_rc == 0:
             vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+        else:
+            log_message = (
+                "Detaching resource '%s' volume %d failed"
+                % (resource.get_name(), vol_state.get_id())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
         return fn_rc
 
@@ -1715,6 +1839,14 @@ class DrbdManager(object):
         """
         self._server.export_assignment_conf(assignment)
         fn_rc = self._drbdadm.adjust(assignment.get_resource().get_name())
+        if fn_rc != 0:
+            resource = assignment.get_resource()
+            log_message = (
+                "Resource '%s': DRBD adjust command failed"
+                % (resource.get_name())
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
         return fn_rc
 
     @log_in_out

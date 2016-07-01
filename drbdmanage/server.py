@@ -36,6 +36,7 @@ from functools import wraps
 import drbdmanage.drbd.persistence
 import drbdmanage.quorum
 import drbdmanage.drbd.metadata as md
+import drbdmanage.messagelog as msglog
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR, VOL_ID,
@@ -103,6 +104,7 @@ class DrbdManageServer(object):
     OBJ_SGEN_NAME      = "serial_nr_gen"
     OBJ_PCONF_NAME     = "plugin_conf"
     OBJ_PERSIST_NAME   = "persistence"
+    OBJ_MSGLOG_NAME    = "message_log"
 
     EVT_UTIL = "drbdsetup"
 
@@ -156,6 +158,9 @@ class DrbdManageServer(object):
     DEFAULT_MAX_PORT_NR  = 7999
     DEFAULT_MAX_FAIL_COUNT = 3
 
+    # It might make sense to make this configurable in the future
+    DEFAULT_MSGLOG_SIZE  = 50
+
     # defaults
     CONF_DEFAULTS = {
         KEY_STOR_NAME      : "drbdmanage.storage.lvm.Lvm",
@@ -190,6 +195,9 @@ class DrbdManageServer(object):
 
     # Serial numbers generator
     _serial_gen = None
+
+    # Message log
+    _message_log = None
 
     # Factory instance for creating signal objects
     _signal_factory = None
@@ -367,6 +375,9 @@ class DrbdManageServer(object):
         except KeyError:
             self._path = ""
 
+        # Initialize the server's message log
+        self._message_log = msglog.MessageLog(DrbdManageServer.DEFAULT_MSGLOG_SIZE)
+
         # Initialize the server's objects / datastructures
         self._init_objects()
 
@@ -438,6 +449,8 @@ class DrbdManageServer(object):
 
         self._objects_root[DrbdManageServer.OBJ_PERSIST_NAME] = None
 
+        self._objects_root[DrbdManageServer.OBJ_MSGLOG_NAME] = self._message_log
+
         self.update_objects()
 
 
@@ -460,6 +473,8 @@ class DrbdManageServer(object):
         self._plugin_conf  = self._objects_root[srv.OBJ_PCONF_NAME]
         self._persist      = self._objects_root[srv.OBJ_PERSIST_NAME]
 
+        # srv.OBJ_MESSAGE_LOG will need to be added here if a future version
+        # recreates it by updating the objects root
 
     def _init_persist(self):
         """
@@ -486,7 +501,7 @@ class DrbdManageServer(object):
         # Create drbdmanage objects
         #
         # Block devices manager (manages backend storage devices)
-        self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
+        self._bd_mgr = BlockDeviceManager(self, self._conf[self.KEY_STOR_NAME], self._pluginmgr)
 
         # Start up the resources deployed by drbdmanage on the current node
         self._drbd_mgr.initial_up()
@@ -1079,7 +1094,7 @@ class DrbdManageServer(object):
         cur_storage_plugin = self._conf.get(self.KEY_STOR_NAME, None)
         new_storage_plugin = final_config[self.KEY_STOR_NAME]
         if cur_storage_plugin and cur_storage_plugin != new_storage_plugin:
-            self._bd_mgr = BlockDeviceManager(new_storage_plugin, self._pluginmgr)
+            self._bd_mgr = BlockDeviceManager(self, new_storage_plugin, self._pluginmgr)
 
         self.update_objects()  # which sets self._conf and self._plugin_conf from _objects_root
 
@@ -1240,6 +1255,13 @@ class DrbdManageServer(object):
         Returns the block device manager instance
         """
         return self._bd_mgr
+
+
+    def get_message_log(self):
+        """
+        Returns the message log instance
+        """
+        return self._message_log
 
 
     def iterate_nodes(self):
@@ -3844,11 +3866,14 @@ class DrbdManageServer(object):
                     self._configure_drbdctrl(False, None, None, None, None)
                     self._drbd_mgr.adjust_drbdctrl()
                 except (IOError, OSError) as reconf_err:
-                    logging.error(
+                    log_message = (
                         "Cannot reconfigure the control volume, "
                         "error description is: %s"
                         % str(reconf_err)
                     )
+                    logging.error(log_message)
+                    if self._message_log is not None:
+                        self._message_log.add_entry(msglog.MessageLog.ALERT, log_message)
                 self._cluster_nodes_update()
 
             # delete resources that are marked for removal and that do not
@@ -4920,10 +4945,13 @@ class DrbdManageServer(object):
         except Exception as exc:
             # DEBUG
             exc_type, exc_obj, exc_tb = sys.exc_info()
-            logging.error(
+            log_message = (
                 "cannot open control volume, unhandled exception: %s"
                 % str(exc)
             )
+            logging.error(log_message)
+            if self._message_log is not None:
+                self._message_log.add_entry(msglog.MessageLog.ALERT, log_message)
             logging.debug("Stack trace:\n%s" % str(exc_tb))
             self._persist.close()
         return ret_persist
@@ -4951,11 +4979,14 @@ class DrbdManageServer(object):
                 except Exception as exc:
                     exc_type, exc_obj, exc_tb = sys.exc_info()
                     access_mode = "modification" if modifiable else "reading"
-                    logging.error(
+                    log_message = (
                         "Cannot open the control volume for %s, "
                         "unhandled exception: %s"
                         % (access_mode, str(exc))
                     )
+                    logging.error(log_message)
+                    if self._message_log is not None:
+                        self._message_log.add_entry(msglog.MessageLog.ALERT, log_message)
                     logging.debug("Stack trace:\n%s" % str(exc_tb))
                     self._persist.close()
                 if accessible:
@@ -4975,11 +5006,14 @@ class DrbdManageServer(object):
                             self._persist.close()
                     except Exception as exc:
                         exc_type, exc_obj, exc_tb = sys.exc_info()
-                        logging.error(
+                        log_message = (
                             "Cannot read data from the control volume "
                             "unhandled exception: %s"
                             % (str(exc))
                         )
+                        logging.error(log_message)
+                        if self._message_log is not None:
+                            self._message_log.add_entry(msglog.MessageLog.ALERT, log_message)
                         logging.debug("Stack trace:\n%s" % str(exc_tb))
                         self._persist.close()
                     if not modifiable:
@@ -5110,10 +5144,12 @@ class DrbdManageServer(object):
             writer.write(assg_conf, assignment, False, global_conf)
             file_written = True
         except IOError as io_error:
-            raise ResourceFileException(
+            res_exc = ResourceFileException(
                 os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
                 "drbdmanage_" + res_name() + ".res")
             )
+            self._message_log.add_entry(msglog.MessageLog.ALERT, res_exc.get_log_message())
+            raise res_exc
         finally:
             self.close_assignment_conf(assg_conf, global_conf)
         if file_written:
@@ -5136,11 +5172,13 @@ class DrbdManageServer(object):
             os.unlink(file_path)
         except OSError as oserr:
             if oserr.errno != errno.ENOENT:
-                logging.error(
+                log_message = (
                     "cannot remove configuration file '%s', "
                     "error returned by the OS is: %s"
                     % (file_path, oserr.strerror)
                 )
+                logging.error(log_message)
+                self._message_log.add_entry(msglog.MessageLog.ALERT, log_message)
                 fn_rc = 1
         return fn_rc
 
@@ -5301,7 +5339,7 @@ class DrbdManageServer(object):
             fn_rc = self.load_conf()
             self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_CTRL_VOL])
             self._drbd_mgr.reconfigure()
-            self._bd_mgr = BlockDeviceManager(self._conf[self.KEY_STOR_NAME], self._pluginmgr)
+            self._bd_mgr = BlockDeviceManager(self, self._conf[self.KEY_STOR_NAME], self._pluginmgr)
         except DrbdManageException as server_exc:
             server_exc.add_rc_entry(fn_rc)
         except Exception as exc:
@@ -5631,6 +5669,30 @@ class DrbdManageServer(object):
             else:
                 response = ["Error: Resource %s not found" % (res_name)]
         return response
+
+
+    def TQ_message_log(self):
+        """
+        Formats and lists message log entries
+        """
+        message_list = []
+        for log_entry in self._message_log.iterate_entries():
+            level, message = log_entry
+            level_prefix = "[ ALERT ]"
+            if level == msglog.MessageLog.WARN:
+                level_prefix = "[ WARN  ]"
+            elif level == msglog.MessageLog.INFO:
+                level_prefix = "[ INFO ]"
+            message_list.append("%s %s" % (level_prefix, message))
+        return message_list
+
+
+    def TQ_clear_message_log(self):
+        """
+        Clears the message log
+        """
+        self._message_log.clear()
+        return ["Message log cleared"]
 
 
     def text_query(self, command):

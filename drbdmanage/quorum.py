@@ -21,6 +21,7 @@
 import logging
 import drbdmanage.utils
 import drbdmanage.drbd.drbdcore
+import drbdmanage.messagelog as msglog
 
 
 class Quorum(object):
@@ -86,17 +87,25 @@ class Quorum(object):
                                       % (node_name,
                                          self._quorum_count, self._quorum_full))
                     else:
-                        logging.error("Quorum: Cannot add node, exceeding maximum of %d nodes"
-                                      % (Quorum.COUNT_MAX))
-                        logging.error("Quorum: Internal error or incompatible "
-                                      "version of DRBD")
+                        log_message = (
+                            "Quorum: Cannot add node, exceeding maximum of %d nodes"
+                            % (Quorum.COUNT_MAX)
+                        )
+                        logging.error(log_message)
+                        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+                        log_message = (
+                            "Quorum: Internal error or incompatible version of DRBD"
+                        )
+                        logging.error(log_message)
+                        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
                 else:
                     logging.debug("Quorum: Diskless node %s joined the partition, "
                                   "quorum count unchanged"
                                   % (node_name))
             else:
-                logging.warning("Quorum: Node %s is not a registered drbdmanage node"
-                                % (node_name))
+                log_message = "Quorum: Node %s is not a registered drbdmanage node" % (node_name)
+                logging.warning(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
         return change_flag
 
 
