@@ -144,6 +144,7 @@ class DrbdManageServer(object):
     KEY_MIN_PORT_NR    = "min-port-nr"
     KEY_MAX_PORT_NR    = "max-port-nr"
     KEY_MAX_FAIL_COUNT = "max-fail-count"
+    KEY_MSGLOG_SIZE    = "message-log-capacity"
 
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
@@ -158,7 +159,6 @@ class DrbdManageServer(object):
     DEFAULT_MAX_PORT_NR  = 7999
     DEFAULT_MAX_FAIL_COUNT = 3
 
-    # It might make sense to make this configurable in the future
     DEFAULT_MSGLOG_SIZE  = 50
 
     # defaults
@@ -171,6 +171,7 @@ class DrbdManageServer(object):
         KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
         KEY_MAX_FAIL_COUNT : str(DEFAULT_MAX_FAIL_COUNT),
+        KEY_MSGLOG_SIZE    : str(DEFAULT_MSGLOG_SIZE),
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
         KEY_DRBD_CONFPATH  : DEFAULT_DRBD_CONFPATH,
         KEY_DRBDCTRL_VG    : DEFAULT_VG,
@@ -472,6 +473,7 @@ class DrbdManageServer(object):
         self._common       = self._objects_root[srv.OBJ_COMMON_NAME]
         self._plugin_conf  = self._objects_root[srv.OBJ_PCONF_NAME]
         self._persist      = self._objects_root[srv.OBJ_PERSIST_NAME]
+        self._message_log  = self._objects_root[srv.OBJ_MSGLOG_NAME]
 
         # srv.OBJ_MESSAGE_LOG will need to be added here if a future version
         # recreates it by updating the objects root
@@ -1090,6 +1092,16 @@ class DrbdManageServer(object):
 
         self._objects_root[sconf_key] = final_config
         self._objects_root[pconf_key] = final_plugin_config
+
+        # Check whether the message log was resized
+        msglog_size_str = self._conf.get(self.KEY_MSGLOG_SIZE)
+        if msglog_size_str is not None:
+            try:
+                msglog_size = int(msglog_size_str)
+                if msglog_size != self._message_log.get_capacity():
+                    self._objects_root[DrbdManageServer.OBJ_MSGLOG_NAME] = msglog.MessageLog(msglog_size)
+            except ValueError:
+                pass
 
         cur_storage_plugin = self._conf.get(self.KEY_STOR_NAME, None)
         new_storage_plugin = final_config[self.KEY_STOR_NAME]
@@ -3756,7 +3768,7 @@ class DrbdManageServer(object):
                     removable = []
                     # delete snapshot assignments that have been undeployed
                     for snaps_assg in assg.iterate_snaps_assgs():
-		        # check for existing block devices
+                        # check for existing block devices
                         #
                         # turn the DEPLOY flag on again for those snapshot
                         # volume states and snapshot assignments, that
@@ -4399,7 +4411,7 @@ class DrbdManageServer(object):
                 if len(sn_list) > 0:
                     res_entry = [
                         res.get_name(),
-			sn_list
+                        sn_list
                     ]
                     res_list.append(res_entry)
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))

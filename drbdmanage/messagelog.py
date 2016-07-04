@@ -30,26 +30,44 @@ class MessageLog(object):
     WARN  = 1
     ALERT = 2
 
-    _index    = 0
-    _filled   = False
-    _capacity = 0
+    MIN_ENTRIES = 1
+    MAX_ENTRIES = 10000
 
-    _log_entries = None
 
     def __init__(self, entries):
         """
         Initializes a new MessageLog with the specified capacity for log entries
         """
-        if entries < 1:
+        # Declare instance variables
+        self._capacity    = None
+        self._log_entries = None
+        self._index       = None
+        self._filled      = None
+        # Initialize the ring buffer
+        self.resize(entries)
+
+    def resize(self, entries):
+        """
+        Resets the MessageLog's capacity
+        """
+        if entries < MessageLog.MIN_ENTRIES or entries > MessageLog.MAX_ENTRIES:
             raise ValueError
         self._capacity = entries
         self._log_entries = self._capacity * [None]
+        self._index = 0
+        self._filled = False
 
     def has_entries(self):
         """
         Returns True if there is at least one log entry
         """
         return self._filled or self._index > 0
+
+    def get_capacity(self):
+        """
+        Returns the MessageLog's capacity
+        """
+        return self._capacity
 
     def add_entry(self, level, message):
         """
