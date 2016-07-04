@@ -585,7 +585,7 @@ def filter_new_args(unsetprefix, args):
     for k in new.keys():
         if "unset-" + k in new:
             sys.stderr.write('Error: You are not allowed to set and unset'
-                             ' and option at the same time!\n')
+                             ' an option at the same time!\n')
             return False
     return new
 
