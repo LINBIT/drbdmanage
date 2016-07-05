@@ -19,6 +19,7 @@
 """
 
 import datetime
+from collections import deque
 
 class MessageLog(object):
     """
@@ -33,16 +34,13 @@ class MessageLog(object):
     MIN_ENTRIES = 1
     MAX_ENTRIES = 10000
 
-
     def __init__(self, entries):
         """
         Initializes a new MessageLog with the specified capacity for log entries
         """
         # Declare instance variables
-        self._capacity    = None
-        self._log_entries = None
-        self._index       = None
-        self._filled      = None
+        self._log_entries = deque(maxlen=MessageLog.MAX_ENTRIES)
+        self._capacity = None
         # Initialize the ring buffer
         self.resize(entries)
 
@@ -52,16 +50,14 @@ class MessageLog(object):
         """
         if entries < MessageLog.MIN_ENTRIES or entries > MessageLog.MAX_ENTRIES:
             raise ValueError
+        self._log_entries = deque(self._log_entries, maxlen=entries)
         self._capacity = entries
-        self._log_entries = self._capacity * [None]
-        self._index = 0
-        self._filled = False
 
     def has_entries(self):
         """
         Returns True if there is at least one log entry
         """
-        return self._filled or self._index > 0
+        return len(self._log_entries)
 
     def get_capacity(self):
         """
@@ -83,35 +79,17 @@ class MessageLog(object):
                timeinfo.hour, timeinfo.minute, timeinfo.second, str(message))
         )
 
-        self._log_entries[self._index] = [level, log_message]
-
-        self._index += 1
-        if (self._index >= self._capacity):
-            self._filled = True
-            self._index = 0
+        self._log_entries.append([level, log_message])
 
     def clear(self):
         """
         Clears all log entries
         """
-        slot = 0
-        limit = self._capacity if self._filled else self._index
-        while slot < limit:
-            self._log_entries[slot] = None
-            slot += 1
-        self._index = 0
-        self._filled = False
+
+        self._log_entries.clear()
 
     def iterate_entries(self):
         """
         Iterates over all log entries
         """
-        if self._filled:
-            slot = self._index
-            while slot < self._capacity:
-                yield self._log_entries[slot]
-                slot += 1
-        slot = 0
-        while slot < self._index:
-            yield self._log_entries[slot]
-            slot += 1
+        return self._log_entries.__iter__()
