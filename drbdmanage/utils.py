@@ -566,8 +566,9 @@ def load_server_conf_file(localonly=False):
 # but also usefull for 'handlers' subcommand
 def filter_new_args(unsetprefix, args):
     new = dict()
+    reserved_keys = ["func", "optsobj", "common", "command"]
     for k, v in args.__dict__.iteritems():
-        if v is not None and k != "func" and k != "optsobj" and k != "common" and k != "command":
+        if v is not None and k not in reserved_keys:
             key = k.replace('_', '-')
 
             # handle --unset
