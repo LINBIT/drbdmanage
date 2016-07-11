@@ -146,6 +146,7 @@ _DM_EXC_TEXTS[DM_ERESFILE] = "Updating a DRBD resource configuration file failed
 
 
 def dm_exc_text(exc_id):
+
     """
     Retrieve the default error message for a standard return code
     """
