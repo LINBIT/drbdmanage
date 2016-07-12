@@ -11,6 +11,8 @@ import errno
 import logging
 import os
 import drbdmanage.utils as utils
+import drbdmanage.consts as consts
+
 
 class DrbdAdm(object):
 
@@ -18,9 +20,9 @@ class DrbdAdm(object):
     Calls the external drbdadm command to control DRBD
     """
 
-    DRBDADM_UTIL   = "drbdadm"
-    DRBDMETA_UTIL  = "drbdmeta"
-    DRBDSETUP_UTIL = "drbdsetup"
+    DRBDADM_UTIL = consts.DRBDADM_UTIL
+    DRBDMETA_UTIL = consts.DRBDMETA_UTIL
+    DRBDSETUP_UTIL = consts.DRBDSETUP_UTIL
 
     # Used as a return code to indicate that drbdadm could not be executed
     DRBDUTIL_EXEC_FAILED = 127
@@ -86,7 +88,7 @@ class DrbdAdm(object):
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
 
-    def primary(self, res_name, force):
+    def primary(self, res_name, force, with_drbdsetup=False):
         """
         Switches a DRBD resource to primary mode
 
@@ -94,9 +96,13 @@ class DrbdAdm(object):
         @param   force: if set, adds the --force flag for drbdsetup
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        if with_drbdsetup:
+            exec_args = [self.DRBDSETUP_UTIL]
+        else:
+            exec_args = [self.DRBDADM_UTIL, "-vvv"]
         if force:
-            exec_args.append("--")
+            if not with_drbdsetup:
+                exec_args.append("--")
             exec_args.append("--force")
         exec_args.append("primary")
         exec_args.append(res_name)
@@ -180,15 +186,21 @@ class DrbdAdm(object):
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
 
-    def wait_connect_resource(self, res_name, timeout=10):
+    def _wait_for_family(self, cmd, res_name, timeout=10):
         timeout_str = str(timeout)
         exit_code = self._run_drbdutils(
-            [self.DRBDSETUP_UTIL, 'wait-connect-resource', '--wfc-timeout=%s' % timeout_str, res_name]
+            [self.DRBDSETUP_UTIL, cmd, '--wfc-timeout=%s' % timeout_str, res_name]
         )
         if exit_code != 0:
-            logging.warn("Resource '%s' not connected within %s seconds" % (res_name, timeout_str))
+            logging.warn("Resource '%s': %s not finished within %s seconds" % (res_name, cmd, timeout_str))
 
         return exit_code == 0
+
+    def wait_connect_resource(self, res_name, timeout=10):
+        return self._wait_for_family('wait-connect-resource', res_name, timeout)
+
+    def wait_sync_resource(self, res_name, timeout=10):
+        return self._wait_for_family('wait-sync-resource', res_name, timeout)
 
     def _run_drbdutils(self, exec_args):
         """

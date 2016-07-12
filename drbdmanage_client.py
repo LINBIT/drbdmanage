@@ -29,19 +29,18 @@ import drbdmanage.drbd.drbdcore
 import drbdmanage.drbd.persistence
 import drbdmanage.argparse.argparse as argparse
 import drbdmanage.argcomplete as argcomplete
-import gobject
 
 from drbdmanage.consts import (
     KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DBUS_DRBDMANAGED, DBUS_SERVICE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
-    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE,
+    FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_DISCARD, FLAG_CONNECT, FLAG_QIGNORE, FLAG_FORCEWIN,
     KEY_DRBD_CONFPATH, DEFAULT_DRBD_CONFPATH, DM_VERSION, DM_GITHASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, BOOL_FALSE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
-    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1, NODE_CONTROL_NODE,
-    NODE_SATELLITE_NODE, KEY_S_CMD_SHUTDOWN, KEY_ISSATELLITE,
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1,
+    KEY_S_CMD_SHUTDOWN,
     KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, MANAGED
 )
 from drbdmanage.utils import SizeCalc
@@ -60,7 +59,7 @@ from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.exceptions import dm_exc_text
-from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST, DM_ENOENT
+from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST, DM_ENOENT, DM_ENOTREADY
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.drbd.views import AssignmentView
@@ -133,6 +132,38 @@ class DrbdManage(object):
         except dbus.exceptions.DBusException as exc:
             self._print_dbus_exception(exc)
             exit(1)
+
+    def dsc(self, fn, *args, **kwargs):
+        tries, retries_max = 0, 15
+        while tries <= retries_max:
+            if tries > 0:
+                if tries == 1:
+                    sys.stdout.write('Waiting for server: ')
+                sys.stdout.write('.')
+                sys.stdout.flush()
+            server_rc = fn(*args, **kwargs)
+            try:
+                # single int return codes like ping
+                server_rc = int(server_rc)
+                return server_rc
+            except:
+                pass
+            if len(server_rc) > 1:
+                chk = server_rc[0]
+                if not isinstance(chk[0], dbus.Struct):
+                    chk = dbus.Array([dbus.Struct(server_rc[0])])
+            else:
+                chk = server_rc
+            if self._is_rc_retry(chk):
+                tries += 1
+                time.sleep(2)
+                continue
+            else:
+                break
+        if tries > 0:
+            sys.stdout.write('\n')
+
+        return server_rc
 
     def setup_parser(self):
         parser = argparse.ArgumentParser(prog='drbdmanage')
@@ -216,11 +247,7 @@ class DrbdManage(object):
         p_new_node.add_argument('-l', '--satellite',
                                 action="store_true",
                                 help='This node does not have a copy of the control volume'
-                                ' in persistent storage. It is used as a satellite node')
-        p_new_node.add_argument('-c', '--control-node',
-                                help='Node name of the control node (the one with access to a control volume).'
-                                ' Only valid if "--satellite" was given. By default the hostname of the node'
-                                ' where this command was executed.').completer = node_completer
+                                ' in persistent storage. It is always used as a satellite node')
         p_new_node.add_argument('-e', '--external', action="store_true",
                                 help='External node that is neither a control node nor a satellite')
         p_new_node.add_argument('-s', '--no-storage', action="store_true")
@@ -730,7 +757,7 @@ class DrbdManage(object):
                          func=self.cmd_restart)
 
         # nodes
-        nodesverbose = ('Family', 'IP', 'Site', 'CTRL_Node')
+        nodesverbose = ('Family', 'IP', 'Site')
         nodesgroupby = ('Name', 'Pool_Size', 'Pool_Free', 'Family', 'IP', 'State')
 
         def show_group_completer(lst, where):
@@ -958,6 +985,10 @@ class DrbdManage(object):
                                  'server should answer with a "pong"')
         p_ping.set_defaults(func=self.cmd_ping)
 
+        # wait-for-startup
+        p_ping = subp.add_parser('wait-for-startup', description='Wait until server is started up')
+        p_ping.set_defaults(func=self.cmd_wait_for_startup)
+
         # startup
         p_startup = subp.add_parser('startup',
                                     description='Start the server via D-Bus')
@@ -1152,15 +1183,6 @@ class DrbdManage(object):
         p_exportconf.set_defaults(func=self.cmd_edit_config)
         p_exportconf.set_defaults(type="export")
 
-        # assign-satellite
-        p_assign_satellite = subp.add_parser('assign-satellite',
-                                             description='Assingn a satellite node to a control node')
-        p_assign_satellite.add_argument('satellite', type=check_node_name,
-                                        help='Name of the satellite node').completer = node_completer
-        p_assign_satellite.add_argument('controlnode', type=check_node_name,
-                                        help='Name of the control node').completer = node_completer
-        p_assign_satellite.set_defaults(func=self.cmd_assign_satellite)
-
         # export ctrl-vol
         p_exportctrlvol = subp.add_parser('export-ctrlvol',
                                           description='Export drbdmanage control volume as json blob')
@@ -1194,6 +1216,15 @@ class DrbdManage(object):
         p_dbustrace.add_argument('-m', '--maxlog', help='Maximum number of tracing entries', type=int)
         p_dbustrace.set_defaults(func=self.cmd_dbustrace)
         p_dbustrace.set_defaults(command=p_dbustrace_command)
+
+        # reelect
+        p_reelect = subp.add_parser('reelect', description='Reelect leader. DO NOT USE this command '
+                                    'if you do not understand all implications!')
+        p_reelect.add_argument('--force-win', action='store_true',
+                               help='This is a last resort command to bring up a single leader '
+                               'in order to get access to the control volume (e.g. remove node '
+                               'in 2 node cluster)')
+        p_reelect.set_defaults(func=self.cmd_reelect)
 
         argcomplete.autocomplete(parser)
 
@@ -1346,7 +1377,7 @@ class DrbdManage(object):
     def cmd_poke(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.poke()
+        server_rc = self.dsc(self._server.poke)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1354,7 +1385,6 @@ class DrbdManage(object):
         fn_rc = 1
         name = args.name
         satellite = args.satellite
-        control_node = args.control_node
         ip = args.ip
         af = args.address_family
         if af is None:
@@ -1370,19 +1400,11 @@ class DrbdManage(object):
             sys.stderr.write('Currently not implemented\n')
             sys.exit(1)
             # end rm
-            if control_node or satellite:
-                sys.stderr.write('Not allowed to mix --external with --control-node or --satellite\n')
+            if satellite:
+                sys.stderr.write('Not allowed to mix --external with --satellite\n')
                 sys.exit(1)
             flag_storage = False
             flag_drbdctrl = False
-        elif control_node and not satellite:
-            sys.stderr.write('Not allowed to specify --control-node without --satellite\n')
-            sys.exit(1)
-        elif satellite and not control_node:
-            control_node = get_uname()
-            if not control_node:
-                sys.stderr.write('Could not guess --control-node name\n')
-                sys.exit(1)
 
         props = dbus.Dictionary(signature="ss")
         props[NODE_ADDR] = ip
@@ -1391,17 +1413,15 @@ class DrbdManage(object):
             props[FLAG_DRBDCTRL] = bool_to_string(flag_drbdctrl)
         if not flag_storage:
             props[FLAG_STORAGE] = bool_to_string(flag_storage)
-        if control_node:
-            props[NODE_CONTROL_NODE] = control_node
         if flag_external:
             props[FLAG_EXTERNAL] = bool_to_string(flag_external)
 
         self.dbus_init()
-        server_rc = self._server.create_node(name, props)
+        server_rc = self.dsc(self._server.create_node, name, props)
         fn_rc = self._list_rc_entries(server_rc)
 
         if fn_rc == 0:  # join node
-            server_rc, joinc = self._server.text_query(["joinc", name])
+            server_rc, joinc = self.dsc(self._server.text_query, ["joinc", name])
             joinc_text = str(" ".join(joinc))
 
             fn_rc = self._list_rc_entries(server_rc)
@@ -1414,6 +1434,11 @@ class DrbdManage(object):
             else:
                 join_performed = False
                 if flag_autojoin:
+                    # ssh_exec("wait-for-startup", ip, name, ['drbdmanage', 'wait-for-startup'],
+                    #          False, False)
+                    # THINK: the following is racy:
+                    # leader may not have contacted satellite before calling "join" (which wants persistence)
+                    # self._server.poke()
                     join_performed = ssh_exec("join", ip, name, joinc,
                                               args.quiet or satellite, satellite)
                 if not join_performed:
@@ -1431,8 +1456,7 @@ class DrbdManage(object):
         props[RES_PORT] = str(port)
 
         self.dbus_init()
-        server_rc = self._server.create_resource(dbus.String(name),
-                                                 props)
+        server_rc = self.dsc(self._server.create_resource, dbus.String(name), props)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1451,9 +1475,7 @@ class DrbdManage(object):
             props = dbus.Dictionary(signature="ss")
 
             self.dbus_init()
-            server_rc = self._server.create_resource(
-                dbus.String(name), props
-            )
+            server_rc = self.dsc(self._server.create_resource, dbus.String(name), props)
             for rc_entry in server_rc:
                 try:
                     rc_num, rc_fmt, rc_args = rc_entry
@@ -1467,17 +1489,15 @@ class DrbdManage(object):
             if fn_rc == 0:
                 props = dbus.Dictionary(signature="ss")
                 props[VOL_MINOR] = str(minor)
-                server_rc = self._server.create_volume(
-                    dbus.String(name),
-                    dbus.Int64(size), props
-                )
+                server_rc = self.dsc(self._server.create_volume,
+                                     dbus.String(name),
+                                     dbus.Int64(size), props)
                 fn_rc = self._list_rc_entries(server_rc)
 
                 if fn_rc == 0 and deploy is not None:
-                    server_rc = self._server.auto_deploy(
-                        dbus.String(name), dbus.Int32(deploy), dbus.Int32(0),
-                        dbus.Boolean(False)
-                    )
+                    server_rc = self.dsc(self._server.auto_deploy,
+                                         dbus.String(name), dbus.Int32(deploy), dbus.Int32(0),
+                                         dbus.Boolean(False))
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1492,9 +1512,9 @@ class DrbdManage(object):
             size   = self._get_volume_size_arg(args)
 
             self.dbus_init()
-            server_rc = self._server.resize_volume(
-                dbus.String(name), dbus.Int32(vol_id), dbus.Int64(0), dbus.Int64(size), dbus.Int64(0)
-            )
+            server_rc = self.dsc(self._server.resize_volume,
+                                 dbus.String(name), dbus.Int32(vol_id),
+                                 dbus.Int64(0), dbus.Int64(size), dbus.Int64(0))
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1544,9 +1564,8 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.modify_node(
-                dbus.String(args.name), 0, props
-            )
+            server_rc = self.dsc(self._server.modify_node,
+                                 dbus.String(args.name), 0, props)
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1571,9 +1590,8 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.modify_resource(
-                dbus.String(args.name), 0, props
-            )
+            server_rc = self.dsc(self._server.modify_resource,
+                                 dbus.String(args.name), 0, props)
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1593,9 +1611,8 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.modify_volume(
-                dbus.String(args.name), dbus.Int32(args.id), 0, props
-            )
+            server_rc = self.dsc(self._server.modify_volume,
+                                 dbus.String(args.name), dbus.Int32(args.id), 0, props)
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1615,9 +1632,8 @@ class DrbdManage(object):
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc = self._server.modify_assignment(
-                dbus.String(args.resource), dbus.String(args.node), 0, props
-            )
+            server_rc = self.dsc(self._server.modify_assignment,
+                                 dbus.String(args.resource), dbus.String(args.node), 0, props)
             fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1641,9 +1657,8 @@ class DrbdManage(object):
                 )
             if confirmed:
                 self.dbus_init()
-                server_rc = self._server.remove_node(
-                    dbus.String(node_name), dbus.Boolean(force)
-                )
+                server_rc = self.dsc(self._server.remove_node,
+                                     dbus.String(node_name), dbus.Boolean(force))
                 if display_names:
                     sys.stdout.write("Removing node '%s':\n" % (node_name))
                 item_rc = self._list_rc_entries(server_rc)
@@ -1671,9 +1686,8 @@ class DrbdManage(object):
                     % (res_name)
                 )
             if confirmed:
-                server_rc = self._server.remove_resource(
-                    dbus.String(res_name), dbus.Boolean(force)
-                )
+                server_rc = self.dsc(self._server.remove_resource,
+                                     dbus.String(res_name), dbus.Boolean(force))
                 if display_names:
                     sys.stdout.write("Removing resource '%s':\n" % (res_name))
                 item_rc = self._list_rc_entries(server_rc)
@@ -1699,10 +1713,8 @@ class DrbdManage(object):
             )
         if quiet:
             self.dbus_init()
-            server_rc = self._server.remove_volume(
-                dbus.String(vol_name), dbus.Int32(vol_id),
-                dbus.Boolean(force)
-            )
+            server_rc = self.dsc(self._server.remove_volume,
+                                 dbus.String(vol_name), dbus.Int32(vol_id), dbus.Boolean(force))
             fn_rc = self._list_rc_entries(server_rc)
         else:
             fn_rc = 0
@@ -1722,10 +1734,9 @@ class DrbdManage(object):
         res_name = args.resource
 
         self.dbus_init()
-        server_rc = self._server.connect(
-            dbus.String(node_name), dbus.String(res_name),
-            dbus.Boolean(reconnect)
-        )
+        server_rc = self.dsc(self._server.connect,
+                             dbus.String(node_name), dbus.String(res_name),
+                             dbus.Boolean(reconnect))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
@@ -1737,10 +1748,9 @@ class DrbdManage(object):
         res_name = args.resource
 
         self.dbus_init()
-        server_rc = self._server.disconnect(
-            dbus.String(node_name), dbus.String(res_name),
-            dbus.Boolean(False)
-        )
+        server_rc = self.dsc(self._server.disconnect,
+                             dbus.String(node_name), dbus.String(res_name),
+                             dbus.Boolean(False))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1777,10 +1787,9 @@ class DrbdManage(object):
                 clear_mask |= Assignment.FLAG_DISCARD
 
         self.dbus_init()
-        server_rc = self._server.modify_state(
-            dbus.String(node_name), dbus.String(res_name), dbus.UInt64(0),
-            dbus.UInt64(0), dbus.UInt64(clear_mask), dbus.UInt64(set_mask)
-        )
+        server_rc = self.dsc(self._server.modify_state,
+                             dbus.String(node_name), dbus.String(res_name), dbus.UInt64(0),
+                             dbus.UInt64(0), dbus.UInt64(clear_mask), dbus.UInt64(set_mask))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
@@ -1801,10 +1810,9 @@ class DrbdManage(object):
         else:
             sys.stderr.write("Wether attach nor detach\n")
             exit(1)
-        server_rc = func(
-            dbus.String(node_name), dbus.String(res_name),
-            dbus.Int32(vol_id)
-        )
+        server_rc = self.dsc(func,
+                             dbus.String(node_name), dbus.String(res_name),
+                             dbus.Int32(vol_id))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
@@ -1850,9 +1858,8 @@ class DrbdManage(object):
         for node_name in args.node:
             if display_names:
                 sys.stdout.write("Assigning to node '%s':\n" % (node_name))
-            server_rc = self._server.assign(
-                dbus.String(node_name), dbus.String(res_name), props
-            )
+            server_rc = self.dsc(self._server.assign,
+                                 dbus.String(node_name), dbus.String(res_name), props)
             item_rc = self._list_rc_entries(server_rc)
             if display_names:
                 sys.stdout.write("\n")
@@ -1868,7 +1875,7 @@ class DrbdManage(object):
 
         self.dbus_init()
         server_rc, free_space, total_space = (
-            self._server.cluster_free_query(dbus.Int32(redundancy))
+            self.dsc(self._server.cluster_free_query,dbus.Int32(redundancy))
         )
 
         successful = self._is_rc_successful(server_rc)
@@ -1900,10 +1907,9 @@ class DrbdManage(object):
             count, delta = delta, count
 
         self.dbus_init()
-        server_rc = self._server.auto_deploy(
-            dbus.String(res_name), dbus.Int32(count),
-            dbus.Int32(delta), dbus.Boolean(site_clients)
-        )
+        server_rc = self.dsc(self._server.auto_deploy,
+                             dbus.String(res_name), dbus.Int32(count),
+                             dbus.Int32(delta), dbus.Boolean(site_clients))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
@@ -1922,9 +1928,8 @@ class DrbdManage(object):
             )
         if quiet:
             self.dbus_init()
-            server_rc = self._server.auto_undeploy(
-                dbus.String(res_name), dbus.Boolean(force)
-            )
+            server_rc = self.dsc(self._server.auto_undeploy,
+                                 dbus.String(res_name), dbus.Boolean(force))
             fn_rc = self._list_rc_entries(server_rc)
         else:
             fn_rc = 0
@@ -1934,28 +1939,28 @@ class DrbdManage(object):
     def cmd_update_pool(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.update_pool(dbus.Array([], signature="s"))
+        server_rc = self.dsc(self._server.update_pool, dbus.Array([], signature="s"))
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
     def cmd_reconfigure(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.reconfigure()
+        server_rc = self.dsc(self._server.reconfigure)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
     def cmd_save(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.save_conf()
+        server_rc = self.dsc(self._server.save_conf)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
     def cmd_load(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc = self._server.load_conf()
+        server_rc = self.dsc(self._server.load_conf)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -1973,7 +1978,7 @@ class DrbdManage(object):
         for node_name in args.node:
             if display_names:
                 sys.stdout.write("Unassigning from node '%s':\n" % (node_name))
-            server_rc = self._server.unassign(node_name, res_name, force)
+            server_rc = self.dsc(self._server.unassign, node_name, res_name, force)
             item_rc = self._list_rc_entries(server_rc)
             if display_names:
                 sys.stdout.write("\n")
@@ -2001,7 +2006,7 @@ class DrbdManage(object):
         for node_name in args.name:
             if display_names:
                 sys.stdout.write("Modifying quorum state of node '%s':\n" % (node_name))
-            server_rc = self._server.quorum_control(
+            server_rc = self.dsc(self._server.quorum_control,
                 dbus.String(node_name), props, dbus.Boolean(override)
             )
             item_rc = self._list_rc_entries(server_rc)
@@ -2022,7 +2027,7 @@ class DrbdManage(object):
         props = dbus.Dictionary(signature="ss")
 
         self.dbus_init()
-        server_rc = self._server.create_snapshot(
+        server_rc = self.dsc(self._server.create_snapshot,
             dbus.String(res_name), dbus.String(snaps_name),
             dbus.Array(node_list, signature="s"), props
         )
@@ -2041,7 +2046,7 @@ class DrbdManage(object):
         for snaps_name in args.snapshot:
             if display_names:
                 sys.stdout.write("Removing snapshot '%s':\n" % (snaps_name))
-            server_rc = self._server.remove_snapshot(
+            server_rc = self.dsc(self._server.remove_snapshot,
                 dbus.String(res_name), dbus.String(snaps_name), force
             )
             item_rc = self._list_rc_entries(server_rc)
@@ -2061,7 +2066,7 @@ class DrbdManage(object):
         force = args.force
 
         self.dbus_init()
-        server_rc = self._server.remove_snapshot_assignment(
+        server_rc = self.dsc(self._server.remove_snapshot_assignment,
             dbus.String(res_name), dbus.String(snaps_name),
             dbus.String(node_name), force
         )
@@ -2080,7 +2085,7 @@ class DrbdManage(object):
         vols_props = dbus.Dictionary(signature="ss")
 
         self.dbus_init()
-        server_rc = self._server.restore_snapshot(
+        server_rc = self.dsc(self._server.restore_snapshot,
             dbus.String(res_name), dbus.String(snaps_res_name),
             dbus.String(snaps_name), res_props, vols_props
         )
@@ -2090,7 +2095,7 @@ class DrbdManage(object):
 
     def cmd_resume_all(self, args):
         self.dbus_init()
-        server_rc = self._server.resume_all()
+        server_rc = self.dsc(self._server.resume_all)
         fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
@@ -2109,7 +2114,7 @@ class DrbdManage(object):
         if quiet:
             try:
                 self.dbus_init()
-                self._server.shutdown(props)
+                self.dsc(self._server.shutdown, props)
             except dbus.exceptions.DBusException:
                 # An exception is expected here, as the server
                 # probably will not answer
@@ -2128,12 +2133,11 @@ class DrbdManage(object):
     def _get_nodes(self, sort=False, node_filter=[]):
         self.dbus_init()
 
-        server_rc, node_list = self._server.list_nodes(
-            dbus.Array(node_filter, signature="s"),
-            0,
-            dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s")
-        )
+        server_rc, node_list = self.dsc(self._server.list_nodes,
+                                        dbus.Array(node_filter, signature="s"),
+                                        0,
+                                        dbus.Dictionary({}, signature="ss"),
+                                        dbus.Array([], signature="s"))
 
         if sort:
             node_list.sort(key=lambda node_entry: node_entry[0])
@@ -2166,7 +2170,6 @@ class DrbdManage(object):
         t.add_column("Name", color=color(COLOR_TEAL))
         t.add_column("Pool_Size", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Pool_Free", color=color(COLOR_BROWN), just_txt='>')
-        t.add_column("CTRL_Node", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Site", color=color(COLOR_BROWN), just_txt='>')
         t.add_column("Family", just_txt='>')
         t.add_column("IP", just_txt='>')
@@ -2188,7 +2191,6 @@ class DrbdManage(object):
                 v_addr = self._property_text(view.get_property(NODE_ADDR))
                 ns = Props.NAMESPACES[Props.KEY_DMCONFIG]
                 v_site = self._property_text(view.get_property(ns + NODE_SITE))
-                v_control_node = self._property_text(view.get_property(KEY_ISSATELLITE))
                 if not machine_readable:
                     prop_str = view.get_property(NODE_POOLSIZE)
                     try:
@@ -2227,7 +2229,7 @@ class DrbdManage(object):
                     level, state_text = view.state_info()
                     level_color = self._level_color(level)
                     row_data = [
-                        node_name, poolsize_text, poolfree_text, v_control_node, v_site,
+                        node_name, poolsize_text, poolfree_text, v_site,
                         "ipv" + v_af, v_addr, (level_color, state_text)
                     ]
                     t.add_row(row_data)
@@ -2261,19 +2263,17 @@ class DrbdManage(object):
         self.dbus_init()
 
         if list_volumes:
-            server_rc, res_list = self._server.list_volumes(
-                dbus.Array(resource_filter, signature="s"),
-                0,
-                dbus.Dictionary({}, signature="ss"),
-                dbus.Array([], signature="s")
-            )
+            server_rc, res_list = self.dsc(self._server.list_volumes,
+                                           dbus.Array(resource_filter, signature="s"),
+                                           0,
+                                           dbus.Dictionary({}, signature="ss"),
+                                           dbus.Array([], signature="s"))
         else:
-            server_rc, res_list = self._server.list_resources(
-                dbus.Array(resource_filter, signature="s"),
-                0,
-                dbus.Dictionary({}, signature="ss"),
-                dbus.Array([], signature="s")
-            )
+            server_rc, res_list = self.dsc(self._server.list_resources,
+                                           dbus.Array(resource_filter, signature="s"),
+                                           0,
+                                           dbus.Dictionary({}, signature="ss"),
+                                           dbus.Array([], signature="s"))
 
         # sort the resource list by resource name
         res_list.sort(key=lambda res_entry: res_entry[0])
@@ -2409,13 +2409,12 @@ class DrbdManage(object):
     def _list_snapshots(self, resource_filter=[]):
         self.dbus_init()
 
-        server_rc, res_list = self._server.list_snapshots(
-            dbus.Array(resource_filter, signature="s"),
-            dbus.Array([], signature="s"),
-            0,
-            dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s")
-        )
+        server_rc, res_list = self.dsc(self._server.list_snapshots,
+                                       dbus.Array(resource_filter, signature="s"),
+                                       dbus.Array([], signature="s"),
+                                       0,
+                                       dbus.Dictionary({}, signature="ss"),
+                                       dbus.Array([], signature="s"))
 
         # sort the list by resource name
         res_list.sort(key=lambda res_entry: res_entry[0])
@@ -2481,14 +2480,13 @@ class DrbdManage(object):
         node_filter_arg = [] if args.nodes is None else args.nodes
         resource_filter_arg = [] if args.resources is None else args.resources
 
-        server_rc, assg_list = self._server.list_snapshot_assignments(
-            dbus.Array(resource_filter_arg, signature="s"),
-            dbus.Array([], signature="s"),
-            dbus.Array(node_filter_arg, signature="s"),
-            0,
-            dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s")
-        )
+        server_rc, assg_list = self.dsc(self._server.list_snapshot_assignments,
+                                        dbus.Array(resource_filter_arg, signature="s"),
+                                        dbus.Array([], signature="s"),
+                                        dbus.Array(node_filter_arg, signature="s"),
+                                        0,
+                                        dbus.Dictionary({}, signature="ss"),
+                                        dbus.Array([], signature="s"))
 
         if (not machine_readable) and (assg_list is None or len(assg_list) == 0):
             sys.stdout.write("Snapshot assignment list is empty\n")
@@ -2547,13 +2545,12 @@ class DrbdManage(object):
         node_filter_arg = [] if args.nodes is None else args.nodes
         resource_filter_arg = [] if args.resources is None else args.resources
 
-        server_rc, assg_list = self._server.list_assignments(
-            dbus.Array(node_filter_arg, signature="s"),
-            dbus.Array(resource_filter_arg, signature="s"),
-            0,
-            dbus.Dictionary({}, signature="ss"),
-            dbus.Array([], signature="s")
-        )
+        server_rc, assg_list = self.dsc(self._server.list_assignments,
+                                        dbus.Array(node_filter_arg, signature="s"),
+                                        dbus.Array(resource_filter_arg, signature="s"),
+                                        0,
+                                        dbus.Dictionary({}, signature="ss"),
+                                        dbus.Array([], signature="s"))
         if (not machine_readable) and (assg_list is None or len(assg_list) == 0):
             sys.stdout.write("No assignments defined\n")
             return 0
@@ -2633,7 +2630,7 @@ class DrbdManage(object):
         self.dbus_init()
         display_names = (len(args.resource) > 1)
         for res_name in args.resource:
-            server_rc = self._server.export_conf(dbus.String(res_name))
+            server_rc = self.dsc(self._server.export_conf, dbus.String(res_name))
             if display_names:
                 sys.stdout.write("Exporting resource '%s':\n" % (res_name))
             item_rc = self._list_rc_entries(server_rc)
@@ -2657,7 +2654,7 @@ class DrbdManage(object):
             format += " --quiet"
         format += "\n"
         self.dbus_init()
-        server_rc, joinc = self._server.text_query(["joinc", node_name])
+        server_rc, joinc = self.dsc(self._server.text_query, ["joinc", node_name])
         sys.stdout.write('IMPORTANT: Execute the following command only on node %s!\n' % (node_name))
         sys.stdout.write(format % " ".join(joinc))
         if 'restart' in joinc:  # here we should query if it is a satellite node, take the easy path
@@ -2675,7 +2672,7 @@ class DrbdManage(object):
 
         self.dbus_init()
         query = ["version"]
-        server_rc, version_info = self._server.text_query(query)
+        server_rc, version_info = self.dsc(self._server.text_query, query)
         for entry in version_info:
             sys.stdout.write("%s\n" % entry)
 
@@ -2691,7 +2688,7 @@ class DrbdManage(object):
 
         self.dbus_init()
         query = ["message_log"]
-        server_rc, messages = self._server.text_query(query)
+        server_rc, messages = self.dsc(self._server.text_query, query)
         if len(messages) == 0:
             sys.stdout.write("Message log is empty.\n")
         else:
@@ -2709,7 +2706,7 @@ class DrbdManage(object):
 
         self.dbus_init()
         query = ["clear_message_log"]
-        server_rc, messages = self._server.text_query(query)
+        server_rc, messages = self.dsc(self._server.text_query, query)
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc
@@ -2770,7 +2767,7 @@ class DrbdManage(object):
         res_name = args.resource
 
         self.dbus_init()
-        server_rc, res_config = self._server.text_query(
+        server_rc, res_config = self.dsc(self._server.text_query,
             [
                 "export_conf",
                 node_name, res_name
@@ -2791,11 +2788,24 @@ class DrbdManage(object):
 
         return fn_rc
 
+    def cmd_wait_for_startup(self, args):
+        """
+        Retrieves the configuration file for a resource on a specified node
+        """
+        fn_rc = 1
+
+        self.cmd_ping({})
+        self.dbus_init()
+        server_rc = self.dsc(self._server.wait_for_startup)
+        fn_rc = self._list_rc_entries(server_rc)
+
+        return fn_rc
+
     def cmd_ping(self, args):
         fn_rc = 1
         try:
             self.dbus_init()
-            server_rc = self._server.ping()
+            server_rc = self.dsc(self._server.ping)
             if server_rc == 0:
                 sys.stdout.write("pong\n")
                 fn_rc = 0
@@ -2816,6 +2826,7 @@ class DrbdManage(object):
                 "D-Bus activation...\n"
             )
             self.dbus_init()
+            # no dsc, just returns 0, THINK could/should be changed
             server_rc = self._server.ping()
             if server_rc == 0:
                 sys.stdout.write(
@@ -2887,7 +2898,7 @@ Confirm:
                 props = dbus.Dictionary(signature="ss")
                 props[KEY_S_CMD_SHUTDOWN] = BOOL_TRUE
                 try:
-                    self._server.shutdown(props)
+                    self.dsc(self._server.shutdown, props)
                 except dbus.exceptions.DBusException:
                     # Shutdown always causes an exception,
                     # because the server does not answer
@@ -2907,9 +2918,8 @@ Confirm:
                 self._server = self._dbus.get_object(
                     DBUS_DRBDMANAGED, DBUS_SERVICE
                 )
-                server_rc = self._server.init_node(
-                    dbus.String(node_name), props
-                )
+                server_rc = self.dsc(self._server.init_node,
+                                     dbus.String(node_name), props)
 
                 fn_rc = self._list_rc_entries(server_rc)
             else:
@@ -2942,7 +2952,7 @@ Confirm:
                 try:
                     self.dbus_init()
                     props = dbus.Dictionary(signature="ss")
-                    self._server.shutdown(props)
+                    self.dsc(self._server.shutdown, props)
                 except dbus.exceptions.DBusException:
                     # The server does not answer after a shutdown,
                     # or it might not have been running in the first place,
@@ -3085,7 +3095,7 @@ Confirm:
                 props[NODE_VOL_0] = drbdctrl_blockdev_0
                 props[NODE_VOL_1] = drbdctrl_blockdev_1
                 props[NODE_SECRET] = secret
-                server_rc = self._server.join_node(props)
+                server_rc = self.dsc(self._server.join_node, props)
                 end_time = time.time()
                 time_set = True
                 for rc_entry in server_rc:
@@ -3382,6 +3392,13 @@ Confirm:
         successful = (self._process_rc_entries(server_rc, False) == 0)
         return successful
 
+    def _is_rc_retry(self, server_rc):
+        for rc_entry in server_rc:
+            rc_num, _, _ = rc_entry
+            if rc_num == DM_ENOTREADY:
+                return True
+        return False
+
     def _process_rc_entries(self, server_rc, output):
         """
         Processes a list of server return codes
@@ -3424,7 +3441,7 @@ Confirm:
         command = args.cmd
         try:
             self.dbus_init()
-            fn_rc = self._server.debug_console(dbus.String(command))
+            fn_rc = self.dsc(self._server.debug_console, dbus.String(command))
             sys.stderr.write("fn_rc=%d, %s\n" % (fn_rc, command))
         except dbus.exceptions.DBusException:
             sys.stderr.write(
@@ -3452,7 +3469,7 @@ Confirm:
         fn_rc = 1
         try:
             self.dbus_init()
-            fn_rc = self._server.set_drbdsetup_props(opts)
+            fn_rc = self.dsc(self._server.set_drbdsetup_props, opts)
         except dbus.exceptions.DBusException:
             sys.stderr.write(
                 "drbdmanage: cannot connect to the drbdmanage "
@@ -3538,7 +3555,7 @@ Confirm:
         }
 
         self.dbus_init()
-        ret, conf = self._server.get_selected_config_values([KEY_DRBD_CONFPATH])
+        ret, conf = self.dsc(self._server.get_selected_config_values, [KEY_DRBD_CONFPATH])
 
         res_file = 'drbdmanage_' + args.resource + '.res'
         conf_path = self._get_conf_path(conf)
@@ -3589,13 +3606,13 @@ Confirm:
 
         if args.node:
             cfgtype = CONF_NODE
-            server_rc, plugins = self._server.get_plugin_default_config()
+            server_rc, plugins = self.dsc(self._server.get_plugin_default_config)
             plugin_names = [p['name'] for p in plugins]
         else:
             cfgtype = CONF_GLOBAL
 
         # get all known config keys
-        server_rc, config_keys = self._server.get_config_keys()
+        server_rc, config_keys = self.dsc(self._server.get_config_keys)
 
         # setting the drbdctrl-vg here is not allowed
         # only allowed via the config file
@@ -3603,10 +3620,10 @@ Confirm:
         config_keys = filter_prohibited(config_keys, prohibited)
 
         # get all config options that are set cluster wide (aka GLOBAL)
-        server_rc, cluster_config = self._server.get_cluster_config()
+        server_rc, cluster_config = self.dsc(self._server.get_cluster_config)
 
         # get all site configuration
-        server_rc, site_config = self._server.get_site_config()
+        server_rc, site_config = self.dsc(self._server.get_site_config)
 
         cfg.add_section('GLOBAL')
         for k, v in cluster_config.items():
@@ -3699,7 +3716,6 @@ Confirm:
 
         shutil.copyfile(tmpf, orig)
 
-        import subprocess
         if args.type == 'export':
             prog = 'cat'
             if args.file:
@@ -3774,31 +3790,29 @@ Confirm:
         # print cfgdict['sites']
         # print cfgdict['sites']
 
-        server_rc = self._server.set_cluster_config(cfgdict)
+        server_rc = self.dsc(self._server.set_cluster_config, cfgdict)
 
         return server_rc
-
-    def cmd_assign_satellite(self, args):
-        fn_rc = 1
-        satellite = args.satellite
-        control_node = args.controlnode
-
-        props = dbus.Dictionary(signature="ss")
-        props[NODE_CONTROL_NODE] = control_node
-        props[NODE_SATELLITE_NODE] = satellite
-        self.dbus_init()
-        server_rc = self._server.assign_satellite(props)
-        fn_rc = self._list_rc_entries(server_rc)
-
-        if fn_rc == 0:
-            pass
-
-        return fn_rc
 
     def cmd_role(self, args):
         fn_rc = 1
         self.dbus_init()
-        server_rc, role = self._server.role()
+        server_rc, role = self.dsc(self._server.role)
+        fn_rc = self._list_rc_entries(server_rc)
+
+        if fn_rc == 0:
+            sys.stdout.write('%s\n' % (role))
+
+        return fn_rc
+
+    def cmd_reelect(self, args):
+        fn_rc = 1
+        props = {}
+        props[FLAG_FORCEWIN] = bool_to_string(args.force_win)
+
+        self.dbus_init()
+        # no dsc. allow anytime
+        server_rc, role = self._server.reelect(props)
         fn_rc = self._list_rc_entries(server_rc)
 
         if fn_rc == 0:
@@ -3822,7 +3836,7 @@ Confirm:
                 raise SyntaxException
 
             self.dbus_init()
-            server_rc, fname = self._server.dbus_tracer(props)
+            server_rc, fname = self.dsc(self._server.dbus_tracer, props)
             fn_rc = self._list_rc_entries(server_rc)
 
             if fn_rc == 0 and args.stop:
@@ -3841,7 +3855,7 @@ Confirm:
 
         self.dbus_init()
 
-        server_rc, jsonblob = self._server.get_ctrlvol()
+        server_rc, jsonblob = self.dsc(self._server.get_ctrlvol)
         fn_rc = self._list_rc_entries(server_rc)
         if fn_rc == 0:
             outf.write(jsonblob)
@@ -3865,7 +3879,7 @@ Confirm:
             inf.close()
 
         self.dbus_init()
-        server_rc = self._server.set_ctrlvol(jsonblob)
+        server_rc = self.dsc(self._server.set_ctrlvol, jsonblob)
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc

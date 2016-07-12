@@ -25,6 +25,8 @@ import uuid
 import drbdmanage.consts as consts
 import logging
 import locale
+import pickle
+import copy_reg
 import ConfigParser
 from functools import wraps
 from drbdmanage.exceptions import SyntaxException, InvalidNameException
@@ -346,6 +348,23 @@ def ssh_exec(cmdname, ip, name, cmdline, quiet=False, suppress_stderr=False):
                          "failed\n" % (cmdname))
 
     return False
+
+
+def drbdctrl_has_primary():
+    try:
+        call_str = '%s events2 --now %s | grep role:Primary' % (consts.DRBDSETUP_UTIL,
+                                                                consts.DRBDCTRL_RES_NAME)
+        output = check_output(call_str, shell=True)  # raise if rc != 0
+        output = output.strip()
+        for i in output.split():
+            kv = i.split(':')
+            if len(kv) == 2 and kv[0] == 'conn-name':
+                return True, kv[1]
+        return True, ''
+    except:
+        pass
+
+    return False, ''
 
 
 # base range check
@@ -1648,6 +1667,38 @@ def generic_trace_exit_code(log_handler, source, trace_id, command, exit_code):
             "%s: External command '%s': Exit code %d"
             % (source, command, exit_code)
         )
+
+
+def pickle_dbus(name, args, kwargs):
+    def pickle_dbus_int(x):
+        return int, (int(x),)
+
+    def pickle_dbus_str(x):
+        return str, (str(x),)
+
+    def pickle_dbus_boolean(x):
+        return bool, (bool(x),)
+
+    def pickle_dbus_double(x):
+        return float, (float(x),)
+
+    def pickle_dbus_array(x):
+        return list, (list(x),)
+
+    def pickle_dbus_dictionary(x):
+        return dict, (dict(x),)
+
+    copy_reg.pickle(dbus.Int16, pickle_dbus_int)
+    copy_reg.pickle(dbus.Int32, pickle_dbus_int)
+    copy_reg.pickle(dbus.Int64, pickle_dbus_int)
+    copy_reg.pickle(dbus.String, pickle_dbus_str)
+    copy_reg.pickle(dbus.Boolean, pickle_dbus_boolean)
+    copy_reg.pickle(dbus.Double, pickle_dbus_double)
+    copy_reg.pickle(dbus.Array, pickle_dbus_array)
+    copy_reg.pickle(dbus.Dictionary, pickle_dbus_dictionary)
+
+    return pickle.dumps({'name': name, 'args': args, 'kwargs': kwargs})
+
 
 def log_in_out(f):
     @wraps(f)

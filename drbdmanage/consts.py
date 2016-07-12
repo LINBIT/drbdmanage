@@ -20,6 +20,10 @@ except:
 DBUS_DRBDMANAGED = "org.drbd.drbdmanaged"
 DBUS_SERVICE     = "/interface"
 
+DRBDADM_UTIL   = "drbdadm"
+DRBDMETA_UTIL  = "drbdmeta"
+DRBDSETUP_UTIL = "drbdsetup"
+
 SERIAL              = "serial"
 NODE_NAME           = "node_name"
 NODE_ADDR           = "addr"
@@ -34,8 +38,6 @@ NODE_SITE           = "site"
 NODE_POOLSIZE       = "node_poolsize"
 NODE_POOLFREE       = "node_poolfree"
 NODE_STATE          = "node_state"
-NODE_CONTROL_NODE   = "control_node"
-NODE_SATELLITE_NODE = "satellite_node"
 RES_NAME            = "res_name"
 RES_PORT            = "port"
 RES_SECRET          = "secret"
@@ -113,8 +115,6 @@ KEY_SERVER_INSTANCE = "serverinstance"
 # additional configuration keys
 KEY_SITE = 'site'
 
-KEY_ISSATELLITE = "isSatellite"
-
 KEY_COLORS = "colors"
 KEY_UTF8 = "utf8"
 
@@ -154,6 +154,9 @@ IND_NODE_OFFLINE    = "node_offline"
 # volume states:
 FLAG_ATTACH         = "attach"
 
+# reelection
+FLAG_FORCEWIN = "forcewin"
+
 # boolean expressions
 BOOL_TRUE           = "true"
 BOOL_FALSE          = "false"
@@ -169,10 +172,7 @@ PLUGIN_PREFIX = 'Plugin:'
 
 # ### satellites ###
 # is satellite, should be a control node but could not access ctrlvol, is control node
-SAT_SATELLITE, SAT_SHOULD_CONTROL_NODE, SAT_CONTROL_NODE = range(3)
-# connection state to satellite
-# SHUTDOWN and STARTUP are states that should be reached but are not currently reached
-SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP = range(3)
+SAT_SATELLITE, SAT_POTENTIAL_LEADER_NODE, SAT_LEADER_NODE = range(3)
 # cfg
 KEY_SAT_CFG_SATELLITE = 'satellite'
 KEY_SAT_CFG_CONTROL_NODE = 'controlnode'
@@ -191,6 +191,9 @@ DEFAULT_SAT_CFG_TCP_KEEPCNT = 5
 KEY_S_CMD_INIT = 'CMD_INIT'
 KEY_S_CMD_UPDATE = 'CMD_UPDATE'
 KEY_S_CMD_SHUTDOWN = 'CMD_SHUTDOWN'
+KEY_S_CMD_PING = 'CMD_PING'
+KEY_S_CMD_RELAY = 'CMD_RELAY'
+KEY_S_CMD_REQCTRL = 'CMD_REQCTRL'
 KEY_S_INT_SHUTDOWN = 'INT_SHUTDOWN'
 KEY_S_ANS_OK = 'ANS_OK'
 KEY_S_ANS_CHANGED = 'ANS_CHANGED'

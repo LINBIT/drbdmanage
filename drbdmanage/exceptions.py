@@ -90,7 +90,7 @@ DM_ECTRLVOL = 116
 # Absence of quorum
 DM_EQUORUM  = 117
 
-# Operation not allowed on satellite
+# Operation not forwarded to leader node
 DM_ESATELLITE = 118
 
 # drbdutils command failed
@@ -98,6 +98,9 @@ DM_EDRBDCMD = 119
 
 # Unable to write the assignment configuration file
 DM_ERESFILE = 120
+
+# Server not ready (e.g., startup not done)
+DM_ENOTREADY = 121
 
 # DEBUG value
 DM_DEBUG    = 1023
@@ -129,9 +132,10 @@ _DM_EXC_TEXTS[DM_EPLUGIN]  = "Plugin cannot be loaded"
 _DM_EXC_TEXTS[DM_ESECRETG] = "Generation of the shared secret failed"
 _DM_EXC_TEXTS[DM_ECTRLVOL] = "Reconfiguring the control volume failed"
 _DM_EXC_TEXTS[DM_EQUORUM]  = "Partition does not have a quorum"
-_DM_EXC_TEXTS[DM_ESATELLITE]  = "Operation not allowed on satellite node"
+_DM_EXC_TEXTS[DM_ESATELLITE] = "Could not forward data to leader"
 _DM_EXC_TEXTS[DM_EDRBDCMD] = "A drbdutils command failed"
 _DM_EXC_TEXTS[DM_ERESFILE] = "Updating a DRBD resource configuration file failed"
+_DM_EXC_TEXTS[DM_ENOTREADY] = "Server currently not ready, please retry later"
 
 
 def dm_exc_text(exc_id):

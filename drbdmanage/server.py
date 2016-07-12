@@ -20,7 +20,10 @@ import logging.handlers
 import re
 import traceback
 import inspect
+import pickle
+import threading
 import StringIO
+import Queue
 from functools import wraps
 import drbdmanage.drbd.persistence
 import drbdmanage.quorum
@@ -32,18 +35,18 @@ from drbdmanage.consts import (
     DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL, VOL_SIZE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
-    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_STANDBY, FLAG_QIGNORE,
+    FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_STANDBY, FLAG_QIGNORE, FLAG_FORCEWIN,
     IND_NODE_OFFLINE, SNAPS_SRC_BLOCKDEV, DM_VERSION, DM_GITHASH,
     KEY_SERVER_VERSION, KEY_DRBD_KERNEL_VERSION, KEY_DRBD_UTILS_VERSION, KEY_SERVER_GITHASH,
     KEY_DRBD_KERNEL_GIT_HASH, KEY_DRBD_UTILS_GIT_HASH,
     CONF_NODE, CONF_GLOBAL, KEY_SITE, BOOL_TRUE, FILE_GLOBAL_COMMON_CONF, KEY_VG_NAME,
     KEY_SERVER_INSTANCE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET, NODE_ADDRESS,
-    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, NODE_CONTROL_NODE, NODE_SATELLITE_NODE, KEY_ISSATELLITE,
-    SAT_SATELLITE, SAT_SHOULD_CONTROL_NODE, SAT_CONTROL_NODE,
+    DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1,
+    SAT_SATELLITE, SAT_POTENTIAL_LEADER_NODE, SAT_LEADER_NODE,
     KEY_SAT_CFG_SATELLITE, KEY_SAT_CFG_CONTROL_NODE, KEY_SAT_CFG_ROLE,
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
-    KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_SHUTDOWN, SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP,
+    KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
     KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader
@@ -51,13 +54,13 @@ from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number,
     add_rc_entry, serial_filter, props_filter, string_to_bool, bool_to_string,
     aux_props_selector, is_set, is_unset, key_value_string, load_server_conf_file,
-    filter_prohibited, filter_allowed, generate_gi_hex_string
+    filter_prohibited, filter_allowed, generate_gi_hex_string, drbdctrl_has_primary, pickle_dbus,
 )
 from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOSPC, DM_EQUORUM,
-    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE, DM_INFO
+    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE, DM_INFO, DM_ENOTREADY,
 )
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
@@ -264,67 +267,132 @@ class DrbdManageServer(object):
 
     _proxy = None
 
-    _is_satellite = False
-    _forced_is_satellite = False
-    # state according to the control volume
-    sat_state_ctrlvol = {}
+    _server_role = SAT_SATELLITE
+    _server_role_potential = SAT_SATELLITE
+    _server_role_decided = False
+    _server_role_elected = False
+    _forced_server_role = None
+    _current_leader_name = ''
+    _cmd_queue = Queue.Queue()
+    _sat_states = {}
+    _sat_lock = threading.Lock()
+    _sat_proposed_shutdown = set()
+    _sat_shutdown = set()
+    _force_election_win = False
 
-    def no_satellite(f):
-        KEY_NOTHING = "nothing"
-        wrapped_returns = {
-            'assign': KEY_NOTHING,
-            'attach': KEY_NOTHING,
-            'auto_deploy': KEY_NOTHING,
-            'auto_undeploy': KEY_NOTHING,
-            'connect': KEY_NOTHING,
-            'create_node': KEY_NOTHING,
-            'create_resource': KEY_NOTHING,
-            'create_snapshot': KEY_NOTHING,
-            'create_volume': KEY_NOTHING,
-            'dbus_load_conf': KEY_NOTHING,
-            'dbus_save_conf': KEY_NOTHING,
-            'detach': KEY_NOTHING,
-            'disconnect': KEY_NOTHING,
-            'get_ctrlvol': '',
-            'init_node': KEY_NOTHING,
-            'join_node': KEY_NOTHING,
-            'modify_assignment': KEY_NOTHING,
-            'modify_resource': KEY_NOTHING,
-            'modify_state': KEY_NOTHING,
-            'modify_volume': KEY_NOTHING,
-            'poke': KEY_NOTHING,
-            'quorum_control': KEY_NOTHING,
-            'remove_node': KEY_NOTHING,
-            'remove_resource': KEY_NOTHING,
-            'remove_snapshot': KEY_NOTHING,
-            'remove_snapshot_assignment': KEY_NOTHING,
-            'remove_volume': KEY_NOTHING,
-            'resize_volume': KEY_NOTHING,
-            'restore_snapshot': KEY_NOTHING,
-            'run_external_plugin': {},
-            'set_ctrlvol': KEY_NOTHING,
-            'set_drbdsetup_props': KEY_NOTHING,
-            'unassign': KEY_NOTHING,
-            'update_pool': KEY_NOTHING,
-            'update_pool_check': KEY_NOTHING,
-            'assign_satellite': KEY_NOTHING,
-        }
+    _stop_processing = False
 
-        @wraps(f)
-        def wrapper(self, *args, **kwds):
-            if self._is_satellite == SAT_SATELLITE:
-                fn_rc = []
-                add_rc_entry(fn_rc, DM_ESATELLITE, dm_exc_text(DM_ESATELLITE))
-                if f.__name__ in wrapped_returns:
-                    if wrapped_returns[f.__name__] == KEY_NOTHING:
-                        return fn_rc
-                    else:
-                        return fn_rc, wrapped_returns[f.__name__]
-                else:
-                    # hope for the best...
-                    return fn_rc
+    KEY_NOTHING = "nothing"
+    KEY_TWOINT = "twoint"
+    wrapped_returns = {
+        'assign': KEY_NOTHING,
+        'attach': KEY_NOTHING,
+        'auto_deploy': KEY_NOTHING,
+        'auto_undeploy': KEY_NOTHING,
+        'cluster_free_query': KEY_TWOINT,
+        'connect': KEY_NOTHING,
+        'create_node': KEY_NOTHING,
+        'create_resource': KEY_NOTHING,
+        'create_snapshot': KEY_NOTHING,
+        'create_volume': KEY_NOTHING,
+        'dbus_load_conf': KEY_NOTHING,
+        'dbus_save_conf': KEY_NOTHING,
+        'detach': KEY_NOTHING,
+        'disconnect': KEY_NOTHING,
+        'get_ctrlvol': '',
+        'init_node': KEY_NOTHING,
+        'list_nodes': [],
+        'list_resources': [],
+        'list_volumes': [],
+        'list_snapshot_assignments': [],
+        'modify_assignment': KEY_NOTHING,
+        'modify_resource': KEY_NOTHING,
+        'modify_state': KEY_NOTHING,
+        'modify_volume': KEY_NOTHING,
+        'poke': KEY_NOTHING,
+        'quorum_control': KEY_NOTHING,
+        'remove_node': KEY_NOTHING,
+        'remove_resource': KEY_NOTHING,
+        'remove_snapshot': KEY_NOTHING,
+        'remove_snapshot_assignment': KEY_NOTHING,
+        'remove_volume': KEY_NOTHING,
+        'resize_volume': KEY_NOTHING,
+        'restore_snapshot': KEY_NOTHING,
+        'run_external_plugin': {},
+        'set_ctrlvol': KEY_NOTHING,
+        'set_drbdsetup_props': KEY_NOTHING,
+        'text_query': [],
+        'unassign': KEY_NOTHING,
+        'update_pool': KEY_NOTHING,
+        'update_pool_check': KEY_NOTHING,
+    }
+
+    def gen_wrapped_rc(self, name, fn_rc):
+        if name in self.wrapped_returns:
+            if self.wrapped_returns[name] == self.KEY_NOTHING:
+                return fn_rc
+            if self.wrapped_returns[name] == self.KEY_TWOINT:
+                return fn_rc, 0, 0  # might need update if second fkt besides cluster_free_query
             else:
-                return f(self, *args, **kwds)
+                return fn_rc, self.wrapped_returns[name]
+        else:
+            # hope for the best...
+            return fn_rc
+
+    def wait_startup(f):
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            if (not self._server_role_decided) or\
+               (self._server_role_decided and self._server_role == SAT_SATELLITE and
+                    self._current_leader_name == ''):
+                fn_rc = []
+                add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
+                return self.gen_wrapped_rc(f.__name__, fn_rc)
+            else:
+                return f(self, *args, **kwargs)
+        return wrapper
+
+    def fwd_leader(f):
+        # satellite functions that need to forward data to leader node
+        # basically all "create" functions.
+        # assumes @wait_startup <- caller responsible
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            if self._server_role == SAT_SATELLITE:
+                fn_rc = []
+                cl_name = self._current_leader_name
+                if cl_name:
+                    p = pickle_dbus(f.__name__, args, kwargs)
+                    opcode, length, data = self._proxy.send_cmd(cl_name,
+                                                                KEY_S_CMD_RELAY,
+                                                                override_data=p)
+
+                    if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:  # could be a stale socket
+                        # THINK: mv retry to proxy?
+                        opcode, length, data = self._proxy.send_cmd(cl_name,
+                                                                    KEY_S_CMD_RELAY,
+                                                                    override_data=p)
+                    if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                        fn_rc = pickle.loads(data)
+                    else:
+                        add_rc_entry(fn_rc, DM_ESATELLITE, dm_exc_text(DM_ESATELLITE))
+                return self.gen_wrapped_rc(f.__name__, fn_rc)
+            else:
+                return f(self, *args, **kwargs)
+        return wrapper
+
+    def req_ctrlvol(f):
+        # satellite functions that need up to date ctrlvol data
+        # basically all "query" functions.
+        # assumes @wait_startup <- caller responsible
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            if self._server_role == SAT_SATELLITE:
+                if not self.request_ctrlvol():
+                    fn_rc = []
+                    add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
+                    return self.gen_wrapped_rc(f.__name__, fn_rc)
+            return f(self, *args, **kwargs)
         return wrapper
 
     def __init__(self, signal_factory):
@@ -380,29 +448,7 @@ class DrbdManageServer(object):
         # Setup the PATH environment variable
         extend_path(self._path, self.get_conf_value(self.KEY_EXTEND_PATH))
 
-        # Create drbdmanage objects
-
-        # Create the proxy object (server only started on satellite)
-        # control node needs the proxy object to send data
         self._proxy = DrbdManageProxy(self)
-
-        # DRBD manager (manages DRBD resources using drbdadm etc.)
-        self._drbd_mgr = DrbdManager(self)
-
-        # Start up the drbdmanage control volume
-        # call internal metric
-        _, self._is_satellite = self._drbd_mgr.adjust_drbdctrl()
-
-        # it might be the case that reading drbdmanaged.cfg overwrote what we "guessed"
-        if self._forced_is_satellite is not False:
-            self._is_satellite = self._forced_is_satellite
-
-        if self._is_satellite == SAT_SATELLITE:
-            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
-            logging.info('DRBDManage starting as satellite node')
-        elif self._is_satellite == SAT_CONTROL_NODE:
-            logging.info('DRBDManage starting as control node')
-            self._quorum = drbdmanage.quorum.Quorum(self)
 
         # Initialize the signal objects source
         if signal_factory is not None:
@@ -411,10 +457,12 @@ class DrbdManageServer(object):
             logging.warning("Server created without passing a signal factory, "
                             "signals are disabled")
 
+        # DRBD manager (manages DRBD resources using drbdadm etc.)
+        self._drbd_mgr = DrbdManager(self)
+
         # ========================================
         # END -- Server initialization
         # ========================================
-
 
     def _init_objects(self):
         """
@@ -472,7 +520,7 @@ class DrbdManageServer(object):
         Initializes the persistence layer
         """
 
-        if self._is_satellite == SAT_SATELLITE:
+        if self._server_role == SAT_SATELLITE:
             persist = drbdmanage.drbd.persistence.create_satellite_persistence(self)
         else:
             persist = drbdmanage.drbd.persistence.create_server_persistence(self)
@@ -494,39 +542,12 @@ class DrbdManageServer(object):
         # Block devices manager (manages backend storage devices)
         self._bd_mgr = BlockDeviceManager(self, self._conf[self.KEY_STOR_NAME], self._pluginmgr)
 
-        # Initialize events tracking
-        try:
-            self.init_events()
-        except (OSError, IOError):
-            logging.critical("failed to initialize drbdsetup events tracing, "
-                             "aborting startup")
-            exit(1)
-
         # Wait for drbdsetup to finish reporting the initial DRBD status
         # Read the status report and setup quorum
-        if self._is_satellite == SAT_CONTROL_NODE:
-            self._drbd_event_initial_status()
-            persist = None
-            try:
-                persist = self.begin_modify_conf()
-                if persist is not None:
-                    self.update_satellite_states()
-                    self._persist.json_export(self._objects_root)
-                    _, need_save = self.send_init_satellites()
-                    if need_save:
-                        self.save_conf_data(persist)
-                else:
-                    raise PersistenceException
-            except PersistenceException:
-                logging.error("Cannot save updated satellite properties")
-            except QuorumException:
-                logging.error("Cannot initialize satellite properties, partition does not have a quorum")
-            except Exception as exc:
-                # Log any otherwise unhandled exceptions, but attempt to
-                # continue startup anyway
-                self.catch_internal_error(exc)
-            finally:
-                self.end_modify_conf(persist)
+        if self._server_role == SAT_LEADER_NODE:
+            # RCK THINK
+            # self._drbd_event_initial_status()
+            pass
 
         # Update storage pool information if it is unknown
         inst_node = self.get_instance_node()
@@ -537,38 +558,75 @@ class DrbdManageServer(object):
                 if poolsize == -1 or poolfree == -1:
                     self.update_pool([])
 
-    def run(self):
+    def run(self, rerun=False):
         """
         Finishes the server's startup and runs the main loop
 
         Waits for client requests or events generated by "drbdsetup events".
         """
+        self._server_role_elected = False
+        self._server_role_decided = False
+        self._current_leader_name = ''
+        self._sat_states = {}
+
+        # Start up the drbdmanage control volume
+        # call internal metric
+        _, self._server_role = self._drbd_mgr.adjust_drbdctrl()
+        self._server_role_potential = self._server_role
+
+        # it might be the case that reading drbdmanaged.cfg overwrote what we "guessed"
+        # int that case the initially None value of _forced_server_role got set accordingly
+        if self._forced_server_role is not None:
+            self._server_role = self._forced_server_role
+
+        # if self._server_role == SAT_SATELLITE or True:
+        if self._server_role == SAT_SATELLITE:
+            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
+            logging.info('DRBDManage starting as satellite node')
+        else:
+            logging.info('DRBDManage starting as potential leader node')
+            self._quorum = drbdmanage.quorum.Quorum(self)
+
         self._init_persist()
+        self.load_conf()
+        self.update_objects()
+        self._quorum.readjust_full_member_count()
 
-        self.run_config()
-        if self._is_satellite == SAT_SATELLITE:
-            self._proxy.start()
+        # Initialize events tracking
+        # prerequisite for leader election
+        try:
+            self.init_events()
+            self._drbd_event_initial_status()
+        except (OSError, IOError):
+            logging.critical("failed to initialize drbdsetup events tracing, "
+                             "aborting startup")
+            exit(1)
 
-        conf_path = self._conf.get(self.KEY_DRBD_CONFPATH, self.DEFAULT_DRBD_CONFPATH)
-        for f in os.listdir(conf_path):
-            if f.endswith(".res"):
-                try:
-                    os.unlink(os.path.join(conf_path, f))
-                except:
-                    pass
+        self.schedule_run_config()  # after that is run we set server_role_decided
+        if not rerun:
+            self.schedule_reelection()
+        self.schedule_cmd_queue()
+        self.schedule_leader_election()
+        self.schedule_satellite_ping()
+        self.schedule_satellite_shutdown()
 
-        # Start up the resources deployed by drbdmanage on the current node
-        self._drbd_mgr.initial_up()
+        if not rerun:
+            conf_path = self._conf.get(self.KEY_DRBD_CONFPATH, self.DEFAULT_DRBD_CONFPATH)
+            for f in os.listdir(conf_path):
+                if f.endswith(".res"):
+                    try:
+                        os.unlink(os.path.join(conf_path, f))
+                    except:
+                        pass
+            self.start_mainloop()
 
-        # gobject.MainLoop().run()
-
+    def start_mainloop(self):
         # http://www.jejik.com/articles/2007/01/python-gstreamer_threading_and_the_main_loop/
         loop = gobject.MainLoop()
         gobject.threads_init()
         context = loop.get_context()
-        while True:
+        while not self._stop_processing:
             context.iteration(True)
-
 
     def init_events(self):
         """
@@ -736,6 +794,181 @@ class DrbdManageServer(object):
     def schedule_shutdown(self):
         gobject.timeout_add(0, self.shutdown)
 
+    def maybe_run_config(self):
+        if self._server_role_elected:
+            if self._server_role == SAT_SATELLITE and not self.request_ctrlvol():
+                return True
+            self.run_config()
+            self.export_conf("*")
+            # Start up the resources deployed by drbdmanage on the current node
+            self._drbd_mgr.initial_up()
+            self._server_role_decided = True
+            return False
+        return True
+
+    def schedule_run_config(self):
+        gobject.timeout_add(500, self.maybe_run_config)
+
+    def leader_election(self):
+        # re-scheduling is required to give events tracking
+        # chance to run and update quorum
+        def become_satellite():
+            self._server_role = SAT_SATELLITE
+            self._current_leader_name = ''
+            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
+            self._init_persist()
+            self._sat_states = {}
+            self._proxy.shutdown()
+            self._proxy = DrbdManageProxy(self)
+            self._proxy.set_locking(True)
+            self._proxy.start()
+            self._server_role_elected = True
+
+        if self._server_role == SAT_SATELLITE:
+            become_satellite()
+            return False
+
+        decided, primary = self._drbd_mgr.leader_election(self._force_election_win)
+        if decided:
+            if primary:
+                self._force_election_win = False
+                self._sat_states = {}
+                self._proxy.shutdown()
+                self._proxy = DrbdManageProxy(self)
+                self._proxy.set_locking(False)
+                self._proxy.start()
+                self._server_role = SAT_LEADER_NODE
+            else:
+                become_satellite()
+
+            self._server_role_elected = True
+            return False
+        else:
+            self._le_cnt += 1
+            if self._le_cnt < self._le_cnt_max:
+                return True
+            else:
+                become_satellite()
+                return False
+
+    def schedule_leader_election(self):
+        self._le_cnt, self._le_cnt_max = 0, 10
+        gobject.timeout_add(100, self.leader_election)
+
+    def leader_reelection(self):
+        # a pure satellite will never participate in leader election
+        if self._server_role_potential == SAT_SATELLITE:
+            return False
+
+        if self._server_role_decided and self._server_role_potential == SAT_POTENTIAL_LEADER_NODE:
+            has_primary, primary = drbdctrl_has_primary()
+            if not has_primary:
+                self.reelect()  # this does _not_ reschedule the reelection, no need to return False
+        return True
+
+    def schedule_reelection(self):
+        gobject.timeout_add(5000, self.leader_reelection)
+
+    def add_cmd_queue(self, pickle_str, via_queue=True):
+        fn_rc = []
+        cmd = pickle.loads(pickle_str)
+
+        if via_queue:
+            self._cmd_queue.put(cmd, True, 2)
+        else:
+            fn_rc = self._exec_queue_cmd(cmd, via_queue=False)
+
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+    def _exec_queue_cmd(self, cmd, via_queue=True):
+        name = cmd['name']
+        args = cmd['args']
+        kwargs = cmd['kwargs']
+        succ = via_queue
+        f = getattr(self, name)
+        fn_rc = []
+
+        if not via_queue:
+            start = time.time()
+            # spin lock for 5s
+            succ = self._sat_lock.acquire(False)
+            while not succ:
+                if time.time() <= start + 5:
+                    succ = self._sat_lock.acquire(False)
+                else:
+                    break
+
+        if succ:
+            fn_rc = f(*args, **kwargs)
+            if not via_queue:
+                self._sat_lock.release()
+        else:
+            add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
+
+        return fn_rc
+
+    def cmd_queue(self):
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            try:
+                cmd = self._cmd_queue.get(False)
+                self._exec_queue_cmd(cmd)
+            except:
+                pass
+
+        return True
+
+    def schedule_cmd_queue(self):
+        gobject.timeout_add(500, self.cmd_queue)
+
+    def set_current_leader(self, addr):
+        try:
+            node = self.get_node_by_addr(addr)
+            name = node.get_name()
+            self._current_leader_name = name
+        except:
+            pass
+
+    def satellite_ping(self):
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            for satellite_name in self.get_satellite_names():
+                opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_PING)
+                if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:  # could be a stale socket
+                    # THINK: mv retry to proxy?
+                    self._sat_states[satellite_name] = False
+                    opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_PING)
+                if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                    if not self._sat_states.get(satellite_name, False):
+                        self._sat_states[satellite_name] = True
+                        self._poke_cluster = True
+                        self.schedule_run_changes()
+
+        return True
+
+    def satellite_shutdown(self):
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            for satellite_name in self._sat_shutdown:
+                self._proxy.send_cmd(satellite_name, KEY_S_CMD_SHUTDOWN)
+            # we don't care if shutdown worked
+            self._sat_shutdown = set()
+
+        return True
+
+    def schedule_satellite_ping(self):
+        gobject.timeout_add(3000, self.satellite_ping)
+
+    def schedule_satellite_shutdown(self):
+        gobject.timeout_add(3000, self.satellite_shutdown)
+
     def schedule_run_changes(self):
         """
         Schedules execution of run_changes() from the GMainLoop
@@ -792,11 +1025,10 @@ class DrbdManageServer(object):
                         changed = True
             else:
                 break
-        if changed:
+        if changed and self._server_role_decided and self._server_role == SAT_LEADER_NODE:
             self._drbd_mgr.run(False, False)
         # True = GMainLoop shall not unregister this event handler
         return True
-
 
     def _drbd_event_initial_status(self):
         """
@@ -845,6 +1077,10 @@ class DrbdManageServer(object):
         evt_source = match.group('source')
         return line_data, evt_type, evt_source
 
+    def _quorum_flags_and_member_count(self):
+        # Unset QIGNORE status on connected nodes
+        self._quorum.readjust_qignore_flags()
+        self._quorum.readjust_full_member_count()
 
     def _drbd_event_change_trigger(self, evt_type, evt_source, line_data):
         changed = False
@@ -885,30 +1121,31 @@ class DrbdManageServer(object):
                             node_name = line_data[self.EVT_CONN_NAME]
                             change_quorum = self._quorum.node_joined(node_name)
                             if change_quorum:
-                                persist = None
-                                try:
-                                    persist = self.begin_modify_conf()
-                                    if persist is not None:
-                                        # Unset QIGNORE status on connected nodes
-                                        self._quorum.readjust_qignore_flags()
-                                        self._quorum.readjust_full_member_count()
-                                        self.get_serial()
-                                        self.save_conf_data(persist)
-                                    else:
+                                if self._server_role_decided:
+                                    persist = None
+                                    try:
+                                        persist = self.begin_modify_conf()
+                                        if persist is not None:
+                                            self._quorum_flags_and_member_count()
+                                            self.get_serial()
+                                            self.save_conf_data(persist)
+                                        else:
+                                            logging.warning(
+                                                "Attempt to save updated quorum membership information to "
+                                                "the control volume failed"
+                                            )
+                                    except QuorumException:
+                                        # This node does not have a quorum, skip saving
+                                        pass
+                                    except PersistenceException:
                                         logging.warning(
                                             "Attempt to save updated quorum membership information to "
                                             "the control volume failed"
                                         )
-                                except QuorumException:
-                                    # This node does not have a quorum, skip saving
-                                    pass
-                                except PersistenceException:
-                                    logging.warning(
-                                        "Attempt to save updated quorum membership information to "
-                                        "the control volume failed"
-                                    )
-                                finally:
-                                    self.end_modify_conf(persist)
+                                    finally:
+                                        self.end_modify_conf(persist)
+                                else:
+                                    self._quorum_flags_and_member_count()
                     except KeyError:
                         # Ignore: Not a replication change or
                         #         replication on/off change without a conn-name argument
@@ -1063,9 +1300,9 @@ class DrbdManageServer(object):
                 # only makes sense in drbdmanaged.cfg
                 elif k == KEY_SAT_CFG_ROLE:
                     if v == KEY_SAT_CFG_SATELLITE:
-                        self._forced_is_satellite = SAT_SATELLITE
+                        self._forced_server_role = SAT_SATELLITE
                     elif v == KEY_SAT_CFG_CONTROL_NODE:
-                        self._forced_is_satellite = SAT_CONTROL_NODE
+                        self._forced_server_role = SAT_POTENTIAL_LEADER_NODE
 
             for plugin_name in cfg['plugins']:
                 for k, v in cfg['plugins'][plugin_name].items():
@@ -1118,14 +1355,13 @@ class DrbdManageServer(object):
         """
         return self._conf.get(key)
 
-
     def get_cluster_conf_value(self, key):
         """
         Retrieves a value from the replicated cluster configuration
         """
         return self._cluster_conf.get_prop(key)
 
-    @no_satellite
+    @wait_startup
     def run_external_plugin(self, plugin_name, props):
         fn_rc = []
         ret = None
@@ -1293,6 +1529,23 @@ class DrbdManageServer(object):
             self.catch_internal_error(exc)
         return node
 
+    def get_node_by_addr(self, addr):
+        """
+        Retrieves a node by its name
+
+        @return: the named node object or None if no object with the specified
+                 name exists
+        """
+        node = None
+        try:
+            for n in self._nodes.values():
+                if addr == n.get_addr():
+                    node = n
+                    break
+        except Exception as exc:
+            self.catch_internal_error(exc)
+        return node
+
 
     def get_resource(self, name):
         """
@@ -1381,7 +1634,8 @@ class DrbdManageServer(object):
                 if is_set(state, DrbdNode.FLAG_DRBDCTRL):
                     peer_node.set_state(state | DrbdNode.FLAG_UPDATE)
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def poke(self):
         """
         Causes cluster nodes to perform pending actions by changing the serial
@@ -1404,6 +1658,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    @wait_startup
     def get_config_keys(self):
         """
         All the configuration options drbdmanage knows about
@@ -1413,6 +1668,7 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, self.CONF_DEFAULTS)
 
+    @wait_startup
     def get_plugin_default_config(self):
         """
         All the config options for known plugins
@@ -1445,13 +1701,15 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, ret)
 
-
+    @wait_startup
+    @req_ctrlvol
     def get_cluster_config(self):
         """
         All the config options in the global section. These are options that are also valid per node
         """
         return self._get_cluster_props()
 
+    @wait_startup
     def get_selected_config_values(self, keys):
         fn_rc = []
         ret = dict([(k, v) for k, v in self._conf.items() if k in keys])
@@ -1478,6 +1736,7 @@ class DrbdManageServer(object):
 
         return site_props
 
+    @wait_startup
     def get_site_config(self):
         fn_rc = []
         ret = []
@@ -1497,172 +1756,49 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, ret)
 
-    def update_satellite_states(self):
-        fn_rc = []
-        states = {}
-
-        try:
-            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-            node_props = self.get_instance_node().get_props().get_all_props(ns)
-            for k, v in node_props.items():
-                name, key = k.split('/')
-                if key == KEY_ISSATELLITE:
-                    states[name] = int(v)
-        except:
-            pass
-
-        self.sat_state_ctrlvol = filter_allowed(self.sat_state_ctrlvol, states.keys())
-
-        for k, v in states.items():
-            self.sat_state_ctrlvol[k] = v
-
-        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-        return (fn_rc, states.keys())
-
-    def send_init_satellites(self):
-        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-        self._persist.json_export(self._objects_root)
-
-        needs_change = False
-        needs_save = False
-
-        wanted = [s for s, state in self.sat_state_ctrlvol.items()
-                  if state == SAT_CON_STARTUP or state == SAT_CON_ESTABLISHED]
-
-        instance_node = self.get_instance_node()
-        for satellite in [s for s in wanted if s not in self._proxy.get_established()]:
-            skip = False
-            for node in self.iterate_nodes():
-                # node != instance_node: can never send init to myself
-                if (node is not instance_node and
-                    node.get_props().get_prop(KEY_ISSATELLITE, os.path.join(ns, satellite)) is not None):
-                    skip = True  # somebody else is responsible for that satellite
-                    needs_change = True  # give it a hint to shutdown
-                    break
-            if not skip:
-                opcode, length, data = self._proxy.send_cmd(satellite, KEY_S_CMD_INIT)
-                if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
-                    self.sat_state_ctrlvol[satellite] = SAT_CON_ESTABLISHED
-                    node_props = self.get_instance_node().get_props()
-                    node_props.set_prop(KEY_ISSATELLITE, SAT_CON_ESTABLISHED, os.path.join(ns, satellite))
-                    needs_change = True
-                    needs_save = True
-
-        return needs_change, needs_save
-
-    def _remove_satellites(self, satellite_names, node_names=[]):
-        # persistence has to be opened by caller
-        # is save to be called with [ctrlnode, ...]
-        for satellite in satellite_names:
-            self._proxy.shutdown_connection(satellite)
-
-        if node_names:
-            wanted_nodes = dict([(k, v) for k, v in self._nodes.items() if k in node_names])
-        else:
-            wanted_nodes = self._nodes
-
-        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-        for node in [v for k, v in wanted_nodes.items() if k not in satellite_names]:
-            node_props = node.get_props()
-            to_delete = [k for k in node_props.get_all_props(ns).keys() if k.split('/')[0] in satellite_names]
-            node_props.remove_selected_props(to_delete, ns)
-
     def is_satellite(self, node_name):
-        is_satellite = self.get_node(node_name).get_props().get_prop(KEY_ISSATELLITE)
-        is_satellite = True if is_satellite is not None else False
-        return is_satellite
+        # I'm leader and asked for myself.
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE and \
+           node_name == self._instance_node_name:
+            return False
 
-    def get_satellite_names(self, node):
-        satellite_names = set()
-        if self.is_satellite(node.get_name()):
-            return satellite_names
+        # I'm satellite and asked for leader.
+        if self._server_role_decided and self._server_role == SAT_SATELLITE and \
+           node_name == self._current_leader_name:
+            return False
 
-        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-        node_props = node.get_props()
-        satellite_names = set([k.split('/')[0] for k in node_props.get_all_props(ns).keys()])
+        # else: leader asked for other nodes (which has to be a satellite)
+        #       or satellite asked for other satellite
+        return True
 
-        return satellite_names
-
-    def get_ctrl_node(self, satellite_name):
-        control_node = None
-        if not self.is_satellite(satellite_name):
-            return None
-        else:
-            control_node_name = self.get_node(satellite_name).get_props().get_prop(KEY_ISSATELLITE)
-            control_node = self.get_node(control_node_name)
-
-        return control_node
-
-    @no_satellite
-    def assign_satellite(self, props):
-        fn_rc = []
-        persist = None
-        try:
-            persist = self.begin_modify_conf()
-            if persist is not None:
-                ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-                new_control_node_name = props[NODE_CONTROL_NODE]
-                satellite_name = props[NODE_SATELLITE_NODE]
-
-                # santiy checks
-                # do the nodes exist?
-                if self.get_node(new_control_node_name) is None or self.get_node(satellite_name) is None:
-                    raise KeyError
-
-                # is the satellite_name a satellite?
-                if not self.is_satellite(satellite_name):
-                    raise KeyError
-
-                # is the control node really a control node (i.e., does not have ISSATELLITE)
-                if self.is_satellite(new_control_node_name):
-                    raise KeyError
-
-                # set shutdown on old node
-                old_ctrl_node = self.get_ctrl_node(satellite_name)
-                # could be None if old ctrlnode got removed and this is a fresh assignment
-                # if there is an old ctrtlnode it is a reassignment
-                if old_ctrl_node is not None:
-                    old_ctrl_node.get_props().set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
-                                                       os.path.join(ns, satellite_name))
-                # set startup on new node
-                new_control_node = self.get_node(new_control_node_name)
-                new_control_node.get_props().set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP,
-                                                      os.path.join(ns, satellite_name))
-
-                # set new control node on satellite
-                satellite_node = self.get_node(satellite_name)
-                satellite_node.get_props().set_prop(KEY_ISSATELLITE, new_control_node_name)
-
-                self.get_serial()
-            else:
-                raise PersistenceException
-        except KeyError:
-            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
-        except DrbdManageException as server_exc:
-            server_exc.add_rc_entry(fn_rc)
-        except Exception as exc:
-            self.catch_and_append_internal_error(fn_rc, exc)
-        finally:
-            self.cond_end_modify_conf(persist)
-            self.schedule_run_changes()
-
-        if len(fn_rc) == 0:
-            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
-
-        return fn_rc
+    def get_satellite_names(self):
+        return set([k for k in self._nodes.keys() if k != self._instance_node_name])
 
     def role(self):
         fn_rc = []
         role = 'unknown'
-        if self._is_satellite == SAT_SATELLITE:
-            role = 'satellite'
-        elif self._is_satellite == SAT_CONTROL_NODE:
-            role = 'controlnode'
+        if self._server_role == SAT_SATELLITE:
+            cl_name = self._current_leader_name
+            role = 'satellite (CL: %s)' % (cl_name)
+            if self._server_role_potential == SAT_POTENTIAL_LEADER_NODE:
+                role = 'potential leader (CL: %s)' % (cl_name)
+        elif self._server_role == SAT_LEADER_NODE:
+            role = 'leader'
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc, role
 
-    @no_satellite
+    # no decorator, allow anytime
+    def reelect(self, props={}):
+        try:
+            self._force_election_win = string_to_bool(props[FLAG_FORCEWIN])
+        except:
+            pass
+        self.run(rerun=True)
+        return self.role()
+
+    @wait_startup
+    @fwd_leader
     def set_cluster_config(self, cfgdict):
         # for persistence see create_node
         fn_rc = []
@@ -1814,7 +1950,8 @@ class DrbdManageServer(object):
 
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def create_node(self, node_name, props):
         """
         Registers a DRBD cluster node
@@ -1827,19 +1964,6 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 sub_rc = self._create_node(False, node_name, props, None, None, None)
-                if NODE_CONTROL_NODE in props and sub_rc == DM_SUCCESS:  # satellite node
-                    control_node_name = props[NODE_CONTROL_NODE]
-                    control_node = self._nodes.get(control_node_name)
-                    if control_node:
-                        props = control_node.get_props()
-                        ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
-                        props.set_prop(KEY_ISSATELLITE, SAT_CON_STARTUP, os.path.join(ns, node_name))
-                        # take a shortcut to add the new node to the satellites array without
-                        # update_satellite_states()
-                        if control_node_name == self._instance_node_name:
-                            self.sat_state_ctrlvol[node_name] = SAT_CON_STARTUP
-                            self.send_init_satellites()
-
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
                     self.save_conf_data(persist)
                 else:
@@ -1906,11 +2030,6 @@ class DrbdManageServer(object):
                     node_standby = string_to_bool(props[FLAG_STANDBY])
                 except (KeyError, ValueError):
                     pass
-                control_node_name = None
-                try:
-                    control_node_name = props[NODE_CONTROL_NODE]
-                except (KeyError, ValueError):
-                    pass
                 node_state = 0
                 if node_drbdctrl:
                     node_state |= DrbdNode.FLAG_DRBDCTRL
@@ -1960,8 +2079,6 @@ class DrbdManageServer(object):
                                 else:
                                     fn_rc = DM_ECTRLVOL
                             else:
-                                if not node_external:  # a satellite
-                                    node.get_props().set_prop(KEY_ISSATELLITE, control_node_name)
                                 fn_rc = DM_SUCCESS
                         else:
                             # Attempted to create a node with a control volume,
@@ -1978,7 +2095,8 @@ class DrbdManageServer(object):
             fn_rc = DM_DEBUG
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def remove_node(self, node_name, force):
         """
         Marks a node for removal from the DRBD cluster
@@ -1994,23 +2112,10 @@ class DrbdManageServer(object):
             persist = self.begin_modify_conf()
             if persist is not None:
                 node = self._nodes[node_name]
+                self._sat_proposed_shutdown.add(node_name)
                 drbdctrl_flag = False
-                ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SATELLITES]
 
-                if self.is_satellite(node_name):
-                    ctrl_node = self.get_ctrl_node(node_name)
-                    if ctrl_node:
-                        ctrl_node_props = ctrl_node.get_props()
-                        ctrl_node_props.set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
-                                                 os.path.join(ns, node_name))
-                else:
-                    ctrl_node = self._nodes[node_name]
-                    ctrl_node_props = ctrl_node.get_props()
-                    for satellite_name in self.get_satellite_names(ctrl_node):
-                        ctrl_node_props.set_prop(KEY_ISSATELLITE, SAT_CON_SHUTDOWN,
-                                                 os.path.join(ns, satellite_name))
-
-                if (not force) and (node.has_assignments() or self.get_satellite_names(node)):
+                if (not force) and (node.has_assignments()):
                     for assignment in node.iterate_assignments():
                         assignment.undeploy()
                         resource = assignment.get_resource()
@@ -2051,8 +2156,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def create_resource(self, res_name, props):
         """
         Registers a new resource that can be deployed to DRBD cluster nodes
@@ -2127,7 +2232,8 @@ class DrbdManageServer(object):
             resource = None
         return resource
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def modify_node(self, node_name, serial, props):
         """
         Modifies node properties
@@ -2217,7 +2323,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def modify_resource(self, res_name, serial, props):
         """
         Modifies resource properties
@@ -2285,7 +2392,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def modify_volume(self, res_name, vol_id, serial, props):
         """
         Modifies volume properties
@@ -2342,7 +2450,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def modify_assignment(self, res_name, node_name, serial, props):
         """
         Modifies assignment properties
@@ -2438,7 +2547,8 @@ class DrbdManageServer(object):
             raise value_error
         return flag
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def resize_volume(self, res_name, vol_id, serial, size_kiB, delta_kiB):
         """
         Resizes a volume
@@ -2586,7 +2696,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def remove_resource(self, res_name, force):
         """
         Marks a resource for removal from the DRBD cluster
@@ -2627,7 +2738,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def create_volume(self, res_name, size_kiB, props):
         """
         Adds a volume to a resource
@@ -2708,7 +2820,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc + fn_info
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def remove_volume(self, res_name, vol_id, force):
         """
         Marks a volume for removal from the DRBD cluster
@@ -2753,7 +2866,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def assign(self, node_name, res_name, props):
         """
         Assigns a resource to a node
@@ -2860,7 +2974,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def unassign(self, node_name, res_name, force):
         """
         Removes the assignment of a resource to a node
@@ -3008,7 +3123,8 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
 
-
+    @wait_startup
+    @req_ctrlvol
     def cluster_free_query(self, redundancy):
         """
         Determines the maximum size of an n-times redundantly deployed volume
@@ -3085,7 +3201,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc, free_space, total_space
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def auto_deploy(self, res_name, count, delta, site_clients):
         """
         Deploys a resource to a number of nodes
@@ -3326,7 +3443,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def auto_undeploy(self, res_name, force):
         """
         Undeploys a resource from all nodes
@@ -3387,7 +3505,8 @@ class DrbdManageServer(object):
                     assg.deploy_client()
         return assg_changed
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def modify_state(self, node_name, res_name,
       cstate_clear_mask, cstate_set_mask, tstate_clear_mask, tstate_set_mask):
         """
@@ -3447,7 +3566,8 @@ class DrbdManageServer(object):
 
 
     # TODO: should possibly specify connections between specific nodes
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def connect(self, node_name, res_name, reconnect):
         """
         Sets the CONNECT or RECONNECT flag on a resource's target state
@@ -3488,7 +3608,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def disconnect(self, node_name, res_name, force):
         """
         Clears the CONNECT flag on a resource's target state
@@ -3527,7 +3648,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def attach(self, node_name, res_name, vol_id):
         """
         Sets the ATTACH flag on a volume's target state
@@ -3571,7 +3693,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def detach(self, node_name, res_name, vol_id):
         """
         Clears the ATTACH flag on a volume's target state
@@ -3615,7 +3738,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def update_pool_check(self):
         """
         Checks storage pool data and if necessary, updates the data
@@ -3648,7 +3772,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def update_pool(self, node_names):
         """
         Updates information about the current node's storage pool
@@ -3860,7 +3985,7 @@ class DrbdManageServer(object):
             for node in self._nodes.itervalues():
                 node_state = node.get_state()
                 if is_set(node_state, DrbdNode.FLAG_REMOVE):
-                    if not node.has_assignments() and not self.get_satellite_names(node):
+                    if not node.has_assignments():
                         removable.append(node)
                         if is_set(node_state, DrbdNode.FLAG_DRBDCTRL):
                             drbdctrl_flag = True
@@ -3929,7 +4054,8 @@ class DrbdManageServer(object):
         for assg in item.iterate_assignments():
             assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def set_drbdsetup_props(self, props):
         fn_rc = []
         item = None
@@ -4008,6 +4134,8 @@ class DrbdManageServer(object):
 
         return fn_rc
 
+    @wait_startup
+    @req_ctrlvol
     def list_nodes(self, node_names, serial, filter_props, req_props):
         """
         Generates a list of node views suitable for serialized transfer
@@ -4037,7 +4165,7 @@ class DrbdManageServer(object):
             if filter_props is not None and len(filter_props) > 0:
                 selected_nodes = props_filter(selected_nodes, filter_props)
 
-            control_node = True if self._is_satellite == SAT_CONTROL_NODE else False
+            control_node = True if self._server_role == SAT_LEADER_NODE else False
 
             instance_node = self.get_instance_node()
             for node in selected_nodes:
@@ -4061,7 +4189,8 @@ class DrbdManageServer(object):
 
         return fn_rc, None
 
-
+    @wait_startup
+    @req_ctrlvol
     def list_resources(self, res_names, serial, filter_props, req_props):
         """
         Generates a list of resources views suitable for serialized transfer
@@ -4104,7 +4233,8 @@ class DrbdManageServer(object):
 
         return fn_rc, None
 
-
+    @wait_startup
+    @req_ctrlvol
     def list_volumes(self, res_names, serial, filter_props, req_props):
         """
         Generates a list of resources views suitable for serialized transfer
@@ -4156,9 +4286,10 @@ class DrbdManageServer(object):
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
 
-        return fn_rc, None
+        return fn_rc, []
 
-
+    @wait_startup
+    @req_ctrlvol
     def list_assignments(self, node_names, res_names, serial,
                          filter_props, req_props):
         """
@@ -4232,7 +4363,8 @@ class DrbdManageServer(object):
 
         return fn_rc, None
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def create_snapshot(self, res_name, snaps_name, node_names, props):
         """
         Create a snapshot of a resource's volumes on a number of nodes
@@ -4357,7 +4489,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
+    @wait_startup
+    @req_ctrlvol
     def list_snapshots(self, res_names, snaps_names, serial,
                        filter_props, req_props):
         """
@@ -4415,7 +4548,8 @@ class DrbdManageServer(object):
             self.catch_and_append_internal_error(fn_rc, exc)
         return fn_rc, res_list
 
-
+    @wait_startup
+    @req_ctrlvol
     def list_snapshot_assignments(self, res_names, snaps_names, node_names,
                                   serial, filter_props, req_props):
         """
@@ -4486,9 +4620,13 @@ class DrbdManageServer(object):
                         assg_list.append(snaps_list_entry)
         except Exception as exc:
             self.catch_and_append_internal_error(fn_rc, exc)
+        if len(fn_rc) == 0:
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+
         return fn_rc, assg_list
 
-
+    @wait_startup
+    @req_ctrlvol
     def restore_snapshot(self, res_name, snaps_res_name, snaps_name,
                          res_props, vols_props):
         """
@@ -4678,7 +4816,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def remove_snapshot_assignment(self, res_name, snaps_name, node_name,
                                    force):
         """
@@ -4721,7 +4860,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def remove_snapshot(self, res_name, snaps_name, force):
         """
         Discard all instances of a resource's snapshot
@@ -4793,13 +4933,15 @@ class DrbdManageServer(object):
                                     SNAPS_SRC_BLOCKDEV, src_bd_name
                                 )
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def resume(self, node_name, res_name):
         fn_rc = []
         add_rc_entry(fn_rc, DM_ENOTIMPL, dm_exc_text(DM_ENOTIMPL))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def resume_all(self):
         fn_rc = []
         fn_rc   = []
@@ -4829,7 +4971,8 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def dbus_save_conf(self):
         return self.save_conf()
 
@@ -4863,7 +5006,8 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @req_ctrlvol
     def dbus_load_conf(self):
         return self.load_conf()
 
@@ -5063,7 +5207,8 @@ class DrbdManageServer(object):
         if not self._run_changes_scheduled:
             self.end_modify_conf(persist)
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def quorum_control(self, node_name, props, override_quorum_flag):
         """
         Sets quorum parameters on drbdmanage nodes
@@ -5101,8 +5246,9 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
     # TODO: more precise error handling
+    @wait_startup
+    @req_ctrlvol
     def export_conf(self, res_name):
         """
         For a named resource, exports a configuration file for drbdadm
@@ -5342,7 +5488,8 @@ class DrbdManageServer(object):
                 return True
         return False
 
-
+    @wait_startup
+    @req_ctrlvol
     def reconfigure(self):
         """
         Reconfigures the server
@@ -5366,7 +5513,13 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    def wait_for_startup(self):
+        fn_rc = []
+        add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        return fn_rc
+
+    @wait_startup
     def init_node(self, name, props):
         """
         Server part of initializing a new drbdmanage cluster
@@ -5422,12 +5575,25 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-    @no_satellite
+    def request_ctrlvol(self):
+        cl_name = self._current_leader_name
+        if cl_name:
+            opcode, length, data = self._proxy.send_cmd(cl_name, KEY_S_CMD_REQCTRL)
+            if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:
+                opcode, length, data = self._proxy.send_cmd(cl_name, KEY_S_CMD_REQCTRL)
+            if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                self._persist.set_json_data(data)
+                self._persist.json_import(self._objects_root)
+                return True
+        return False
+
+    @wait_startup
+    @req_ctrlvol
     def join_node(self, props):
         """
         Server part of integrating a node into an existing drbdmanage cluster
         """
-        fn_rc   = []
+        fn_rc = []
         persist = None
         try:
             persist = self.begin_modify_conf(override_quorum=True)
@@ -5498,6 +5664,8 @@ class DrbdManageServer(object):
             self.end_modify_conf(persist)
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            self._server_role_potential = SAT_POTENTIAL_LEADER_NODE
+            self.schedule_reelection()
         return fn_rc
 
 
@@ -5516,8 +5684,10 @@ class DrbdManageServer(object):
 
         drbdctrl_res = None
 
-        if self.is_satellite(node_name):
-            return ['drbdmanage', 'restart']
+        rem_node = self._nodes.get(node_name)
+        if rem_node is not None:
+            if is_unset(rem_node.get_state(), DrbdNode.FLAG_DRBDCTRL):
+                return ['drbdmanage', 'restart']
 
         conffile = DrbdAdmConf(self._objects_root)
         try:
@@ -5547,7 +5717,6 @@ class DrbdManageServer(object):
             pass
 
         inst_node = self.get_instance_node()
-        rem_node  = self._nodes.get(node_name)
 
         if inst_node is not None and rem_node is not None:
             r_addr    = inst_node.get_addr()
@@ -5712,7 +5881,8 @@ class DrbdManageServer(object):
         self._message_log.clear()
         return ["Message log cleared"]
 
-
+    @wait_startup
+    @req_ctrlvol
     def text_query(self, command):
         """
         Query text strings from the server
@@ -5888,18 +6058,17 @@ class DrbdManageServer(object):
                         pass
         return fn_rc
 
-    @no_satellite
+    @wait_startup
+    @req_ctrlvol
     def get_ctrlvol(self):
-        # basically would be allowed on satellites, but:
-        # we send ctrlvol data to satellites only if the need it (e.g., new volume to deploy)
-        # this avoids unneccessary network traffic, but ctrlvol on satellites might be "outdated"
         fn_rc = []
         self._persist.json_export(self._objects_root)
         jsonblob = self._persist.get_json_data()
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, jsonblob)
 
-    @no_satellite
+    @wait_startup
+    @fwd_leader
     def set_ctrlvol(self, jsonblob):
         fn_rc = []
         try:
@@ -7010,9 +7179,8 @@ class DrbdManageServer(object):
                 shutdown_sat = string_to_bool(shutdown_sat_str)
                 if shutdown_sat:
                     logging.info("shutting down satellites")
-                    for satellite in [sat for sat, state in self.sat_state_ctrlvol.items()
-                                      if state == SAT_CON_ESTABLISHED or state == SAT_CON_SHUTDOWN]:
-                        self._proxy.send_cmd(satellite, KEY_S_CMD_SHUTDOWN)
+                    self._sat_shutdown = self.get_satellite_names()
+                    self.satellite_shutdown()
         except ValueError:
             # raised if string_to_bool() is supplied with an invalid value
             pass
@@ -7034,6 +7202,8 @@ class DrbdManageServer(object):
 
         logging.info("shutting down the control volume")
         try:
+            if self._server_role_potential == SAT_POTENTIAL_LEADER_NODE:
+                self._drbd_mgr.secondary_drbdctrl()
             self._drbd_mgr.down_drbdctrl()
         except:
             pass

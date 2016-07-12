@@ -13,12 +13,16 @@ import socket
 import SocketServer
 import struct
 import threading
+import pickle
 
 
 from drbdmanage.consts import (
     KEY_S_CMD_INIT,
     KEY_S_CMD_UPDATE,
     KEY_S_CMD_SHUTDOWN,
+    KEY_S_CMD_PING,
+    KEY_S_CMD_RELAY,
+    KEY_S_CMD_REQCTRL,
     KEY_S_INT_SHUTDOWN,
     KEY_S_ANS_OK,
     KEY_S_ANS_CHANGED,
@@ -78,6 +82,19 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                             cmd = KEY_S_ANS_CHANGED
                     else:
                         cmd = KEY_S_ANS_UNCHANGED
+                elif opcode == opcodes[KEY_S_CMD_PING]:
+                    answer_payload = payload
+                    addr = self.request.getpeername()[0]
+                    self.server.dmserver.set_current_leader(addr)
+                    cmd = KEY_S_ANS_OK
+                elif opcode == opcodes[KEY_S_CMD_RELAY]:
+                    fn_rc = self.server.dmserver.add_cmd_queue(payload, via_queue=False)
+                    cmd = KEY_S_ANS_OK
+                    answer_payload = pickle.dumps(fn_rc)
+                elif opcode == opcodes[KEY_S_CMD_REQCTRL]:
+                    self.server.dmserver._persist.json_export(self.server.dmserver._objects_root)
+                    answer_payload = self.server.dmserver._persist.get_json_data()
+                    cmd = KEY_S_ANS_OK
                 elif opcode == opcodes[KEY_S_INT_SHUTDOWN]:
                     self.server.event_shutdown_done.set()
                     break
@@ -111,7 +128,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                 # send back and handle error
                 opcode, length, payload = self.server.send_msg(self.request,
                                                                self.server.encode_msg(cmd, answer_payload))
-                if opcode == opcodes[KEY_S_ANS_E_COMM]:
+                if opcode == opcodes[KEY_S_ANS_E_COMM] or not blocking:
                     # break out of handler, which automatically starts a new server thread
                     break
         except Exception:
@@ -170,6 +187,9 @@ class DrbdManageProxy(object):
         KEY_S_CMD_INIT: 11,
         KEY_S_CMD_UPDATE: 12,
         KEY_S_CMD_SHUTDOWN: 13,
+        KEY_S_CMD_PING: 14,
+        KEY_S_CMD_RELAY: 15,
+        KEY_S_CMD_REQCTRL: 16,
         KEY_S_INT_SHUTDOWN: 21,
         KEY_S_ANS_OK: 31,
         KEY_S_ANS_E_OP_INVALID: 32,
@@ -198,6 +218,8 @@ class DrbdManageProxy(object):
 
     def start(self):
         if self._tcp_server:
+            for s in self._satsockets.values():
+                self._shutdown_and_close(s)
             return
 
         # server type selection
@@ -246,7 +268,7 @@ class DrbdManageProxy(object):
             pass
 
     def shutdown(self):
-        if self._tcp_server:  # satellite
+        if self._tcp_server:
             self.event_shutdown_init.clear()
             self.event_shutdown_done.clear()
 
@@ -368,8 +390,8 @@ class DrbdManageProxy(object):
     # it on the next call.
     # important, the E_COMM is returned to the caller, it is up to the caller if he immediately tries
     # to resend if the first attempt failed.
-    def send_cmd(self, satellite_name, cmd, port=_DEFAULT_PORT_NR):
-        payload = ''
+    def send_cmd(self, satellite_name, cmd, port=_DEFAULT_PORT_NR, override_data=''):
+        payload = override_data
 
         if satellite_name not in self._satsockets:
             satellite_node = self._dmserver.get_node(satellite_name)
@@ -380,6 +402,13 @@ class DrbdManageProxy(object):
                 sock = socket.create_connection((satellite_ip, port), timeout=6)
             except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
+
+            conf = self._dmserver._conf
+            idle = int(conf.get(KEY_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPIDLE))
+            intvl = int(conf.get(KEY_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPINTVL))
+            cnt = int(conf.get(KEY_SAT_CFG_TCP_KEEPCNT, DEFAULT_SAT_CFG_TCP_KEEPCNT))
+            self.set_satellite_sockopts(sock, 1, idle, intvl, cnt)
+
             self._satsockets[satellite_name] = sock
 
         if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE:

@@ -731,17 +731,6 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
-        in_signature="a{ss}",
-        out_signature="a(isa(ss))",
-        message_keyword='message',
-    )
-    def assign_satellite(self, props, message=None):
-        if self._dbustracer_running:
-            self._dbustracer.record(message.get_member(), message.get_args_list())
-        return self._server.assign_satellite(props)
-
-    @dbus.service.method(
-        DBUS_DRBDMANAGED,
         in_signature="",
         out_signature="a(isa(ss))" "s",
         message_keyword='message',
@@ -750,6 +739,17 @@ class DBusServer(dbus.service.Object):
         if self._dbustracer_running:
             self._dbustracer.record(message.get_member(), message.get_args_list())
         return self._server.role()
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="a{ss}",
+        out_signature="a(isa(ss))" "s",
+        message_keyword='message',
+    )
+    def reelect(self, props, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
+        return self._server.reelect(props)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
@@ -825,6 +825,17 @@ class DBusServer(dbus.service.Object):
         if self._dbustracer_running:
             self._dbustracer.record(message.get_member(), message.get_args_list())
         return 0
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
+        in_signature="",
+        out_signature="a(isa(ss))",
+        message_keyword='message',
+    )
+    def wait_for_startup(self, message=None):
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
+        return self._server.wait_for_startup()
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,

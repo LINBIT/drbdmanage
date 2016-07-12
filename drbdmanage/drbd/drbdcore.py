@@ -10,6 +10,7 @@
 import sys
 import os
 import logging
+import time
 import drbdmanage.utils as utils
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
@@ -61,7 +62,7 @@ class DrbdManager(object):
     def __init__(self, ref_server):
         self._server  = ref_server
         self._resconf = drbdmanage.conf.conffile.DrbdAdmConf(self._server._objects_root)
-        self.reconfigure()
+        self.reconfigure()  # creates DrbdAdm object. THINK: why should that object ever by recreated?
 
 
     # FIXME
@@ -107,6 +108,7 @@ class DrbdManager(object):
         @type:  override_hash_check: bool
         @type:  poke_cluster:        bool
         """
+        self._server._sat_lock.acquire()
         persist = None
         data_changed = False
         failed_actions = False
@@ -182,6 +184,7 @@ class DrbdManager(object):
             # read-write streams
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
+            self._server._sat_lock.release()
         return data_changed, failed_actions
 
 
@@ -307,26 +310,8 @@ class DrbdManager(object):
         """
         Send new ctrlvol state to satellites
         """
-        # are there new satellites I'm responsible for?
-        self._server.update_satellite_states()
-
-        if self._server.sat_state_ctrlvol:
+        if self._server._server_role == consts.SAT_LEADER_NODE:
             proxy = self._server._proxy
-
-            # SAT_CON_SHUTDOWN, SAT_CON_ESTABLISHED, SAT_CON_STARTUP = range(3)
-            shutdown = [s for s, st in self._server.sat_state_ctrlvol.items() if st == consts.SAT_CON_SHUTDOWN]
-
-            for satellite_name in shutdown:
-                proxy.shutdown_connection(satellite_name)
-
-            if shutdown:
-                self._server._remove_satellites(shutdown, self._server._instance_node_name)
-                state_changed = True
-
-            # send CMD_INIT to ones not already inited
-            need_change, _ = self._server.send_init_satellites()
-            if need_change:
-                state_changed = True
 
             self._server._persist.json_export(self._server._objects_root)
             final_ctrl_vol = None
@@ -343,16 +328,24 @@ class DrbdManager(object):
             while changed_at_all:
                 overall_loop_cnt += 1
                 changed_at_all = False
-                # dont move established before send_init_satellites() <- updates sat_state_ctrlvol
-                up = [s for s, st in self._server.sat_state_ctrlvol.items() if st == consts.SAT_CON_ESTABLISHED]
                 at_least_one_failed = False
-                for satellite in up:
-                    opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
+                for sat_name in self._server.get_satellite_names().union(self._server._sat_proposed_shutdown):
+                    opcode, length, data = proxy.send_cmd(sat_name, consts.KEY_S_CMD_UPDATE)
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_E_COMM]:  # give it a second chance
-                        opcode, length, data = proxy.send_cmd(satellite, consts.KEY_S_CMD_UPDATE)
+                        opcode, length, data = proxy.send_cmd(sat_name, consts.KEY_S_CMD_UPDATE)
 
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED_FAILED]:
                         at_least_one_failed = True
+
+                    # if the satellite has nothing more to say and is already in the proposed
+                    # shutdown set(), add it to the set where it really gets a shutdown.
+                    if opcode == proxy.opcodes[consts.KEY_S_ANS_UNCHANGED] and \
+                       sat_name in self._server._sat_proposed_shutdown:
+                        try:
+                            self._server._sat_proposed_shutdown.remove(sat_name)
+                        except:
+                            pass
+                        self._server._sat_shutdown.add(sat_name)
 
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED] or \
                        opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED_FAILED]:
@@ -911,7 +904,7 @@ class DrbdManager(object):
 
     @log_in_out
     def adjust_drbdctrl(self):
-        sat_state = consts.SAT_CONTROL_NODE
+        sat_state = consts.SAT_POTENTIAL_LEADER_NODE
         drbdctrl_res_name = consts.DRBDCTRL_RES_NAME
 
         # call drbdadm to bring up the control volume
@@ -923,15 +916,53 @@ class DrbdManager(object):
             ctrlvol_exits = True if subprocess.call(["drbdsetup", "status", ".drbdctrl"]) == 0 else False
 
             if res_file_exits or ctrlvol_exits:
-                sat_state = consts.SAT_CONTROL_NODE
+                sat_state = consts.SAT_POTENTIAL_LEADER_NODE
             else:
                 sat_state = consts.SAT_SATELLITE
         return fn_rc, sat_state
 
     @log_in_out
+    def leader_election(self, force_win=False):
+        timeout = 2
+        quorum_nodes = self._server._quorum.get_full_member_count()
+        wait_by_connect = False
+        if quorum_nodes <= 2:
+            wait_by_connect = True
+
+        if force_win:
+            logging.info('Leader election by forcing success')
+            succ = True
+        elif wait_by_connect:
+            logging.info('Leader election by wait for connections')
+            succ = self._drbdadm.wait_connect_resource(consts.DRBDCTRL_RES_NAME, timeout=timeout)
+        else:
+            logging.info('Leader election by quorum (%d Nodes)' % quorum_nodes)
+            nr_nodes = self._server._quorum.get_active_member_count()
+            succ = self._server._quorum.is_present()
+            if succ:
+                logging.info('Leader election: got quorum (%d/%d) nodes' % (nr_nodes, quorum_nodes))
+            else:
+                logging.info('Leader election: no quorum (%d/%d) nodes' % (nr_nodes, quorum_nodes))
+                time.sleep(timeout)
+
+        if not succ:
+            return False, False
+
+        fn_rc = self._drbdadm.primary(consts.DRBDCTRL_RES_NAME, force=False, with_drbdsetup=True)
+        won = (fn_rc == 0)
+        logging.info('Leader election: %s election' % ('won' if won else 'lost'))
+        return succ, won
+
+    @log_in_out
     def down_drbdctrl(self):
         # call drbdadm to stop the control volume
         fn_rc = self._drbdadm.down(consts.DRBDCTRL_RES_NAME)
+        return fn_rc
+
+    @log_in_out
+    def secondary_drbdctrl(self):
+        # call drbdadm to stop the control volume
+        fn_rc = self._drbdadm.secondary(consts.DRBDCTRL_RES_NAME)
         return fn_rc
 
     @log_in_out
