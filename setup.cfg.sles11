@@ -7,4 +7,4 @@ requires =
   python-gobject2
   dbus-1
   dbus-1-python
-  drbd-utils >= 8.9.6
+  drbd-utils >= 8.9.7
