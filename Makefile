@@ -58,6 +58,9 @@ drbdmanage/consts_githash.py:
 	@echo >&2 "Need a git checkout to regenerate $@"; test -s $@
 endif
 
+md5sums:
+	CURDATE=$$(date +%s); for i in $$(${GIT} ls-files | sort); do md5sum $$i >> md5sums.$${CURDATE}; done
+
 clean:
 	$(PYTHON) setup.py clean
 	rm -f man-pages/*.gz
