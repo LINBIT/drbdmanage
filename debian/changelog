@@ -1,3 +1,86 @@
+drbdmanage (0.97-1) experimental; urgency=medium
+
+  [ Philipp Marek ]
+  * Fix description text.
+  * ClientHelper bugfix: _LW() only takes one argument here.
+  * Typos fixed: "drbdmange" => "drbdmanage".
+  * Storage header: dump the serial-number too.
+  * Satellites: Use "bz2" compression instead of "zlib".
+  * Human-readable output: never use 3 digits after the comma.
+
+  [ Robert Altnoeder ]
+  * DrbdManager: If drbdadm could not be spawned, fall back to drbdsetup too
+  * Fixed storage plugin remove_blockdevice() infinite loop
+  * Mark assignments as deployed before undeploying them
+  * Do not skip removing block devices when undeploying diskless assignments
+  * DrbdAdm: fixed duplicate logging
+  * Add reasonable thin provisioning capability
+  * DrbdManager: _deploy_volume_actions(): fail on metadata creation failure
+  * Update resource files instead of piping to drbdadm
+  * Copy drbdsetup options on snapshot restore into new resource
+  * Added missing argument to format string
+  * list_nodes(): Check node online status only on control nodes
+  * utils.py: new get_free_number() implementation
+  * DrbdManager: fixed reference to wrong class
+  * DrbdManager: Remember thin volumes and skip resyncing after resize if  [...]
+  * Reordered "drbdadm resize -- --assume-clean" -> "drbdadm -- --assume-c [...]
+  * Return success for no-op on blockdevice resize on volume states withou [...]
+  * resize: Check for size increment > poolsize instead of gross size > poolsize
+  * resize: ignore clients, resize only if the assignment is in a sane state
+  * Added logger classes for logging external command output
+  * Changed _run_drbdadm() to use ExternalCommandBuffer
+  * commands: _run_drbdadm() transformed into a more generic run_drbdutils()
+  * commands: removed unnecessary import 'subprocess'
+  * Hide init/join external command output unless exit_code != 0
+  * Fixed class member -> instance member
+  * Handle assignment transitions to and from diskless
+  * Set FLAG_ATTACH cstate & tstate on client->server transition
+  * Verbose drbdadm command logging (drbdadm -vvv)
+  * Skip new-current-uuid when restoring snapshots
+  * Allow double open(), as it can be caused by the async D-Bus calls
+  * DrbdManager: fail_count fixes, more logging, removed duplicate code block
+  * Added property consts.MANAGED
+  * restore-resize-snapshot partial implementation
+  * Added MessageLog class for tracking recent info/warning/alert messages
+  * Message log commands, emit messages to the message log
+  * More fixes for D-Bus/Python surprises in restore_snapshot()
+  * MessageLog: configurable number of backlog entries
+
+  [ Roland Kammerer ]
+  * satellite: improve connect stage
+  * allow resource options in the common section
+  * add missing space to description
+  * plugins: added zvol thin plugin
+  * added role subcommand
+  * ignore value errors on satellite startup
+  * systemd: update service file
+  * add-node: start satellite
+  * export-ctrlvol: proper return on satellite node
+  * satellite: minor fixups for wrapped functions
+  * style: change confusing syntax
+  * client: removed dead code
+  * remove debug print
+  * debug logging: add decorator for in/out logging
+  * use locale setting for size output
+  * build: ignore MANIFEST.in for consts_githash.py
+  * remove res files on startup
+  * satellites: avoid endless loop
+  * client: let argparse handle "type checking"
+  * server: add DBUS tracer/replay
+  * typo
+  * MessageLog: switch to deque()
+  * make use of the new features in "drbdadm adjust"
+  * build: add "md5sums" make target
+
+  [ Hayley Swimelar ]
+  * Check FQDN labels are not more than 63 chars, clean up consts import
+  * Allow DrbdManageException and its subclasses to accept custom error messages
+  * added empty line before docstring
+  * introduce reserved keywords list
+  * unit tests for drbdmanage/utils
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 15 Jul 2016 10:05:52 +0200
+
 drbdmanage (0.96.1-1) experimental; urgency=medium
 
   * build: set python to python2
