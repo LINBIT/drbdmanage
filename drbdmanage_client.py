@@ -1100,7 +1100,7 @@ class DrbdManage(object):
         # TODO: not allowed to set per connection, drbdmanage currently has no notion of a
         # connection in its object model.
         #
-        no = DrbdSetupOpts('net-options')
+        no = DrbdSetupOpts('new-peer', 'net-options')
         if no.ok:
             p_no = no.genArgParseSubcommand(subp)
             p_no.add_argument('--common', action="store_true")

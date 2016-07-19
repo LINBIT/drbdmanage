@@ -592,10 +592,11 @@ def filter_new_args(unsetprefix, args):
 
 
 class DrbdSetupOpts():
-    def __init__(self, command):
+    def __init__(self, setup_command, dm_command=None):
         import sys
         import xml.etree.ElementTree as ET
-        self.command = command
+        self.setup_command = setup_command
+        self.dm_command = dm_command if dm_command else setup_command
         self.config = {}
         self.unsetprefix = 'unset'
         self.ok = False
@@ -603,7 +604,7 @@ class DrbdSetupOpts():
         out = False
         for cmd in ('drbdsetup', '/sbin/drbdsetup'):
             try:
-                out = check_output([cmd, "xml-help", self.command])
+                out = check_output([cmd, "xml-help", self.setup_command])
                 break
             except OSError:
                 pass
@@ -636,7 +637,7 @@ class DrbdSetupOpts():
         self.ok = True
 
     def genArgParseSubcommand(self, subp):
-        sp = subp.add_parser(self.command, description=self.config['help'])
+        sp = subp.add_parser(self.dm_command, description=self.config['help'])
 
         def mybool(x):
             return x.lower() in ('y', 'yes', 't', 'true', 'on')
