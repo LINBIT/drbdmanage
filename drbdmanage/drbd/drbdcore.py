@@ -903,7 +903,6 @@ class DrbdManager(object):
             logging.error(log_message)
             self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
             failed_actions = True
-            assg = snaps_assg.get_assignment()
         return (pool_changed, failed_actions)
 
     @log_in_out
