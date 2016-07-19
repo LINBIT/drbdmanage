@@ -39,28 +39,6 @@ class DrbdAdm(object):
     def __init__(self):
         pass
 
-    def ext_conf_adjust(self, res_name):
-        """
-        Adjusts a resource that has an external configuration file
-        (Does not pipe the configuration into drbdadm;
-         Normally used to start up the control volume for drbdmanage)
-
-        @return: process handle of the drbdadm process
-        """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "adjust", res_name]
-        return self._run_drbdutils(exec_args)
-
-    def ext_conf_down(self, res_name):
-        """
-        Stops a resource that has an external configuration file
-        (Does not pipe the configuration into drbdadm;
-         Normally used to stop the control volume for drbdmanage)
-
-        @return: process handle of the drbdadm process
-        """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "down", res_name]
-        return self._run_drbdutils(exec_args)
-
     def adjust(self, res_name, skip_net=False, skip_disk=False, discard=False, vol_id=None):
         """
         Adjusts a resource

@@ -912,7 +912,7 @@ class DrbdManager(object):
         drbdctrl_res_name = consts.DRBDCTRL_RES_NAME
 
         # call drbdadm to bring up the control volume
-        fn_rc = self._drbdadm.ext_conf_adjust(drbdctrl_res_name)
+        fn_rc = self._drbdadm.adjust(drbdctrl_res_name)
         if fn_rc != 0:
             res_file_name = os.path.join(consts.DRBDCTRL_RES_PATH, drbdctrl_res_name)
             res_file_exits = os.path.isfile(res_file_name)
@@ -928,7 +928,7 @@ class DrbdManager(object):
     @log_in_out
     def down_drbdctrl(self):
         # call drbdadm to stop the control volume
-        fn_rc = self._drbdadm.ext_conf_down(consts.DRBDCTRL_RES_NAME)
+        fn_rc = self._drbdadm.down(consts.DRBDCTRL_RES_NAME)
         return fn_rc
 
     @log_in_out
