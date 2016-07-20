@@ -104,6 +104,9 @@ DRBDCTRL_DEV_1      = "/dev/drbd1"
 DRBDCTRL_LV_NAME_0  = ".drbdctrl_0"
 DRBDCTRL_LV_NAME_1  = ".drbdctrl_1"
 
+KEY_BLOCKSIZE = 'blocksize'
+DEFAULT_BLOCKSIZE = '4k'
+
 SERVER_CONFFILE     = "/etc/drbdmanaged.cfg"
 KEY_DRBD_CONFPATH = "drbd-conf-path"
 DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"

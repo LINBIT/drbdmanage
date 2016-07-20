@@ -68,7 +68,8 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
     CONF_DEFAULTS = {
         KEY_DEV_PATH: '/dev/zvol',
         consts.KEY_VG_NAME: consts.DEFAULT_VG,
-        KEY_ZVOL_PATH: '/sbin'
+        KEY_ZVOL_PATH: '/sbin',
+        consts.KEY_BLOCKSIZE: consts.DEFAULT_BLOCKSIZE,
     }
 
     # Volumes managed by this module
@@ -191,10 +192,49 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
 
         return (fn_rc, pool_size, pool_free)
 
+    def _roundup_k(self, size_k, mult_of_str=consts.DEFAULT_BLOCKSIZE):
+        units = {
+            'k': 1 << 0,  # k is already the base!
+            'm': 1 << 10,
+            'g': 1 << 20,
+            't': 1 << 30,
+            'p': 1 << 40,
+            'z': 1 << 50,
+        }
+        if mult_of_str[-1].lower() == 'b':
+            mult_of_str = mult_of_str[:-1]
+        unit = mult_of_str[-1].lower()
+        if unit not in units.keys():
+            return -1
+
+        mult_of_str = mult_of_str[:-1]
+
+        try:
+            multi = int(mult_of_str)
+            if multi < 4 and unit == 'k':
+                return -1  # which then should use a sane default
+        except:
+            return -1
+
+        multi *= units[unit]
+
+        mod = size_k % multi
+        delta = 0 if mod == 0 else multi - mod
+        return size_k + delta
+
+    def _final_size(self, size):
+        bs = self._conf.get(consts.KEY_BLOCKSIZE, consts.DEFAULT_BLOCKSIZE)
+        final_size = self._roundup_k(size, bs)
+        if final_size == -1:
+            final_size = size
+            bs = consts.DEFAULT_BLOCKSIZE
+        return final_size, bs
+
     def _create_vol(self, vol_name, size):
+        size, bs = self._final_size(size)
         try:
             exec_args = [
-                self._cmd_create, self.ZFS_CREATE, '-b4k',
+                self._cmd_create, self.ZFS_CREATE, '-b'+bs,
                 '-V', str(size) + 'k',
                 utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
             ]
@@ -214,6 +254,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
 
     def _extend_vol(self, vol_name, size):
         status = False
+        size, _ = self._final_size(size)
         try:
             exec_args = [
                 self._cmd_extend, self.ZFS_EXTEND, 'volsize=%sk' % str(size),
