@@ -66,6 +66,10 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
+        succ = self.wait_connect_resource(res_name, timeout=10)
+        if not succ:
+            return 1
+
         exec_args = [self.DRBDADM_UTIL, "-vvv"]
         if assume_clean:
             exec_args.append("--")
@@ -186,6 +190,16 @@ class DrbdAdm(object):
         ]
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
+
+    def wait_connect_resource(self, res_name, timeout=10):
+        timeout_str = str(timeout)
+        exit_code = self._run_drbdutils(
+            [self.DRBDSETUP_UTIL, 'wait-connect-resource', '--wfc-timeout=%s' % timeout_str, res_name]
+        )
+        if exit_code != 0:
+            logging.warn("Resource '%s' not connected within %s seconds" % (res_name, timeout_str))
+
+        return exit_code == 0
 
     def _run_drbdutils(self, exec_args):
         """
