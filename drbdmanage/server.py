@@ -505,9 +505,6 @@ class DrbdManageServer(object):
         # Block devices manager (manages backend storage devices)
         self._bd_mgr = BlockDeviceManager(self, self._conf[self.KEY_STOR_NAME], self._pluginmgr)
 
-        # Start up the resources deployed by drbdmanage on the current node
-        self._drbd_mgr.initial_up()
-
         # Initialize events tracking
         try:
             self.init_events()
@@ -570,6 +567,9 @@ class DrbdManageServer(object):
                     os.unlink(os.path.join(conf_path, f))
                 except:
                     pass
+
+        # Start up the resources deployed by drbdmanage on the current node
+        self._drbd_mgr.initial_up()
 
         # gobject.MainLoop().run()
 
