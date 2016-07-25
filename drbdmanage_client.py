@@ -1195,8 +1195,6 @@ class DrbdManage(object):
                                  description='Show role of local drbdmanaged (controlnode/satellite/unknown)')
         p_role.set_defaults(func=self.cmd_role)
 
-        argcomplete.autocomplete(parser)
-
         # dbus-trace
         p_dbustrace_command = 'dbus-trace'
         p_dbustrace = subp.add_parser(p_dbustrace_command,
