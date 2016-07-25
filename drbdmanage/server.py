@@ -3029,6 +3029,8 @@ class DrbdManageServer(object):
         #       1) there is no free space
         #       2) there are too few nodes that have a known poolfree size
         #          to determine whether there is any free space
+        redundancy = int(redundancy)
+
         free_space = 0
         total_space = reduce(lambda x, y: x+y,
                              map(lambda n: max(0, n.get_poolsize()),
@@ -3069,6 +3071,10 @@ class DrbdManageServer(object):
                                 md.MetaData.DEFAULT_AL_STRIPES,
                                 md.MetaData.DEFAULT_AL_kiB
                             )
+                        except md.MinSizeException as min_size_exc:
+                            # If there is not enough free space for meta data,
+                            # report no free space (free_space == 0)
+                            pass
                         except md.MetaDataException as md_exc:
                             add_rc_entry(
                                 fn_rc, DM_EINVAL,
