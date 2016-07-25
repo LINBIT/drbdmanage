@@ -50,7 +50,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
 
     # Command names of zfs utilities
     ZFS_BASE = "zfs"
-    ZVOL_VGS = "zpool"
+    ZVOL_VGS = "zfs"
     ZFS_CREATE = "create"
     ZFS_EXTEND = "set"
     ZVOL_REMOVE = 'destroy'
@@ -149,7 +149,7 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
         zpool_proc = None
         try:
             exec_args = [
-                self._cmd_vgs, 'get', '-H', '-p', 'size,free',
+                self._cmd_vgs, 'get', '-H', '-p', 'available,used',
                 self._conf[consts.KEY_VG_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
@@ -164,14 +164,15 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
                 pool_data = zpool_proc.stdout.readline()
                 if len(pool_data) > 0:
                     pool_data = pool_data.strip().split()
-                    if pool_data[1].strip() == 'free':
+                    if pool_data[1].strip() == 'available':
                         pool_free = long(pool_data[2].strip())
-                    elif pool_data[1].strip() == 'size':
-                        pool_size = long(pool_data[2].strip())
+                    elif pool_data[1].strip() == 'used':
+                        pool_used = long(pool_data[2].strip())
 
-            if pool_size == -1 or pool_free == -1:
+            if pool_used == -1 or pool_free == -1:
                 pool_size, pool_free = -1, -1
             else:
+                pool_size = pool_free + pool_used
                 pool_size /= 1024
                 pool_free /= 1024
                 fn_rc = exc.DM_SUCCESS
