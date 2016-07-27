@@ -1629,36 +1629,17 @@ class DrbdManager(object):
         # No actions are required for empty assignments
         if not assignment.is_empty():
             # Update the resource configuration file
-            local_node = self._server.get_instance_node()
-            nodes = [ local_node ]
-            vol_state_list = []
-            for vol_state in assignment.iterate_volume_states():
-                vol_state_list.append(vol_state)
-            node_vol_states = { local_node.get_name(): vol_state_list }
-
             res_name = assignment.get_resource().get_name()
-            assg_conf, global_conf = self._server.open_assignment_conf(res_name)
-            self._resconf.write_excerpt(
-                assg_conf, assignment, nodes, node_vol_states, global_conf
-            )
-            self._server.close_assignment_conf(assg_conf, global_conf)
-            self._server.update_assignment_conf(res_name)
-            # call drbdadm to stop the DRBD on top of the blockdevice
-            fn_rc = self._drbdadm.down(res_name)
-
-            if fn_rc != 0:
-                # drbdadm did not work, fall back to a more direct way
-                # of shutting down resources
-                if (self._drbdadm.fallback_down(res_name)):
-                    fn_rc = 0
-                else:
-                    log_message = (
-                        "Undeploying assignment '%s': DRBD down command failed"
-                        % (res_name)
-                    )
-                    logging.error(log_message)
-                    self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
-                    ud_errors = True
+            if (self._drbdadm.fallback_down(res_name)):
+                fn_rc = 0
+            else:
+                log_message = (
+                    "Undeploying assignment '%s': DRBD down command failed"
+                    % (res_name)
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+                ud_errors = True
 
             if fn_rc == 0:
                 for vol_state in assignment.iterate_volume_states():
