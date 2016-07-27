@@ -93,7 +93,7 @@ class DrbdAdm(object):
 
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
-        exec_args = [self.DRBDSETUP_UTIL, "-vvv", "down", res_name]
+        exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
 
