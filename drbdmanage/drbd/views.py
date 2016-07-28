@@ -513,6 +513,11 @@ class DrbdResourceView(GenericView):
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_REMOVE)
         )
 
+        prop_managed = self.get_property(consts.MANAGED)
+        if prop_managed is not None:
+            if not utils.string_to_bool(prop_managed):
+                self.add_state_text("unmanaged")
+                self.raise_level(GenericView.STATE_WARN)
         if s_remove:
             self.add_pending_text("remove")
             self.raise_level(GenericView.STATE_ALERT)
