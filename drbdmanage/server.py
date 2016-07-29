@@ -2266,6 +2266,7 @@ class DrbdManageServer(object):
                             res_props.remove_prop(MANAGED)
                         else:
                             res_props.set_prop(MANAGED, BOOL_FALSE)
+                        self.schedule_run_changes()
                     except KeyError:
                         # Property not set in props argument
                         pass
