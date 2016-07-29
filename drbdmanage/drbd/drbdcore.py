@@ -616,6 +616,21 @@ class DrbdManager(object):
                 sub_rc = self._resize_volume_blockdevice(assg, vol_state, max_peers)
                 if sub_rc != DM_SUCCESS:
                     failed_actions = True
+
+                # Check immediately whether the DRBD can be resized too
+                if self._is_resize_storage_finished(assg, vol_state.get_id()):
+                    logging.debug(
+                        "Resource '%s' Volume %d: _is_resize_storage_finished() == True",
+                        assg.get_resource().get_name(), vol_state.get_id()
+                    )
+                    sub_rc = self._resize_volume_drbd(assg, vol_state)
+                    if sub_rc != DM_SUCCESS:
+                        failed_actions = True
+                else:
+                    logging.debug(
+                        "Resource '%s' Volume %d: _is_resize_storage_finished() == False",
+                        assg.get_resource().get_name(), vol_state.get_id()
+                    )
             elif vol_state.requires_resize_drbd():
                 logging.debug(
                     "Resource '%s' Volume %d: requires_resize_drbd() == True",
