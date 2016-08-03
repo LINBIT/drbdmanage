@@ -47,9 +47,10 @@ class ZvolThinLv(Zvol):
         self.reconfigure()
 
     def _create_vol(self, vol_name, size):
+        size, bs = self._final_size(size)
         try:
             exec_args = [
-                self._cmd_create, self.ZFS_CREATE, '-s', '-b4k',
+                self._cmd_create, self.ZFS_CREATE, '-s', '-b'+bs,
                 '-V', str(size) + 'k',
                 utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
             ]
