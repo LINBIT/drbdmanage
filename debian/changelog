@@ -1,3 +1,32 @@
+drbdmanage (0.97.1-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * Remove ext_conf_{adjust,down}
+  * Remove unused code
+  * zfs: make block size configurable
+  * dbus-trace: catch SyntaxException and print help
+  * client: remove duplicate argcomplete call
+  * wait for connection before resize
+  * zfs: fix pool size/free calculation
+  * zfs thin: make block size configurable
+
+  [ Philipp Reisner ]
+  * Get the network options from new-peer instead of net-options
+
+  [ Robert Altnoeder ]
+  * cluster_free_query(): For insufficient free space for meta data, repor [...]
+  * Delete temporary resource files before running initial_up()
+  * Use drbdsetup down to undeploy resources, skip resource file update
+  * Fix drbdsetup down command
+  * Show unmanaged state in the drbdmanage client's resource list
+  * Schedule a DrbdManager run after modifying the MANAGED flag of a resource
+  * Run resize_volume_drbd() immediately after resize_volume_blockdevice() [...]
+
+  [ Mariusz Mazur ]
+  * Fix systemd service file
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 04 Aug 2016 10:19:40 +0200
+
 drbdmanage (0.97-1) experimental; urgency=medium
 
   [ Philipp Marek ]
