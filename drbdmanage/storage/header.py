@@ -47,6 +47,16 @@ my $r_o = Data('res');
 my $a_o = Data('assg');
 my $C_o = Data('cconf');
 
+
+my $idx_o2 = $idx_o->{"index"};
+my ($space_used) = sort { $b <=> $a } map {
+       my $n = $_;
+       $n =~ s/_\w+?$//;
+       $idx_o2->{$n . "_off"} + $idx_o2->{$n . "_len"};
+} keys %{$idx_o->{"index"}};
+my $space_used_in_ctrl = substr(sprintf("==========ctrl-used:%s", Size($space_used)), -18);
+
+
 my @node = map {
 	/^(.+?)\./;
 	# remove part before first dot
@@ -114,7 +124,7 @@ $c0 ....|$c1 Nodes $c0|..........   ....|$c1 Resources $c0|........_............
  : $node[7] |  :@res_l2[7]:@res_l2[17]|
  : $node[8] |  :@res_l2[8]:@res_l2[18]|
  : $node[9] |  :@res_l2[9]:@res_l2[19]|
-  ======================+   ========================*========$serial_string==+$cr
+  ==$space_used_in_ctrl=+   ========================*========$serial_string==+$cr
 
 EOF
 exit;
