@@ -515,13 +515,11 @@ def load_server_conf_file(localonly=False):
     """
     Try to load the server configuration.
     """
-    import errno
-
     cfgdict = {'local': {}, 'plugins': {}}
 
-    try:
-        cfg = ConfigParser.RawConfigParser()
-        cfg.read(SERVER_CONFFILE)
+    cfg = ConfigParser.RawConfigParser()
+    read_ok = cfg.read(SERVER_CONFFILE)  # read catches IOErrors internally, returns list of ok files
+    if len(read_ok) == 1:
         for section in cfg.sections():
             if section.startswith('LOCAL'):
                 in_file_cfg = dict(cfg.items(section))
@@ -543,18 +541,8 @@ def load_server_conf_file(localonly=False):
 
             elif section.startswith(PLUGIN_PREFIX):
                 cfgdict['plugins'][section[len(PLUGIN_PREFIX):]] = dict(cfg.items(section))
-    except IOError as ioerr:
-        if ioerr.errno == errno.EACCES:
-            logging.warning(
-                "cannot open configuration file '%s', permission denied"
-                % (SERVER_CONFFILE)
-            )
-        elif ioerr.errno != errno.ENOENT:
-            logging.warning(
-                "cannot open configuration file '%s', "
-                "error returned by the OS is: %s"
-                % (SERVER_CONFFILE, ioerr.strerror)
-            )
+    else:
+        logging.warning("Could not read configuration file '%s'" % (SERVER_CONFFILE))
 
     if localonly:
         return cfgdict['local']
