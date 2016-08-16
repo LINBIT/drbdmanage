@@ -40,18 +40,38 @@ class DrbdManageClientHelper(object):
 
     # methods you probably want to overwrite
     def _(self, text):
-        return text
+        return DrbdManageClientHelper.l10n(text)
 
     def _LW(self, text):
-        return text
+        return DrbdManageClientHelper.lWarn(text)
 
     def _LI(self, text):
-        return text
+        return DrbdManageClientHelper.lInfo(text)
 
     def _LE(self, text):
-        return text
+        return DrbdManageClientHelper.lError(text)
 
     def sleep(self, seconds):
+        DrbdManageClientHelper.delay(seconds)
+
+    @staticmethod
+    def l10n(text):
+        return text
+
+    @staticmethod
+    def lWarn(text):
+        return text
+
+    @staticmethod
+    def lInfo(text):
+        return text
+
+    @staticmethod
+    def lError(text):
+        return text
+
+    @staticmethod
+    def delay(seconds):
         time.sleep(seconds)
 
     # methods you probably should _not_ overwrite
