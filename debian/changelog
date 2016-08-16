@@ -1,3 +1,14 @@
+drbdmanage (0.97.2-1) experimental; urgency=medium
+
+  [ Philipp Marek ]
+  * Report amount of space used in control volume, too.
+  * ClientHelper: Provide static methods to override.
+
+  [ Roland Kammerer ]
+  * load_server_conf_file: Don't expect IOError propagation
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 16 Aug 2016 16:29:44 +0200
+
 drbdmanage (0.97.1-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
