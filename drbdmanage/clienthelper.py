@@ -26,6 +26,22 @@ import drbdmanage.exceptions as dm_exc
 import drbdmanage.utils as dm_utils
 
 
+def delay_for(seconds):
+    time.sleep(seconds)
+
+def l10n(text):
+    return text
+
+def lWarn(text):
+    return text
+
+def lInfo(text):
+    return text
+
+def lError(text):
+    return text
+
+
 class DrbdManageClientHelper(object):
 
     def __init__(self):
@@ -40,39 +56,19 @@ class DrbdManageClientHelper(object):
 
     # methods you probably want to overwrite
     def _(self, text):
-        return DrbdManageClientHelper.l10n(text)
+        return l10n(text)
 
     def _LW(self, text):
-        return DrbdManageClientHelper.lWarn(text)
+        return lWarn(text)
 
     def _LI(self, text):
-        return DrbdManageClientHelper.lInfo(text)
+        return lInfo(text)
 
     def _LE(self, text):
-        return DrbdManageClientHelper.lError(text)
+        return lError(text)
 
     def sleep(self, seconds):
-        DrbdManageClientHelper.delay(seconds)
-
-    @staticmethod
-    def l10n(text):
-        return text
-
-    @staticmethod
-    def lWarn(text):
-        return text
-
-    @staticmethod
-    def lInfo(text):
-        return text
-
-    @staticmethod
-    def lError(text):
-        return text
-
-    @staticmethod
-    def delay(seconds):
-        time.sleep(seconds)
+        delay_for(seconds)
 
     # methods you probably should _not_ overwrite
     def dbus_connect(self):
