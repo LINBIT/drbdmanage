@@ -375,12 +375,16 @@ class DrbdAdmConf(object):
                     node = assg.get_node()
                     if node not in nodes_interesting:
                         continue
+                    fam_label = node.get_addrfam_label()
+                    addr = node.get_addr()
+                    if fam_label == consts.AF_IPV6_LABEL:
+                        addr = '[%s]' % addr
                     stream.write(
                         "    on %s {\n"
                         "        node-id %s;\n"
-                        "        address %s:%d;\n"
+                        "        address %s %s:%d;\n"
                         % (node.get_name(), assg.get_node_id(),
-                           node.get_addr(), resource.get_port())
+                           fam_label, addr, resource.get_port())
                     )
                     for vol_state in assg.iterate_volume_states():
                         tstate = vol_state.get_tstate()
@@ -492,12 +496,16 @@ class DrbdAdmConf(object):
                         servers.append(node)
                     else:
                         clients.append(node)
+                    fam_label = node.get_addrfam_label()
+                    addr = node.get_addr()
+                    if fam_label == consts.AF_IPV6_LABEL:
+                        addr = '[%s]' % addr
                     stream.write(
                         "    on %s {\n"
                         "        node-id %s;\n"
-                        "        address %s:%d;\n"
+                        "        address %s %s:%d;\n"
                         % (node.get_name(), assg.get_node_id(),
-                           node.get_addr(), resource.get_port())
+                           fam_label, addr, resource.get_port())
                     )
                     # begin resource/nodes/volumes
                     node_vol_states = vol_states.get(node.get_name())
@@ -605,7 +613,10 @@ class DrbdAdmConf(object):
             elif key == "shared-secret":
                 fields[consts.NODE_SECRET] = self._extract_field(confline)
             elif key == "address":
-                fields[consts.NODE_ADDRESS] = self._extract_field(confline)
+                a = self._extract_field(confline)
+                # maybe ipv6 with '[ipv6adr]'
+                a = a.strip().lstrip('[').rstrip(']')
+                fields[consts.NODE_ADDRESS] = a
             elif key == "disk":
                 try:
                     conf_volume_nr = int(conf_volume)
@@ -670,11 +681,15 @@ class DrbdAdmConf(object):
         )
         if len(nodes) > 0:
             for node in nodes.itervalues():
+                fam_label = node.get_addrfam_label()
+                addr = node.get_addr()
+                if fam_label == consts.AF_IPV6_LABEL:
+                    addr = '[%s]' % addr
                 stream.write(
                     "    on " + node.get_name() + " {\n"
                     "        node-id     " + str(node.get_node_id())
                     + ";\n"
-                    "        address     " + node.get_addr()
+                    "        address     " + fam_label + ' ' + addr
                     + ":" + str(port) + ";\n"
                     "    }\n"
                 )

@@ -2599,11 +2599,11 @@ class DrbdNode(GenericDrbdObject):
     NAME_MINLEN = consts.NODE_NAME_MINLEN
     NAME_MAXLEN = consts.NODE_NAME_MAXLEN
 
-    AF_IPV4 = 4
-    AF_IPV6 = 6
+    AF_IPV4 = consts.AF_IPV4
+    AF_IPV6 = consts.AF_IPV6
 
-    AF_IPV4_LABEL = "ipv4"
-    AF_IPV6_LABEL = "ipv6"
+    AF_IPV4_LABEL = consts.AF_IPV4_LABEL
+    AF_IPV6_LABEL = consts.AF_IPV6_LABEL
 
     NODE_ID_NONE = -1
 

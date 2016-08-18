@@ -104,6 +104,12 @@ DRBDCTRL_DEV_1      = "/dev/drbd1"
 DRBDCTRL_LV_NAME_0  = ".drbdctrl_0"
 DRBDCTRL_LV_NAME_1  = ".drbdctrl_1"
 
+AF_IPV4 = 4
+AF_IPV6 = 6
+
+AF_IPV4_LABEL = "ipv4"
+AF_IPV6_LABEL = "ipv6"
+
 KEY_BLOCKSIZE = 'blocksize'
 DEFAULT_BLOCKSIZE = '4k'
 
