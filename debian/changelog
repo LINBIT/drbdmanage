@@ -1,3 +1,13 @@
+drbdmanage (0.97.3-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * conffile: IPv6 compatibility
+
+  [ Philipp Marek ]
+  * Fix overriding of the "delay" function.
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 19 Aug 2016 09:39:43 +0200
+
 drbdmanage (0.97.2-1) experimental; urgency=medium
 
   [ Philipp Marek ]
