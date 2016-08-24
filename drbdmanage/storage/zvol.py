@@ -267,11 +267,31 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
         return status
 
     def _remove_vol(self, vol_name):
+        origin_data = []
+        try:
+            exec_args = [
+                self._cmd_vgs, 'get', '-H', '-p', 'origin',
+                utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
+            ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+            zpool_proc = subprocess.Popen(
+                exec_args,
+                env=self._subproc_env, stdout=subprocess.PIPE,
+                close_fds=True
+            )
+
+            origin_data = zpool_proc.stdout.readline()
+            origin_data = origin_data.strip().split()
+
+        except:
+            pass
+
         try:
             exec_args = [
                 self._cmd_remove, self.ZVOL_REMOVE, '-R',
                 utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
             ]
+            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
             subprocess.call(
                 exec_args,
                 0, self._cmd_remove,
@@ -284,6 +304,21 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
                 % (self._cmd_remove, str(os_err))
             )
             raise StoragePluginException
+
+        try:
+            if len(origin_data) == 4:
+                # rm origin
+                exec_args = [
+                    self._cmd_remove, self.ZVOL_REMOVE, origin_data[2]
+                ]
+                utils.debug_log_exec_args(self.__class__.__name__, exec_args)
+                subprocess.call(
+                    exec_args,
+                    0, self._cmd_remove,
+                    env=self._subproc_env, close_fds=True
+                )
+        except:
+            pass
 
     def _check_vol_exists(self, vol_name):
         exists = False
