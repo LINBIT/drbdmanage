@@ -1956,7 +1956,7 @@ class DrbdManager(object):
         # this is actually supposed to be DrbdManageServer.CONSTANT, but the import system
         # broke again when 'import drbdmanage.server' was added
         max_fail_count = self._server.DEFAULT_MAX_FAIL_COUNT
-        prop_str = self._server.get_cluster_conf_value(self._server.KEY_MAX_FAIL_COUNT)
+        prop_str = self._server.get_conf_value(self._server.KEY_MAX_FAIL_COUNT)
         if prop_str is not None:
             try:
                 max_fail_count = int(prop_str)
