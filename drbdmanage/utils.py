@@ -182,7 +182,11 @@ class Table():
             orig_table = self.table[:]
             orig_coloroverride = self.coloroverride[:]
             tidx_used = set()
-            self.table.sort(key=operator.itemgetter(*group_bys))
+            try:
+                from natsort import natsorted
+                self.table = natsorted(self.table, key=operator.itemgetter(*group_bys))
+            except:
+                self.table.sort(key=operator.itemgetter(*group_bys))
 
             # restore color overrides after sort
             for oidx, orow in enumerate(orig_table):
