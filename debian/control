@@ -25,6 +25,7 @@ Depends: dbus,
          lvm2,
          python-dbus,
          python-gobject,
+         python-natsort,
          thin-provisioning-tools,
          ${misc:Depends},
          ${python:Depends}
