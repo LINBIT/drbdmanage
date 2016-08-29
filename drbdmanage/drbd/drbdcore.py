@@ -1061,10 +1061,24 @@ class DrbdManager(object):
         return fn_rc
 
     @log_in_out
+    def _delete_drbd_info_file(self, volume):
+        """
+        Deletes any old DRBD block device info file for the volume's minor number
+        """
+        # FIXME: The /var/lib/drbd path should probably be configurable
+        minor_obj = volume.get_minor()
+        minor_nr = minor_obj.get_value()
+        file_name = ("/var/lib/drbd/drbd-minor-%d.lkbd" % (minor_nr))
+        self._server.remove_file(file_name)
+
+    @log_in_out
     def _deploy_volume_actions(self, assignment, vol_state, max_peers):
         """
         Deploys a volumes or restores a snapshot
         """
+        # Attempt to delete any old DRBD block device info file for the new volume's minor number
+        self._delete_drbd_info_file(vol_state.get_volume())
+
         diskless = is_set(assignment.get_tstate(), Assignment.FLAG_DISKLESS)
         blockdev = None
         resource = assignment.get_resource()
@@ -1496,6 +1510,8 @@ class DrbdManager(object):
             if fn_rc == DM_SUCCESS or bd_name is None:
                 fn_rc = 0
                 vol_state.set_bd(None, None)
+                # Delete the DRBD info file
+                self._delete_drbd_info_file(vol_state.get_volume())
                 if is_unset(vol_state.get_tstate(), DrbdVolumeState.FLAG_DEPLOY):
                     vol_state.set_cstate(0)
                     vol_state.set_tstate(0)
@@ -1698,6 +1714,8 @@ class DrbdManager(object):
                         # volume has no block device, nothing to do
                         vol_state.set_cstate(0)
                         vol_state.set_tstate(0)
+                        # Delete the DRBD info file
+                    self._delete_drbd_info_file(vol_state.get_volume())
         if not ud_errors:
             # Remove the external configuration file
             self._server.remove_assignment_conf(resource.get_name())

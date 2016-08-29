@@ -5332,13 +5332,20 @@ class DrbdManageServer(object):
         fn_rc = 0
         file_path = os.path.join(self._conf[self.KEY_DRBD_CONFPATH],
                                  "drbdmanage_" + resource_name + ".res")
+        return self.remove_file(file_path)
+
+
+    def remove_file(self, file_path):
+        """
+        Removes (unlinks) the specified file
+        """
+        fn_rc = 0
         try:
             os.unlink(file_path)
         except OSError as oserr:
             if oserr.errno != errno.ENOENT:
                 log_message = (
-                    "cannot remove configuration file '%s', "
-                    "error returned by the OS is: %s"
+                    "Cannot remove file '%s', error returned by the OS is: %s"
                     % (file_path, oserr.strerror)
                 )
                 logging.error(log_message)
