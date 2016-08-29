@@ -1687,17 +1687,6 @@ class DrbdManager(object):
             # Update the resource configuration file
             res_name = assignment.get_resource().get_name()
             if (self._drbdadm.fallback_down(res_name)):
-                fn_rc = 0
-            else:
-                log_message = (
-                    "Undeploying assignment '%s': DRBD down command failed"
-                    % (res_name)
-                )
-                logging.error(log_message)
-                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
-                ud_errors = True
-
-            if fn_rc == 0:
                 for vol_state in assignment.iterate_volume_states():
                     bd_name = vol_state.get_bd_name()
                     if bd_name is not None:
@@ -1721,6 +1710,15 @@ class DrbdManager(object):
                         vol_state.set_tstate(0)
                         # Delete the DRBD info file
                     self._delete_drbd_info_file(vol_state.get_volume())
+            else:
+                log_message = (
+                    "Undeploying assignment '%s': DRBD down command failed"
+                    % (res_name)
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+                ud_errors = True
+
         if not ud_errors:
             # Remove the external configuration file
             self._server.remove_assignment_conf(resource.get_name())
