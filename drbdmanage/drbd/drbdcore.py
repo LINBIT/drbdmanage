@@ -1005,6 +1005,11 @@ class DrbdManager(object):
                     )
 
     @log_in_out
+    def check_res_file(self, tmp_res_file_path, res_file_path):
+        ok = self._drbdadm.check_res_file(tmp_res_file_path, res_file_path)
+        return ok
+
+    @log_in_out
     def _up_resource(self, assignment):
         """
         Brings up DRBD resources

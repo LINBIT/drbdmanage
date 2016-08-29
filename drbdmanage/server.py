@@ -5425,7 +5425,11 @@ class DrbdManageServer(object):
 
         # Attempt to move the resource configuration file
         try:
-            os.rename(assg_tmp_path, assg_final_path)
+            if not self._drbd_mgr.check_res_file(assg_tmp_path, assg_final_path):
+                logging.info('Resource file %s not valid\n' % assg_tmp_path)
+                update_exception = ResourceFileException(assg_final_path)
+            else:
+                os.rename(assg_tmp_path, assg_final_path)
         except OSError as os_error:
             update_exception = ResourceFileException(assg_final_path)
 

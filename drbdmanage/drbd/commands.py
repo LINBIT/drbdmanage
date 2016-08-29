@@ -202,6 +202,14 @@ class DrbdAdm(object):
     def wait_sync_resource(self, res_name, timeout=10):
         return self._wait_for_family('wait-sync-resource', res_name, timeout)
 
+    def check_res_file(self, tmp_res_file_path, res_file_path):
+        exec_args = [
+            self.DRBDADM_UTIL, "--config-to-test", tmp_res_file_path,
+            "--config-to-exclude", res_file_path, "sh-nop"
+        ]
+        exit_code = self._run_drbdutils(exec_args)
+        return exit_code == 0
+
     def _run_drbdutils(self, exec_args):
         """
         Runs the drbdadm command as a child process with its standard input
