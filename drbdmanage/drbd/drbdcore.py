@@ -588,7 +588,8 @@ class DrbdManager(object):
                 assg.set_rc(fn_rc)
                 if fn_rc != 0:
                     failed_actions = True
-            elif vol_state.requires_resize_storage():
+
+            if (not failed_actions) and vol_state.requires_resize_storage():
                 logging.debug(
                     "Resource '%s' Volume %d: requires_resize_storage() == True",
                     assg.get_resource().get_name(), vol_state.get_id()
