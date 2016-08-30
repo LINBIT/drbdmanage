@@ -2673,7 +2673,7 @@ class DrbdManageServer(object):
                                     add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
                                     raise ValueError
                             bd_name = vol_state.get_bd_name()
-                            if bd_name is None:
+                            if bd_name is None and is_set(vol_state.get_cstate(), DrbdVolumeState.FLAG_DEPLOY):
                                 # Not diskless, but no blockdevice -> fail
                                 add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
                                 raise ValueError
