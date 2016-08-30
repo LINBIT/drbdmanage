@@ -13,6 +13,7 @@ Generalized utility functions and classes for drbdmanage
 """
 
 import dbus
+import errno
 import os
 import sys
 import hashlib
@@ -287,24 +288,30 @@ class Table():
 
             fstr += ' {' + str(idx) + ':' + col['just_txt'] + str(columnmax[idx]) + '} ' + ctbl[enc]['pipe']
 
-        for idx, row in enumerate(self.table):
-            if not row[0]:  # print a separator
-                if idx == 0:
-                    l, m, r = ctbl[enc]['tl'], ctbl[enc]['msc'], ctbl[enc]['tr']
-                elif idx == len(self.table) - 1:
-                    l, m, r = ctbl[enc]['bl'], ctbl[enc]['msc'], ctbl[enc]['br']
-                else:
-                    l, m, r = ctbl[enc]['ml'], ctbl[enc]['mdc'], ctbl[enc]['mr']
-                sep = l + m * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + r
-                if enc == 'utf8':  # should be save on non utf-8 too...
-                    sep = sep.decode('utf-8')
+        try:
+            for idx, row in enumerate(self.table):
+                if not row[0]:  # print a separator
+                    if idx == 0:
+                        l, m, r = ctbl[enc]['tl'], ctbl[enc]['msc'], ctbl[enc]['tr']
+                    elif idx == len(self.table) - 1:
+                        l, m, r = ctbl[enc]['bl'], ctbl[enc]['msc'], ctbl[enc]['br']
+                    else:
+                        l, m, r = ctbl[enc]['ml'], ctbl[enc]['mdc'], ctbl[enc]['mr']
+                    sep = l + m * (sum(columnmax) - co_sum + (3 * len(self.header)) - 1) + r
+                    if enc == 'utf8':  # should be save on non utf-8 too...
+                        sep = sep.decode('utf-8')
 
-                if self.r_just and len(sep) < maxwidth:
-                    sys.stdout.write(l + m * (maxwidth - 2) + r + "\n")
+                    if self.r_just and len(sep) < maxwidth:
+                        sys.stdout.write(l + m * (maxwidth - 2) + r + "\n")
+                    else:
+                        sys.stdout.write(sep + "\n")
                 else:
-                    sys.stdout.write(sep + "\n")
+                    sys.stdout.write(fstr.format(*row) + "\n")
+        except IOError as e:
+            if e.errno == errno.EPIPE:
+                return
             else:
-                sys.stdout.write(fstr.format(*row) + "\n")
+                raise
 
 
 # a wrapper for subprocess.check_output
