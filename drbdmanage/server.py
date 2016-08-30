@@ -2632,23 +2632,37 @@ class DrbdManageServer(object):
                         t_diskless = (assg_tstate & Assignment.FLAG_DISKLESS)
                         if c_diskless != t_diskless:
                             # Assignment is transitioning from or to diskless -> fail
-                            add_rc_entry(fn_rc, DM_ENOSPC, dm_exc_text(DM_ENOSPC))
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                "Volume is transitioning from or to diskless, "
+                                "resize request rejected"
+                            )
                             raise ValueError
-                        if not (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
-                                is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
+                        if not is_set(assg_tstate, Assignment.FLAG_DEPLOY):
                             # Some assignment is deploying or undeploying -> fail
-                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                "At least one of the resource's assignments is being undeployed, "
+                                "resize request rejected"
+                            )
                             raise ValueError
 
                         vol_state = assignment.get_volume_state(vol_id)
                         if vol_state is None:
                             # Volume state object missing -> fail
-                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                "A volume state object is missing, internal error, "
+                                "resize request rejected"
+                            )
                             raise ValueError
-                        if not (is_set(vol_state.get_cstate(), DrbdVolumeState.FLAG_DEPLOY) and
-                                is_set(vol_state.get_tstate(), DrbdVolumeState.FLAG_DEPLOY)):
-                            # Some volume state is deploying or undeploying -> fail
-                            add_rc_entry(fn_rc, DM_EINVAL, dm_exc_text(DM_EINVAL))
+                        if not is_set(vol_state.get_tstate(), DrbdVolumeState.FLAG_DEPLOY):
+                            # Some volume state is undeploying -> fail
+                            add_rc_entry(
+                                fn_rc, DM_EINVAL,
+                                "At least one volume is being undeployed, "
+                                "resize request rejected"
+                            )
                             raise ValueError
 
                         if c_diskless == 0:
