@@ -1304,6 +1304,7 @@ class DrbdManager(object):
                 #        undeploying a partly-deployed resource.
                 #        This must be redesigned with additional flags
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                vol_state.finish_resize_storage()
                 fn_rc = 0
             else:
                 log_message = (
@@ -1965,12 +1966,19 @@ class DrbdManager(object):
         for node_assg in assg.get_resource().iterate_assignments():
             if is_unset(node_assg.get_cstate(), Assignment.FLAG_DISKLESS):
                 vol_state = node_assg.get_volume_state(vol_id)
-                vs_props = vol_state.get_props()
-                resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
-                if resize_stage is not None:
-                    if resize_stage != DrbdVolumeState.RESIZE_STAGE_DRBD:
-                       flag = False
-                       break
+                if vol_state is not None:
+                    vs_props = vol_state.get_props()
+                    resize_stage = vs_props.get_prop(DrbdVolumeState.KEY_RESIZE_STAGE, namespace=xact)
+                    if resize_stage is not None:
+                        if resize_stage != DrbdVolumeState.RESIZE_STAGE_DRBD:
+                           flag = False
+                           break
+                else:
+                    logging.error(
+                        "Internal error: _is_resize_storage_finished(): "
+                        "Assignment %s/%s is missing the DrbdVolumeState object for volume #%d"
+                        % (assg.get_node().get_name(), assg.get_resource().get_name(), int(vol_id))
+                    )
         return flag
 
 
