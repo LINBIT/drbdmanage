@@ -22,6 +22,7 @@ import operator
 import subprocess
 import select
 import fcntl
+import errno
 import uuid
 import drbdmanage.consts as consts
 import logging
@@ -1207,19 +1208,25 @@ class ExternalCommand(object):
         out_ok = True
         err_ok = True
         while out_ok or err_ok:
-            events = epoll.poll()
-            for (poll_fd, event_id) in events:
-                if event_id == select.EPOLLIN:
-                    if poll_fd == err_fd:
-                        self._read_stream(err_reader, self.stderr_handler)
-                    elif poll_fd == out_fd:
-                        self._read_stream(out_reader, self.stdout_handler)
-                else:
-                    epoll.unregister(poll_fd)
-                    if poll_fd == err_fd:
-                        err_ok = False
-                    elif poll_fd == out_fd:
-                        out_ok = False
+            try:
+                events = epoll.poll()
+                for (poll_fd, event_id) in events:
+                    if event_id == select.EPOLLIN:
+                        if poll_fd == err_fd:
+                            self._read_stream(err_reader, self.stderr_handler)
+                        elif poll_fd == out_fd:
+                            self._read_stream(out_reader, self.stdout_handler)
+                    else:
+                        epoll.unregister(poll_fd)
+                        if poll_fd == err_fd:
+                            err_ok = False
+                        elif poll_fd == out_fd:
+                            out_ok = False
+            except IOError as io_err:
+                # Retry interrupted system calls
+                if not io_err.errno == errno.EINTR:
+                    # End I/O for anything other than an interrupted system call
+                    break
 
         # Close the pipes
         proc.stdout.close()
