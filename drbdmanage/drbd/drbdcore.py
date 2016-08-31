@@ -11,6 +11,7 @@ import sys
 import os
 import logging
 import time
+import subprocess
 import drbdmanage.utils as utils
 import drbdmanage.consts as consts
 import drbdmanage.conf.conffile
@@ -1346,7 +1347,49 @@ class DrbdManager(object):
             vol_state.set_bd(bd_name, bd_path)
             bd_mgr.up_blockdevice(bd_name)
             vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
-            fn_rc = 0
+
+            # Create DRBD info file with current device size
+            volume = vol_state.get_volume()
+            minor_obj = volume.get_minor()
+            minor_nr = minor_obj.get_value()
+            info_file_path = "/var/lib/drbd/drbd-minor-%d.lkbd" % (minor_nr)
+            logging.debug("Updating DRBD block device info file '%s'" % (info_file_path))
+            info_file = None
+            try:
+                info_file = open(info_file_path, "w")
+                logging.debug("Running 'blockdev --getsize64 %s'" % (bd_path))
+                proc = subprocess.Popen(["blockdev", "--getsize64", bd_path], stdout=info_file)
+                proc.wait()
+            except IOError as io_err:
+                log_message = (
+                    "Failed to update DRBD block device info file '%s', I/O error encountered"
+                     % (info_file_path)
+                )
+                logging.error(log_message)
+                self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+            if info_file is not None:
+                try:
+                    info_file.close()
+                except IOError:
+                    pass
+
+            # If a resize operation is required, resize the backend device
+            if vol_state.requires_resize_storage():
+                max_peers = self._server.DEFAULT_MAX_PEERS
+                try:
+                    max_peers = int(
+                        self._server.get_conf_value(
+                            self._server.KEY_MAX_PEERS
+                        )
+                    )
+                except ValueError:
+                    pass
+                sub_rc = self._resize_volume_blockdevice(assignment, vol_state, max_peers)
+                if sub_rc == DM_SUCCESS:
+                    fn_rc = 0
+            else:
+                # Nothing more to do
+                fn_rc = 0
         else:
             log_message = (
                 "DrbdManager: Failed to restore snapshot for resource '%s' volume %d"
