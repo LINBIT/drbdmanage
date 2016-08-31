@@ -1270,7 +1270,9 @@ class DrbdManager(object):
         blockdev = None
 
         net_size = volume.get_size_kiB()
+        is_resizing = False
         if vol_state.requires_resize_storage():
+            is_resizing = True
             try:
                 net_size = volume.get_resize_value()
             except ValueError:
@@ -1304,7 +1306,8 @@ class DrbdManager(object):
                 #        undeploying a partly-deployed resource.
                 #        This must be redesigned with additional flags
                 vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
-                vol_state.finish_resize_storage()
+                if is_resizing:
+                    vol_state.finish_resize_storage()
                 fn_rc = 0
             else:
                 log_message = (
