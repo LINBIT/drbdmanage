@@ -1007,8 +1007,8 @@ class DrbdManager(object):
                     )
 
     @log_in_out
-    def check_res_file(self, tmp_res_file_path, res_file_path):
-        ok = self._drbdadm.check_res_file(tmp_res_file_path, res_file_path)
+    def check_res_file(self, res_name, tmp_res_file_path, res_file_path):
+        ok = self._drbdadm.check_res_file(res_name, tmp_res_file_path, res_file_path)
         return ok
 
     @log_in_out
@@ -2116,7 +2116,9 @@ class DrbdManager(object):
 
         Called by the server's reconfigure() function
         """
-        self._drbdadm = drbdmanage.drbd.commands.DrbdAdm()
+        conf_path = self._server._conf.get(self._server.KEY_DRBD_CONFPATH,
+                                           self._server.DEFAULT_DRBD_CONFPATH)
+        self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(conf_path)
 
 
 class DrbdCommon(GenericDrbdObject):

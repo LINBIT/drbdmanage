@@ -27,8 +27,8 @@ class DrbdAdm(object):
     # Used as a return code to indicate that drbdadm could not be executed
     DRBDUTIL_EXEC_FAILED = 127
 
-    def __init__(self):
-        pass
+    def __init__(self, conf_path):
+        self.conf_path = conf_path
 
     def adjust(self, res_name, skip_net=False, skip_disk=False, discard=False, vol_id=None):
         """
@@ -41,13 +41,15 @@ class DrbdAdm(object):
         if discard:
             exec_args.append('--discard-my-data')
 
-        if vol_id is not None:
-            res_name += '/%s' % str(vol_id)
-
         if skip_net:
             exec_args.append("--skip-net")
         if skip_disk:
             exec_args.append("--skip-disk")
+        exec_args += self._direct_res(res_name)
+
+        # make sure to not mangle res_name before _direct_res
+        if vol_id is not None:
+            res_name += '/%s' % str(vol_id)
         exec_args.append(res_name)
         return self._run_drbdutils(exec_args)
 
@@ -65,6 +67,7 @@ class DrbdAdm(object):
         if assume_clean:
             exec_args.append("--")
             exec_args.append("--assume-clean")
+        exec_args += self._direct_res(res_name)
         exec_args.append("resize")
         exec_args.append(res_name + "/" + str(vol_id))
         return self._run_drbdutils(exec_args)
@@ -75,7 +78,9 @@ class DrbdAdm(object):
 
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "down", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["down", res_name]
         return self._run_drbdutils(exec_args)
 
     def fallback_down(self, res_name):
@@ -100,6 +105,7 @@ class DrbdAdm(object):
             exec_args = [self.DRBDSETUP_UTIL]
         else:
             exec_args = [self.DRBDADM_UTIL, "-vvv"]
+            exec_args += self._direct_res(res_name)
         if force:
             if not with_drbdsetup:
                 exec_args.append("--")
@@ -113,7 +119,9 @@ class DrbdAdm(object):
         Switches a resource to secondary mode
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "secondary", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["secondary", res_name]
         return self._run_drbdutils(exec_args)
 
     def connect(self, res_name, discard):
@@ -128,7 +136,9 @@ class DrbdAdm(object):
         Disconnects a resource from its peer resources on other hosts
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "disconnect", res_name]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["disconnect", res_name]
         return self._run_drbdutils(exec_args)
 
     def attach(self, res_name, vol_id):
@@ -143,8 +153,10 @@ class DrbdAdm(object):
         Detaches a volume to its disk
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "detach",
-                     res_name + "/" + str(vol_id)]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["detach", res_name + "/" + str(vol_id)]
+
         return self._run_drbdutils(exec_args)
 
     def create_md(self, res_name, vol_id, peers):
@@ -152,8 +164,10 @@ class DrbdAdm(object):
         Calls drbdadm to create the metadata information for a volume
         @return: process handle of the drbdadm process
         """
-        exec_args = [self.DRBDADM_UTIL, "-vvv", "--max-peers", str(peers),
-                     "--", "--force", "create-md", res_name + "/" + str(vol_id)]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["--max-peers", str(peers),
+                      "--", "--force", "create-md", res_name + "/" + str(vol_id)]
         return self._run_drbdutils(exec_args)
 
     def set_gi(self, node_id, minor_nr, bd_path, current_gi, history_1_gi=None, set_flags=False):
@@ -180,9 +194,9 @@ class DrbdAdm(object):
         Calls drbdadm to set a new current GI
         @return: True if the command succeeded (exit code 0), False otherwise
         """
-        exec_args = [
-            self.DRBDADM_UTIL, "-vvv", "--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)
-        ]
+        exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
+        exec_args += ["--clear-bitmap", "new-current-uuid", res_name + "/" + str(vol_id)]
         exit_code = self._run_drbdutils(exec_args)
         return (exit_code == 0)
 
@@ -202,13 +216,26 @@ class DrbdAdm(object):
     def wait_sync_resource(self, res_name, timeout=10):
         return self._wait_for_family('wait-sync-resource', res_name, timeout)
 
-    def check_res_file(self, tmp_res_file_path, res_file_path):
+    def check_res_file(self, res_name, tmp_res_file_path, res_file_path):
         exec_args = [
-            self.DRBDADM_UTIL, "--config-to-test", tmp_res_file_path,
-            "--config-to-exclude", res_file_path, "sh-nop"
+            self.DRBDADM_UTIL, '--config-to-test', tmp_res_file_path,
+            '--config-to-exclude', res_file_path, 'sh-nop'
+        ]
+        exit_code = self._run_drbdutils(exec_args)
+        if exit_code != 0:
+            return False
+
+        exec_args = [
+            self.DRBDADM_UTIL, '-c', tmp_res_file_path, '-d', 'up', res_name
         ]
         exit_code = self._run_drbdutils(exec_args)
         return exit_code == 0
+
+    def _direct_res(self, res_name):
+        if res_name.lower() != consts.RES_ALL_KEYWORD and res_name != consts.DRBDCTRL_RES_NAME:
+            res_file_path = os.path.normpath(self.conf_path) + '/'
+            return ['-c', os.path.join(res_file_path, 'drbdmanage_' + res_name + '.res')]
+        return []
 
     def _run_drbdutils(self, exec_args):
         """

@@ -5437,28 +5437,27 @@ class DrbdManageServer(object):
 
         update_exception = None
 
-        # Attempt to move the resource configuration file
-        try:
-            if not self._drbd_mgr.check_res_file(assg_tmp_path, assg_final_path):
-                logging.info('Resource file %s not valid\n' % assg_tmp_path)
-                update_exception = ResourceFileException(assg_final_path)
-            else:
-                os.rename(assg_tmp_path, assg_final_path)
-        except OSError as os_error:
-            update_exception = ResourceFileException(assg_final_path)
-
         # Attempt to move the global configuration file
         try:
             os.rename(global_tmp_path, global_final_path)
         except OSError as os_error:
-            # If the resource configuration file move generated an exception
-            # before, do not override it
-            if update_exception is None:
-                update_exception = ResourceFileException(global_final_path)
+            logging.info('Could not rename %s\n' % global_tmp_path)
+            update_exception = ResourceFileException(global_final_path)
+
+        # Attempt to move the resource configuration file
+        if update_exception is None:
+            try:
+                if not self._drbd_mgr.check_res_file(resource_name, assg_tmp_path, assg_final_path):
+                    logging.info('Resource file %s not valid\n' % assg_tmp_path)
+                    os.rename(assg_tmp_path, assg_final_path + '.q')
+                    update_exception = ResourceFileException(assg_final_path)
+                else:
+                    os.rename(assg_tmp_path, assg_final_path)
+            except OSError as os_error:
+                update_exception = ResourceFileException(assg_final_path)
 
         if update_exception is not None:
             raise update_exception
-
 
     def close_assignment_conf(self, assg_conf, global_conf):
         """
