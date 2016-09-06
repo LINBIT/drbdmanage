@@ -559,7 +559,7 @@ class DrbdManageServer(object):
                 if poolsize == -1 or poolfree == -1:
                     self.update_pool([])
 
-    def run(self, rerun=False):
+    def run(self, rerun=False, was_previous_leader=False):
         """
         Finishes the server's startup and runs the main loop
 
@@ -572,7 +572,7 @@ class DrbdManageServer(object):
 
         # Start up the drbdmanage control volume
         # call internal metric
-        _, self._server_role = self._drbd_mgr.adjust_drbdctrl()
+        _, self._server_role = self._drbd_mgr.adjust_drbdctrl(was_previous_leader=was_previous_leader)
         self._server_role_potential = self._server_role
 
         # it might be the case that reading drbdmanaged.cfg overwrote what we "guessed"
@@ -608,6 +608,7 @@ class DrbdManageServer(object):
             self.schedule_reelection()
         self.schedule_cmd_queue()
         self.schedule_leader_election()
+        self.schedule_pseudo_fence()
         self.schedule_satellite_ping()
         self.schedule_satellite_shutdown()
 
@@ -964,11 +965,31 @@ class DrbdManageServer(object):
 
         return True
 
+    def pseudo_fence(self):
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            quorum_nodes = self._quorum.get_full_member_count()
+            if quorum_nodes > 2 and not self._quorum.is_present():
+                self._drbd_mgr.secondary_drbdctrl()
+                fn_rc = self._drbd_mgr.down_drbdctrl()
+                if fn_rc == 0:
+                    logging.info("Triggering reelection and discard my data")
+                    self.reelect(was_previous_leader=True)
+                else:
+                    logging.info("Pseudo fencing myself")
+                    exit(1)
+        return True
+
     def schedule_satellite_ping(self):
         gobject.timeout_add(3000, self.satellite_ping)
 
     def schedule_satellite_shutdown(self):
         gobject.timeout_add(3000, self.satellite_shutdown)
+
+    def schedule_pseudo_fence(self):
+        gobject.timeout_add(3000, self.pseudo_fence)
 
     def schedule_run_changes(self):
         """
@@ -1790,12 +1811,12 @@ class DrbdManageServer(object):
         return fn_rc, role
 
     # no decorator, allow anytime
-    def reelect(self, props={}):
+    def reelect(self, props={}, was_previous_leader=False):
         try:
             self._force_election_win = string_to_bool(props[FLAG_FORCEWIN])
         except:
             pass
-        self.run(rerun=True)
+        self.run(rerun=True, was_previous_leader=was_previous_leader)
         return self.role()
 
     @wait_startup

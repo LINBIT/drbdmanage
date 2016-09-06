@@ -905,12 +905,16 @@ class DrbdManager(object):
         return (pool_changed, failed_actions)
 
     @log_in_out
-    def adjust_drbdctrl(self):
+    def adjust_drbdctrl(self, was_previous_leader=False):
         sat_state = consts.SAT_POTENTIAL_LEADER_NODE
         drbdctrl_res_name = consts.DRBDCTRL_RES_NAME
 
         # call drbdadm to bring up the control volume
-        fn_rc = self._drbdadm.adjust(drbdctrl_res_name)
+        # discard=was_previous_leader:
+        # e.g. there was a 3 node cluster, leader got disconnected, other nodes elected new leader
+        # old-leader runs reelection and has to discard his data
+
+        fn_rc = self._drbdadm.adjust(drbdctrl_res_name, discard=was_previous_leader)
         if fn_rc != 0:
             res_file_name = os.path.join(consts.DRBDCTRL_RES_PATH, drbdctrl_res_name)
             res_file_exits = os.path.isfile(res_file_name)

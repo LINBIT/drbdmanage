@@ -749,7 +749,7 @@ class DBusServer(dbus.service.Object):
     def reelect(self, props, message=None):
         if self._dbustracer_running:
             self._dbustracer.record(message.get_member(), message.get_args_list())
-        return self._server.reelect(props)
+        return self._server.reelect(props, False)
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
