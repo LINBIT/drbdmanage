@@ -50,6 +50,7 @@ ERROR_CODE          = "error_code"
 FAIL_COUNT          = "fail-count"
 COMMON_NAME         = "common_name"
 MANAGED             = "managed"
+CREATEDATE          = "create_date"
 
 # Keys for the version text-query
 KEY_SERVER_VERSION       = "server_version"

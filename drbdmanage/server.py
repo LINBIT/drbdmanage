@@ -11,6 +11,7 @@ import os
 import errno
 import signal
 import time
+import datetime
 import gobject
 import subprocess
 import fcntl
@@ -47,7 +48,7 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
-    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, BOOL_TRUE, BOOL_FALSE
+    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import (
@@ -2213,10 +2214,18 @@ class DrbdManageServer(object):
                             port, secret, 0, None,
                             self.get_serial, None, None
                         )
+
+                        res_props = resource.get_props()
+                        try:
+                            c_date = datetime.datetime.utcnow().isoformat()
+                        except:
+                            c_date = ""
+                        res_props.set_prop(CREATEDATE, c_date)
+
                         # Merge only auxiliary properties into the
                         # DrbdResource's properties container
                         aux_props = aux_props_selector(props)
-                        resource.get_props().merge_gen(aux_props)
+                        res_props.merge_gen(aux_props)
                 else:
                     add_rc_entry(fn_rc, DM_ESECRETG,
                                  dm_exc_text(DM_ESECRETG))
