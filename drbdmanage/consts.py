@@ -203,3 +203,9 @@ KEY_S_ANS_UNCHANGED = 'ANS_UNCHANGED'
 KEY_S_ANS_E_OP_INVALID = 'ANS_OP_INVALID'
 KEY_S_ANS_E_TOO_LONG = 'ANS_E_TOO_LONG'
 KEY_S_ANS_E_COMM = 'ANS_E_COMM'
+
+# BEGIN HOTFIX
+# FIXME: Hotfix for resizing restored snapshots
+#        after reducing the number of maximum peers
+HOTFIX_MAX_PEERS = 31
+# END HOTFIX

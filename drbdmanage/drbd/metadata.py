@@ -13,6 +13,7 @@ DRBD meta data related functions and calculations
 """
 
 import logging
+import drbdmanage.consts as consts
 import drbdmanage.exceptions as dmexc
 import drbdmanage.utils as utils
 
@@ -111,6 +112,12 @@ class MetaData(object):
         peers         = int(peers)
         al_stripes    = int(al_stripes)
         al_stripe_kiB = int(al_stripe_kiB)
+
+        # BEGIN HOTFIX
+        # FIXME: Hotfix for resizing restored snapshots
+        #        after reducing the number of maximum peers
+        peers = consts.HOTFIX_MAX_PEERS
+        # END HOTFIX
 
         gross_kiB = 0
 
