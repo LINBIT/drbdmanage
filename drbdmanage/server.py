@@ -2816,15 +2816,30 @@ class DrbdManageServer(object):
                             raise InvalidMinorNrException
                     if minor == MinorNr.MINOR_NR_ERROR:
                         raise InvalidMinorNrException
-                    vol_id = self.get_free_volume_id(resource)
+                    vol_id = -1
+                    # BEGIN HOTFIX
+                    # FIXME: Do not create any more volumes than the first one
+                    #        because D-Bus sucks, and even then it times out
+                    #        and forgets to suck, but still sucks without
+                    #        even knowing it.
+                    try:
+                        vol_id = int(props[VOL_ID])
+                    except KeyError:
+                        vol_id = self.get_free_volume_id(resource)
+                    except ValueError:
+                        pass
+                    # END HOTFIX
                     if vol_id == -1:
                         add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
                     else:
                         chg_serial = self.get_serial()
                         volume = None
                         try:
-                            volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
-                                                0, self.get_serial, None, None)
+                            if resource.get_volume(vol_id) is None:
+                                volume = DrbdVolume(vol_id, size_kiB, MinorNr(minor),
+                                                    0, self.get_serial, None, None)
+                            else:
+                                add_rc_entry(fn_rc, DM_EEXIST, dm_exc_text(DM_EEXIST))
                         except ValueError:
                             # Maximum number of volumes per resource exceeded
                             add_rc_entry(fn_rc, DM_EVOLID, dm_exc_text(DM_EVOLID))
