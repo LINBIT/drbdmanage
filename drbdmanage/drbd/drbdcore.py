@@ -143,9 +143,7 @@ class DrbdManager(object):
                 persist = self._server.begin_modify_conf()
                 if persist is not None:
                     loaded_hash = persist.get_stored_hash()
-                    old_serial = self._server.peek_serial()
                     changed, failed_actions = self.perform_changes()
-                    new_serial = self._server.peek_serial()
                     if poke_cluster:
                         # increase the serial number, implicitly changing the
                         # hash and thereby running requested changes on all
