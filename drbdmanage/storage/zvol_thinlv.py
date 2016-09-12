@@ -7,14 +7,8 @@
     For further information see the COPYING file.
 """
 
-import logging
-import subprocess
 import drbdmanage.storage.storagecore as storcore
 from drbdmanage.storage.zvol import Zvol
-from drbdmanage.storage.storageplugin_common import StoragePluginException
-
-import drbdmanage.consts as consts
-import drbdmanage.utils as utils
 
 
 class ZvolThinLv(Zvol):
@@ -36,23 +30,4 @@ class ZvolThinLv(Zvol):
         self.reconfigure()
 
     def _create_vol(self, vol_name, size):
-        size, bs = self._final_size(size)
-        try:
-            exec_args = [
-                self._cmd_create, self.ZFS_CREATE, '-s', '-b'+bs,
-                '-V', str(size) + 'k',
-                utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
-            ]
-            utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            subprocess.call(
-                exec_args,
-                0, self._cmd_create,
-                env=self._subproc_env, close_fds=True
-            )
-        except OSError as os_err:
-            logging.error(
-                "ZvolThinLv: LV creation failed, unable to run "
-                "external program '%s', error message from the OS: %s"
-                % (self._cmd_create, str(os_err))
-            )
-            raise StoragePluginException
+        super(ZvolThinLv, self)._create_vol(vol_name, size, thin=True)

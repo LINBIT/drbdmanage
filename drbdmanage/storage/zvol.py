@@ -10,6 +10,8 @@
 import os
 import logging
 import subprocess
+import time
+import stat
 import drbdmanage.storage.storagecore as storcore
 from drbdmanage.storage.storageplugin_common import (
     StoragePluginCommon, StoragePluginException, StoragePluginCheckFailedException)
@@ -220,20 +222,50 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
             bs = consts.DEFAULT_BLOCKSIZE
         return final_size, bs
 
-    def _create_vol(self, vol_name, size):
+    def _wait_dev_to_settle(self, path, retries_s=45):
+        # currently we saw that for zfs, if we need that for other LVMs, move to storagecore
+        # give udev some time to create the device
+        retries = 0
+        while True:
+            try:
+                mode = os.stat(path).st_mode
+                if stat.S_ISBLK(mode):
+                    return True
+            except:
+                pass
+
+            retries += 1
+            if retries >= retries_s:
+                break
+            time.sleep(1)
+
+        logging.error(
+            "%s: LV creation failed, %s did not exist after %d sec" % (self.NAME, path, retries_s)
+        )
+        return False
+
+    def _create_vol(self, vol_name, size, thin=False):
         size, bs = self._final_size(size)
+        zfs_vol_name = utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
+
         try:
-            exec_args = [
-                self._cmd_create, self.ZFS_CREATE, '-b'+bs,
-                '-V', str(size) + 'k',
-                utils.build_path(self._conf[consts.KEY_VG_NAME], vol_name)
-            ]
+            exec_args = [self._cmd_create, self.ZFS_CREATE]
+            if thin:
+                exec_args.append('-s')
+            exec_args += ['-b'+bs, '-V', str(size) + 'k', zfs_vol_name]
+
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            subprocess.call(
+            zfs_proc = subprocess.Popen(
                 exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
+            zfs_rc = zfs_proc.wait()
+            if zfs_rc == 0:
+                path = os.path.join(self._conf[self.KEY_DEV_PATH], zfs_vol_name)
+                if not self._wait_dev_to_settle(path):
+                    raise StoragePluginException
+
         except OSError as os_err:
             logging.error(
                 "Zvol: LV creation failed, unable to run "
@@ -366,11 +398,17 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
                 utils.build_path(self._conf[consts.KEY_VG_NAME], snaps_name)
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)
-            subprocess.call(
+            zfs_proc = subprocess.Popen(
                 exec_args,
                 0, self._cmd_create,
                 env=self._subproc_env, close_fds=True
             )
+            zfs_rc = zfs_proc.wait()
+            if zfs_rc == 0:
+                path = os.path.join(self._conf[self.KEY_DEV_PATH],
+                                    utils.build_path(self._conf[consts.KEY_VG_NAME], snaps_name))
+                if not self._wait_dev_to_settle(path):
+                    raise StoragePluginException
         except OSError as os_err:
             logging.error(
                 "Zvol: Snapshot creation failed, unable to run "
