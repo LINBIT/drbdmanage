@@ -75,7 +75,7 @@ from drbdmanage.drbd.drbdcore import (
 from drbdmanage.snapshots.snapshots import (
     DrbdSnapshot, DrbdSnapshotAssignment, DrbdSnapshotVolumeState
 )
-from drbdmanage.storage.storagecore import BlockDeviceManager, MinorNr
+from drbdmanage.storage.storagecore import BlockDeviceManager, StoragePlugin, MinorNr
 from drbdmanage.conf.conffile import DrbdAdmConf
 from drbdmanage.propscontainer import PropsContainer
 
@@ -136,6 +136,7 @@ class DrbdManageServer(object):
     KEY_MIN_MINOR_NR   = "min-minor-nr"
     KEY_MIN_PORT_NR    = "min-port-nr"
     KEY_MAX_PORT_NR    = "max-port-nr"
+    KEY_SPACE_CHECK    = "space-check"
     KEY_MAX_FAIL_COUNT = "max-fail-count"
     KEY_MSGLOG_SIZE    = "message-log-capacity"
 
@@ -150,6 +151,7 @@ class DrbdManageServer(object):
     DEFAULT_MIN_MINOR_NR =  100
     DEFAULT_MIN_PORT_NR  = 7000
     DEFAULT_MAX_PORT_NR  = 7999
+    DEFAULT_SPACE_CHECK  = BOOL_TRUE
     DEFAULT_MAX_FAIL_COUNT = 3
 
     DEFAULT_MSGLOG_SIZE  = 50
@@ -163,6 +165,7 @@ class DrbdManageServer(object):
         KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
         KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
+        KEY_SPACE_CHECK    : str(DEFAULT_SPACE_CHECK),
         KEY_MAX_FAIL_COUNT : str(DEFAULT_MAX_FAIL_COUNT),
         KEY_MSGLOG_SIZE    : str(DEFAULT_MSGLOG_SIZE),
         KEY_EXTEND_PATH    : "/sbin:/usr/sbin:/bin:/usr/bin",
@@ -3353,36 +3356,44 @@ class DrbdManageServer(object):
                     # ========================================
                     # FIXME: extend does nothing for some unknown reason,
                     #        but succeeds (exit code = 0)
-                    """
-                    calculate the amount of memory required to deploy all
-                    volumes of the resource
-                    """
                     size_sum = 0
-                    max_peers = self.DEFAULT_MAX_PEERS
-                    try:
-                        max_peers = int(
-                            self.get_conf_value(self.KEY_MAX_PEERS)
-                        )
-                    except ValueError:
-                        # Unparseable configuration entry;
-                        # no-op: use default value instead
-                        pass
-                    for vol in resource.iterate_volumes():
-                        # Calculate required gross space for a volume
-                        # with the specified net space
+                    space_check = True
+                    conf_space_check = self.get_conf_value(DrbdManageServer.KEY_SPACE_CHECK)
+                    if conf_space_check is not None:
                         try:
-                            size_sum += md.MetaData.get_gross_kiB(
-                                vol.get_size_kiB(), max_peers,
-                                md.MetaData.DEFAULT_AL_STRIPES,
-                                md.MetaData.DEFAULT_AL_kiB
+                            space_check = string_to_bool(conf_space_check)
+                        except ValueError:
+                            pass
+                    if space_check:
+                        """
+                        Calculate the aggregate space required by the resource
+                        (the sum of the space required by each volume)
+                        """
+                        max_peers = self.DEFAULT_MAX_PEERS
+                        try:
+                            max_peers = int(
+                                self.get_conf_value(self.KEY_MAX_PEERS)
                             )
-                        except md.MetaDataException as md_exc:
-                            add_rc_entry(
-                                fn_rc, DM_EINVAL,
-                                md_exc.message
-                            )
-                            logging.debug("auto_deploy(): MetaDataException: " + md_exc.message)
-                            raise ValueError
+                        except ValueError:
+                            # Unparseable configuration entry;
+                            # no-op: use default value instead
+                            pass
+                        for vol in resource.iterate_volumes():
+                            # Calculate required gross space for a volume
+                            # with the specified net space
+                            try:
+                                size_sum += md.MetaData.get_gross_kiB(
+                                    vol.get_size_kiB(), max_peers,
+                                    md.MetaData.DEFAULT_AL_STRIPES,
+                                    md.MetaData.DEFAULT_AL_kiB
+                                )
+                            except md.MetaDataException as md_exc:
+                                add_rc_entry(
+                                    fn_rc, DM_EINVAL,
+                                    md_exc.message
+                                )
+                                logging.debug("auto_deploy(): MetaDataException: " + md_exc.message)
+                                raise ValueError
                     """
                     filter nodes that do not have the resource deployed yet
                     """
