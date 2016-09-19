@@ -3344,18 +3344,23 @@ Confirm:
         self._ext_command(
             ["drbdsetup", "new-minor", DRBDCTRL_RES_NAME, "1", "1"]
         )
-        self._ext_command(
-            [
-                "drbdmeta", "0", "v09",
-                drbdctrl_blockdev_0, "internal", "apply-al"
-            ]
-        )
-        self._ext_command(
-            [
-                "drbdmeta", "1", "v09",
-                drbdctrl_blockdev_1, "internal", "apply-al"
-            ]
-        )
+        retry_counter = 3
+        while retry_counter > 0:
+            rc_0 = self._ext_command(
+                [
+                    "drbdmeta", "0", "v09",
+                    drbdctrl_blockdev_0, "internal", "apply-al"
+                ]
+            )
+            rc_1 = self._ext_command(
+                [
+                    "drbdmeta", "1", "v09",
+                    drbdctrl_blockdev_1, "internal", "apply-al"
+                ]
+            )
+            if rc_0 == 0 and rc_1 == 0:
+                break
+            retry_counter -= 1
         self._ext_command(
             [
                 "drbdsetup", "attach", "0",
