@@ -1,3 +1,43 @@
+drbdmanage (0.98-1) experimental; urgency=medium
+
+  [ Philipp Reisner ]
+  * New end user license for drbd manage
+
+  [ Roland Kammerer ]
+  * Introduce single leader
+  * zvol: also remove the leftover origin if there is one
+  * take max-fail-count into account
+  * use natsort if available
+  * debian: require python-natsort
+  * systemd: disable socket activation
+  * check res file before using it
+  * make res file handling and checking stricter
+  * conffile: write meta information
+  * single leader: pseudo fence if isolated
+  * remove dead code
+  * zfs: give udev time to create /dev/zvol entry
+  * client: howto-join: Write to stderr
+
+  [ Robert Altnoeder ]
+  * Delete old DRBD info files
+  * undeploy_assignment(): restructured, fixed variable scope bug
+  * Handle interrupted system call in epoll.poll()
+  * Run resize actions in the same step as deploying a volume
+  * Allow generating a resize action on volumes pending deployment
+  * Allow resizing a volume that is has no blockdevice if it is not deployed yet
+  * Finish the resize storage stage if a volume is newly deployed with the [...]
+  * Run _finish_resize_storage() only if there was a resize pending in the [...]
+  * Early resize of restored snapshots (before drbdadm adjust)
+  * Hotfix: Always calculate the gross size for metadata with 31 peers
+  * Hotfix: Allow sending a volume id in create_volume()
+  * Retry loop for drbdmeta apply-al for drbdmanage init
+  * Allow skipping space prediciton & check in auto_deploy()
+
+  [ Philipp Marek ]
+  * Table output: catch EPIPE, and return silently.
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 28 Oct 2016 10:41:11 +0200
+
 drbdmanage (0.97.3-1) experimental; urgency=medium
 
   [ Roland Kammerer ]

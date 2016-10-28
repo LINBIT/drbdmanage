@@ -21,7 +21,7 @@ Standards-Version: 3.9.6
 Package: python-drbdmanage
 Architecture: all
 Depends: dbus,
-         drbd-utils (>= 8.9.7),
+         drbd-utils (>= 8.9.9),
          lvm2,
          python-dbus,
          python-gobject,
