@@ -2655,10 +2655,11 @@ class DrbdManage(object):
         format += "\n"
         self.dbus_init()
         server_rc, joinc = self.dsc(self._server.text_query, ["joinc", node_name])
-        sys.stdout.write('IMPORTANT: Execute the following command only on node %s!\n' % (node_name))
+        if not quiet:
+            sys.stderr.write('IMPORTANT: Execute the following command only on node %s!\n' % (node_name))
         sys.stdout.write(format % " ".join(joinc))
-        if 'restart' in joinc:  # here we should query if it is a satellite node, take the easy path
-            sys.stdout.write('IMPORTANT: If your satellite node is systemd socket activated, '
+        if not quiet and 'restart' in joinc:  # here we should query if it is a satellite node; the easy path
+            sys.stderr.write('IMPORTANT: If your satellite node is systemd socket activated, '
                              'do not do anything\n')
         fn_rc = self._list_rc_entries(server_rc)
 
