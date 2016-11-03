@@ -48,6 +48,7 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE, KEY_SAT_CFG_TCP_KEEPINTVL, KEY_SAT_CFG_TCP_KEEPCNT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
+    KEY_S_CMD_UPPOOL,
     KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader
@@ -942,6 +943,7 @@ class DrbdManageServer(object):
         if self._server_role_decided and self._server_role == SAT_SATELLITE:
             return False
 
+        joined = []
         if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
             for satellite_name in self.get_satellite_names():
                 opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_PING)
@@ -952,8 +954,11 @@ class DrbdManageServer(object):
                 if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
                     if not self._sat_states.get(satellite_name, False):
                         self._sat_states[satellite_name] = True
-                        self._poke_cluster = True
-                        self.schedule_run_changes()
+                        joined.append(satellite_name)
+            if len(joined) > 0:
+                self.update_pool()
+                self._poke_cluster = True
+                self.schedule_run_changes()
 
         return True
 
@@ -3842,9 +3847,23 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    def update_satellite_pools(self, satellite_names=[]):
+        if len(satellite_names) == 0:
+            satellite_names = self.get_satellite_names()
+
+        self._persist.json_export(self._objects_root)
+        for i in range(2):
+            for satellite_name in satellite_names:
+                opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_UPPOOL)
+                if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:  # could be a stale socket
+                    # THINK: mv retry to proxy?
+                    opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_UPPOOL)
+                if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+                    self._persist.set_json_data(data)
+
     @wait_startup
     @fwd_leader
-    def update_pool(self, node_names):
+    def update_pool(self, node_names=[]):
         """
         Updates information about the current node's storage pool
 
@@ -3860,6 +3879,8 @@ class DrbdManageServer(object):
                 sub_rc = self.update_pool_data()
                 if sub_rc == DM_SUCCESS:
                     self.cleanup()
+                    self.update_satellite_pools(node_names)
+                    self._persist.json_import(self._objects_root)
                     self.save_conf_data(persist)
                 else:
                     add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
@@ -3879,7 +3900,7 @@ class DrbdManageServer(object):
         return fn_rc
 
 
-    def update_pool_data(self):
+    def update_pool_data(self, force=False):
         """
         Updates information about the current node's storage pools
 
@@ -3889,7 +3910,7 @@ class DrbdManageServer(object):
         try:
             inst_node = self.get_instance_node()
             if inst_node is not None:
-                if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE):
+                if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE) or force:
                     (stor_rc, poolsize, poolfree) = (
                         self._bd_mgr.update_pool(inst_node)
                     )

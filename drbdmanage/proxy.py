@@ -23,6 +23,7 @@ from drbdmanage.consts import (
     KEY_S_CMD_PING,
     KEY_S_CMD_RELAY,
     KEY_S_CMD_REQCTRL,
+    KEY_S_CMD_UPPOOL,
     KEY_S_INT_SHUTDOWN,
     KEY_S_ANS_OK,
     KEY_S_ANS_CHANGED,
@@ -82,6 +83,13 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                             cmd = KEY_S_ANS_CHANGED
                     else:
                         cmd = KEY_S_ANS_UNCHANGED
+                elif opcode == opcodes[KEY_S_CMD_UPPOOL]:
+                    self.server.dmserver._persist.set_json_data(payload)
+                    self.server.dmserver._persist.load(self.server.dmserver._objects_root)
+                    self.server.dmserver.update_pool_data(force=True)
+                    self.server.dmserver._persist.save(self.server.dmserver._objects_root)
+                    answer_payload = self.server.dmserver._persist.get_json_data()
+                    cmd = KEY_S_ANS_OK
                 elif opcode == opcodes[KEY_S_CMD_PING]:
                     answer_payload = payload
                     addr = self.request.getpeername()[0]
@@ -190,6 +198,7 @@ class DrbdManageProxy(object):
         KEY_S_CMD_PING: 14,
         KEY_S_CMD_RELAY: 15,
         KEY_S_CMD_REQCTRL: 16,
+        KEY_S_CMD_UPPOOL: 17,
         KEY_S_INT_SHUTDOWN: 21,
         KEY_S_ANS_OK: 31,
         KEY_S_ANS_E_OP_INVALID: 32,
@@ -411,7 +420,7 @@ class DrbdManageProxy(object):
 
             self._satsockets[satellite_name] = sock
 
-        if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE:
+        if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE or cmd == KEY_S_CMD_UPPOOL:
             # self._dmserver._persist.json_export(self._dmserver._objects_root)
             # ^^ done on call site, because needs to be done only once per "transaction"
             payload = self._dmserver._persist.get_json_data()
