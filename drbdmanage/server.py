@@ -52,6 +52,7 @@ from drbdmanage.consts import (
     KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE
 )
 from drbdmanage.utils import NioLineReader
+from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import (
     build_path, extend_path, generate_secret, get_free_number,
     add_rc_entry, serial_filter, props_filter, string_to_bool, bool_to_string,
@@ -447,6 +448,14 @@ class DrbdManageServer(object):
         # load the server configuration file
         self.load_server_conf(self.CONF_STAGE[self.KEY_FROM_FILE])
 
+        # clean old drbdmanage_global_common.conf, it will get recreated
+        # It could have old drbdsetup options (e.g. unplug-watermark).
+        # In this case we can not even open the drbdctrlvol
+        conf_path = self._conf.get(self.KEY_DRBD_CONFPATH, self.DEFAULT_DRBD_CONFPATH)
+        common_file = os.path.join(conf_path, FILE_GLOBAL_COMMON_CONF)
+        with open(common_file, 'w') as cf:
+            cf.write("common {}\n")
+
         # Reset the loglevel to the one specified in the configuration file
         self.set_loglevel()
 
@@ -805,6 +814,8 @@ class DrbdManageServer(object):
             if self._server_role == SAT_SATELLITE and not self.request_ctrlvol():
                 return True
             self.run_config()
+            # here we have our ctrlvol and are ready to write the res files
+            self._filter_invalid_drbdsetup_opts()
             self.export_conf("*")
             # Start up the resources deployed by drbdmanage on the current node
             self._drbd_mgr.initial_up()
@@ -4144,6 +4155,69 @@ class DrbdManageServer(object):
     def _set_updflag(self, item):
         for assg in item.iterate_assignments():
             assg.set_tstate_flags(Assignment.FLAG_UPD_CONFIG)
+
+    def _filter_invalid_drbdsetup_opts(self):
+        fn_rc = []
+        do = DrbdSetupOpts('disk-options')
+        pdo = DrbdSetupOpts('peer-device-options')
+        ro = DrbdSetupOpts('resource-options')
+        no = DrbdSetupOpts('new-peer', 'net-options')
+        if do.ok and pdo.ok and ro.ok and no.ok:
+            valid_opts = []
+            for o in (do, pdo, ro, no):
+                valid_opts += o.config.keys()
+        else:
+            logging.error("cannot filter invalid drdbsetup options")
+            return fn_rc
+
+        def _rm_invalid(props_cont, ns):
+            for k in props_cont.get_all_props(ns):
+                kbase = k if k[0] == '/' else '/' + k
+                kbase = os.path.basename(kbase)
+                if kbase not in valid_opts:
+                    logging.info("removing %s" % kbase)
+                    props_cont.remove_prop(k, ns)
+
+        def _rm_from_iter(iterator):
+            for item in iterator:
+                props_cont = item.get_props()
+                if props_cont is not None:
+                    c_ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SETUPOPT]
+                    _rm_invalid(props_cont, c_ns)
+
+        try:
+            persist = self.begin_modify_conf()
+            if persist is None:
+                raise PersistenceException
+
+            # common + sites
+            item = self.get_common()
+            props_cont = item.get_props()
+            if props_cont is not None:
+                c_ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SETUPOPT]
+                s_ns = PropsContainer.NAMESPACES[PropsContainer.KEY_SITES]
+                _rm_invalid(props_cont, c_ns)
+                _rm_invalid(props_cont, s_ns)
+
+            _rm_from_iter(self.iterate_resources())
+            for r in self.iterate_resources():
+                _rm_from_iter(r.iterate_volumes())
+            _rm_from_iter(self.iterate_nodes())
+
+            self.save_conf_data(persist)
+
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+            return fn_rc
+        except PersistenceException:
+            logging.error("cannot filter invalid drdb setup options")
+            add_rc_entry(fn_rc, DM_EPERSIST, dm_exc_text(DM_EPERSIST))
+        except QuorumException:
+            add_rc_entry(fn_rc, DM_EQUORUM, dm_exc_text(DM_EQUORUM))
+        except Exception as exc:
+            self.catch_and_append_internal_error(fn_rc, exc)
+        finally:
+            self.cond_end_modify_conf(persist)
+        return fn_rc
 
     @wait_startup
     @fwd_leader
