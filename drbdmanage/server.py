@@ -1197,12 +1197,12 @@ class DrbdManageServer(object):
         return changed
 
 
-    def _term_events(self, proc_evt, signal):
+    def _term_events(self, proc_evt, proc_signal):
         """
         Sends signals to a subprocess
         """
         if proc_evt.pid is not None:
-            os.kill(proc_evt.pid, signal)
+            os.kill(proc_evt.pid, proc_signal)
 
 
     def init_logging(self):
@@ -1237,17 +1237,17 @@ class DrbdManageServer(object):
         """
         Create a drbdmanage signal using the server's signal factory
         """
-        signal = None
+        dm_signal = None
         if self._signal_factory is not None:
             try:
-                signal = self._signal_factory.create_signal(path)
+                dm_signal = self._signal_factory.create_signal(path)
             except DrbdManageException as dm_exc:
                 logging.error("Signal creation failed: %s"
                               % (str(dm_exc)))
             except Exception:
                 logging.error("Signal creation failed, "
                               "unhandled exception encountered")
-        return signal
+        return dm_signal
 
     def load_server_conf(self, stage):
         """
