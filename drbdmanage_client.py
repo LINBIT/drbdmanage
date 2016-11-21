@@ -2119,6 +2119,23 @@ class DrbdManage(object):
                 # An exception is expected here, as the server
                 # probably will not answer
                 pass
+            # make sure the service is no longer available
+            if self._dbus:
+                try:
+                    dbo = self._dbus.get_object('org.freedesktop.DBus',
+                                                '/org/freedesktop/DBus')
+
+                    dbus_iface = dbus.Interface(dbo, 'org.freedesktop.DBus')
+                    tries, retries_max = 0, 15
+                    while tries <= retries_max:
+                        services = dbus_iface.ListNames()
+                        if DBUS_DRBDMANAGED not in services:
+                            break
+                        time.sleep(1)
+                        tries += 1
+                except:
+                    pass
+
             # Continuing the client without a server
             # does not make sense, therefore exit
             if doexit:
