@@ -189,7 +189,7 @@ class Lvm(lvmcom.LvmCommon):
     def _create_vol(self, lv_name, size):
         try:
             exec_args = [
-                self._cmd_create, "-n", lv_name, "-L", str(size) + "k",
+                self._cmd_create, "--wipesignatures=y", "-n", lv_name, "-L", str(size) + "k",
                 self._conf[consts.KEY_VG_NAME]
             ]
             utils.debug_log_exec_args(self.__class__.__name__, exec_args)

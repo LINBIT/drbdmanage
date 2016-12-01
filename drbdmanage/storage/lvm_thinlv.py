@@ -303,7 +303,7 @@ class LvmThinLv(lvmcom.LvmCommon):
     def _create_vol(self, lv_name, size):
         try:
             exec_args = [
-                self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
+                self._cmd_create, "--wipesignatures=y", "-n", lv_name, "-V", str(size) + "k",
                 "--thinpool", self._conf[LvmThinLv.KEY_POOL_NAME],
                 self._conf[consts.KEY_VG_NAME]
             ]

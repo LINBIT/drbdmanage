@@ -3331,10 +3331,10 @@ Confirm:
 
         # Create the .drbdctrl LV
         self._ext_command(
-            ["lvcreate", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "--wipesignatures=y", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
         )
         self._ext_command(
-            ["lvcreate", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "--wipesignatures=y", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
         )
 
         # Create meta-data
