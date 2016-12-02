@@ -328,7 +328,7 @@ class DrbdManager(object):
                 overall_loop_cnt += 1
                 changed_at_all = False
                 at_least_one_failed = False
-                for sat_name in self._server.get_satellite_names().union(self._server._sat_proposed_shutdown):
+                for sat_name in self._server.get_reachable_satellite_names().union(self._server._sat_proposed_shutdown):
                     opcode, length, data = proxy.send_cmd(sat_name, consts.KEY_S_CMD_UPDATE)
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_E_COMM]:  # give it a second chance
                         opcode, length, data = proxy.send_cmd(sat_name, consts.KEY_S_CMD_UPDATE)

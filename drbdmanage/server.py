@@ -22,6 +22,7 @@ import re
 import traceback
 import inspect
 import pickle
+import random
 import threading
 import StringIO
 import Queue
@@ -281,6 +282,8 @@ class DrbdManageServer(object):
     _current_leader_name = ''
     _cmd_queue = Queue.Queue()
     _sat_states = {}
+    _sat_grace = True
+    _sat_grace_start = datetime.datetime.now()
     _sat_lock = threading.Lock()
     _sat_proposed_shutdown = set()
     _sat_shutdown = set()
@@ -623,6 +626,7 @@ class DrbdManageServer(object):
         self.schedule_leader_election()
         self.schedule_pseudo_fence()
         self.schedule_satellite_ping()
+        self.schedule_satellite_reintegrate()
         self.schedule_satellite_shutdown()
 
         if not rerun:
@@ -820,6 +824,9 @@ class DrbdManageServer(object):
             # Start up the resources deployed by drbdmanage on the current node
             self._drbd_mgr.initial_up()
             self._server_role_decided = True
+            self._sat_grace = True
+            self._sat_grace_start = datetime.datetime.now()
+            logging.debug("Grace period started at %s" % self._sat_grace_start)
             return False
         return True
 
@@ -954,9 +961,23 @@ class DrbdManageServer(object):
         if self._server_role_decided and self._server_role == SAT_SATELLITE:
             return False
 
-        joined = []
         if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            joined = []
+            # check if grace period expired:
+            if self._sat_grace:
+                now = datetime.datetime.now()
+                try:
+                    if self._sat_grace_start + datetime.timedelta(minutes=2) < now:
+                        logging.debug("Grace period ended at %s" % now)
+                        self._sat_grace = False
+                except:
+                    self._sat_grace = False
+
             for satellite_name in self.get_satellite_names():
+                # only satellites that are ok or new, all if in grace period
+                if not self._sat_grace and not self._sat_states.get(satellite_name, True):
+                    continue
+
                 opcode, length, data = self._proxy.send_cmd(satellite_name, KEY_S_CMD_PING)
                 if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:  # could be a stale socket
                     # THINK: mv retry to proxy?
@@ -966,10 +987,24 @@ class DrbdManageServer(object):
                     if not self._sat_states.get(satellite_name, False):
                         self._sat_states[satellite_name] = True
                         joined.append(satellite_name)
+                else:
+                    logging.debug("Node %s removed in ping service" % satellite_name)
             if len(joined) > 0:
+                logging.debug("Node(s) %s joined in ping service" % ', '.join(joined))
                 self.update_pool()
                 self._poke_cluster = True
                 self.schedule_run_changes()
+
+        return True
+
+    def satellite_reintegrate(self):
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+
+        notavail = [k for k, v in self._sat_states.items() if v is False]
+        if len(notavail) > 0:
+            rnd = random.choice(notavail)
+            self._sat_states.pop(rnd, None)
 
         return True
 
@@ -1002,7 +1037,10 @@ class DrbdManageServer(object):
         return True
 
     def schedule_satellite_ping(self):
-        gobject.timeout_add(3000, self.satellite_ping)
+        gobject.timeout_add(5000, self.satellite_ping)
+
+    def schedule_satellite_reintegrate(self):
+        gobject.timeout_add(30*1000, self.satellite_reintegrate)
 
     def schedule_satellite_shutdown(self):
         gobject.timeout_add(3000, self.satellite_shutdown)
@@ -1814,6 +1852,9 @@ class DrbdManageServer(object):
 
     def get_satellite_names(self):
         return set([k for k in self._nodes.keys() if k != self._instance_node_name])
+
+    def get_reachable_satellite_names(self):
+        return set([k for k, v in self._sat_states.items() if v is True])
 
     def role(self):
         fn_rc = []
@@ -5109,7 +5150,8 @@ class DrbdManageServer(object):
     @fwd_leader
     def resume_all(self):
         fn_rc = []
-        fn_rc   = []
+        self._sat_states = {}
+
         persist = None
         try:
             persist = self.begin_modify_conf()

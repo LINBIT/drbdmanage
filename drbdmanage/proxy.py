@@ -408,7 +408,7 @@ class DrbdManageProxy(object):
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
             satellite_ip = satellite_node.get_addr()
             try:
-                sock = socket.create_connection((satellite_ip, port), timeout=6)
+                sock = socket.create_connection((satellite_ip, port), timeout=2)
             except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
 
