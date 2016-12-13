@@ -11,7 +11,7 @@
 Global constants for drbdmanage
 """
 
-DM_VERSION = "0.98.2"
+DM_VERSION = "0.98.3"
 try:
     from drbdmanage.consts_githash import DM_GITHASH
 except:

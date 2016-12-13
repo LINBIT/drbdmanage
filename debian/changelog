@@ -1,3 +1,15 @@
+drbdmanage (0.98.3-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Renamed variable 'signal' in some methods to avoid variable shadowing
+
+  [ Roland Kammerer ]
+  * client: make shutdown more reliable
+  * LVM: wipe old signatures on lvcreate
+  * ping service: Don't hang if nodes leave
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 13 Dec 2016 14:08:48 +0100
+
 drbdmanage (0.98.2-1) experimental; urgency=medium
 
   * server: remove invalid drbdsetup opts on startup
