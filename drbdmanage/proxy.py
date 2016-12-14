@@ -46,10 +46,6 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
         blocking = self.server.blocking
 
         acquired = self.server.lock.acquire(blocking)
-        if not acquired:
-            # currently not allowed to happen because always blocking
-            # see Proxy().__init__
-            pass
 
         idle = DEFAULT_SAT_CFG_TCP_KEEPIDLE
         intvl = DEFAULT_SAT_CFG_TCP_KEEPINTVL
@@ -143,7 +139,8 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
             pass
         finally:
             self.server.set_current_server_socket(None)
-            self.server.lock.release()
+            if acquired:
+                self.server.lock.release()
 
 
 class ThreadedTCPServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
