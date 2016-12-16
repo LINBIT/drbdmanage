@@ -172,6 +172,7 @@ CONF_NODE = 'node'
 PLUGIN_PREFIX = 'Plugin:'
 
 # ### satellites ###
+FAKE_LEADER_NAME = '@@LEADER@@'  # just a fake name that is never a valid hostname
 # is satellite, should be a control node but could not access ctrlvol, is control node
 SAT_SATELLITE, SAT_POTENTIAL_LEADER_NODE, SAT_LEADER_NODE = range(3)
 # cfg

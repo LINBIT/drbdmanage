@@ -17,6 +17,7 @@ import pickle
 
 
 from drbdmanage.consts import (
+    FAKE_LEADER_NAME,
     KEY_S_CMD_INIT,
     KEY_S_CMD_UPDATE,
     KEY_S_CMD_SHUTDOWN,
@@ -52,7 +53,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
         cnt = DEFAULT_SAT_CFG_TCP_KEEPCNT
 
         self.server.set_current_server_socket(self.request)
-        self.server.set_satellite_sockopts(self.request, 1, idle, intvl, cnt)
+        self.server.set_peer_sockopts(self.request, 1, idle, intvl, cnt)
 
         opcodes = self.server.opcodes
 
@@ -127,7 +128,7 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                     cnt = int(conf.get(KEY_SAT_CFG_TCP_KEEPCNT, DEFAULT_SAT_CFG_TCP_KEEPCNT))
 
                     if idle != idle_old or intvl != intvl_old or cnt != cnt_old:
-                        self.server.set_satellite_sockopts(self.request, 1, idle, intvl, cnt)
+                        self.server.set_peer_sockopts(self.request, 1, idle, intvl, cnt)
 
                 # send back and handle error
                 opcode, length, payload = self.server.send_msg(self.request,
@@ -211,7 +212,7 @@ class DrbdManageProxy(object):
         self._dmserver = dmserver
         self._host = host
         self._port = port
-        self._satsockets = {}
+        self._peersockets = {}
         self._current_server_socket = None
         self._blocking = blocking
         # currently we depend on blocking behavior
@@ -224,7 +225,7 @@ class DrbdManageProxy(object):
 
     def start(self):
         if self._tcp_server:
-            for s in self._satsockets.values():
+            for s in self._peersockets.values():
                 self._shutdown_and_close(s)
             return
 
@@ -258,7 +259,7 @@ class DrbdManageProxy(object):
         self._tcp_server.send_msg = self.send_msg
 
         self._tcp_server.set_current_server_socket = self.set_current_server_socket
-        self._tcp_server.set_satellite_sockopts = self.set_satellite_sockopts
+        self._tcp_server.set_peer_sockopts = self.set_peer_sockopts
         self._tcp_server.set_want_shutdown = self.set_want_shutdown
         self._tcp_server.shutdown_and_close = self._shutdown_and_close
 
@@ -291,7 +292,7 @@ class DrbdManageProxy(object):
     def set_current_server_socket(self, sock):
         self._current_server_socket = sock
 
-    def set_satellite_sockopts(self, sock, alive, idle, intvl, cnt):
+    def set_peer_sockopts(self, sock, alive, idle, intvl, cnt):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, alive)
         sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, idle)
         sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, intvl)
@@ -388,24 +389,32 @@ class DrbdManageProxy(object):
         return opcode, length, payload
 
     def get_established(self):
-        return self._satsockets.keys()
+        return self._peersockets.keys()
 
     # This is the function that should be used by control nodes to send commands to satellites
-    # semantics: if there isn't an established connection, connect to the satellite (which is the server)
+    # and by satellites to request the ctrlvol, forward requests, ...
+    # semantics: if there isn't an established connection, connect to the peer (which is the TCP server)
     # if the communiction fails (E_COMM) reset the client socket and the function tries to establish
     # it on the next call.
     # important, the E_COMM is returned to the caller, it is up to the caller if he immediately tries
     # to resend if the first attempt failed.
-    def send_cmd(self, satellite_name, cmd, port=_DEFAULT_PORT_NR, override_data=''):
+    def send_cmd(self, peer_name, cmd, port=_DEFAULT_PORT_NR, override_data='', override_ip=''):
         payload = override_data
 
-        if satellite_name not in self._satsockets:
-            satellite_node = self._dmserver.get_node(satellite_name)
-            if satellite_node is None:
-                return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
-            satellite_ip = satellite_node.get_addr()
+        if peer_name not in self._peersockets:
+            if peer_name == FAKE_LEADER_NAME:
+                if override_ip:
+                    peer_ip = override_ip
+                else:
+                    return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
+            else:
+                peer_node = self._dmserver.get_node(peer_name)
+                if peer_node is None:
+                    return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
+                peer_ip = peer_node.get_addr()
+
             try:
-                sock = socket.create_connection((satellite_ip, port), timeout=2)
+                sock = socket.create_connection((peer_ip, port), timeout=2)
             except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
 
@@ -413,9 +422,9 @@ class DrbdManageProxy(object):
             idle = int(conf.get(KEY_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPIDLE))
             intvl = int(conf.get(KEY_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPINTVL))
             cnt = int(conf.get(KEY_SAT_CFG_TCP_KEEPCNT, DEFAULT_SAT_CFG_TCP_KEEPCNT))
-            self.set_satellite_sockopts(sock, 1, idle, intvl, cnt)
+            self.set_peer_sockopts(sock, 1, idle, intvl, cnt)
 
-            self._satsockets[satellite_name] = sock
+            self._peersockets[peer_name] = sock
 
         if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE or cmd == KEY_S_CMD_UPPOOL:
             # self._dmserver._persist.json_export(self._dmserver._objects_root)
@@ -426,24 +435,24 @@ class DrbdManageProxy(object):
 
         if cmd == KEY_S_CMD_SHUTDOWN:
             # send cmd, but don't expect to get anything back...
-            self.send_msg(self._satsockets[satellite_name], data)
-            self._shutdown_and_close(self._satsockets[satellite_name])
-            del self._satsockets[satellite_name]
+            self.send_msg(self._peersockets[peer_name], data)
+            self._shutdown_and_close(self._peersockets[peer_name])
+            del self._peersockets[peer_name]
             return self.opcodes[KEY_S_ANS_OK], 0, ''
 
-        opcode, length, payload = self.send_recv_msg(self._satsockets[satellite_name], data)
+        opcode, length, payload = self.send_recv_msg(self._peersockets[peer_name], data)
 
         # cleanup if communication failed.
         if opcode == self.opcodes[KEY_S_ANS_E_COMM]:
-            self._shutdown_and_close(self._satsockets[satellite_name])
-            self._satsockets.pop(satellite_name, None)
+            self._shutdown_and_close(self._peersockets[peer_name])
+            self._peersockets.pop(peer_name, None)
 
         return opcode, length, payload
 
     def shutdown_connection(self, satellite_name):
-        if satellite_name in self._satsockets:
-            self._shutdown_and_close(self._satsockets[satellite_name])
-            self._satsockets.pop(satellite_name, None)
+        if satellite_name in self._peersockets:
+            self._shutdown_and_close(self._peersockets[satellite_name])
+            self._peersockets.pop(satellite_name, None)
         return KEY_S_ANS_OK, 0, ''
 
     # used to encode/encrypt

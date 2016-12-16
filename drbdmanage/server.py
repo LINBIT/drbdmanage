@@ -50,7 +50,7 @@ from drbdmanage.consts import (
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
     KEY_S_CMD_UPPOOL,
-    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE
+    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE, FAKE_LEADER_NAME,
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import DrbdSetupOpts
@@ -280,6 +280,7 @@ class DrbdManageServer(object):
     _server_role_elected = False
     _forced_server_role = None
     _current_leader_name = ''
+    _current_leader_ip = ''
     _cmd_queue = Queue.Queue()
     _sat_states = {}
     _sat_grace = True
@@ -353,7 +354,7 @@ class DrbdManageServer(object):
         def wrapper(self, *args, **kwargs):
             if (not self._server_role_decided) or\
                (self._server_role_decided and self._server_role == SAT_SATELLITE and
-                    self._current_leader_name == ''):
+                    self._current_leader_ip == ''):
                 fn_rc = []
                 add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
                 return self.gen_wrapped_rc(f.__name__, fn_rc)
@@ -369,18 +370,18 @@ class DrbdManageServer(object):
         def wrapper(self, *args, **kwargs):
             if self._server_role == SAT_SATELLITE:
                 fn_rc = []
-                cl_name = self._current_leader_name
-                if cl_name:
+                cl_ip = self._current_leader_ip
+                if cl_ip:
                     p = pickle_dbus(f.__name__, args, kwargs)
-                    opcode, length, data = self._proxy.send_cmd(cl_name,
+                    opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME,
                                                                 KEY_S_CMD_RELAY,
-                                                                override_data=p)
+                                                                override_data=p, override_ip=cl_ip)
 
                     if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:  # could be a stale socket
                         # THINK: mv retry to proxy?
-                        opcode, length, data = self._proxy.send_cmd(cl_name,
+                        opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME,
                                                                     KEY_S_CMD_RELAY,
-                                                                    override_data=p)
+                                                                    override_data=p, override_ip=cl_ip)
                     if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
                         fn_rc = pickle.loads(data)
                     else:
@@ -584,6 +585,7 @@ class DrbdManageServer(object):
         self._server_role_elected = False
         self._server_role_decided = False
         self._current_leader_name = ''
+        self._current_leader_ip = ''
         self._sat_states = {}
 
         # Start up the drbdmanage control volume
@@ -815,8 +817,13 @@ class DrbdManageServer(object):
 
     def maybe_run_config(self):
         if self._server_role_elected:
-            if self._server_role == SAT_SATELLITE and not self.request_ctrlvol():
-                return True
+            if self._server_role == SAT_SATELLITE:
+                if not self._current_leader_ip:
+                    return True
+                if not self.request_ctrlvol():
+                    return True
+                # satellite, have leader, have ctrlvol, so continue
+
             self.run_config()
             # here we have our ctrlvol and are ready to write the res files
             self._filter_invalid_drbdsetup_opts()
@@ -839,6 +846,7 @@ class DrbdManageServer(object):
         def become_satellite():
             self._server_role = SAT_SATELLITE
             self._current_leader_name = ''
+            self._current_leader_ip = ''
             self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
             self._init_persist()
             self._sat_states = {}
@@ -950,6 +958,7 @@ class DrbdManageServer(object):
         gobject.timeout_add(500, self.cmd_queue)
 
     def set_current_leader(self, addr):
+        self._current_leader_ip = addr
         try:
             node = self.get_node_by_addr(addr)
             name = node.get_name()
@@ -5793,11 +5802,13 @@ class DrbdManageServer(object):
         return fn_rc
 
     def request_ctrlvol(self):
-        cl_name = self._current_leader_name
-        if cl_name:
-            opcode, length, data = self._proxy.send_cmd(cl_name, KEY_S_CMD_REQCTRL)
+        cl_ip = self._current_leader_ip
+        if cl_ip:
+            opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,
+                                                        override_ip=cl_ip)
             if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:
-                opcode, length, data = self._proxy.send_cmd(cl_name, KEY_S_CMD_REQCTRL)
+                opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,
+                                                            override_ip=cl_ip)
             if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
                 self._persist.set_json_data(data)
                 self._persist.json_import(self._objects_root)
