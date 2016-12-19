@@ -232,10 +232,12 @@ class DrbdManageProxy(object):
         # server type selection
         if os.environ.get('LISTEN_PID', None) == str(os.getpid()):
             ThreadedTCPServerSystemdSockActivation.allow_reuse_address = True
+            ThreadedTCPServerSystemdSockActivation.daemon_threads = True
             self._tcp_server = ThreadedTCPServerSystemdSockActivation((self._host, self._port),
                                                                       ThreadedTCPRequestHandler)
         else:
             ThreadedTCPServer.allow_reuse_address = True
+            ThreadedTCPServer.daemon_threads = True
             self._tcp_server = ThreadedTCPServer((self._host, self._port), ThreadedTCPRequestHandler)
 
         # forward some refs to the TCPServer
