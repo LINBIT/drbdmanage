@@ -90,9 +90,8 @@ LICENSEE is not allowed to:
 a) use, copy or distribute the LICENSED SOFTWARE except as provided for
 under sections 3.1 and 3.2.
 
-b) provide commercial turn-key solutions based on the LICENSED SOFTWARE or
-commercial services for the LICENSED SOFTWARE or its modifications to any
-third party (e.g. software support or trainings).
+b) provide software support or trainings for the LICENSED SOFTWARE or its
+modifications to any third party.
 
 c) use LICENSOR's trademarks, e.g. DRBD®, LINBIT® (and logos) in any manner
 for providing support and/or training for its products and/or services.
@@ -169,3 +168,6 @@ remain unaffected. In such a case, the parties shall replace the invalid or
 unenforceable condition by another legally effective provision meeting the
 purpose of the abolished provision to the greatest extent. The same applies
 in case of a gap of regulation.
+
+Changes:
+3.4 b was amended on December 19, 2016
