@@ -4841,7 +4841,7 @@ class DrbdManageServer(object):
         return fn_rc, assg_list
 
     @wait_startup
-    @req_ctrlvol
+    @fwd_leader
     def restore_snapshot(self, res_name, snaps_res_name, snaps_name,
                          res_props, vols_props):
         """
