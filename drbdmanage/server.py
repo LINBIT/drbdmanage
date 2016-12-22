@@ -7466,8 +7466,7 @@ class DrbdManageServer(object):
             minor_list = None
         return minor_list
 
-
-    def get_free_minor_nr(self, minor_list):
+    def get_free_minor_nr(self, occupied_list):
         """
         Retrieves a free (unused) minor number
 
@@ -7480,8 +7479,17 @@ class DrbdManageServer(object):
         """
         try:
             min_nr = int(self._conf[self.KEY_MIN_MINOR_NR])
+            if len(occupied_list) == 0:
+                return min_nr
+
+            occupied_list = sorted(occupied_list)
+            proposed = occupied_list[-1] + 1
+            if proposed <= MinorNr.MINOR_NR_MAX:
+                return proposed
+
+            # try to recycle one that got free
             minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
-                                       minor_list)
+                                       occupied_list, nr_sorted=True)
             if minor_nr == -1:
                 raise ValueError
         except ValueError:

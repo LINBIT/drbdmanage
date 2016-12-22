@@ -708,7 +708,7 @@ class DrbdSetupOpts():
         return self.config
 
 
-def get_free_number(min_nr, max_nr, nr_list):
+def get_free_number(min_nr, max_nr, nr_list, nr_sorted=False):
     """
     Returns the first number in the range min_nr..max_nr that is not in nr_list
 
@@ -722,7 +722,8 @@ def get_free_number(min_nr, max_nr, nr_list):
     @type    nr_list: list of int or long values
     @return: first free number within min_nr..max_nr; or -1 on error
     """
-    nr_list = sorted(nr_list)
+    if not nr_sorted:
+        nr_list = sorted(nr_list)
     free_nr = -1
     if min_nr >= 0 and min_nr <= max_nr:
         nr_list_length = len(nr_list)
