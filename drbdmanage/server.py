@@ -27,6 +27,7 @@ import threading
 import StringIO
 import Queue
 from functools import wraps
+from bisect import bisect_left
 import drbdmanage.drbd.persistence
 import drbdmanage.quorum
 import drbdmanage.drbd.metadata as md
@@ -34,7 +35,7 @@ import drbdmanage.messagelog as msglog
 
 from drbdmanage.consts import (
     SERIAL, NODE_NAME, NODE_ADDR, NODE_AF, RES_NAME, RES_PORT, VOL_MINOR, VOL_ID,
-    DEFAULT_VG, KEY_DRBDCTRL_VG, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL, VOL_SIZE,
+    DEFAULT_VG, KEY_DRBDCTRL_VG, KEY_CUR_MINOR_NR, DRBDCTRL_DEFAULT_PORT, KEY_LOGLEVEL, VOL_SIZE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH, RES_PORT_NR_AUTO,
     RES_PORT_NR_ERROR, FLAG_OVERWRITE, FLAG_DISCARD, FLAG_DISKLESS,
     FLAG_CONNECT, FLAG_DRBDCTRL, FLAG_STORAGE, FLAG_EXTERNAL, FLAG_STANDBY, FLAG_QIGNORE, FLAG_FORCEWIN,
@@ -166,6 +167,7 @@ class DrbdManageServer(object):
         KEY_MAX_NODE_ID    : str(DEFAULT_MAX_NODE_ID),
         KEY_MAX_PEERS      : str(DEFAULT_MAX_PEERS),
         KEY_MIN_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
+        KEY_CUR_MINOR_NR   : str(DEFAULT_MIN_MINOR_NR),
         KEY_MIN_PORT_NR    : str(DEFAULT_MIN_PORT_NR),
         KEY_MAX_PORT_NR    : str(DEFAULT_MAX_PORT_NR),
         KEY_SPACE_CHECK    : str(DEFAULT_SPACE_CHECK),
@@ -6367,6 +6369,8 @@ class DrbdManageServer(object):
                         fn_rc = self._debug_set_snapshot(args)
                     elif subcommand == "s/a":
                         fn_rc = self._debug_set_snapshot_assignment(args)
+                    elif subcommand == "current-minor-nr":
+                        fn_rc = self._debug_set_cur_minor_nr(args)
                     else:
                         key, val = self._debug_keyval_split(subcommand)
                         if key == "dbg_events":
@@ -7122,6 +7126,26 @@ class DrbdManageServer(object):
             )
 
 
+    def _debug_set_cur_minor_nr(self, args):
+        fn_rc = 1
+        minor_nr = None
+        try:
+            minor_nr_str = args.pop(0)
+            minor_nr = int(minor_nr_str)
+        except (IndexError, ValueError):
+            pass
+        if minor_nr is not None:
+            if minor_nr >= 0 and minor_nr <= MinorNr.MINOR_NR_MAX:
+                self._cluster_conf.set_prop(KEY_CUR_MINOR_NR, str(minor_nr))
+                self._debug_out.write("%s set to %d\n" % (KEY_CUR_MINOR_NR, minor_nr))
+                fn_rc = 0
+            else:
+                self._debug_out.write("Minor number out of range\n")
+        else:
+            self._debug_out.write("Missing or invalid argument\n")
+        return fn_rc
+
+
     def _debug_set_node(self, args):
         fn_rc = 1
         nodename = None
@@ -7488,19 +7512,45 @@ class DrbdManageServer(object):
         """
         try:
             min_nr = int(self._conf[self.KEY_MIN_MINOR_NR])
-            if len(occupied_list) == 0:
-                return min_nr
+            minor_nr = min_nr
 
-            occupied_list = sorted(occupied_list)
-            proposed = occupied_list[-1] + 1
-            if proposed <= MinorNr.MINOR_NR_MAX:
-                return proposed
+            # Get the next potentially usable number
+            minor_nr_str = self.get_cluster_conf_value(KEY_CUR_MINOR_NR)
+            if minor_nr_str is not None:
+                minor_nr = min(max(int(minor_nr_str), min_nr), MinorNr.MINOR_NR_MAX)
 
-            # try to recycle one that got free
-            minor_nr = get_free_number(min_nr, MinorNr.MINOR_NR_MAX,
-                                       occupied_list, nr_sorted=True)
-            if minor_nr == -1:
-                raise ValueError
+            occupied_list_len = len(occupied_list)
+            if occupied_list_len > 0:
+                occupied_list = sorted(occupied_list)
+                chk_idx = bisect_left(occupied_list, minor_nr)
+                if chk_idx != occupied_list_len and occupied_list[chk_idx] == minor_nr:
+                    # Number is in use, recycle a free minor number
+                    #
+                    # Try finding a free number in the range of numbers
+                    # greater than the current minor number
+                    free_nr = get_free_number(
+                        minor_nr, MinorNr.MINOR_NR_MAX,
+                        occupied_list, nr_sorted=True
+                    )
+                    if free_nr == -1:
+                        # No free numbers in the high range, try finding a free
+                        # number in the range of numbers less than the current
+                        # minor number
+                        free_nr = get_free_number(
+                            min_nr, minor_nr,
+                            occupied_list, nr_sorted=True
+                        )
+                        if free_nr == -1:
+                            # All minor numbers are occupied
+                            raise ValueError
+                    # Use the free number as new minor number
+                    minor_nr = free_nr
+
+            # Save the next potentially usable number
+            next_number = minor_nr + 1
+            if next_number > MinorNr.MINOR_NR_MAX:
+                next_number = min_nr
+            self._cluster_conf.set_prop(KEY_CUR_MINOR_NR, str(next_number))
         except ValueError:
             minor_nr = MinorNr.MINOR_NR_ERROR
         return minor_nr
@@ -7526,8 +7576,12 @@ class DrbdManageServer(object):
 
         @return: True if the specified minor number is unallocated, False otherwise
         """
+        is_free = True
         used_minors = self.get_occupied_minor_nrs()
-        is_free = minor not in used_minors
+        if len(used_minors) > 0:
+            used_minors = sorted(used_minors)
+            chk_index = bisect_left(used_minors, minor)
+            is_free = (chk_index >= len(used_minors) or used_minors[chk_index] != minor)
         return is_free
 
 

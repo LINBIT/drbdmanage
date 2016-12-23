@@ -31,7 +31,7 @@ import drbdmanage.argparse.argparse as argparse
 import drbdmanage.argcomplete as argcomplete
 
 from drbdmanage.consts import (
-    KEY_DRBDCTRL_VG, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DBUS_DRBDMANAGED, DBUS_SERVICE,
+    KEY_DRBDCTRL_VG, KEY_CUR_MINOR_NR, DEFAULT_VG, DRBDCTRL_DEFAULT_PORT, DBUS_DRBDMANAGED, DBUS_SERVICE,
     DRBDCTRL_RES_NAME, DRBDCTRL_RES_FILE, DRBDCTRL_RES_PATH,
     NODE_ADDR, NODE_AF, NODE_ID, NODE_POOLSIZE, NODE_POOLFREE, RES_PORT,
     VOL_MINOR, VOL_BDEV, RES_PORT_NR_AUTO, FLAG_DISKLESS, FLAG_OVERWRITE,
@@ -3642,8 +3642,9 @@ Confirm:
         server_rc, config_keys = self.dsc(self._server.get_config_keys)
 
         # setting the drbdctrl-vg here is not allowed
+        # setting the current minor number offset is not allowed here
         # only allowed via the config file
-        prohibited = (KEY_DRBDCTRL_VG,)
+        prohibited = (KEY_DRBDCTRL_VG, KEY_CUR_MINOR_NR)
         config_keys = filter_prohibited(config_keys, prohibited)
 
         # get all config options that are set cluster wide (aka GLOBAL)

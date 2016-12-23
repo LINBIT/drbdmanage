@@ -84,6 +84,7 @@ SNAPS_NAME_VALID_INNER_CHARS = "-"
 DRBDCTRL_DEFAULT_PORT = 6999
 
 KEY_DRBDCTRL_VG     = "drbdctrl-vg"
+KEY_CUR_MINOR_NR    = "current-minor-nr"
 KEY_VG_NAME         = "volume-group"
 KEY_LOGLEVEL        = "loglevel"
 DRBDCTRL_RES_NAME   = ".drbdctrl"
