@@ -400,6 +400,8 @@ class DrbdManage(object):
                                     'drbdmanage server.')
         p_new_vol.add_argument('-m', '--minor', type=int)
         p_new_vol.add_argument('-d', '--deploy', type=int)
+        p_new_vol.add_argument('-s', '--site', default='',
+                               help="only consider nodes from this site")
         p_new_vol.add_argument('name', type=check_res_name,
                                help='Name of a new/existing resource').completer = res_completer
         p_new_vol.add_argument(
@@ -602,6 +604,8 @@ class DrbdManage(object):
                               ' deployed. It must be at least 1 and at most'
                               ' the number of nodes in the cluster')
         p_deploy.add_argument('--with-clients', action="store_true")
+        p_deploy.add_argument('-s', '--site', default='',
+                              help="only consider nodes from this site")
         p_deploy.set_defaults(func=self.cmd_deploy)
 
         # undeploy
@@ -1495,9 +1499,9 @@ class DrbdManage(object):
                 fn_rc = self._list_rc_entries(server_rc)
 
                 if fn_rc == 0 and deploy is not None:
-                    server_rc = self.dsc(self._server.auto_deploy,
+                    server_rc = self.dsc(self._server.auto_deploy_site,
                                          dbus.String(name), dbus.Int32(deploy), dbus.Int32(0),
-                                         dbus.Boolean(False))
+                                         dbus.Boolean(False), dbus.String(args.site))
                     fn_rc = self._list_rc_entries(server_rc)
         except SyntaxException:
             self.cmd_help(args)
@@ -1907,9 +1911,9 @@ class DrbdManage(object):
             count, delta = delta, count
 
         self.dbus_init()
-        server_rc = self.dsc(self._server.auto_deploy,
+        server_rc = self.dsc(self._server.auto_deploy_site,
                              dbus.String(res_name), dbus.Int32(count),
-                             dbus.Int32(delta), dbus.Boolean(site_clients))
+                             dbus.Int32(delta), dbus.Boolean(site_clients), dbus.String(args.site))
         fn_rc = self._list_rc_entries(server_rc)
 
         return fn_rc

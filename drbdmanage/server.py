@@ -3331,7 +3331,7 @@ class DrbdManageServer(object):
 
     @wait_startup
     @fwd_leader
-    def auto_deploy(self, res_name, count, delta, site_clients):
+    def auto_deploy(self, res_name, count, delta, site_clients, allowed_site=''):
         """
         Deploys a resource to a number of nodes
 
@@ -3350,7 +3350,7 @@ class DrbdManageServer(object):
 
         @return: standard return code defined in drbdmanage.exceptions
         """
-        fn_rc   = []
+        fn_rc = []
         persist = None
         try:
             save_changes = False
@@ -3375,7 +3375,7 @@ class DrbdManageServer(object):
                 if deployer is None:
                     raise PluginException
 
-                persist  = self.begin_modify_conf()
+                persist = self.begin_modify_conf()
                 if persist is None:
                     raise PersistenceException
 
@@ -3384,7 +3384,18 @@ class DrbdManageServer(object):
                     maxnodes = int(self._conf[self.KEY_MAX_NODE_ID]) + 1
                 except ValueError:
                     pass
-                crtnodes = len(self._nodes)
+
+                nodes = []
+                if allowed_site:
+                    ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
+                    for node in self._nodes.values():
+                        node_site = node.get_props().get_prop('site', ns)
+                        if node_site and allowed_site.strip() == node_site.strip():
+                            nodes.append(node)
+                else:
+                    nodes = self._nodes.values()
+
+                crtnodes = len(nodes)
                 maxcount = maxnodes if maxnodes < crtnodes else crtnodes
                 resource = self._resources[res_name]
                 assigned_count = resource.assigned_count()
@@ -3401,7 +3412,6 @@ class DrbdManageServer(object):
                         raise ValueError
                 else:
                     final_count = count
-
 
                 # Try to achieve it
                 if final_count > maxcount:
@@ -3464,7 +3474,7 @@ class DrbdManageServer(object):
                     filter nodes that do not have the resource deployed yet
                     """
                     undeployed = {}
-                    for node in self._nodes.itervalues():
+                    for node in nodes:
                         # skip nodes, where:
                         #   - resource is deployed already
                         #   - resource is being deployed
@@ -3558,7 +3568,7 @@ class DrbdManageServer(object):
 
             if site_clients:
                 # turn all remaining nodes into clients
-                if self._site_clients(resource, None):
+                if self._site_clients(resource, None, nodes):
                     save_changes = True
 
             if save_changes:
@@ -3617,13 +3627,12 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
-
-    def _site_clients(self, resource, site):
+    def _site_clients(self, resource, site, all_nodes):
         """
         Turn all nodes that do replicate a resource into clients
         """
         assg_changed = False
-        for node in self._nodes.itervalues():
+        for node in all_nodes:
             assg = node.get_assignment(resource.get_name())
             if assg is None:
                 assg_changed = True

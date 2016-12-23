@@ -351,6 +351,20 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="siibs",
+        out_signature="a(isa(ss))",
+        message_keyword='message',
+    )
+    def auto_deploy_site(self, res_name, count, delta, site_clients, allowed_site, message=None):
+        """
+        D-Bus interface for DrbdManageServer.auto_deploy(...)
+        """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
+        return self._server.auto_deploy(res_name, int(count), int(delta), site_clients, allowed_site)
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="sb",
         out_signature="a(isa(ss))",
         message_keyword='message',
