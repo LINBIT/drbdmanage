@@ -3253,9 +3253,21 @@ class DrbdManageServer(object):
             return DM_DEBUG
         return DM_SUCCESS
 
+    def _nodes_in_site(self, allowed_site):
+        nodes = []
+        if allowed_site:
+            ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
+            for node in self._nodes.values():
+                node_site = node.get_props().get_prop('site', ns)
+                if node_site and allowed_site.strip() == node_site.strip():
+                    nodes.append(node)
+        else:
+            nodes = self._nodes.values()
+        return nodes
+
     @wait_startup
     @req_ctrlvol
-    def cluster_free_query(self, redundancy):
+    def cluster_free_query(self, redundancy, allowed_site=''):
         """
         Determines the maximum size of an n-times redundantly deployed volume
         """
@@ -3268,9 +3280,10 @@ class DrbdManageServer(object):
         redundancy = int(redundancy)
 
         free_space = 0
+        nodes = self._nodes_in_site(allowed_site)
         total_space = reduce(lambda x, y: x+y,
                              map(lambda n: max(0, n.get_poolsize()),
-                                 self._nodes.values()),
+                                 nodes),
                              0)
         try:
             if redundancy >= 1:
@@ -3278,7 +3291,7 @@ class DrbdManageServer(object):
                     # Select nodes where the amount of free space on
                     # that node is known
                     selected = []
-                    for node in self._nodes.itervalues():
+                    for node in nodes:
                         if is_set(node.get_state(), DrbdNode.FLAG_STORAGE):
                             poolfree = node.get_poolfree()
                             if poolfree != -1:
@@ -3387,15 +3400,7 @@ class DrbdManageServer(object):
                 except ValueError:
                     pass
 
-                nodes = []
-                if allowed_site:
-                    ns = PropsContainer.NAMESPACES[PropsContainer.KEY_DMCONFIG]
-                    for node in self._nodes.values():
-                        node_site = node.get_props().get_prop('site', ns)
-                        if node_site and allowed_site.strip() == node_site.strip():
-                            nodes.append(node)
-                else:
-                    nodes = self._nodes.values()
+                nodes = self._nodes_in_site(allowed_site)
 
                 crtnodes = len(nodes)
                 maxcount = maxnodes if maxnodes < crtnodes else crtnodes

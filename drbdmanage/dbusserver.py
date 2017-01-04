@@ -337,6 +337,20 @@ class DBusServer(dbus.service.Object):
 
     @dbus.service.method(
         DBUS_DRBDMANAGED,
+        in_signature="is",
+        out_signature="a(isa(ss))" "xx",
+        message_keyword='message',
+    )
+    def cluster_free_query_site(self, redundancy, allowed_site, message=None):
+        """
+        D-Bus interface for DrbdManageServer.cluster_free_query(...)
+        """
+        if self._dbustracer_running:
+            self._dbustracer.record(message.get_member(), message.get_args_list())
+        return self._server.cluster_free_query(redundancy, allowed_site)
+
+    @dbus.service.method(
+        DBUS_DRBDMANAGED,
         in_signature="siib",
         out_signature="a(isa(ss))",
         message_keyword='message',

@@ -578,6 +578,8 @@ class DrbdManage(object):
                                    ' specified level of redundancy',
                                    aliases=['free-space'])
         p_fspace.add_argument('-m', '--machine-readable', action="store_true")
+        p_fspace.add_argument('-s', '--site', default='',
+                              help="only consider nodes from this site")
         p_fspace.add_argument('redundancy', type=redundancy_type,
                               help='Redundancy level (>=1)')
         p_fspace.set_defaults(func=self.cmd_free_space)
@@ -1879,7 +1881,8 @@ class DrbdManage(object):
 
         self.dbus_init()
         server_rc, free_space, total_space = (
-            self.dsc(self._server.cluster_free_query,dbus.Int32(redundancy))
+            self.dsc(self._server.cluster_free_query_site,
+                     dbus.Int32(redundancy), dbus.String(args.site))
         )
 
         successful = self._is_rc_successful(server_rc)
