@@ -203,7 +203,7 @@ class DrbdAdm(object):
     def _wait_for_family(self, cmd, res_name, timeout=10):
         timeout_str = str(timeout)
         exit_code = self._run_drbdutils(
-            [self.DRBDSETUP_UTIL, cmd, '--wfc-timeout=%s' % timeout_str, res_name]
+            [self.DRBDSETUP_UTIL, cmd, '--wait-after-sb=yes', '--wfc-timeout=%s' % timeout_str, res_name]
         )
         if exit_code != 0:
             logging.warn("Resource '%s': %s not finished within %s seconds" % (res_name, cmd, timeout_str))
