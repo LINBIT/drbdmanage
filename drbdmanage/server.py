@@ -3986,7 +3986,7 @@ class DrbdManageServer(object):
         fn_rc = DM_ESTORAGE
         try:
             inst_node = self.get_instance_node()
-            if inst_node is not None:
+            if inst_node is not None and self._bd_mgr is not None:
                 if is_set(inst_node.get_state(), DrbdNode.FLAG_STORAGE) or force:
                     (stor_rc, poolsize, poolfree) = (
                         self._bd_mgr.update_pool(inst_node)
