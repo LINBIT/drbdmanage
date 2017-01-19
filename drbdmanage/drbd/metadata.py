@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
     drbdmanage - management of distributed DRBD9 resources
-    Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
-                               Author: R. Altnoeder
+    Copyright (C) 2013 - 2017  LINBIT HA-Solutions GmbH
+                               Author: R. Altnoeder, Roland Kammerer
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

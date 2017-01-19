@@ -1,6 +1,6 @@
 """
     drbdmanage - demo plugin
-    Copyright (C) 2015 LINBIT HA-Solutions GmbH
+    Copyright (C) 2015 - 2017 LINBIT HA-Solutions GmbH
     Author: Roland Kammerer <roland.kammerer@linbit.com>
 
     This program is free software: you can redistribute it and/or modify

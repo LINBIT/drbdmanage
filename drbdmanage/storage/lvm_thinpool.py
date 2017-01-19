@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 """
     drbdmanage - management of distributed DRBD9 resources
-    Copyright (C) 2013, 2014   LINBIT HA-Solutions GmbH
+    Copyright (C) 2013 - 2017  LINBIT HA-Solutions GmbH
                                Author: R. Altnoeder
 
     This program is free software: you can redistribute it and/or modify
