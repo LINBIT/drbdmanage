@@ -850,7 +850,9 @@ class DrbdManageServer(object):
             self._server_role = SAT_SATELLITE
             self._current_leader_name = ''
             self._current_leader_ip = ''
-            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
+            if self._server_role_potential == SAT_SATELLITE:
+                # could be a potential leader, in which case we want to keep the real quorum
+                self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
             self._init_persist()
             self._sat_states = {}
             self._proxy.shutdown()
@@ -4397,7 +4399,7 @@ class DrbdManageServer(object):
             if filter_props is not None and len(filter_props) > 0:
                 selected_nodes = props_filter(selected_nodes, filter_props)
 
-            control_node = True if self._server_role == SAT_LEADER_NODE else False
+            control_node = True if self._server_role_potential == SAT_POTENTIAL_LEADER_NODE else False
 
             instance_node = self.get_instance_node()
             for node in selected_nodes:
