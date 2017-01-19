@@ -835,7 +835,8 @@ class DrbdManageServer(object):
             self._server_role_decided = True
             self._sat_grace = True
             self._sat_grace_start = datetime.datetime.now()
-            logging.debug("Grace period started at %s" % self._sat_grace_start)
+            if self._server_role == SAT_LEADER_NODE:
+                logging.debug("Grace period started at %s" % self._sat_grace_start)
             return False
         return True
 
