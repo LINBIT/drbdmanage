@@ -958,6 +958,10 @@ class DrbdManager(object):
                 logging.info('Leader election: got quorum (%d/%d) nodes' % (nr_nodes, quorum_nodes))
             else:
                 logging.info('Leader election: no quorum (%d/%d) nodes' % (nr_nodes, quorum_nodes))
+                try:
+                    logging.info("Leader election: nodes present: %s" % ','.join([n for n in self._server._quorum.iterate_active_member_names()]))
+                except:
+                    pass
                 time.sleep(timeout)
 
         if not succ:

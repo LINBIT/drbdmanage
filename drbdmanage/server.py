@@ -613,11 +613,13 @@ class DrbdManageServer(object):
 
         # if self._server_role == SAT_SATELLITE or True:
         if self._server_role == SAT_SATELLITE:
-            self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
             logging.info('DRBDManage starting as satellite node')
+            if not rerun:
+                self._quorum = drbdmanage.quorum.IgnoredQuorum(self)
         else:
             logging.info('DRBDManage starting as potential leader node')
-            self._quorum = drbdmanage.quorum.Quorum(self)
+            if not rerun:
+                self._quorum = drbdmanage.quorum.Quorum(self)
 
         self._init_persist()
         self.load_conf()
@@ -627,7 +629,7 @@ class DrbdManageServer(object):
         # Initialize events tracking
         # prerequisite for leader election
         try:
-            self.init_events()
+            self.restart_events(None, None)
             self._drbd_event_initial_status()
         except (OSError, IOError):
             logging.critical("failed to initialize drbdsetup events tracing, "
