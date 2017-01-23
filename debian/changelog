@@ -1,3 +1,32 @@
+drbdmanage (0.99-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Renamed variable 'signal' in some methods to avoid variable shadowing
+  * Fix: restore_snapshot() decorator: @req_ctrlvol => @fwd_leader
+  * Fix recycling minor numbers in get_free_minor_nr()
+
+  [ Roland Kammerer ]
+  * client: make shutdown more reliable
+  * LVM: wipe old signatures on lvcreate
+  * ping service: Don't hang if nodes leave
+  * proxy: avoid unlocking unlocked lock
+  * satellites: fix startup if node is pure satellite
+  * proxy: set daemon_threads to True
+  * don't recycle minor numbers early
+  * auto deploy: add limitation to sites
+  * list-free-space : add limitation to sites
+  * single leader: avoid Primary after fence
+  * update_pool: check if block device manager exists
+  * print info about grace only on leader
+  * enable quorum tracking on all nodes with ctrlvol
+
+  [ Philipp Reisner ]
+  * Clarify license
+  * Revert "New end user license for drbd manage"
+  * Sanitizing all the references to license, authorship and copyright
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 23 Jan 2017 12:57:04 +0100
+
 drbdmanage (0.98.2-1) experimental; urgency=medium
 
   * server: remove invalid drbdsetup opts on startup
