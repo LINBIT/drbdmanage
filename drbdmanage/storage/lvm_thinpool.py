@@ -826,7 +826,7 @@ class LvmThinPool(lvmcom.LvmCommon):
     def _create_vol(self, lv_name, pool_name, size):
         try:
             exec_args = [
-                self._cmd_create, "--wipesignatures=y", "-n", lv_name, "-V", str(size) + "k",
+                self._cmd_create, "-n", lv_name, "-V", str(size) + "k",
                 "--thinpool", pool_name,
                 self._conf[consts.KEY_VG_NAME]
             ]
@@ -843,6 +843,12 @@ class LvmThinPool(lvmcom.LvmCommon):
                 % (self._cmd_create, str(os_err))
             )
             raise StoragePluginException
+
+        try:
+            devpath = "/dev" + self._conf[consts.KEY_VG_NAME] + "/" + lv_name
+            subprocess.call(["wipefs", "-a", "-q", devpath])
+        except:
+            logging.error("Could not wipefs %s" % devpath)
 
     def _check_vol_exists(self, lv_name):
         return self.check_lv_exists(

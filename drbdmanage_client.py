@@ -3349,11 +3349,20 @@ Confirm:
 
         # Create the .drbdctrl LV
         self._ext_command(
-            ["lvcreate", "--wipesignatures=y", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
         )
+        try:
+            subprocess.call(["wipefs", "-a", "-q", drbdctrl_blockdev_0])
+        except:
+            sys.stderr.write("Could not wipefs %s\n" % drbdctrl_blockdev_0)
+
         self._ext_command(
-            ["lvcreate", "--wipesignatures=y", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
         )
+        try:
+            subprocess.call(["wipefs", "-a", "-q", drbdctrl_blockdev_1])
+        except:
+            sys.stderr.write("Could not wipefs %s\n" % drbdctrl_blockdev_1)
 
         # Create meta-data
         self._ext_command(
