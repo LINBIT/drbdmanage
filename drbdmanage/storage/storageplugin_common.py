@@ -330,9 +330,19 @@ class StoragePluginCommon(object):
                     tries += 1
             else:
                 logging.error(
-                    "%s: Removal of an existing volume '%s' failed, aborting "
+                    "%s: Removal of an existing volume '%s' failed. "
+                    "Unable to clean up and recreate the volume, using existing volume."
                     % (self.NAME, vol_name)
                 )
+                # For whatever reason an existing volume is there, and the OS is
+                # incapable of cleaning up the mess, therefore just use the
+                # existing volume
+                blockdev = storcore.BlockDevice(
+                    vol_name, size,
+                    self._vg_path + vol_name
+                )
+                self._volumes[vol_name] = blockdev
+                self.save_state(self._volumes)
         except (StoragePluginCheckFailedException, StoragePluginException):
             # Unable to run one of the volM commands
             # The error is reported by the corresponding function
