@@ -282,6 +282,7 @@ class DrbdManageServer(object):
 
     # DEBUGGING FLAGS
     dbg_events = False
+    _dbg_drbdmgr_enabled = True
 
     _pluginmgr = None
 
@@ -5452,7 +5453,7 @@ class DrbdManageServer(object):
 
         @param   persist: persistence layer object to close
         """
-        if not self._run_changes_scheduled:
+        if not (self._run_changes_scheduled and self._dbg_drbdmgr_enabled):
             self.end_modify_conf(persist)
 
     @wait_startup
@@ -6353,6 +6354,9 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    def ignore_drbdmgr_actions(self):
+        return not self._dbg_drbdmgr_enabled
+
     def debug_console(self, cmdline):
         """
         Set debugging options
@@ -6396,6 +6400,9 @@ class DrbdManageServer(object):
                         key, val = self._debug_keyval_split(subcommand)
                         if key == "dbg_events":
                             self.dbg_events = self._debug_parse_flag(val)
+                            fn_rc = 0
+                        elif key == "drbdmgr_enabled":
+                            self._dbg_drbdmgr_enabled = self._debug_parse_flag(val)
                             fn_rc = 0
                         elif key == "loglevel":
                             loglevel = self._debug_parse_loglevel(val)

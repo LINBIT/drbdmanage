@@ -147,7 +147,7 @@ class DrbdManager(object):
                     logging.debug("DrbdManager: cannot open the "
                                   "control volume (read-only)")
 
-            if run_changes:
+            if run_changes and not self._server.ignore_drbdmgr_actions():
                 # self._server.export_conf('*')
                 # close the read-only stream, then lock and open the
                 # configuration for reading and writing
@@ -173,6 +173,13 @@ class DrbdManager(object):
                 else:
                     logging.debug("DrbdManager: cannot open the "
                                   "control volume (read-write)")
+            else:
+                if self._server.ignore_drbdmgr_actions():
+                    log_message = (
+                        "DrbdManager: abort, DrbdManager disabled by debug flag"
+                    )
+                    logging.warning(log_message)
+                    self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
         except PersistenceException:
             exc_type, exc_obj, exc_trace = sys.exc_info()
             logging.debug("DrbdManager: caught PersistenceException:")
@@ -233,8 +240,16 @@ class DrbdManager(object):
             )
             logging.warning(log_message)
             self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
-            return False
+            return False, False
 
+
+        if self._server.ignore_drbdmgr_actions():
+            log_message = (
+                "DrbdManager: abort, DrbdManager disabled by debug flag"
+            )
+            logging.warning(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
+            return False, False
 
         """
         Check for changes of the cluster configuration (node members)
