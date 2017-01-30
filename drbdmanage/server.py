@@ -842,7 +842,10 @@ class DrbdManageServer(object):
 
             self.run_config()
             # here we have our ctrlvol and are ready to write the res files
-            self._filter_invalid_drbdsetup_opts()
+            try:
+                self._filter_invalid_drbdsetup_opts()
+            except:
+                pass
             self.export_conf("*")
             # Start up the resources deployed by drbdmanage on the current node
             self._drbd_mgr.initial_up()
@@ -4269,7 +4272,7 @@ class DrbdManageServer(object):
                     _rm_invalid(props_cont, c_ns)
 
         try:
-            persist = self.begin_modify_conf()
+            persist = self.begin_modify_conf(override_quorum=True)
             if persist is None:
                 raise PersistenceException
 
