@@ -1,3 +1,15 @@
+drbdmanage (0.99.2-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * LVM: use "wipefs" instead of "--wipesignatures=y"
+  * fix startup on satellites
+
+  [ Robert Altnoeder ]
+  * Fall back to using existing volumes during deploy
+  * Added debug flag for disabling the DrbdManager run() / perform_changes()
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 31 Jan 2017 13:56:49 +0100
+
 drbdmanage (0.99.1-1) experimental; urgency=medium
 
   * leader (re)election: fix quorum tracking
