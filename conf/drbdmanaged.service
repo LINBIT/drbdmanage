@@ -2,6 +2,8 @@
 Description=DRBDManage Service
 Documentation=https://www.drbd.org/en/doc/users-guide-90
 Requires=dbus.service
+Wants=network-online.target sshd.service
+After=network-online.target sshd.service
 
 [Service]
 ExecStart=/usr/bin/dbus-drbdmanaged-service
