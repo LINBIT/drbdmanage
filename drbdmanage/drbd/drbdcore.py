@@ -1761,6 +1761,9 @@ class DrbdManager(object):
         resource = assignment.get_resource()
         res_name = resource.get_name()
 
+        # Run drbdsetup down
+        self._drbdadm.fallback_down(res_name)
+
         ud_errors = False
         # No actions are required for empty assignments
         if not assignment.is_empty():
