@@ -103,11 +103,21 @@ class DrbdConnectionConf(object):
     def _get_server_instance(self):
         if self.target_node is not None:
             return self.target_node
-        else:
-            try:
-                return self.objects_root[consts.KEY_SERVER_INSTANCE].get_instance_node()
-            except:
+
+        try:
+            n = self.objects_root[consts.KEY_SERVER_INSTANCE].get_instance_node()
+            if n is None:
                 return None
+
+            # it could be the case that objects_root was updated in the meantime, n could point to the new one
+            # find the node object that corresponds to the one we were at this class/object creation time
+            n_name = n.get_name().strip()
+            for x in self._all_nodes:
+                if x.get_name().strip() == n_name:
+                    return x
+        except:
+            pass  # returns None
+        return None
 
     def _gen_mesh_conf(self, mesh, have_same_site=False):
         site = None
