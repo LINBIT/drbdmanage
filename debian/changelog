@@ -1,3 +1,15 @@
+drbdmanage (0.99.3-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * systemd: add dependency on network
+  * fix path for wipefs
+  * avoid creation of broken res files
+
+  [ Robert Altnoeder ]
+  * Always run drbdsetup down when undeploying resources
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 28 Feb 2017 14:46:02 +0100
+
 drbdmanage (0.99.2-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
