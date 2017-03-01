@@ -110,7 +110,9 @@ DM_EDRBDCMD = 119
 DM_ERESFILE = 120
 
 # Server not ready (e.g., startup not done)
-DM_ENOTREADY = 121
+DM_ENOTREADY = 121  # general one
+DM_ENOTREADY_STARTUP = 122
+DM_ENOTREADY_REQCTRL = 123
 
 # DEBUG value
 DM_DEBUG    = 1023
@@ -146,6 +148,8 @@ _DM_EXC_TEXTS[DM_ESATELLITE] = "Could not forward data to leader"
 _DM_EXC_TEXTS[DM_EDRBDCMD] = "A drbdutils command failed"
 _DM_EXC_TEXTS[DM_ERESFILE] = "Updating a DRBD resource configuration file failed"
 _DM_EXC_TEXTS[DM_ENOTREADY] = "Server currently not ready, please retry later"
+_DM_EXC_TEXTS[DM_ENOTREADY_STARTUP] = "Startup not successful (no quorum? not *both* nodes up in a 2 node cluster?)"
+_DM_EXC_TEXTS[DM_ENOTREADY_REQCTRL] = "Satellite could not request control volume from leader"
 
 
 def dm_exc_text(exc_id):

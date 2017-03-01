@@ -76,7 +76,7 @@ from drbdmanage.exceptions import (
     DM_DEBUG, DM_ECTRLVOL, DM_EEXIST, DM_EINVAL, DM_EMINOR, DM_ENAME,
     DM_ENODECNT, DM_ENODEID, DM_ENOENT, DM_EPERSIST, DM_EPLUGIN, DM_EPORT,
     DM_ESECRETG, DM_ESTORAGE, DM_EVOLID, DM_EVOLSZ, DM_ENOSPC, DM_EQUORUM,
-    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE, DM_INFO, DM_ENOTREADY,
+    DM_ENOTIMPL, DM_SUCCESS, DM_ESATELLITE, DM_INFO, DM_ENOTREADY, DM_ENOTREADY_STARTUP, DM_ENOTREADY_REQCTRL
 )
 from drbdmanage.exceptions import (
     DrbdManageException, InvalidMinorNrException, InvalidNameException, PersistenceException,
@@ -370,7 +370,7 @@ class DrbdManageServer(object):
                (self._server_role_decided and self._server_role == SAT_SATELLITE and
                     self._current_leader_ip == ''):
                 fn_rc = []
-                add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
+                add_rc_entry(fn_rc, DM_ENOTREADY_STARTUP, dm_exc_text(DM_ENOTREADY_STARTUP))
                 return self.gen_wrapped_rc(f.__name__, fn_rc)
             else:
                 return f(self, *args, **kwargs)
@@ -414,7 +414,7 @@ class DrbdManageServer(object):
             if self._server_role == SAT_SATELLITE:
                 if not self.request_ctrlvol():
                     fn_rc = []
-                    add_rc_entry(fn_rc, DM_ENOTREADY, dm_exc_text(DM_ENOTREADY))
+                    add_rc_entry(fn_rc, DM_ENOTREADY_REQCTRL, dm_exc_text(DM_ENOTREADY_REQCTRL))
                     return self.gen_wrapped_rc(f.__name__, fn_rc)
             return f(self, *args, **kwargs)
         return wrapper

@@ -70,7 +70,9 @@ from drbdmanage.exceptions import AbortException
 from drbdmanage.exceptions import IncompatibleDataException
 from drbdmanage.exceptions import SyntaxException
 from drbdmanage.exceptions import dm_exc_text
-from drbdmanage.exceptions import DM_SUCCESS, DM_EEXIST, DM_ENOENT, DM_ENOTREADY
+from drbdmanage.exceptions import (
+    DM_SUCCESS, DM_EEXIST, DM_ENOENT, DM_ENOTREADY, DM_ENOTREADY_STARTUP, DM_ENOTREADY_REQCTRL
+)
 from drbdmanage.dbusserver import DBusServer
 from drbdmanage.drbd.drbdcore import Assignment
 from drbdmanage.drbd.views import AssignmentView
@@ -173,6 +175,8 @@ class DrbdManage(object):
                 break
         if tries > 0:
             sys.stdout.write('\n')
+        if tries == retries_max + 1:
+            self._process_rc_entries(chk, True)
 
         return server_rc
 
@@ -3445,7 +3449,7 @@ Confirm:
     def _is_rc_retry(self, server_rc):
         for rc_entry in server_rc:
             rc_num, _, _ = rc_entry
-            if rc_num == DM_ENOTREADY:
+            if rc_num == DM_ENOTREADY or rc_num == DM_ENOTREADY_STARTUP or rc_num == DM_ENOTREADY_REQCTRL:
                 return True
         return False
 
