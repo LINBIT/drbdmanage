@@ -342,6 +342,7 @@ class DrbdManageServer(object):
         'remove_volume': KEY_NOTHING,
         'resize_volume': KEY_NOTHING,
         'restore_snapshot': KEY_NOTHING,
+        'request_ctrlvol': KEY_NOTHING,
         'run_external_plugin': {},
         'set_ctrlvol': KEY_NOTHING,
         'set_drbdsetup_props': KEY_NOTHING,
@@ -412,7 +413,7 @@ class DrbdManageServer(object):
         @wraps(f)
         def wrapper(self, *args, **kwargs):
             if self._server_role == SAT_SATELLITE:
-                if not self.request_ctrlvol():
+                if not self._request_ctrlvol():
                     fn_rc = []
                     add_rc_entry(fn_rc, DM_ENOTREADY_REQCTRL, dm_exc_text(DM_ENOTREADY_REQCTRL))
                     return self.gen_wrapped_rc(f.__name__, fn_rc)
@@ -836,7 +837,7 @@ class DrbdManageServer(object):
             if self._server_role == SAT_SATELLITE:
                 if not self._current_leader_ip:
                     return True
-                if not self.request_ctrlvol():
+                if not self._request_ctrlvol():
                     return True
                 # satellite, have leader, have ctrlvol, so continue
 
@@ -5837,7 +5838,25 @@ class DrbdManageServer(object):
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return fn_rc
 
+    # higher level implementation that waits for startup and conditionally gets ctrlvol
+    # this can be for example used by the clienthelper class
+    @wait_startup
     def request_ctrlvol(self):
+        fn_rc = []
+        succ = True
+
+        if self._server_role == SAT_SATELLITE:
+            succ = self._request_ctrlvol()
+
+        if succ:  # successful satellite or leader
+            add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
+        else:
+            add_rc_entry(fn_rc, DM_ENOENT, dm_exc_text(DM_ENOENT))
+
+        return fn_rc
+
+    # low level implementation used by eg the @req_ctrlvol wrapper
+    def _request_ctrlvol(self):
         cl_ip = self._current_leader_ip
         if cl_ip:
             opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,

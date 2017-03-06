@@ -156,6 +156,7 @@ class PolicyBase(object):
                             result=False)
 
     def get_resource(self, res_name):
+        self._server.request_ctrlvol()
         res = self._server._resources.get(res_name)
         if not res:
             return ([(dm_exc.DM_ENOENT,
