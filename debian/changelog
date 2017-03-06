@@ -1,3 +1,10 @@
+drbdmanage (0.99.4-1) experimental; urgency=medium
+
+  * introduce more fine grained error messages
+  * wait-for/openstack: fix calls on satellite
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 06 Mar 2017 09:40:31 +0100
+
 drbdmanage (0.99.3-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
