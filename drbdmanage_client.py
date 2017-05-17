@@ -3754,8 +3754,8 @@ Confirm:
                             continue
                         cfgstr = '# ' + o + ' = ' + plugin[o]
                         if o == KEY_VG_NAME:
-                            cfgstr += ' # or the value of %s if it is set and %s is unset' % (KEY_DRBDCTRL_VG,
-                                                                                              KEY_VG_NAME)
+                            cfgstr += '\n# ^^ or the value of %s if it is set and %s is unset' % (KEY_DRBDCTRL_VG,
+                                                                                                  KEY_VG_NAME)
                         configfile.write(cfgstr + '\n')
                     configfile.write('\n')
 
