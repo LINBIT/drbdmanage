@@ -355,6 +355,8 @@ class DrbdNodeView(GenericView):
          consts.FLAG_STORAGE,    None,   None],
         [consts.TSTATE_PREFIX + consts.FLAG_QIGNORE,
          consts.FLAG_QIGNORE,    None,   None],
+        [consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL,
+         consts.FLAG_EXTERNAL,    None,   None],
         [consts.TSTATE_PREFIX + consts.FLAG_STANDBY,
          consts.FLAG_STANDBY,    None,   None]
     ]
@@ -373,6 +375,8 @@ class DrbdNodeView(GenericView):
          "S",     "-",    "?"],
         [consts.TSTATE_PREFIX + consts.FLAG_STANDBY,
          "X",     "-",    "?"],
+        [consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL,
+         "E",     "-",    "?"],
         [consts.TSTATE_PREFIX + consts.FLAG_QIGNORE,
          "Q",     "-",    "?"]
     ]
@@ -411,6 +415,9 @@ class DrbdNodeView(GenericView):
         s_standby = utils.string_to_bool(
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_STANDBY)
         )
+        s_external = utils.string_to_bool(
+            self.get_property(consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL)
+        )
         s_qignore = utils.string_to_bool(
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_QIGNORE)
         )
@@ -447,7 +454,10 @@ class DrbdNodeView(GenericView):
                     self.raise_level(GenericView.STATE_WARN)
                     self.add_pending_text("check space")
             if not s_drbdctrl:
-                self.add_state_text("satellite node")
+                if s_external:
+                    self.add_state_text("external node")
+                else:
+                    self.add_state_text("satellite node")
             if not s_storage:
                 self.add_state_text("no storage")
             if s_standby:

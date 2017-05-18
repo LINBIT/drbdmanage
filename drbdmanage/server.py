@@ -1867,6 +1867,11 @@ class DrbdManageServer(object):
         add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
         return (fn_rc, ret)
 
+    def is_external(self, node_name):
+        node = self.get_node(node_name)
+        node_state = node.get_state()
+        return is_set(node_state, DrbdNode.FLAG_EXTERNAL)
+
     def is_satellite(self, node_name):
         # I'm leader and asked for myself.
         if self._server_role_decided and self._server_role == SAT_LEADER_NODE and \
@@ -1878,12 +1883,15 @@ class DrbdManageServer(object):
            node_name == self._current_leader_name:
             return False
 
+        if self.is_external(node_name):
+            return False
+
         # else: leader asked for other nodes (which has to be a satellite)
         #       or satellite asked for other satellite
         return True
 
     def get_satellite_names(self):
-        return set([k for k in self._nodes.keys() if k != self._instance_node_name])
+        return set([k for k in self._nodes.keys() if self.is_satellite(k)])
 
     def get_reachable_satellite_names(self):
         return set([k for k, v in self._sat_states.items() if v is True])
@@ -2151,6 +2159,8 @@ class DrbdManageServer(object):
                     node_state |= DrbdNode.FLAG_STORAGE
                 if node_standby:
                     node_state |= DrbdNode.FLAG_STANDBY
+                if node_external:
+                    node_state |= DrbdNode.FLAG_EXTERNAL
                 # Ignore the quorum vote of newly added nodes until
                 # the nodes join for the first time, unless this is
                 # the first node initializing the drbdmanage cluster
@@ -3213,7 +3223,11 @@ class DrbdManageServer(object):
                 if is_unset(node.get_state(), DrbdNode.FLAG_STORAGE):
                     tstate = tstate | Assignment.FLAG_DISKLESS
 
+                is_external = is_set(node.get_state(), DrbdNode.FLAG_EXTERNAL)
                 # Create the assignment object
+                # if it is an external node, set cstate to target state, we are done here
+                if is_external:
+                    cstate = tstate
                 assignment = Assignment(node, resource, node_id,
                                         cstate, tstate, 0, None,
                                         self.get_serial, None, None)
@@ -3227,6 +3241,8 @@ class DrbdManageServer(object):
                     vol_state.deploy()
                     if is_unset(tstate, Assignment.FLAG_DISKLESS):
                         vol_state.attach()
+                    if is_external:
+                        vol_state.set_cstate(vol_state.get_tstate())
                 node.add_assignment(assignment)
                 resource.add_assignment(assignment)
 
@@ -3239,9 +3255,10 @@ class DrbdManageServer(object):
 
                 # Flag all existing assignments for an update of the
                 # assignment's network connections
-                for assignment in resource.iterate_assignments():
-                    if assignment.is_deployed():
-                        assignment.update_connections()
+                if not is_external:
+                    for assignment in resource.iterate_assignments():
+                        if assignment.is_deployed():
+                            assignment.update_connections()
 
                 fn_rc = DM_SUCCESS
         except Exception as exc:
@@ -4073,6 +4090,7 @@ class DrbdManageServer(object):
             update_serial = False
 
             for node in self._nodes.itervalues():
+                is_external = is_set(node.get_state(), DrbdNode.FLAG_EXTERNAL)
                 for assg in node.iterate_assignments():
                     assg_tstate = assg.get_tstate()
                     removable = []
@@ -4121,7 +4139,7 @@ class DrbdManageServer(object):
                             assg_bd_exists = True
                             vol_state.set_cstate_flags(VS_FLAG_DEPLOY)
                         # collect volume states that can be removed
-                        if (is_unset(vol_cstate, VS_FLAG_DEPLOY) and
+                        if ((is_unset(vol_cstate, VS_FLAG_DEPLOY) or is_external) and
                             (is_unset(vol_tstate, VS_FLAG_DEPLOY) or
                              is_unset(assg_tstate, A_FLAG_DEPLOY)) and
                              (not bd_exists)):
@@ -4153,10 +4171,11 @@ class DrbdManageServer(object):
             # delete assignments that have been undeployed
             removable = []
             for node in self._nodes.itervalues():
+                is_external = is_set(node.get_state(), DrbdNode.FLAG_EXTERNAL)
                 for assg in node.iterate_assignments():
                     tstate = assg.get_tstate()
                     cstate = assg.get_cstate()
-                    if (is_unset(cstate, A_FLAG_DEPLOY) and
+                    if ((is_unset(cstate, A_FLAG_DEPLOY) or is_external) and
                         is_unset(tstate, A_FLAG_DEPLOY)):
                             if ((not assg.has_snapshots()) and
                                 (not assg.has_volume_states())):

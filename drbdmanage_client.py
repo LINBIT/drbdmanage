@@ -1416,16 +1416,10 @@ class DrbdManage(object):
         flag_autojoin = not args.no_autojoin
 
         if flag_external:
-            # currently not implemented
-            # start rm
-            sys.stderr.write('Currently not implemented\n')
-            sys.exit(1)
-            # end rm
             if satellite:
                 sys.stderr.write('Not allowed to mix --external with --satellite\n')
                 sys.exit(1)
             flag_storage = False
-            flag_drbdctrl = False
 
         props = dbus.Dictionary(signature="ss")
         props[NODE_ADDR] = ip
@@ -1441,7 +1435,7 @@ class DrbdManage(object):
         server_rc = self.dsc(self._server.create_node, name, props)
         fn_rc = self._list_rc_entries(server_rc)
 
-        if fn_rc == 0:  # join node
+        if fn_rc == 0 and not flag_external:  # join node
             server_rc, joinc = self.dsc(self._server.text_query, ["joinc", name])
             joinc_text = str(" ".join(joinc))
 

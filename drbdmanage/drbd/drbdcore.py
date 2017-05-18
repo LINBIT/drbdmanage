@@ -2759,13 +2759,14 @@ class DrbdNode(GenericDrbdObject):
     FLAG_STORAGE  =     0x8
     FLAG_STANDBY  =    0x10
     FLAG_QIGNORE  =    0x20
+    FLAG_EXTERNAL =    0x40
     FLAG_UPD_POOL = 0x10000
 
     # STATE_MASK must include all valid flags;
     # used to mask the value supplied to set_state() to prevent setting
     # non-existent flags
     STATE_MASK = (FLAG_REMOVE | FLAG_UPD_POOL | FLAG_UPDATE | FLAG_DRBDCTRL |
-                  FLAG_STORAGE | FLAG_STANDBY | FLAG_QIGNORE)
+                  FLAG_STORAGE | FLAG_STANDBY | FLAG_QIGNORE | FLAG_EXTERNAL)
 
 
     def __init__(self, name, addr, addrfam, node_id, state, poolsize, poolfree,
@@ -2975,6 +2976,8 @@ class DrbdNode(GenericDrbdObject):
                         bool_to_string(is_set(self._state, self.FLAG_STORAGE)),
                     consts.TSTATE_PREFIX + consts.FLAG_STANDBY :
                         bool_to_string(is_set(self._state, self.FLAG_STANDBY)),
+                    consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL :
+                        bool_to_string(is_set(self._state, self.FLAG_EXTERNAL)),
                     consts.TSTATE_PREFIX + consts.FLAG_QIGNORE :
                         bool_to_string(is_set(self._state, self.FLAG_QIGNORE))
                 }
@@ -3024,6 +3027,10 @@ class DrbdNode(GenericDrbdObject):
         if selected(consts.TSTATE_PREFIX + consts.FLAG_STORAGE):
             properties[consts.TSTATE_PREFIX + consts.FLAG_STORAGE] = (
                 bool_to_string(is_set(self._state, self.FLAG_STORAGE))
+            )
+        if selected(consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL):
+            properties[consts.TSTATE_PREFIX + consts.FLAG_EXTERNAL] = (
+                bool_to_string(is_set(self._state, self.FLAG_EXTERNAL))
             )
         if selected(consts.TSTATE_PREFIX + consts.FLAG_STANDBY):
             properties[consts.TSTATE_PREFIX + consts.FLAG_STANDBY] = (
