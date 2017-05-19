@@ -2075,6 +2075,10 @@ class DrbdManageServer(object):
 
         return fn_rc
 
+    def remove_from_shutdown(self, node_name):
+        self._sat_proposed_shutdown.discard(node_name)
+        self._sat_shutdown.discard(node_name)
+
     @wait_startup
     @fwd_leader
     def create_node(self, node_name, props):
@@ -2086,6 +2090,7 @@ class DrbdManageServer(object):
         fn_rc   = []
         persist = None
         self.reset_grace()
+        self.remove_from_shutdown(node_name)
         try:
             persist = self.begin_modify_conf()
             if persist is not None:

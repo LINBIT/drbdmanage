@@ -362,10 +362,11 @@ class DrbdManager(object):
                     if opcode == proxy.opcodes[consts.KEY_S_ANS_CHANGED_FAILED]:
                         at_least_one_failed = True
 
-                    # if the satellite has nothing more to say and is already in the proposed
-                    # shutdown set(), add it to the set where it really gets a shutdown.
-                    if opcode == proxy.opcodes[consts.KEY_S_ANS_UNCHANGED] and \
-                       sat_name in self._server._sat_proposed_shutdown:
+                    # if the satellite has nothing more to say (or died anyways) and is already in the
+                    # proposed shutdown set(), add it to the set where it really gets a shutdown.
+                    if ((opcode == proxy.opcodes[consts.KEY_S_ANS_UNCHANGED] or
+                        opcode == proxy.opcodes[consts.KEY_S_ANS_E_COMM]) and
+                       sat_name in self._server._sat_proposed_shutdown):
                         try:
                             self._server._sat_proposed_shutdown.remove(sat_name)
                         except:
