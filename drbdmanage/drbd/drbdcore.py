@@ -989,9 +989,9 @@ class DrbdManager(object):
         return succ, won
 
     @log_in_out
-    def down_drbdctrl(self):
+    def down_drbdctrl(self, with_fallback=False):
         # call drbdadm to stop the control volume
-        fn_rc = self._drbdadm.down(consts.DRBDCTRL_RES_NAME)
+        fn_rc = self._drbdadm.down(consts.DRBDCTRL_RES_NAME, with_fallback)
         return fn_rc
 
     @log_in_out

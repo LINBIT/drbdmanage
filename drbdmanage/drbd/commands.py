@@ -83,7 +83,7 @@ class DrbdAdm(object):
         exec_args.append(res_name + "/" + str(vol_id))
         return self._run_drbdutils(exec_args)
 
-    def down(self, res_name):
+    def down(self, res_name, with_fallback=False):
         """
         Shuts down (unconfigures) a DRBD resource
 
@@ -92,6 +92,15 @@ class DrbdAdm(object):
         exec_args = [self.DRBDADM_UTIL, "-vvv"]
         exec_args += self._direct_res(res_name)
         exec_args += ["down", res_name]
+        exit_code = self._run_drbdutils(exec_args)
+
+        if exit_code != 0 and with_fallback:
+            exit_code = self._fallback_down(res_name)
+
+        return exit_code
+
+    def _fallback_down(self, res_name):
+        exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
         return self._run_drbdutils(exec_args)
 
     def fallback_down(self, res_name):
@@ -100,9 +109,7 @@ class DrbdAdm(object):
 
         @return: True if the fallback executable exited with exit code 0, False otherwise
         """
-        exec_args = [self.DRBDSETUP_UTIL, "down", res_name]
-        exit_code = self._run_drbdutils(exec_args)
-        return (exit_code == 0)
+        return self._fallback_down(res_name) == 0
 
     def primary(self, res_name, force, with_drbdsetup=False):
         """

@@ -2096,6 +2096,8 @@ class DrbdManageServer(object):
             if persist is not None:
                 sub_rc = self._create_node(False, node_name, props, None, None, None)
                 if sub_rc == DM_SUCCESS or sub_rc == DM_ECTRLVOL:
+                    for dm_node in self._nodes.itervalues():
+                        dm_node.set_state_flags(DrbdNode.FLAG_QIGNORE)
                     self.save_conf_data(persist)
                 else:
                     add_rc_entry(fn_rc, sub_rc, dm_exc_text(sub_rc))
@@ -5906,6 +5908,12 @@ class DrbdManageServer(object):
         """
         fn_rc = []
         persist = None
+        self._drbd_mgr.secondary_drbdctrl()
+        self._drbd_mgr.down_drbdctrl(with_fallback=True)
+        try:
+            os.unlink(build_path(DRBDCTRL_RES_PATH, DRBDCTRL_RES_FILE))
+        except:
+            pass
         try:
             persist = self.begin_modify_conf(override_quorum=True)
 
@@ -5976,7 +5984,7 @@ class DrbdManageServer(object):
         if len(fn_rc) == 0:
             add_rc_entry(fn_rc, DM_SUCCESS, dm_exc_text(DM_SUCCESS))
             self._server_role_potential = SAT_POTENTIAL_LEADER_NODE
-            self.schedule_reelection()
+            # self.schedule_reelection()
         return fn_rc
 
 

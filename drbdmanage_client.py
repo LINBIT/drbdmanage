@@ -60,7 +60,7 @@ from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import ExternalCommandBuffer
 from drbdmanage.utils import (
     build_path, bool_to_string, string_to_bool, rangecheck, namecheck, ssh_exec,
-    load_server_conf_file, filter_prohibited, get_uname, approximate_size_string, wipefs,
+    load_server_conf_file, filter_prohibited, get_uname, approximate_size_string, wipefs, cmd_try_ignore,
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -1449,13 +1449,13 @@ class DrbdManage(object):
             else:
                 join_performed = False
                 if flag_autojoin:
-                    # ssh_exec("wait-for-startup", ip, name, ['drbdmanage', 'wait-for-startup'],
-                    #          False, False)
-                    # THINK: the following is racy:
-                    # leader may not have contacted satellite before calling "join" (which wants persistence)
-                    # self._server.poke()
                     join_performed = ssh_exec("join", ip, name, joinc,
                                               args.quiet or satellite, satellite)
+                    # TODO: this should be a real "had contact" query...
+                    sys.stdout.write("Give leader time to contact the new node\n")
+                    time.sleep(7)
+                    self.cmd_poke(None)
+                    self.cmd_update_pool(None)
                 if not join_performed:
                     sys.stdout.write("\nJoin command for node %s:\n"
                                      "%s\n" % (name, joinc_text))
@@ -3123,12 +3123,15 @@ Confirm:
 
                 # Startup the drbdmanage server and update the local .drbdctrl
                 # resource configuration file
-                self.dbus_init()
                 props = {}
                 props[NODE_PORT] = str(port)
                 props[NODE_VOL_0] = drbdctrl_blockdev_0
                 props[NODE_VOL_1] = drbdctrl_blockdev_1
                 props[NODE_SECRET] = secret
+                sys.stdout.write('Waiting for server to start up (can take up to 1 min)\n')
+                sys.stdout.flush()
+                cmd_try_ignore(["drbdmanage", "wait-for-startup"])
+                self.dbus_init()
                 server_rc = self.dsc(self._server.join_node, props)
                 end_time = time.time()
                 time_set = True
