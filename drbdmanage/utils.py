@@ -347,6 +347,20 @@ def check_output(*args, **kwargs):
         return _wrapcall_2_6(*args, **kwargs)
 
 
+# a wrapper for subprocess call for one-shot commands that are not critical and where we don't care about
+# stdout/stderr
+def cmd_try_ignore(cmdlst):
+    try:
+        devnull = open(os.devnull, 'w')
+        subprocess.call(cmdlst, stdout=devnull, stderr=subprocess.STDOUT)
+    except:
+        pass
+
+
+def wipefs(device):
+    cmd_try_ignore(["wipefs", "-a", device])
+
+
 def ssh_exec(cmdname, ip, name, cmdline, quiet=False, suppress_stderr=False):
     try:
         ssh_base = ["ssh", "-oBatchMode=yes",

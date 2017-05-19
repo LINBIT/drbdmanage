@@ -60,7 +60,7 @@ from drbdmanage.utils import DrbdSetupOpts
 from drbdmanage.utils import ExternalCommandBuffer
 from drbdmanage.utils import (
     build_path, bool_to_string, string_to_bool, rangecheck, namecheck, ssh_exec,
-    load_server_conf_file, filter_prohibited, get_uname, approximate_size_string
+    load_server_conf_file, filter_prohibited, get_uname, approximate_size_string, wipefs,
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -3349,18 +3349,12 @@ Confirm:
         self._ext_command(
             ["lvcreate", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
         )
-        try:
-            subprocess.call(["wipefs", "-a", "-q", drbdctrl_blockdev_0])
-        except:
-            sys.stderr.write("Could not wipefs %s\n" % drbdctrl_blockdev_0)
+        wipefs(drbdctrl_blockdev_0)
 
         self._ext_command(
             ["lvcreate", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
         )
-        try:
-            subprocess.call(["wipefs", "-a", "-q", drbdctrl_blockdev_1])
-        except:
-            sys.stderr.write("Could not wipefs %s\n" % drbdctrl_blockdev_1)
+        wipefs(drbdctrl_blockdev_1)
 
         # Create meta-data
         self._ext_command(

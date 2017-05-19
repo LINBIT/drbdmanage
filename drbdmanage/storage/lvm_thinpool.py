@@ -844,11 +844,8 @@ class LvmThinPool(lvmcom.LvmCommon):
             )
             raise StoragePluginException
 
-        try:
-            devpath = "/dev/" + self._conf[consts.KEY_VG_NAME] + "/" + lv_name
-            subprocess.call(["wipefs", "-a", "-q", devpath])
-        except:
-            logging.error("Could not wipefs %s" % devpath)
+        devpath = "/dev/" + self._conf[consts.KEY_VG_NAME] + "/" + lv_name
+        utils.wipefs(devpath)
 
     def _check_vol_exists(self, lv_name):
         return self.check_lv_exists(

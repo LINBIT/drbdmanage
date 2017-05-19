@@ -332,11 +332,8 @@ class LvmThinLv(lvmcom.LvmCommon):
             )
             raise StoragePluginException
 
-        try:
-            devpath = "/dev/" + self._conf[consts.KEY_VG_NAME] + "/" + lv_name
-            subprocess.call(["wipefs", "-a", "-q", devpath])
-        except:
-            logging.error("Could not wipefs %s" % devpath)
+        devpath = "/dev/" + self._conf[consts.KEY_VG_NAME] + "/" + lv_name
+        utils.wipefs(devpath)
 
     def _extend_vol(self, lv_name, size):
         return self.extend_lv(lv_name, self._conf[consts.KEY_VG_NAME], size,
