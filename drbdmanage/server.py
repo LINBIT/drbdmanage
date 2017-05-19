@@ -832,6 +832,10 @@ class DrbdManageServer(object):
     def schedule_shutdown(self):
         gobject.timeout_add(0, self.shutdown)
 
+    def reset_grace(self):
+        self._sat_grace = True
+        self._sat_grace_start = datetime.datetime.now()
+
     def maybe_run_config(self):
         if self._server_role_elected:
             if self._server_role == SAT_SATELLITE:
@@ -851,8 +855,7 @@ class DrbdManageServer(object):
             # Start up the resources deployed by drbdmanage on the current node
             self._drbd_mgr.initial_up()
             self._server_role_decided = True
-            self._sat_grace = True
-            self._sat_grace_start = datetime.datetime.now()
+            self.reset_grace()
             if self._server_role == SAT_LEADER_NODE:
                 logging.debug("Grace period started at %s" % self._sat_grace_start)
             return False
@@ -2082,6 +2085,7 @@ class DrbdManageServer(object):
         """
         fn_rc   = []
         persist = None
+        self.reset_grace()
         try:
             persist = self.begin_modify_conf()
             if persist is not None:
