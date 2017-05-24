@@ -1,3 +1,14 @@
+drbdmanage (0.99.5-1) experimental; urgency=medium
+
+  * client: fix bug in inline comments for ConfigParser
+  * implement external nodes
+  * wipefs: do not use "-q"
+  * server: reset grace period on create_node
+  * avoid shutting down satellites immediately
+  * make cluster initialization more reliable
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 24 May 2017 14:02:10 +0200
+
 drbdmanage (0.99.4-1) experimental; urgency=medium
 
   * introduce more fine grained error messages
