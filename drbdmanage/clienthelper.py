@@ -120,7 +120,7 @@ class DrbdManageClientHelper(object):
             msg = self._('DRBDmanage driver error: expected key "%s" '
                          'not in answer, wrong DRBDmanage version?') % l
             self.logger.error(msg)
-            raise Exception('_fetch_answer_data', msg)
+            raise dm_exc.ClientHelperException('_fetch_answer_data', msg)
 
         return None
 
@@ -146,7 +146,7 @@ class DrbdManageClientHelper(object):
                 seen_error = self._('Unknown error')
 
         if seen_error:
-            raise Exception('_check_result', seen_error)
+            raise dm_exc.ClientHelperException('_check_result', seen_error)
         if seen_success:
             return ret
         # by default okay - or the ignored error code.
@@ -266,7 +266,7 @@ class DrbdManageClientHelper(object):
         if len(rl) > 1:
             message = self._('DRBDmanage expected one resource ("%(res)s"), '
                              'got %(n)d') % {'res': d_res_name, 'n': len(rl)}
-            raise Exception('delete_volume', message)
+            raise dm_exc.ClientHelperException('delete_volume', message)
 
         # Delete resource, if empty
         if (not rl) or (not rl[0]) or (len(rl[0][2]) == 0):
@@ -312,7 +312,7 @@ class DrbdManageClientHelper(object):
             return data[0]
 
         message = self._('Got bad path information from DRBDmanage! (%s)') % data
-        raise Exception('local_path', message)
+        raise dm_exc.ClientHelperException('local_path', message)
 
     def is_locally_mounted(self, mountpoint):
         mountpoint = os.path.abspath(mountpoint)

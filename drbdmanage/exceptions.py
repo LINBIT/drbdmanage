@@ -404,3 +404,11 @@ class DebugException(DrbdManageException):
         # Set this again just in case that the default value
         # in the super-class was changed
         self.error_code = DM_DEBUG
+
+
+class ClientHelperException(Exception):
+    def __init__(self, *args):
+        self.args = args
+
+    def __str__(self):
+        return repr(self.args)
