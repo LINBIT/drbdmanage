@@ -28,14 +28,18 @@ import drbdmanage.utils as dm_utils
 def delay_for(seconds):
     time.sleep(seconds)
 
+
 def l10n(text):
     return text
+
 
 def lWarn(text):
     return text
 
+
 def lInfo(text):
     return text
+
 
 def lError(text):
     return text
@@ -292,7 +296,7 @@ class DrbdManageClientHelper(object):
                                          0,
                                          props,
                                          self.empty_dict)
-        ret = self._check_result(res)
+        self._check_result(res)
         return [r[0] for r in rl]
 
     def local_path(self, res_name, vol_nr=0):
