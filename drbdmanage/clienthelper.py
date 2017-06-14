@@ -70,10 +70,19 @@ class DrbdManageClientHelper(object):
         delay_for(seconds)
 
     # methods you probably should _not_ overwrite
-    def dbus_connect(self):
+    def dbus_connect(self, retries_max=15):
         self.odm = dbus.SystemBus().get_object(dm_const.DBUS_DRBDMANAGED,
                                                dm_const.DBUS_SERVICE)
         self.odm.ping()
+
+        tries = 0
+        while tries < retries_max:
+            server_rc = self.odm.wait_for_startup()
+            if not dm_utils.is_rc_retry(server_rc[0]):
+                break
+            tries += 1
+            time.sleep(2)
+        # no consequences needed here, the next call to call_or_reconnect handles the answer
 
     def call_or_reconnect(self, fn, *args):
         """Call DBUS function; on a disconnect try once to reconnect."""

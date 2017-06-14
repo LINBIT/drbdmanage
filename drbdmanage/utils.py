@@ -51,6 +51,10 @@ from drbdmanage.consts import (
     SNAPS_NAME_VALID_INNER_CHARS
 )
 
+from drbdmanage.exceptions import (
+    DM_ENOTREADY, DM_ENOTREADY_STARTUP, DM_ENOTREADY_REQCTRL
+)
+
 COLOR_BLACK     = chr(0x1b) + "[0;30m"
 COLOR_DARKRED   = chr(0x1b) + "[0;31m"
 COLOR_DARKGREEN = chr(0x1b) + "[0;32m"
@@ -323,6 +327,15 @@ class Table():
                 return
             else:
                 raise
+
+
+# used by clienthelper and the cli. used during startup to check if the server is actually ready
+def is_rc_retry(server_rc):
+    for rc_entry in server_rc:
+        rc_num, _, _ = rc_entry
+        if rc_num == DM_ENOTREADY or rc_num == DM_ENOTREADY_STARTUP or rc_num == DM_ENOTREADY_REQCTRL:
+            return True
+    return False
 
 
 # a wrapper for subprocess.check_output
