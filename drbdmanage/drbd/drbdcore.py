@@ -433,7 +433,7 @@ class DrbdManager(object):
                     failed_actions = True
         elif act_flag:
             logging.debug(
-                "DrbdManager: Assigned resource '%s' cstate(%x) -> tstate(%x)"
+                "DrbdManager: _assignment_actions(): Assigned resource '%s' cstate(%x) -> tstate(%x)"
                 % (assg.get_resource().get_name(),
                    assg_cstate, assg_tstate)
             )
@@ -574,6 +574,25 @@ class DrbdManager(object):
                 assg.increase_fail_count()
         if state_changed:
             assg.notify_changed()
+        if act_flag:
+            assg_name = assg.get_resource().get_name()
+            logging.debug(
+                "DrbdManager: _assignment_actions(): Assigned resource '%s' new states: cstate(%d), tstate(%d)"
+                % (assg_name, assg.get_cstate(), assg.get_tstate())
+            )
+            for vol_state in assg.iterate_volume_states():
+                vol_id = vol_state.get_id()
+                logging.debug(
+                    "DrbdManager: _assignment_actions(): Assigned resource '%s' volume %d new states: cstate(%d), tstate(%d)"
+                    % (assg_name, vol_id, vol_state.get_cstate(), vol_state.get_tstate())
+                )
+                bd_path = vol_state.get_bd_path()
+                if bd_path is None:
+                    bd_path = "No blockdevice"
+                logging.debug(
+                    "DrbdManager: _assignment_actions(): Assigned resource '%s' volume %d block device: %s"
+                    % (assg_name, vol_id, bd_path)
+                )
         return (state_changed, pool_changed, failed_actions)
 
 
