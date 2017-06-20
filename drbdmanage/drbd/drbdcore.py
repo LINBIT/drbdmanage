@@ -1170,8 +1170,14 @@ class DrbdManager(object):
                 if fn_rc != 0 or blockdev is None:
                     failed_actions = True
 
-        # Continue if none of the previous steps failed
-        if not failed_actions:
+        if failed_actions:
+            logging.debug(
+                "DrbdManager: _deploy_volume_actions(): FAILED phase: acking storage creation, assigned resource '%s'"
+                % (resource.get_name())
+            )
+        else:
+            # None of the previous steps failed => continue
+            #
             # update configuration file, so drbdadm before-resync-target
             # can work properly
             self._server.export_assignment_conf(assignment)
@@ -1249,7 +1255,12 @@ class DrbdManager(object):
                 if fn_rc != 0:
                     failed_actions = True
 
-            if (not failed_actions):
+            if failed_actions:
+                logging.debug(
+                    "DrbdManager: _deploy_volume_actions(): FAILED phase: meta data creation, assigned resource '%s'"
+                    % (resource.get_name())
+                )
+            else:
                 # ============================================================
                 # DRBD initialization
                 # ============================================================
@@ -1309,6 +1320,7 @@ class DrbdManager(object):
                         logging.error(log_message)
                         self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
+        logging.debug("DrbdManager: _deploy_volume_actions(): fn_rc = %d" % (fn_rc))
         return fn_rc
 
     @log_in_out
@@ -1762,6 +1774,12 @@ class DrbdManager(object):
             if (is_set(vol_tstate, DrbdVolumeState.FLAG_DEPLOY) and
                 is_unset(vol_cstate, DrbdVolumeState.FLAG_DEPLOY)):
                     deploy_fail = True
+
+        logging.debug(
+            "DrbdManager: _deploy_assignment(): empty = %s, deploy_fail = %s"
+            % ("True" if empty else "False", "True" if deploy_fail else "False")
+        )
+
         if not empty:
             if deploy_fail:
                 fn_rc = -1
@@ -1769,6 +1787,8 @@ class DrbdManager(object):
                 assignment.set_cstate_flags(Assignment.FLAG_DEPLOY)
         else:
             assignment.undeploy_adjust_cstate()
+
+        logging.debug("DrbdManager: _deploy_assignment(): fn_rc = %d" % (fn_rc))
         return fn_rc
 
     @log_in_out
