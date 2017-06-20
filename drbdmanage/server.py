@@ -6477,7 +6477,7 @@ class DrbdManageServer(object):
                     resource = self._debug_get_resource(res_name)
                     state = resource.get_state()
                     state = (state | DrbdResource.FLAG_REMOVE) ^ DrbdResource.FLAG_REMOVE
-                    resource.set_state(0)
+                    resource.set_state(state)
                     fn_rc = 0
                 elif subcommand == "v":
                     res_name = args.pop(0)
@@ -6499,8 +6499,37 @@ class DrbdManageServer(object):
                     assg_path = args.pop(0)
                     assignment = self._debug_get_assignment(assg_path)
                     assignment.set_tstate(assignment.get_cstate())
+                    fn_rc = 0
+                elif subcommand == "a+vs":
+                    assg_path = args.pop(0)
+                    assignment = self._debug_get_assignment(assg_path)
+                    assignment.set_tstate(assignment.get_cstate())
                     for vol_state in assignment.iterate_volume_states():
                         vol_state.set_tstate(vol_state.get_cstate())
+                    fn_rc = 0
+                elif subcommand == "vs":
+                    vs_path = args.pop(0)
+                    vol_state = self._debug_get_volume_state(vs_path)
+                    vol_state.set_tstate(vol_state.get_cstate())
+                    fn_rc = 0
+            elif command == "commit-actions":
+                subcommand = args.pop(0)
+                if subcommand == "a":
+                    assg_path = args.pop(0)
+                    assignment = self._debug_get_assignment(assg_path)
+                    assignment.set_cstate(assignment.get_tstate())
+                    fn_rc = 0
+                elif subcommand == "a+vs":
+                    assg_path = args.pop(0)
+                    assignment = self._debug_get_assignment(assg_path)
+                    assignment.set_cstate(assignment.get_tstate())
+                    for vol_state in assignment.iterate_volume_states():
+                        vol_state.set_cstate(vol_state.get_tstate())
+                    fn_rc = 0
+                elif subcommand == "vs":
+                    vs_path = args.pop(0)
+                    vol_state = self._debug_get_volume_state(vs_path)
+                    vol_state.set_cstate(vol_state.get_tstate())
                     fn_rc = 0
             elif command == "run":
                 try:
@@ -6669,6 +6698,25 @@ class DrbdManageServer(object):
             raise ValueError
         return resource
 
+    def _debug_get_volume(self, res_name, vol_id_str):
+        resource = self._debug_get_resource(res_name)
+        if vol_id_str is None:
+            self._debug_out.write("Missing volume id argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        vol_id = 0
+        try:
+            vol_id = int(vol_id_str)
+        except ValueError:
+            self._debug_out.write("Invalid volume id argument\n")
+            self._debug_out.flush()
+            raise ValueError
+        volume = resource.get_volume(vol_id)
+        if volume is None:
+            self._debug_out.write("Volume '%s/%d' not found\n" % (resource.get_name(), vol_id))
+            self._debug_out.flush()
+            raise ValueError
+        return volume
 
     def _debug_get_assignment(self, assg_path):
         if assg_path is None:
@@ -6691,26 +6739,48 @@ class DrbdManageServer(object):
             raise ValueError
         return assignment
 
-
-    def _debug_get_volume(self, res_name, vol_id_str):
-        resource = self._debug_get_resource(res_name)
-        if vol_id_str is None:
-            self._debug_out.write("Missing volume id argument\n")
+    def _debug_get_volume_state(self, vs_path):
+        if vs_path is None:
+            self._debug_out.write("Missing volume state path\n")
             self._debug_out.flush()
             raise ValueError
-        vol_id = 0
+        idx = vs_path.find("/")
+        if idx == -1:
+            self._debug_out.write("Invalid volume state path\n")
+            self._debug_out.flush()
+            raise ValueError
+        node_name = vs_path[:idx]
+        rv_path = vs_path[idx + 1:]
+        idx = rv_path.find("/")
+        if idx == -1:
+            self._debug_out.write("Invalid volume state path\n")
+            self._debug_out.flush()
+            raise ValueError
+        res_name = rv_path[:idx]
+        vol_id_str = rv_path[idx + 1:]
+        vol_id = -1
         try:
             vol_id = int(vol_id_str)
         except ValueError:
-            self._debug_out.write("Invalid volume id argument\n")
+            self._debug_out.write("Invalid volume number\n")
             self._debug_out.flush()
             raise ValueError
-        volume = resource.get_volume(vol_id)
-        if volume is None:
-            self._debug_out.write("Volume '%s/%d' not found\n" % (resource.get_name(), vol_id))
+        node = self._debug_get_node(node_name)
+        resource = self._debug_get_resource(res_name)
+        assignment = node.get_assignment(resource.get_name())
+        if assignment is None:
+            self._debug_out.write("Assignment %s/%s not found\n" % (node.get_name(), resource.get_name()))
             self._debug_out.flush()
             raise ValueError
-        return volume
+        vol_state = assignment.get_volume_state(vol_id)
+        if vol_state is None:
+            self._debug_out.write(
+                "Volume state %d of assignment %s/%s not found\n" %
+                (vol_id, node.get_name(), resource.get_name())
+            )
+            self._debug_out.flush()
+            raise ValueError
+        return vol_state
 
 
     def _debug_gen_drbdctrl(self, args):
