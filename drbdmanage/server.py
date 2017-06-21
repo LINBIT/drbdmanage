@@ -6448,6 +6448,8 @@ class DrbdManageServer(object):
                         fn_rc = self._debug_set_volume(args)
                     elif subcommand == "a":
                         fn_rc = self._debug_set_assignment(args)
+                    elif subcommand == "vs":
+                        fn_rc = self._debug_set_volume_state(args)
                     elif subcommand == "s":
                         fn_rc = self._debug_set_snapshot(args)
                     elif subcommand == "s/a":
@@ -6480,9 +6482,8 @@ class DrbdManageServer(object):
                     resource.set_state(state)
                     fn_rc = 0
                 elif subcommand == "v":
-                    res_name = args.pop(0)
-                    vol_id_str = args.pop(0)
-                    volume = self._debug_get_volume(res_name, vol_id_str)
+                    vol_path = args.pop(0)
+                    volume = self._debug_get_volume(vol_path)
                     state = volume.get_state()
                     state = (state | DrbdVolume.FLAG_REMOVE) ^ DrbdVolume.FLAG_REMOVE
                     volume.set_state(state)
@@ -6698,13 +6699,20 @@ class DrbdManageServer(object):
             raise ValueError
         return resource
 
-    def _debug_get_volume(self, res_name, vol_id_str):
-        resource = self._debug_get_resource(res_name)
-        if vol_id_str is None:
-            self._debug_out.write("Missing volume id argument\n")
+    def _debug_get_volume(self, vol_path):
+        if vol_path is None:
+            self._debug_out.write("Missing volume path\n")
             self._debug_out.flush()
             raise ValueError
+        idx = vol_path.find("/")
+        if idx == -1:
+            self._debug_out.write("Invalid volume path\n")
+            self._debug_out.flush()
+            raise ValueError
+        res_name = vol_path[:idx]
+        vol_id_str = vol_path[idx + 1:]
         vol_id = 0
+        resource = self._debug_get_resource(res_name)
         try:
             vol_id = int(vol_id_str)
         except ValueError:
@@ -7304,184 +7312,98 @@ class DrbdManageServer(object):
 
     def _debug_set_node(self, args):
         fn_rc = 1
-        nodename = None
-        try:
-            nodename = args.pop(0)
-        except IndexError:
-            pass
-        if nodename is not None:
-            node = self._nodes.get(nodename)
-            if node is not None:
-                keyval = None
-                try:
-                    keyval = args.pop(0)
-                    key, val = self._debug_keyval_split(keyval)
-                    if key == "state":
-                        try:
-                            state_update = long(val)
-                            node.set_state(state_update)
-                            fn_rc = 0
-                        except ValueError:
-                            pass
-                    else:
-                        if re.search(r'^\d+$', val):
-                            val = int(val)
-                        node.__setattr__(key, val)
-                        fn_rc = 0
-                except IndexError:
-                    self._debug_out.write("Missing argument\n")
-            else:
-                self._debug_out.write("Node '%s' not found\n" % (nodename))
+        nodename = args.pop(0)
+        node = self._debug_get_node(nodename)
+        keyval = args.pop(0)
+        key, val = self._debug_keyval_split(keyval)
+        if key == "state":
+            try:
+                state_update = long(val)
+                node.set_state(state_update)
+                fn_rc = 0
+            except ValueError:
+                pass
+        else:
+            if re.search(r'^\d+$', val):
+                val = int(val)
+            node.__setattr__(key, val)
+            fn_rc = 0
         return fn_rc
 
 
     def _debug_set_resource(self, args):
         fn_rc = 1
-        resname = None
+        resname = args.pop(0)
+        resource = self._debug_get_resource(resname)
+        keyval = None
         try:
-            resname = args.pop(0)
-        except IndexError:
-            pass
-        if resname is not None:
-            resource = self._resources.get(resname)
-            if resource is not None:
-                keyval = None
+            keyval = args.pop(0)
+            key, val = self._debug_keyval_split(keyval)
+            if key == "state":
                 try:
-                    keyval = args.pop(0)
-                    key, val = self._debug_keyval_split(keyval)
-                    if key == "state":
-                        try:
-                            state_update = long(val)
-                            resource.set_state(state_update)
-                            fn_rc = 0
-                        except ValueError:
-                            pass
-                except IndexError:
-                    self._debug_out.write("Missing argument\n")
-            else:
-                self._debug_out.write("Resource '%s' not found\n" % (resname))
+                    state_update = long(val)
+                    resource.set_state(state_update)
+                    fn_rc = 0
+                except ValueError:
+                    pass
+        except IndexError:
+            self._debug_out.write("Missing argument\n")
         return fn_rc
 
 
     def _debug_set_volume(self, args):
         fn_rc = 1
-        resname = None
-        try:
-            resname    = args.pop(0)
-        except IndexError:
-            pass
-        if resname is not None:
-            vol_id_str = None
-            split_idx  = resname.find("/")
-            if split_idx != -1:
-                vol_id_str = resname[split_idx + 1:]
-                resname    = resname[:split_idx]
-            resource = self._resources.get(resname)
-            if resource is not None and vol_id_str is not None:
-                try:
-                    vol_id = int(vol_id_str)
-                    volume = resource.get_volume(vol_id)
-                    if volume is not None:
-                        try:
-                            keyval = args.pop(0)
-                            key, val = self._debug_keyval_split(keyval)
-                            if key == "state":
-                                state_update = long(val)
-                                volume.set_state(state_update)
-                                fn_rc = 0
-                        except IndexError:
-                            self._debug_out.write("Missing argument\n")
-                    else:
-                        self._debug_out.write(
-                            "Invalid volume index %u for resource '%s'\n"
-                            % (vol_id, resource.get_name())
-                        )
-                except ValueError:
-                    pass
-            else:
-                self._debug_out.write("Resource '%s' not found\n" % (resname))
+        vol_path = args.pop(0)
+        volume = self._debug_get_volume(vol_path)
+        keyval = args.pop(0)
+        key, val = self._debug_keyval_split(keyval)
+        if key == "state":
+            try:
+                state_update = long(val)
+                volume.set_state(state_update)
+                fn_rc = 0
+            except ValueError:
+                pass
         return fn_rc
 
 
     def _debug_set_assignment(self, args):
         fn_rc = 1
-        nodename = None
-        resname = None
-        vol_flag = False
-
+        assg_path = args.pop(0)
+        assg = self._debug_get_assignment(assg_path)
+        keyval = args.pop(0)
         try:
-            nodename = args.pop(0)
-        except IndexError:
-            pass
-        split_idx = nodename.find("/")
-        if split_idx != -1:
-            resname = nodename[split_idx + 1:]
-            nodename = nodename[:split_idx]
+            key, val = self._debug_keyval_split(keyval)
+            if key == "cstate":
+                state_update = long(val)
+                assg.set_cstate(state_update)
+                fn_rc = 0
+            elif key == "tstate":
+                state_update = long(val)
+                assg.set_tstate(state_update)
+                fn_rc = 0
+        except ValueError:
+            self._debug_out.write("Invalid value\n")
+        return fn_rc
 
-        vol_id_str = None
-        split_idx = resname.find("/")
-        if split_idx != -1:
-            vol_flag = True
-            vol_id_str = resname[split_idx + 1:]
-            resname = resname[:split_idx]
 
-        vol_id = -1
-        if vol_flag:
-            try:
-                vol_id = int(vol_id_str)
-            except (TypeError, ValueError):
-                self._debug_out.write("Invalid volume id\n")
-
-        if nodename is not None and resname is not None and (vol_id >= 0 or not vol_flag):
-            node     = self._nodes.get(nodename)
-            resource = self._resources.get(resname)
-            if node is not None and resource is not None:
-                assg = node.get_assignment(resource.get_name())
-                if assg is not None:
-                    if not vol_flag:
-                        try:
-                            keyval = args.pop(0)
-                            key, val = self._debug_keyval_split(keyval)
-                            if key == "cstate":
-                                state_update = long(val)
-                                assg.set_cstate(state_update)
-                                fn_rc = 0
-                            elif key == "tstate":
-                                state_update = long(val)
-                                assg.set_tstate(state_update)
-                                fn_rc = 0
-                        except ValueError:
-                            self._debug_out.write("Invalid value\n")
-                        except IndexError:
-                            self._debug_out.write("Missing argument\n")
-                    else:
-                        vol_state = assg.get_volume_state(vol_id)
-                        if vol_state is not None:
-                            keyval = args.pop(0)
-                            key, val = self._debug_keyval_split(keyval)
-                            if key == "cstate":
-                                state_update = long(val)
-                                vol_state.set_cstate(state_update)
-                                fn_rc = 0
-                            elif key == "tstate":
-                                state_update = long(val)
-                                vol_state.set_tstate(state_update)
-                                fn_rc = 0
-                        else:
-                            self._debug_out.write(
-                                "Assignment '%s/%s' has no volume id %d\n"
-                                % (node.get_name(), resource.get_name(), vol_id)
-                            )
-                else:
-                    self._debug_out.write(
-                        "Resource '%s' is not assigned to node '%s'\n"
-                        % (resource.get_name(), node.get_name())
-                    )
-            else:
-                if node is None:
-                    self._debug_out.write("Node '%s' not found\n" % (nodename))
-                if resource is None:
-                    self._debug_out.write("Resource '%s' not found\n" % (resname))
+    def _debug_set_volume_state(self, args):
+        fn_rc = 1
+        vs_path = args.pop(0)
+        vol_state = self._debug_get_volume_state(vs_path)
+        keyval = args.pop(0)
+        try:
+            key, val = self._debug_keyval_split(keyval)
+            if key == "cstate":
+                state_update = long(val)
+                vol_state.set_cstate(state_update)
+                fn_rc = 0
+            elif key == "tstate":
+                state_update = long(val)
+                vol_state.set_tstate(state_update)
+                fn_rc = 0
+        except ValueError:
+            self._debug_out.write("Invalid value\n")
         return fn_rc
 
 
