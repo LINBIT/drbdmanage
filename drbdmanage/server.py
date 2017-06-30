@@ -6456,6 +6456,8 @@ class DrbdManageServer(object):
                         fn_rc = self._debug_set_snapshot_assignment(args)
                     elif subcommand == "current-minor-nr":
                         fn_rc = self._debug_set_cur_minor_nr(args)
+                    elif subcommand == "bd":
+                        fn_rc = self._debug_set_blockdevice(args)
                     else:
                         key, val = self._debug_keyval_split(subcommand)
                         if key == "dbg_events":
@@ -6470,6 +6472,13 @@ class DrbdManageServer(object):
                             fn_rc = 0
                         elif key == "dbgout":
                             fn_rc = self._debug_set_debug_out(val)
+                except (AttributeError, IndexError):
+                    fn_rc = 1
+            elif command == "clear":
+                try:
+                    subcommand = args.pop(0)
+                    if subcommand == "bd":
+                        fn_rc = self._debug_clear_blockdevice(args)
                 except (AttributeError, IndexError):
                     fn_rc = 1
             elif command == "cancel-actions":
@@ -7414,6 +7423,19 @@ class DrbdManageServer(object):
     def _debug_set_snapshot_assignment(self, args):
         return 1
 
+    def _debug_set_blockdevice(self, args):
+        vs_path = args.pop(0)
+        vol_state = self._debug_get_volume_state(vs_path)
+        bd_name = args.pop(0)
+        bd_path = args.pop(0)
+        vol_state.set_bd(bd_name, bd_path)
+        return 0
+
+    def _debug_clear_blockdevice(self, args):
+        vs_path = args.pop(0)
+        vol_state = self._debug_get_volume_state(vs_path)
+        vol_state.set_bd(None, None)
+        return 0
 
     def _debug_parse_flag(self, val):
         """
