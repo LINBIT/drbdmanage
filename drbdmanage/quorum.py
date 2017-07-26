@@ -59,53 +59,25 @@ class Quorum(object):
             # is a known drbdmanage node
             quorum_node = self._server.get_node(node_name)
             if quorum_node is not None:
+                # Node is known to drbdmanage
                 state = quorum_node.get_state()
                 if drbdmanage.utils.is_set(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_DRBDCTRL):
                     # Reset the quorum ignore flag if it is set
                     if drbdmanage.utils.is_set(state, drbdmanage.drbd.drbdcore.DrbdNode.FLAG_QIGNORE):
                         change_flag = True
+
                     # Add the node to the list of joined quorum nodes
                     # and increase the quorum count
-                    connected_count = len(self._quorum_nodes)
-                    if connected_count < Quorum.COUNT_MAX:
-                        self._quorum_nodes[node_name] = None
-                        connected_count += 1
-
-                        # The number of nodes in the partition is
-                        # the number of connected nodes plus the local node
-                        self._quorum_count = connected_count + 1
-
-                        # If more than the number of expected nodes are connected,
-                        # increase the expected number of nodes
-                        # (automatic quorum readjustment)
-                        if self._quorum_count > self._quorum_full:
-                            self._quorum_full = self._quorum_count
-                            logging.debug("Quorum: Expected number of nodes increased to %d"
-                                          % (self._quorum_full))
-                        logging.debug("Quorum: Node %s joined the partition, "
-                                      "[%d nodes of %d expected nodes present]"
-                                      % (node_name,
-                                         self._quorum_count, self._quorum_full))
-                    else:
-                        log_message = (
-                            "Quorum: Cannot add node, exceeding maximum of %d nodes"
-                            % (Quorum.COUNT_MAX)
-                        )
-                        logging.error(log_message)
-                        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
-                        log_message = (
-                            "Quorum: Internal error or incompatible version of DRBD"
-                        )
-                        logging.error(log_message)
-                        self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+                    self._add_quorum_node(node_name)
                 else:
                     logging.debug("Quorum: Diskless node %s joined the partition, "
                                   "quorum count unchanged"
                                   % (node_name))
             else:
-                log_message = "Quorum: Node %s is not a registered drbdmanage node" % (node_name)
-                logging.warning(log_message)
-                self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
+                # Node is unknown to drbdmanage, but tracking is still required due to the
+                # single-leader change, where potential leader nodes may receive quorum
+                # events before any data from the control volumes is available
+                self._add_quorum_node(node_name)
         return change_flag
 
 
@@ -180,6 +152,45 @@ class Quorum(object):
         Returns the number of currently active member nodes
         """
         return self._quorum_count
+
+
+    def _add_quorum_node(self, node_name):
+        """
+        Adds a newly joined node to the quorum
+        """
+        if self._quorum_count < Quorum.COUNT_MAX:
+            self._quorum_nodes[node_name] = None
+
+            # The number of nodes in the partition is
+            # the number of connected nodes plus the local node
+            self._quorum_count = len(self._quorum_nodes) + 1
+
+            # If more than the number of expected nodes are connected,
+            # increase the expected number of nodes
+            # (automatic quorum readjustment)
+            if self._quorum_count > self._quorum_full:
+                self._quorum_full = self._quorum_count
+            logging.debug(
+                "Quorum: Expected number of nodes increased to %d"
+                % (self._quorum_full)
+            )
+            logging.debug(
+                "Quorum: Node %s joined the partition, "
+                "[%d nodes of %d expected nodes present]"
+                % (node_name, self._quorum_count, self._quorum_full)
+            )
+        else:
+            log_message = (
+                "Quorum: Cannot add node, exceeding maximum of %d nodes"
+                % (Quorum.COUNT_MAX)
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
+            log_message = (
+                "Quorum: Internal error or incompatible version of DRBD"
+            )
+            logging.error(log_message)
+            self._server.get_message_log().add_entry(msglog.MessageLog.ALERT, log_message)
 
 
     def readjust_full_member_count(self):
