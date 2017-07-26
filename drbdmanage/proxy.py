@@ -404,6 +404,12 @@ class DrbdManageProxy(object):
     def get_established(self):
         return self._peersockets.keys()
 
+    def set_sockettimeout(self, s, t):
+        try:
+            s.settimeout(t)
+        except:
+            pass
+
     # This is the function that should be used by control nodes to send commands to satellites
     # and by satellites to request the ctrlvol, forward requests, ...
     # semantics: if there isn't an established connection, connect to the peer (which is the TCP server)
@@ -413,6 +419,8 @@ class DrbdManageProxy(object):
     # to resend if the first attempt failed.
     def send_cmd(self, peer_name, cmd, port=_DEFAULT_PORT_NR, override_data='', override_ip=''):
         payload = override_data
+        short_timeout = 2.0
+        long_timeout = 45.0
 
         if peer_name not in self._peersockets:
             if peer_name == FAKE_LEADER_NAME:
@@ -427,7 +435,7 @@ class DrbdManageProxy(object):
                 peer_ip = peer_node.get_addr()
 
             try:
-                sock = socket.create_connection((peer_ip, port), timeout=2)
+                sock = socket.create_connection((peer_ip, port), timeout=short_timeout)
             except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
 
@@ -439,7 +447,13 @@ class DrbdManageProxy(object):
 
             self._peersockets[peer_name] = sock
 
-        if cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE or cmd == KEY_S_CMD_UPPOOL:
+        needs_json_data = cmd == KEY_S_CMD_INIT or cmd == KEY_S_CMD_UPDATE or cmd == KEY_S_CMD_UPPOOL
+        needs_long_delay = needs_json_data or cmd == KEY_S_CMD_RELAY
+
+        if needs_long_delay:
+            self.set_sockettimeout(self._peersockets[peer_name], long_timeout)
+
+        if needs_json_data:
             # self._dmserver._persist.json_export(self._dmserver._objects_root)
             # ^^ done on call site, because needs to be done only once per "transaction"
             payload = self._dmserver._persist.get_json_data()
@@ -454,6 +468,7 @@ class DrbdManageProxy(object):
             return self.opcodes[KEY_S_ANS_OK], 0, ''
 
         opcode, length, payload = self.send_recv_msg(self._peersockets[peer_name], data)
+        self.set_sockettimeout(self._peersockets[peer_name], short_timeout)
 
         # cleanup if communication failed.
         if opcode == self.opcodes[KEY_S_ANS_E_COMM]:
