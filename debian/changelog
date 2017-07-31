@@ -1,3 +1,21 @@
+drbdmanage (0.99.6-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * client helper: check for server startup
+  * client helper: pep8/unused variable fixes
+  * client helper: add its own exception type
+  * fix too short timeout for leader/satellite communication
+
+  [ Robert Altnoeder ]
+  * Added debug commands for committing actions
+  * Added resource/volume state debug output in _assignment_actions()
+  * Added more debug output when deploying assignments
+  * Modified debug commands for volumes, assignments and volume states
+  * Added 'set bd'/'clear bd' debug commands
+  * Enabled quorum tracking before control volume data is available
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 31 Jul 2017 13:07:38 +0200
+
 drbdmanage (0.99.5-1) experimental; urgency=medium
 
   * client: fix bug in inline comments for ConfigParser
