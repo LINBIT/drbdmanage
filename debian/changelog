@@ -1,3 +1,9 @@
+drbdmanage (0.99.7-1) experimental; urgency=medium
+
+  * New upstream
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 01 Aug 2017 11:53:37 +0200
+
 drbdmanage (0.99.6-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
