@@ -70,6 +70,17 @@ class DrbdManager(object):
     # Used as a return code to indicate that undeploying volumes failed
     STOR_UNDEPLOY_FAILED = 126
 
+    DRBD_EVENT_RESOURCE = "resource"
+    DRBD_EVENT_VOLUME = "device"
+    DRBD_EVENT_VOLUME_ID = "volume"
+    DRBD_EVENT_DISK_STATE = "disk"
+
+    # Acceptable disk states for a deployed volume
+    DRBD_OK_DISK_STATES = ["Inconsistent", "Outdated", "Consistent", "UpToDate"]
+
+    # Acceptable disk states for a diskless client volume
+    DRBD_OK_DISKLESS_STATES = ["Diskless"]
+
     @log_in_out
     def __init__(self, ref_server):
         self._server  = ref_server
@@ -192,10 +203,8 @@ class DrbdManager(object):
             logging.warning(log_message)
             self._server.get_message_log().add_entry(msglog.MessageLog.WARN, log_message)
         except Exception as exc:
-            exc_type, exc_obj, exc_trace = sys.exc_info()
-            logging.debug("DrbdManager: abort, unhandled exception: %s"
-                          % (str(exc)))
-            logging.debug("Stack trace:\n%s" % (str(exc_trace)))
+            logging.debug("DrbdManager: abort due to unhandled exception, report follows")
+            self._server.catch_internal_error(exc)
         finally:
             # end_modify_conf() also works for both, read-only and
             # read-write streams
@@ -414,6 +423,12 @@ class DrbdManager(object):
         state_changed  = False
         pool_changed   = False
         failed_actions = False
+
+        if assg.requires_action():
+            # Check and correct the current state of the assignment and its volume states
+            # This may change the result of the requires_action() method
+            if self._check_assignment_state(assg):
+                state_changed = True
 
         assg_cstate = assg.get_cstate()
         assg_tstate = assg.get_tstate()
@@ -2194,6 +2209,102 @@ class DrbdManager(object):
         conf_path = self._server._conf.get(self._server.KEY_DRBD_CONFPATH,
                                            self._server.DEFAULT_DRBD_CONFPATH)
         self._drbdadm = drbdmanage.drbd.commands.DrbdAdm(conf_path)
+
+    @log_in_out
+    def _check_assignment_state(self, assg):
+        """
+        Checks the current state of an assignment
+
+        The current state (cstate) of an assignment and of each of its associated volumes
+        is modified depending on what state is seen by DRBD and/or the storage plugin.
+        """
+        state_changed = False
+        resource = assg.get_resource()
+        res_name = resource.get_name()
+        diskless = is_set(assg.get_tstate(), Assignment.FLAG_DISKLESS)
+        vol_list = {}
+        drbdutil_exec = utils.ExternalCommandBuffer(
+            "drbdsetup",
+            [consts.DRBDSETUP_UTIL, "events2", "--now", res_name],
+            trace_exec_args=utils.debug_trace_exec_args,
+            trace_exit_code=utils.smart_trace_exit_code
+        )
+        drbdutil_exec.run()
+        events_data = drbdutil_exec.get_stdout()
+        event_line = None
+        try:
+            for event_line in events_data:
+                obj_type, obj_props = utils.parse_event_line(event_line)
+                if obj_type == DrbdManager.DRBD_EVENT_RESOURCE:
+                    # No-op; if all volumes were seen, update the resource's cstate
+                    pass
+                elif obj_type == DrbdManager.DRBD_EVENT_VOLUME:
+                    # If the assignment's volume was seen, update its cstate
+                    vol_id_str = obj_props[DrbdManager.DRBD_EVENT_VOLUME_ID]
+                    if vol_id_str is None:
+                        raise dmexc.EventException
+                    vol_id = None
+                    try:
+                        vol_id = int(vol_id_str)
+                    except ValueError:
+                        raise dmexc.EventException
+                    vol_state = assg.get_volume_state(vol_id)
+                    if vol_state is None:
+                        logging.warning(
+                            "DrbdManager: DRBD events report resource '%s' volume nr %d, "
+                            "which is not known to drbdmanage"
+                            % (res_name, vol_id)
+                        )
+                    else:
+                        disk_state = obj_props[DrbdManager.DRBD_EVENT_DISK_STATE]
+                        if disk_state is not None:
+                            if not diskless and disk_state in DrbdManager.DRBD_OK_DISK_STATES:
+                                logging.warning(
+                                    "DrbdManager: Marked storage resource '%s' volume %d deployed because DRBD reports the volume online and attached"
+                                    % (res_name, vol_id)
+                                )
+                                # Mark the volume state deployed and attached
+                                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                                # Remember having seen a good state on this volume id
+                                vol_list[vol_id] = True
+                                state_changed = True
+                            elif diskless and disk_state in DrbdManager.DRBD_OK_DISKLESS_STATES:
+                                logging.warning(
+                                    "DrbdManager: Marked client resource '%s' volume %d deployed because DRBD reports the volume online and diskless"
+                                    % (res_name, vol_id)
+                                )
+                                # Mark the volume state deployed and detached
+                                vol_state.set_cstate_flags(DrbdVolumeState.FLAG_DEPLOY)
+                                vol_state.clear_cstate_flags(DrbdVolumeState.FLAG_ATTACH)
+                                # Remember having seen a good state on this volume id
+                                vol_list[vol_id] = True
+                                state_changed = True
+        except dmexc.EventException:
+            logging.error(
+                "DrbdManager: Unable to determine the DRBD state of resource '%s': Invalid event line"
+                % (res_name)
+            )
+            if event_line is not None:
+                logging.debug(
+                  "DrbdManager: _check_assignment_state(): Invalid event line: %s"
+                  % (event_line)
+                )
+        # Mark the resource deployed if all volumes were seen in a good state
+        mark_deployed = True
+        for vol_state in assg.iterate_volume_states():
+            vol_id = vol_state.get_id()
+            if vol_list.get(vol_id) is None:
+                mark_deployed = False
+                break
+        if mark_deployed:
+            logging.warning(
+                "DrbdManager: Marked resource '%s' deployed because DRBD reports all its volumes deployed"
+                % (res_name)
+            )
+            assg.set_cstate_flags(Assignment.FLAG_DEPLOY)
+            state_changed = True
+        return state_changed
 
 
 class DrbdCommon(GenericDrbdObject):

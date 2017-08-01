@@ -41,7 +41,7 @@ import pickle
 import copy_reg
 import ConfigParser
 from functools import wraps
-from drbdmanage.exceptions import SyntaxException, InvalidNameException
+from drbdmanage.exceptions import SyntaxException, InvalidNameException, EventException
 from drbdmanage.consts import (
     SERVER_CONFFILE, PLUGIN_PREFIX, KEY_DRBD_CONFPATH, KEY_DRBDCTRL_VG,
     KEY_SAT_CFG_ROLE, KEY_COLORS, KEY_UTF8, RES_NAME, SNAPS_NAME, NODE_NAME,
@@ -1767,3 +1767,31 @@ def log_in_out(f):
             logging.debug('Exited %s.%s' % (class_str, method_str))
             return ret
     return wrapper
+
+def parse_event_line(event_line):
+    obj_type = None
+    obj_props = {}
+    event_tokens = event_line.split(' ')
+    try:
+        # Check whether there are tokens
+        if len(event_tokens) >= 1:
+            mode = event_tokens.pop(0)
+            # Check whether the first token is an empty string or a new-line character,
+            # because str.split() produces tokens for empty strings
+            if mode != "" and mode != "\n":
+                # If the token is something else, check whether it equals "exists"
+                if mode != "exists":
+                    raise EventException
+                # If this is an "exists" line, then there needs to be at least one more token
+                obj_type = event_tokens.pop(0)
+                # Iterate over the following key-value pairs
+                for kv_pair in event_tokens:
+                    kv_split = kv_pair.find(":")
+                    # Ignore anything that is not a key-value pair
+                    if kv_split != -1:
+                        key = kv_pair[:kv_split]
+                        value = kv_pair[kv_split + 1:]
+                        obj_props[key] = value
+    except IndexError:
+        raise EventException
+    return obj_type, obj_props

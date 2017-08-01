@@ -412,3 +412,8 @@ class ClientHelperException(Exception):
 
     def __str__(self):
         return repr(self.args)
+
+class EventException(Exception):
+    def __init__(self, message=None):
+        super(Exception, self).__init__(message)
+
