@@ -5887,18 +5887,25 @@ class DrbdManageServer(object):
 
     # low level implementation used by eg the @req_ctrlvol wrapper
     def _request_ctrlvol(self):
+        ret = False
+
         cl_ip = self._current_leader_ip
-        if cl_ip:
+        if not cl_ip or not self._sat_lock.acquire(False):
+            return False
+
+        opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,
+                                                    override_ip=cl_ip)
+        if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:
             opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,
                                                         override_ip=cl_ip)
-            if opcode != self._proxy.opcodes[KEY_S_ANS_OK]:
-                opcode, length, data = self._proxy.send_cmd(FAKE_LEADER_NAME, KEY_S_CMD_REQCTRL,
-                                                            override_ip=cl_ip)
-            if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
-                self._persist.set_json_data(data)
-                self._persist.json_import(self._objects_root)
-                return True
-        return False
+        if opcode == self._proxy.opcodes[KEY_S_ANS_OK]:
+            self._persist.set_json_data(data)
+            self._persist.json_import(self._objects_root)
+            ret = True
+
+        self._sat_lock.release()
+
+        return ret
 
     @wait_startup
     @req_ctrlvol

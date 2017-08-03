@@ -96,7 +96,7 @@ class DrbdManager(object):
     #       to load the configuration, it should probably rather stop
     #       than loop at some point.
     @log_in_out
-    def run(self, override_hash_check, poke_cluster):
+    def run(self, override_hash_check, poke_cluster, lock_already_hold=False):
         """
         Performs actions to reflect changes to the drbdmanage configuration
 
@@ -131,7 +131,8 @@ class DrbdManager(object):
         @type:  override_hash_check: bool
         @type:  poke_cluster:        bool
         """
-        self._server._sat_lock.acquire()
+        if not lock_already_hold:
+            self._server._sat_lock.acquire()
         persist = None
         data_changed = False
         failed_actions = False
@@ -210,7 +211,8 @@ class DrbdManager(object):
             # read-write streams
             self._server.end_modify_conf(persist)
             logging.debug("DrbdManager: finished")
-            self._server._sat_lock.release()
+            if not lock_already_hold:
+                self._server._sat_lock.release()
         return data_changed, failed_actions
 
 

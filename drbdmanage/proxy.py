@@ -38,6 +38,7 @@ from drbdmanage.consts import (
     KEY_S_CMD_UPPOOL,
     KEY_S_INT_SHUTDOWN,
     KEY_S_ANS_OK,
+    KEY_S_ANS_E_LOCKING,
     KEY_S_ANS_CHANGED,
     KEY_S_ANS_CHANGED_FAILED,
     KEY_S_ANS_UNCHANGED,
@@ -81,16 +82,20 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                     self.server.dmserver.run_config()
                     cmd = KEY_S_ANS_OK
                 elif opcode == opcodes[KEY_S_CMD_UPDATE]:
-                    self.server.dmserver._persist.set_json_data(payload)
-                    updated, failed_actions = self.server.dmserver._drbd_mgr.run(False, False)
-                    if updated:
-                        answer_payload = self.server.dmserver._persist.get_json_data()
-                        if failed_actions:
-                            cmd = KEY_S_ANS_CHANGED_FAILED
-                        else:
-                            cmd = KEY_S_ANS_CHANGED
+                    if not self.server.dmserver._sat_lock.acquire(False):
+                        cmd = KEY_S_ANS_E_LOCKING
                     else:
-                        cmd = KEY_S_ANS_UNCHANGED
+                        self.server.dmserver._persist.set_json_data(payload)
+                        updated, failed_actions = self.server.dmserver._drbd_mgr.run(False, False, True)
+                        if updated:
+                            answer_payload = self.server.dmserver._persist.get_json_data()
+                            if failed_actions:
+                                cmd = KEY_S_ANS_CHANGED_FAILED
+                            else:
+                                cmd = KEY_S_ANS_CHANGED
+                        else:
+                            cmd = KEY_S_ANS_UNCHANGED
+                        self.server.dmserver._sat_lock.release()
                 elif opcode == opcodes[KEY_S_CMD_UPPOOL]:
                     self.server.dmserver._persist.set_json_data(payload)
                     self.server.dmserver._persist.load(self.server.dmserver._objects_root)
@@ -108,9 +113,14 @@ class ThreadedTCPRequestHandler(SocketServer.BaseRequestHandler):
                     cmd = KEY_S_ANS_OK
                     answer_payload = pickle.dumps(fn_rc)
                 elif opcode == opcodes[KEY_S_CMD_REQCTRL]:
-                    self.server.dmserver._persist.json_export(self.server.dmserver._objects_root)
-                    answer_payload = self.server.dmserver._persist.get_json_data()
-                    cmd = KEY_S_ANS_OK
+                    success = self.server.dmserver._sat_lock.acquire(False)
+                    if success:
+                        self.server.dmserver._persist.json_export(self.server.dmserver._objects_root)
+                        answer_payload = self.server.dmserver._persist.get_json_data()
+                        self.server.dmserver._sat_lock.release()
+                        cmd = KEY_S_ANS_OK
+                    else:
+                        cmd = KEY_S_ANS_E_LOCKING
                 elif opcode == opcodes[KEY_S_INT_SHUTDOWN]:
                     self.server.event_shutdown_done.set()
                     break
