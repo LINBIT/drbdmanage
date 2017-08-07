@@ -325,6 +325,7 @@ class DrbdManageServer(object):
         'disconnect': KEY_NOTHING,
         'get_ctrlvol': '',
         'init_node': KEY_NOTHING,
+        'list_assignments': [],
         'list_nodes': [],
         'list_resources': [],
         'list_volumes': [],
