@@ -1104,7 +1104,8 @@ class DrbdManageServer(object):
         """
         Performs DrbdManager.run(), thereby applying pending changes locally
         """
-        self._drbd_mgr.run(True, self._poke_cluster)
+        if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            self._drbd_mgr.run(True, self._poke_cluster)
         self._run_changes_scheduled = False
         self._poke_cluster = False
         return False
