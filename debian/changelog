@@ -1,6 +1,14 @@
+drbdmanage (0.99.8-1) experimental; urgency=medium
+
+  * fix locking between satellites/leader
+  * allow actions on satellites only when triggered by leader
+  * add wrapped return for list_assignments
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 09 Aug 2017 09:30:42 +0200
+
 drbdmanage (0.99.7-1) experimental; urgency=medium
 
-  * New upstream
+  * Automatic resource state correction before performing changes
 
  -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 01 Aug 2017 11:53:37 +0200
 
