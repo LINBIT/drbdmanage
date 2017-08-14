@@ -1,3 +1,9 @@
+drbdmanage (0.99.9-1) experimental; urgency=medium
+
+  * fix mangling of dbus server return code
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 14 Aug 2017 11:12:28 +0200
+
 drbdmanage (0.99.8-1) experimental; urgency=medium
 
   * fix locking between satellites/leader
