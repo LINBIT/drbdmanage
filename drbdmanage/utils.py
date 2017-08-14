@@ -329,6 +329,17 @@ class Table():
                 raise
 
 
+def mangle_server_rc(server_rc):
+    if len(server_rc) > 1:
+        chk = server_rc[0]
+        if not isinstance(chk[0], dbus.Struct):
+            chk = dbus.Array([dbus.Struct(server_rc[0])])
+    else:
+        chk = server_rc
+
+    return chk
+
+
 # used by clienthelper and the cli. used during startup to check if the server is actually ready
 def is_rc_retry(server_rc):
     for rc_entry in server_rc:

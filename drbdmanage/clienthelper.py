@@ -82,7 +82,8 @@ class DrbdManageClientHelper(object):
         tries = 0
         while tries < retries_max:
             server_rc = self.odm.wait_for_startup()
-            if not dm_utils.is_rc_retry(server_rc[0]):
+            chk = dm_utils.mangle_server_rc(server_rc)
+            if not dm_utils.is_rc_retry(chk):
                 break
             tries += 1
             time.sleep(2)

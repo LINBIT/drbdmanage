@@ -61,7 +61,7 @@ from drbdmanage.utils import ExternalCommandBuffer
 from drbdmanage.utils import (
     build_path, bool_to_string, string_to_bool, rangecheck, namecheck, ssh_exec,
     load_server_conf_file, filter_prohibited, get_uname, approximate_size_string, wipefs, cmd_try_ignore,
-    is_rc_retry,
+    is_rc_retry, mangle_server_rc,
 )
 from drbdmanage.utils import (
     COLOR_NONE, COLOR_RED, COLOR_DARKRED, COLOR_DARKGREEN, COLOR_BROWN,
@@ -162,12 +162,8 @@ class DrbdManage(object):
                 return server_rc
             except:
                 pass
-            if len(server_rc) > 1:
-                chk = server_rc[0]
-                if not isinstance(chk[0], dbus.Struct):
-                    chk = dbus.Array([dbus.Struct(server_rc[0])])
-            else:
-                chk = server_rc
+
+            chk = mangle_server_rc(server_rc)
             if is_rc_retry(chk):
                 tries += 1
                 time.sleep(2)
