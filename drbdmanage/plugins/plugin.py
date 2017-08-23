@@ -28,6 +28,8 @@ from drbdmanage.storage.lvm_thinlv import LvmThinLv
 from drbdmanage.storage.lvm_thinpool import LvmThinPool
 from drbdmanage.storage.zvol import Zvol
 from drbdmanage.storage.zvol_thinlv import ZvolThinLv
+from drbdmanage.storage.zvol2 import Zvol2
+from drbdmanage.storage.zvol2_thinlv import ZvolThinLv2
 
 
 class PluginManager():
@@ -41,6 +43,8 @@ class PluginManager():
             'drbdmanage.storage.lvm_thinpool.LvmThinPool': LvmThinPool.NAME,
             'drbdmanage.storage.zvol.Zvol': Zvol.NAME,
             'drbdmanage.storage.zvol_thinlv.ZvolThinLv': ZvolThinLv.NAME,
+            'drbdmanage.storage.zvol2.Zvol2': Zvol2.NAME,
+            'drbdmanage.storage.zvol2_thinlv.ZvolThinLv2': ZvolThinLv2.NAME,
         }
 
         self._loaded = dict()
