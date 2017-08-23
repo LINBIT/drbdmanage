@@ -432,4 +432,5 @@ class Zvol(StoragePluginCommon, storcore.StoragePlugin):
         return self._create_snapshot(vol_name, source_blockdev)
 
     def _remove_snapshot(self, blockdevice):
+        # actually unused, see remove_snapshot in storagecore
         return self.remove_blockdevice(blockdevice)

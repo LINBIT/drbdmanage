@@ -596,6 +596,7 @@ class LvmThinPool(lvmcom.LvmCommon):
         return self.create_snapshot(name, vol_id, source_blockdev)
 
     def _remove_snapshot(self, blockdevice):
+        # actually unused, see remove_snapshot in storagecore
         return self.remove_blockdevice(blockdevice)
 
     def up_blockdevice(self, blockdevice):

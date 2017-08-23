@@ -366,5 +366,6 @@ class LvmThinLv(lvmcom.LvmCommon):
             raise StoragePluginException
 
     def _remove_snapshot(self, blockdevice):
+        # actually unused, see remove_snapshot in storagecore
         return self.remove_blockdevice(blockdevice)
 

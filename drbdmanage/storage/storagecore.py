@@ -329,6 +329,9 @@ class BlockDeviceManager(object):
             try:
                 rm_blockdev = self.get_blockdevice(bd_name)
                 if rm_blockdev is not None:
+                    # RCK: this should actually call remove_snapshot!
+                    # but all existing ones would call remove_blockdevice anyways
+                    # and I don't want to potentially break existing code so keep it that way
                     fn_rc = self._plugin.remove_blockdevice(rm_blockdev)
                 else:
                     logging.debug(
