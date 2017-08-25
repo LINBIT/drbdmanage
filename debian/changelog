@@ -1,3 +1,11 @@
+drbdmanage (0.99.10-1) experimental; urgency=medium
+
+  * storage backends add notes about remove_snapshot()
+  * provide zvol2/zvol_thinlv2 storage plugins
+  * allow longer snapshot names
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 25 Aug 2017 10:24:58 +0200
+
 drbdmanage (0.99.9-1) experimental; urgency=medium
 
   * fix mangling of dbus server return code
