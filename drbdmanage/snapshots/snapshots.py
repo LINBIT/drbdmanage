@@ -218,6 +218,36 @@ class DrbdSnapshotAssignment(drbdcommon.GenericDrbdObject):
         self._snapshot.remove_snaps_assg(self)
 
 
+    def get_fail_count(self):
+        """
+        Returns the fail count of this assignment
+        """
+        props = self.get_props()
+        fail_count = props.get_int_or_default(consts.FAIL_COUNT, 0)
+        return fail_count if fail_count >= 0 else 0
+
+
+    def increase_fail_count(self):
+        """
+        Increases the fail count of this assignment
+        """
+        props = self.get_props()
+        fail_count = props.get_int_or_default(consts.FAIL_COUNT, 0)
+        if fail_count < 0:
+            fail_count = 0
+        if fail_count < consts.FAIL_COUNT_HARD_LIMIT:
+            fail_count += 1
+            props.set_prop(consts.FAIL_COUNT, str(fail_count))
+
+
+    def clear_fail_count(self):
+        """
+        Clears (removes) the fail count property of this assignment
+        """
+        props = self.get_props()
+        props.remove_prop(consts.FAIL_COUNT)
+
+
     def is_deployed(self):
         return (self._cstate, self.FLAG_DEPLOY)
 

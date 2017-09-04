@@ -5239,7 +5239,8 @@ class DrbdManageServer(object):
             for node in self._nodes.itervalues():
                 for assignment in node.iterate_assignments():
                     assignment.clear_fail_count()
-
+                    for snaps_assg in assignment.iterate_snaps_assgs():
+                        snaps_assg.clear_fail_count()
             self.schedule_run_changes()
             self.cleanup()
             self.get_serial()

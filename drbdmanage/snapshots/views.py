@@ -105,20 +105,35 @@ class DrbdSnapshotAssignmentView(drbdviews.GenericView):
             self.get_property(consts.TSTATE_PREFIX + consts.FLAG_DEPLOY)
         )
 
+        fail_count = 0
+        try:
+            fail_count_str = self.get_property(consts.FAIL_COUNT)
+            if fail_count_str is not None:
+                fail_count = int(fail_count_str)
+        except (ValueError, TypeError):
+            pass
+
         if (not c_deploy) and (not t_deploy):
             self.add_pending_text("cleanup")
         elif c_deploy and (not t_deploy):
             self.add_pending_text("delete")
             self.raise_level(drbdviews.GenericView.STATE_ALERT)
-        elif (not c_deploy) and t_deploy:
+        elif (not c_deploy) and t_deploy and self._error_code != 0:
+            # Pending create actions are hidden if the creation of the snapshot
+            # failed, because it will not be retried anyway
             self.add_pending_text("create")
             self.raise_level(drbdviews.GenericView.STATE_WARN)
 
-        state_label = self.format_state_info()
-
+        # Snapshot creation either succeeds immediately, or it fails and
+        # is never retried
         if self._error_code != 0:
-            state_label = "FAILED: " + state_label
+            self.add_state_text("FAILED")
             self.raise_level(drbdviews.GenericView.STATE_ALERT)
+        elif fail_count > 0:
+            self.add_state_text("FAILED(" + str(fail_count) + ")")
+            self.raise_level(drbdviews.GenericView.STATE_ALERT)
+
+        state_label = self.format_state_info()
 
         return self.get_level(), state_label
 

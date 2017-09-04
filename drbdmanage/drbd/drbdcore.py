@@ -317,6 +317,11 @@ class DrbdManager(object):
             else:
                 failed_actions = True
 
+            if state_changed and not failed_actions:
+                # If actions were performed and none of them failed,
+                # clear any previously existing fail count
+                assg.clear_fail_count()
+
             # Snapshot changes
             fail_count = assg.get_fail_count()
             if fail_count < max_fail_count:
@@ -337,11 +342,6 @@ class DrbdManager(object):
                     failed_actions = True
             else:
                 failed_actions = True
-
-            if state_changed and not failed_actions:
-                # If actions were performed and none of them failed,
-                # clear any previously existing fail count
-                assg.clear_fail_count()
 
         """
         Send new ctrlvol state to satellites
@@ -745,104 +745,112 @@ class DrbdManager(object):
     @log_in_out
     def _snapshot_actions(self, assg):
         state_changed  = False
-        failed_actions = False
         pool_changed   = False
         # Operate only on deployed assignments
+        max_fail_count = self._get_max_fail_count()
         for snaps_assg in assg.iterate_snaps_assgs():
-            set_state_changed = False
-            assg_tstate = assg.get_tstate()
-            snaps_name = snaps_assg.get_snapshot().get_resource().get_name()
-            if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
-                logging.debug(
-                    "snapshot %s/%s cstate(%x)->tstate(%x)"
-                    % (snaps_assg.get_snapshot().get_resource().get_name(),
-                       snaps_assg.get_snapshot().get_name(),
-                       snaps_assg.get_cstate(), snaps_assg.get_tstate())
-                )
-            if snaps_assg.requires_deploy():
-                assg_cstate = assg.get_cstate()
+            fail_count = snaps_assg.get_fail_count()
+            if fail_count < max_fail_count:
+                set_state_changed = False
                 assg_tstate = assg.get_tstate()
-                if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
-                    is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
-                    error_code = snaps_assg.get_error_code()
-                    if error_code == 0:
-                        set_state_changed = True
-                        snaps_vol_iter = snaps_assg.iterate_snaps_vol_states()
-                        for snaps_vol_state in snaps_vol_iter:
-                            (set_pool_changed, set_failed_actions) = (
-                                self._snaps_deploy_volume(
-                                    snaps_assg, snaps_vol_state
+                snaps_name = snaps_assg.get_snapshot().get_resource().get_name()
+                if snaps_assg.requires_deploy() or snaps_assg.requires_undeploy():
+                    logging.debug(
+                        "snapshot %s/%s cstate(%x)->tstate(%x)"
+                        % (snaps_assg.get_snapshot().get_resource().get_name(),
+                           snaps_assg.get_snapshot().get_name(),
+                           snaps_assg.get_cstate(), snaps_assg.get_tstate())
+                    )
+                if snaps_assg.requires_deploy():
+                    assg_cstate = assg.get_cstate()
+                    assg_tstate = assg.get_tstate()
+                    if (is_set(assg_cstate, Assignment.FLAG_DEPLOY) and
+                        is_set(assg_tstate, Assignment.FLAG_DEPLOY)):
+                        error_code = snaps_assg.get_error_code()
+                        if error_code == 0:
+                            set_state_changed = True
+                            deploy_failed = False
+                            snaps_vol_iter = snaps_assg.iterate_snaps_vol_states()
+                            for snaps_vol_state in snaps_vol_iter:
+                                (set_pool_changed, set_failed_actions) = (
+                                    self._snaps_deploy_volume(
+                                        snaps_assg, snaps_vol_state
+                                    )
                                 )
-                            )
-                            if set_pool_changed:
-                                pool_changed = True
-                            if set_failed_actions:
-                                failed_actions = True
-                        if not failed_actions:
-                            snaps_assg.set_cstate_flags(
-                                snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                                if set_pool_changed:
+                                    pool_changed = True
+                                if set_failed_actions:
+                                    deploy_failed = True
+                            if deploy_failed:
+                                snaps_assg.increase_fail_count()
+                            else:
+                                snaps_assg.set_cstate_flags(
+                                    snapshots.DrbdSnapshotAssignment.FLAG_DEPLOY
+                                )
+                        else:
+                            logging.debug(
+                                "snapshot assignment %s/%s is marked FAILED, "
+                                "error code = %d"
+                                % (snaps_name,
+                                   snaps_assg.get_snapshot().get_name(),
+                                   error_code)
                             )
                     else:
-                        logging.debug(
-                            "snapshot assignment %s/%s is marked FAILED, "
-                            "error code = %d"
-                            % (snaps_name,
-                               snaps_assg.get_snapshot().get_name(),
-                               error_code)
+                        logging.info(
+                            "Cannot create snapshot %s/%s, "
+                            "source assignment is not deployed"
+                            % (snaps_name, snaps_assg.get_snapshot().get_name())
                         )
-                else:
-                    logging.info(
-                        "Cannot create snapshot %s/%s, "
-                        "source assignment is not deployed"
-                        % (snaps_name, snaps_assg.get_snapshot().get_name())
-                    )
-                    failed_actions = True
-            elif (snaps_assg.requires_undeploy() or
-                  is_unset(assg_tstate, Assignment.FLAG_DEPLOY)):
-                set_state_changed = True
-                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
-                    (set_pool_changed, set_failed_actions) = (
-                        self._snaps_undeploy_volume(
-                            snaps_assg, snaps_vol_state
-                        )
-                    )
-                    if set_pool_changed:
-                        pool_changed = True
-                    if set_failed_actions:
-                        failed_actions = True
-                if not failed_actions:
-                    snaps_assg.set_cstate(0)
-                    snaps_assg.set_tstate(0)
-            else:
-                for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
-                    vol_cstate = snaps_vol_state.get_cstate()
-                    vol_tstate = snaps_vol_state.get_tstate()
-                    if vol_tstate != vol_cstate:
-                        logging.debug(
-                            "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
-                            % (snaps_name,
-                               snaps_assg.get_snapshot().get_name(),
-                               snaps_vol_state.get_id(),
-                               vol_cstate, vol_tstate)
-                        )
-                        (vol_set_state_changed, set_pool_changed, set_failed_actions) = (
-                            self._snaps_volume_actions(
+                        snaps_assg.increase_fail_count()
+                elif (snaps_assg.requires_undeploy() or
+                      is_unset(assg_tstate, Assignment.FLAG_DEPLOY)):
+                    set_state_changed = True
+                    undeploy_failed = False
+                    for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                        (set_pool_changed, set_failed_actions) = (
+                            self._snaps_undeploy_volume(
                                 snaps_assg, snaps_vol_state
                             )
                         )
-                        if vol_set_state_changed:
-                            set_state_changed = True
                         if set_pool_changed:
                             pool_changed = True
                         if set_failed_actions:
-                            failed_actions = True
-            if set_state_changed:
-                state_changed = True
-                snaps_assg.notify_changed()
-        if failed_actions:
-            logging.debug("DrbdManager: _snapshot_actions(): increasing assignment fail count")
-            assg.increase_fail_count()
-        return (state_changed, pool_changed, failed_actions)
+                            undeploy_failed = True
+                    if undeploy_failed:
+                        snaps_assg.increase_fail_count()
+                    else:
+                        snaps_assg.set_cstate(0)
+                        snaps_assg.set_tstate(0)
+                else:
+                    vol_action_failed = False
+                    for snaps_vol_state in snaps_assg.iterate_snaps_vol_states():
+                        vol_cstate = snaps_vol_state.get_cstate()
+                        vol_tstate = snaps_vol_state.get_tstate()
+                        if vol_tstate != vol_cstate:
+                            logging.debug(
+                                "snapshot %s/%s #%u cstate(%x)->tstate(%x)"
+                                % (snaps_name,
+                                   snaps_assg.get_snapshot().get_name(),
+                                   snaps_vol_state.get_id(),
+                                   vol_cstate, vol_tstate)
+                            )
+                            (vol_set_state_changed, set_pool_changed, set_failed_actions) = (
+                                self._snaps_volume_actions(
+                                    snaps_assg, snaps_vol_state
+                                )
+                            )
+                            if vol_set_state_changed:
+                                set_state_changed = True
+                            if set_pool_changed:
+                                pool_changed = True
+                            if set_failed_actions:
+                                vol_action_failed = True
+                    if vol_action_failed:
+                        snaps_assg.increase_fail_count()
+                if set_state_changed:
+                    state_changed = True
+                    snaps_assg.notify_changed()
+        return (state_changed, pool_changed, False)
 
     @log_in_out
     def _snaps_volume_actions(self, snaps_assg, snaps_vol_state):
@@ -3573,8 +3581,6 @@ class Assignment(GenericDrbdObject):
     FLAG_DISCARD   = 0x80000
     FLAG_UPD_CONFIG = 0x100000
 
-    FAIL_COUNT_HARD_LIMIT = 99
-
     # CSTATE_MASK must include all valid current state flags;
     # used to mask the value supplied to set_cstate() to prevent setting
     # non-existent flags
@@ -4069,7 +4075,9 @@ class Assignment(GenericDrbdObject):
         """
         props = self.get_props()
         fail_count = props.get_int_or_default(consts.FAIL_COUNT, 0)
-        if fail_count < Assignment.FAIL_COUNT_HARD_LIMIT:
+        if fail_count < 0:
+            fail_count = 0
+        if fail_count < consts.FAIL_COUNT_HARD_LIMIT:
             fail_count += 1
             props.set_prop(consts.FAIL_COUNT, str(fail_count))
 
