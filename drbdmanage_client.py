@@ -52,7 +52,7 @@ from drbdmanage.consts import (
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1,
     KEY_S_CMD_SHUTDOWN,
-    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, MANAGED
+    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, KEY_SHUTDOWN_CTRLVOL, MANAGED
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -764,6 +764,9 @@ class DrbdManage(object):
                                'that must be answered with yes, otherwise the operation is canceled.')
             p_cmd.add_argument('-r', '--resources', action="store_true",
                                help='Shutdown all drbdmanage-controlled resources too',
+                               default=False)
+            p_cmd.add_argument('-c', '--ctrlvol', action="store_true",
+                               help='Do not drbdadm down the control volume',
                                default=False)
             p_cmd.set_defaults(func=func)
 
@@ -2116,9 +2119,11 @@ class DrbdManage(object):
         quiet = args.quiet
         satellites = args.satellite
         resources = args.resources
+        ctrlvol = args.ctrlvol
         props = dbus.Dictionary(signature="ss")
         props[KEY_S_CMD_SHUTDOWN] = bool_to_string(satellites)
         props[KEY_SHUTDOWN_RES] = bool_to_string(resources)
+        props[KEY_SHUTDOWN_CTRLVOL] = bool_to_string(ctrlvol)
         if not quiet:
             quiet = self.user_confirm(
                 "You are going to shut down the drbdmanaged server "

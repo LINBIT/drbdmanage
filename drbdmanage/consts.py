@@ -72,6 +72,8 @@ KEY_DRBD_UTILS_GIT_HASH  = "drbd_utils_git_hash"
 
 # Shut down resources on drbdmanage server shutdown
 KEY_SHUTDOWN_RES = "shutdown-res"
+# Drbdadm down ctrlvol
+KEY_SHUTDOWN_CTRLVOL = "shutdown-ctrlvol"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 

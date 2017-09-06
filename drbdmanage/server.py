@@ -62,7 +62,7 @@ from drbdmanage.consts import (
     DEFAULT_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPCNT,
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
     KEY_S_CMD_UPPOOL,
-    KEY_SHUTDOWN_RES, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE, FAKE_LEADER_NAME,
+    KEY_SHUTDOWN_RES, KEY_SHUTDOWN_CTRLVOL, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE, FAKE_LEADER_NAME,
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import DrbdSetupOpts
@@ -7571,13 +7571,27 @@ class DrbdManageServer(object):
         if self._proxy:
             self._proxy.shutdown()
 
-        logging.info("shutting down the control volume")
+        shutdown_ctrl = True
         try:
-            if self._server_role_potential == SAT_POTENTIAL_LEADER_NODE:
-                self._drbd_mgr.secondary_drbdctrl()
-            self._drbd_mgr.down_drbdctrl()
+            no_shutdown_ctrl_str = props.get(KEY_SHUTDOWN_CTRLVOL)
+            if no_shutdown_ctrl_str is not None:
+                shutdown_ctrl = not string_to_bool(no_shutdown_ctrl_str)
         except:
             pass
+
+        ctrl_shutdown_msg = "shutting down the control volume"
+
+        if not shutdown_ctrl:
+            ctrl_shutdown_msg = "not " + ctrl_shutdown_msg
+        logging.info(ctrl_shutdown_msg)
+
+        if shutdown_ctrl:
+            try:
+                if self._server_role_potential == SAT_POTENTIAL_LEADER_NODE:
+                    self._drbd_mgr.secondary_drbdctrl()
+                self._drbd_mgr.down_drbdctrl()
+            except:
+                pass
 
         logging.info("shutting down DRBD events processing")
         # Shutdown events processing and the associated child process
@@ -7588,7 +7602,6 @@ class DrbdManageServer(object):
 
         logging.info("server shutdown complete, exiting")
         exit(0)
-
 
     def get_occupied_minor_nrs(self):
         """
