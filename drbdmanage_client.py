@@ -52,7 +52,8 @@ from drbdmanage.consts import (
     NODE_SITE, NODE_VOL_0, NODE_VOL_1, NODE_PORT, NODE_SECRET,
     DRBDCTRL_LV_NAME_0, DRBDCTRL_LV_NAME_1, DRBDCTRL_DEV_0, DRBDCTRL_DEV_1,
     KEY_S_CMD_SHUTDOWN,
-    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, KEY_SHUTDOWN_CTRLVOL, MANAGED
+    KEY_COLORS, KEY_UTF8, NODE_NAME, RES_NAME, SNAPS_NAME, KEY_SHUTDOWN_RES, KEY_SHUTDOWN_CTRLVOL, MANAGED,
+    KEY_ERR_STRATEGY, KEY_ERR_RESUME_NO, KEY_ERR_MAX_BOFF, KEY_ERR_INVTERVAL,
 )
 from drbdmanage.utils import SizeCalc
 from drbdmanage.utils import Table
@@ -3727,6 +3728,12 @@ Confirm:
             configfile.write('# %s\n# %s\n' % (hdr, '~' * len(hdr)))
             for k in sorted(config_keys.keys()):
                 configfile.write('# %s = %s\n' % (k, config_keys[k]))
+                if k == KEY_ERR_STRATEGY:
+                    configfile.write('# ^^ one of %s, %s, or %s\n' % (KEY_ERR_RESUME_NO, KEY_ERR_MAX_BOFF,
+                                                                      KEY_ERR_INVTERVAL))
+                    configfile.write('# ^^ Times for %s, %s, and %s are in minutes\n' % (KEY_ERR_RESUME_NO,
+                                                                                         KEY_ERR_MAX_BOFF,
+                                                                                         KEY_ERR_INVTERVAL))
             configfile.write('\n')
 
             if cfgtype == CONF_NODE:

@@ -74,6 +74,11 @@ KEY_DRBD_UTILS_GIT_HASH  = "drbd_utils_git_hash"
 KEY_SHUTDOWN_RES = "shutdown-res"
 # Drbdadm down ctrlvol
 KEY_SHUTDOWN_CTRLVOL = "shutdown-ctrlvol"
+# Error handling strategies
+KEY_ERR_STRATEGY  = "error-handling-strategy"
+KEY_ERR_RESUME_NO = "resume-no"
+KEY_ERR_MAX_BOFF  = "resume-max-backoff"
+KEY_ERR_INVTERVAL = "resume-interval"
 
 SNAPS_SRC_BLOCKDEV  = "snapshot-source-blockdev"
 

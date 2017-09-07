@@ -63,6 +63,7 @@ from drbdmanage.consts import (
     KEY_S_CMD_INIT, KEY_S_ANS_OK, KEY_S_CMD_RELAY, KEY_S_CMD_REQCTRL, KEY_S_CMD_PING, KEY_S_CMD_SHUTDOWN,
     KEY_S_CMD_UPPOOL,
     KEY_SHUTDOWN_RES, KEY_SHUTDOWN_CTRLVOL, RES_ALL_KEYWORD, MANAGED, CREATEDATE, BOOL_TRUE, BOOL_FALSE, FAKE_LEADER_NAME,
+    KEY_ERR_STRATEGY, KEY_ERR_RESUME_NO, KEY_ERR_MAX_BOFF, KEY_ERR_INVTERVAL,
 )
 from drbdmanage.utils import NioLineReader
 from drbdmanage.utils import DrbdSetupOpts
@@ -154,7 +155,6 @@ class DrbdManageServer(object):
     KEY_SPACE_CHECK    = "space-check"
     KEY_MAX_FAIL_COUNT = "max-fail-count"
     KEY_MSGLOG_SIZE    = "message-log-capacity"
-
     KEY_EXTEND_PATH    = "extend-path"
     KEY_DRBD_CONFPATH  = "drbd-conf-path"
     DEFAULT_DRBD_CONFPATH = "/var/lib/drbd.d"
@@ -168,6 +168,8 @@ class DrbdManageServer(object):
     DEFAULT_MAX_PORT_NR  = 7999
     DEFAULT_SPACE_CHECK  = BOOL_TRUE
     DEFAULT_MAX_FAIL_COUNT = 3
+    DEFAULT_ERR_MAX_BOFF = 65
+    DEFAULT_ERR_INVTERVAL = 30
 
     DEFAULT_MSGLOG_SIZE  = 50
 
@@ -189,6 +191,9 @@ class DrbdManageServer(object):
         KEY_DRBDCTRL_VG    : DEFAULT_VG,
         KEY_DEBUG_OUT_FILE : "/dev/stderr",
         KEY_LOGLEVEL       : "INFO",
+        KEY_ERR_STRATEGY   : KEY_ERR_RESUME_NO,
+        KEY_ERR_MAX_BOFF   : str(DEFAULT_ERR_MAX_BOFF),
+        KEY_ERR_INVTERVAL  : str(DEFAULT_ERR_INVTERVAL),
         KEY_SAT_CFG_TCP_KEEPIDLE: str(DEFAULT_SAT_CFG_TCP_KEEPIDLE),
         KEY_SAT_CFG_TCP_KEEPINTVL: str(DEFAULT_SAT_CFG_TCP_KEEPINTVL),
         KEY_SAT_CFG_TCP_KEEPCNT: str(DEFAULT_SAT_CFG_TCP_KEEPCNT),
@@ -279,6 +284,12 @@ class DrbdManageServer(object):
 
     # Quorum management
     _quorum = None
+
+    # resume service
+    _failed_actions = False
+    _resume_cnt = 0
+    _resume_next_boff_start = 2
+    _resume_next_boff = _resume_next_boff_start
 
     # DEBUGGING FLAGS
     dbg_events = False
@@ -647,6 +658,7 @@ class DrbdManageServer(object):
         self.schedule_pseudo_fence()
         self.schedule_satellite_ping()
         self.schedule_satellite_reintegrate()
+        self.schedule_resume()
         self.schedule_satellite_shutdown()
 
         if not rerun:
@@ -825,7 +837,7 @@ class DrbdManageServer(object):
                     log_error = False
                 time.sleep(30)
         logging.info("drbdsetup events tracing reestablished")
-        self._drbd_mgr.run(False, False)
+        self._manager_run(False, False)
         # Unregister this event handler, init_events has registered a new one
         # for the new events pipe
         return False
@@ -993,6 +1005,51 @@ class DrbdManageServer(object):
         except:
             pass
 
+    def resume_service(self):
+        # satellites don't resume and as long as the server role is undecided, do nothing
+        if self._server_role_decided and self._server_role == SAT_SATELLITE:
+            return False
+        if not self._server_role_decided:
+            return True
+
+        if not self._failed_actions:
+            self._resume_cnt = 0
+            self._resume_next_boff = self._resume_next_boff_start
+
+        if self._failed_actions and self._server_role_decided and self._server_role == SAT_LEADER_NODE:
+            self._resume_cnt += 1
+            requires_resume = False
+            strategy = self._conf.get(KEY_ERR_STRATEGY, KEY_ERR_RESUME_NO)
+            if strategy == KEY_ERR_INVTERVAL:
+                interval = self._conf.get(KEY_ERR_INVTERVAL, self.DEFAULT_ERR_INVTERVAL)
+                try:
+                    interval = int(interval)
+                except:
+                    interval = self.DEFAULT_ERR_INVTERVAL
+
+                if self._resume_cnt >= interval:
+                    requires_resume = True
+                    self._resume_cnt = 0
+            elif strategy == KEY_ERR_MAX_BOFF:
+                maxboff = self._conf.get(KEY_ERR_MAX_BOFF, self.DEFAULT_ERR_MAX_BOFF)
+                try:
+                    maxboff = int(maxboff)
+                except:
+                    maxboff = self.DEFAULT_ERR_MAX_BOFF
+                if self._resume_cnt >= self._resume_next_boff:
+                    requires_resume = True
+                    self._resume_next_boff *= 2
+                    if self._resume_next_boff > maxboff:
+                        self._resume_next_boff = self._resume_next_boff_start
+                        self._resume_cnt = 0
+            elif strategy != KEY_ERR_RESUME_NO:
+                    logging.warning("Unknown error handling strategy: " + strategy)
+
+            if requires_resume:
+                self.resume_all()
+
+        return True
+
     def satellite_ping(self):
         if self._server_role_decided and self._server_role == SAT_SATELLITE:
             return False
@@ -1075,6 +1132,10 @@ class DrbdManageServer(object):
     def schedule_satellite_ping(self):
         gobject.timeout_add(5000, self.satellite_ping)
 
+    def schedule_resume(self):
+        # gobject.timeout_add(10*1000, self.resume_service)
+        gobject.timeout_add(60*1000, self.resume_service)
+
     def schedule_satellite_reintegrate(self):
         gobject.timeout_add(30*1000, self.satellite_reintegrate)
 
@@ -1101,12 +1162,17 @@ class DrbdManageServer(object):
         self._poke_cluster = True
         self.schedule_run_changes()
 
+    def _manager_run(self, override_hash_check, poke_cluster, lock_already_hold=False):
+        _, self._failed_actions = self._drbd_mgr.run(override_hash_check,
+                                                     poke_cluster,
+                                                     lock_already_hold)
+
     def run_changes(self):
         """
         Performs DrbdManager.run(), thereby applying pending changes locally
         """
         if self._server_role_decided and self._server_role == SAT_LEADER_NODE:
-            self._drbd_mgr.run(True, self._poke_cluster)
+            self._manager_run(True, self._poke_cluster)
         self._run_changes_scheduled = False
         self._poke_cluster = False
         return False
@@ -1142,7 +1208,7 @@ class DrbdManageServer(object):
             else:
                 break
         if changed and self._server_role_decided and self._server_role == SAT_LEADER_NODE:
-            self._drbd_mgr.run(False, False)
+            self._manager_run(False, False)
         # True = GMainLoop shall not unregister this event handler
         return True
 
@@ -6560,7 +6626,7 @@ class DrbdManageServer(object):
                     elif item == "DrbdManager":
                         # override the hash check, but do not poke
                         # the cluster
-                        self._drbd_mgr.run(True, False)
+                        self._manager_run(True, False)
                         fn_rc = 0
                     elif item == "initial_up":
                         self._drbd_mgr.initial_up()
