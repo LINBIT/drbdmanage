@@ -1,3 +1,26 @@
+drbdmanage (0.99.11-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Implemented separate fail counts for snapshot assignments
+
+  [ Roland Kammerer ]
+  * allow to keep ctrlvol on shutdown
+  * leader: implement different error handling strategies
+  * add more function to wrappers
+    _____________________________
+   / \                            \.
+  |   |                           |.
+   \_ |          I N G A          |.
+      |             +             |.
+      |         J A K O B         |.
+      |                           |.
+      |   ________________________|___
+      |  /                           /.
+      \_/___________________________/.
+  * and happy birthday
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 15 Sep 2017 14:00:00 +0200
+
 drbdmanage (0.99.10-1) experimental; urgency=medium
 
   * storage backends add notes about remove_snapshot()
