@@ -334,7 +334,11 @@ class DrbdManageServer(object):
         'dbus_save_conf': KEY_NOTHING,
         'detach': KEY_NOTHING,
         'disconnect': KEY_NOTHING,
+        'get_cluster_config': {},
+        'get_config_keys': {},
         'get_ctrlvol': '',
+        'get_plugin_default_config': {},
+        'get_site_config': [],
         'init_node': KEY_NOTHING,
         'list_assignments': [],
         'list_nodes': [],
@@ -356,6 +360,7 @@ class DrbdManageServer(object):
         'restore_snapshot': KEY_NOTHING,
         'request_ctrlvol': KEY_NOTHING,
         'run_external_plugin': {},
+        'set_cluster_config': KEY_NOTHING,
         'set_ctrlvol': KEY_NOTHING,
         'set_drbdsetup_props': KEY_NOTHING,
         'text_query': [],
@@ -1919,6 +1924,7 @@ class DrbdManageServer(object):
         return site_props
 
     @wait_startup
+    @req_ctrlvol
     def get_site_config(self):
         fn_rc = []
         ret = []
