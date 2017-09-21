@@ -153,9 +153,9 @@ class DrbdManage(object):
         while tries <= retries_max:
             if tries > 0:
                 if tries == 1:
-                    sys.stdout.write('Waiting for server: ')
-                sys.stdout.write('.')
-                sys.stdout.flush()
+                    sys.stderr.write('Waiting for server: ')
+                sys.stderr.write('.')
+                sys.stderr.flush()
             server_rc = fn(*args, **kwargs)
             try:
                 # single int return codes like ping
@@ -172,7 +172,7 @@ class DrbdManage(object):
             else:
                 break
         if tries > 0:
-            sys.stdout.write('\n')
+            sys.stderr.write('\n')
         if tries == retries_max + 1:
             self._process_rc_entries(chk, True)
 
