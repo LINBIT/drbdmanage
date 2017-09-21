@@ -1,3 +1,9 @@
+drbdmanage (0.99.12-1) experimental; urgency=medium
+
+  * client: print "Waiting for" messages to stderr
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 21 Sep 2017 10:48:32 +0200
+
 drbdmanage (0.99.11-1) experimental; urgency=medium
 
   [ Robert Altnoeder ]
