@@ -92,7 +92,17 @@ class DrbdManageClientHelper(object):
     def call_or_reconnect(self, fn, *args):
         """Call DBUS function; on a disconnect try once to reconnect."""
         try:
-            return fn(*args)
+            retries_max = 15
+            tries = 0
+            server_rc = None
+            while tries < retries_max:
+                server_rc = fn(*args)
+                chk = dm_utils.mangle_server_rc(server_rc)
+                if not dm_utils.is_rc_retry(chk):
+                    break
+                tries += 1
+                time.sleep(2)
+            return server_rc
         except dbus.DBusException as e:
             self.logger.warning(self._LW('Got disconnected; trying to reconnect. (%s)') % e)
             self.dbus_connect()
