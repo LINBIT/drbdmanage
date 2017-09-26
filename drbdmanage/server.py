@@ -6142,6 +6142,29 @@ class DrbdManageServer(object):
         return [port_info]
 
 
+    def TQ_query_port_nr(self, port_nr=None):
+        port_info = "Error: Server-side unhandled error in TQ_query_port_nr()"
+        if port_nr is not None:
+            try:
+                port_nr = int(port_nr)
+                res_name = None
+                is_free = True
+                for resource in self._resources.itervalues():
+                    used_port = resource.get_port()
+                    if port_nr == used_port:
+                        is_free = False
+                        res_name = resource.get_name()
+                        port_info = "Port number %d is ALLOCATED for managed resource '%s'" % (port_nr, res_name)
+                        break
+                if is_free:
+                    port_info = "Port number %d is NOT ALLOCATED for any managed resource" % (port_nr)
+            except (ValueError, TypeError):
+                port_info = "Error: Invalid argument: port-number"
+        else:
+            port_info = "Error: Missing argument: port-number"
+        return [port_info]
+
+
     def TQ_free_minor_nr(self):
         minor_info = "Automatic minor number allocation failed"
         occupied_list = self.get_occupied_minor_nrs()
@@ -6149,6 +6172,34 @@ class DrbdManageServer(object):
             free_minor_nr = self.get_free_minor_nr(occupied_list, False)
             if free_minor_nr != MinorNr.MINOR_NR_ERROR:
                 minor_info = "Next free minor number: %d" % (free_minor_nr)
+        return [minor_info]
+
+
+    def TQ_query_minor_nr(self, minor_nr=None):
+        minor_info = "Error: Server-side unhandled error in TQ_query_minor_nr()"
+        if minor_nr is not None:
+            try:
+                minor_nr = int(minor_nr)
+                is_free = True
+                for resource in self._resources.itervalues():
+                    for vol in resource.iterate_volumes():
+                        minor_obj = vol.get_minor()
+                        nr_item = minor_obj.get_value()
+                        if minor_nr == nr_item:
+                            is_free = False
+                            res_name = resource.get_name()
+                            vol_nr = vol.get_id()
+                            minor_info = (
+                                "Minor number %d is ALLOCATED for managed resource '%s' volume number %d"
+                                % (minor_nr, res_name, vol_nr)
+                            )
+                            break
+                if is_free:
+                    minor_info = "Minor number %d is NOT ALLOCATED for any managed resource" % (minor_nr)
+            except (ValueError, TypeError):
+                minor_info = "Error: Invalid argument: minor-number"
+        else:
+            minor_info = "Error: Missing argument: minor-number"
         return [minor_info]
 
 
@@ -7781,6 +7832,7 @@ class DrbdManageServer(object):
             used_port = resource.get_port()
             if port == used_port:
                 is_free = False
+                break
         return is_free
 
 

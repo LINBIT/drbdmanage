@@ -951,6 +951,19 @@ class DrbdManage(object):
                                           description='Find an unallocated minor number')
         p_free_minor_nr.set_defaults(func=self.cmd_free_minor_nr)
 
+        # query-port-nr
+        p_query_port_nr = subp.add_parser('query-port-nr',
+                                          description='Query the allocation status of a TCP/IP port number')
+        p_query_port_nr.add_argument('port', help='TCP/IP port number')
+        p_query_port_nr.set_defaults(func=self.cmd_query_port_nr)
+
+        # query-minor-nr
+        p_query_minor_nr = subp.add_parser('query-minor-nr',
+                                           description='Query the allocation status of a minor number')
+        p_query_minor_nr.add_argument('minor', help='Device file minor number')
+        p_query_minor_nr.set_defaults(func=self.cmd_query_minor_nr)
+
+
         def ll_debug_cmd_completer(prefix, **kwargs):
             self.dbus_init()
             # needed to wait for completion
@@ -2724,6 +2737,26 @@ class DrbdManage(object):
         fn_rc = 1
         self.dbus_init()
         server_rc, minor_info = self.dsc(self._server.text_query, ["free_minor_nr"])
+        for text_line in minor_info:
+            sys.stdout.write(text_line + "\n")
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+    def cmd_query_port_nr(self, args):
+        fn_rc = 1
+        port_nr = args.port
+        self.dbus_init()
+        server_rc, port_info = self.dsc(self._server.text_query, ["query_port_nr", port_nr])
+        for text_line in port_info:
+            sys.stdout.write(text_line + "\n")
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+    def cmd_query_minor_nr(self, args):
+        fn_rc = 1
+        minor_nr = args.minor
+        self.dbus_init()
+        server_rc, minor_info = self.dsc(self._server.text_query, ["query_minor_nr", minor_nr])
         for text_line in minor_info:
             sys.stdout.write(text_line + "\n")
         fn_rc = self._list_rc_entries(server_rc)
