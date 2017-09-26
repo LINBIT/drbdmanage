@@ -941,6 +941,16 @@ class DrbdManage(object):
                                       "with a --quiet option")
         p_howtojoin.set_defaults(func=self.cmd_howto_join)
 
+        # free-port-nr
+        p_free_port_nr = subp.add_parser('free-port-nr',
+                                         description='Find an unallocated TCP/IP port number')
+        p_free_port_nr.set_defaults(func=self.cmd_free_port_nr)
+
+        # free-minor-nr
+        p_free_minor_nr = subp.add_parser('free-minor-nr',
+                                          description='Find an unallocated minor number')
+        p_free_minor_nr.set_defaults(func=self.cmd_free_minor_nr)
+
         def ll_debug_cmd_completer(prefix, **kwargs):
             self.dbus_init()
             # needed to wait for completion
@@ -2699,6 +2709,24 @@ class DrbdManage(object):
                              'do not do anything\n')
         fn_rc = self._list_rc_entries(server_rc)
 
+        return fn_rc
+
+    def cmd_free_port_nr(self, args):
+        fn_rc = 1
+        self.dbus_init()
+        server_rc, port_info = self.dsc(self._server.text_query, ["free_port_nr"])
+        for text_line in port_info:
+            sys.stdout.write(text_line + "\n")
+        fn_rc = self._list_rc_entries(server_rc)
+        return fn_rc
+
+    def cmd_free_minor_nr(self, args):
+        fn_rc = 1
+        self.dbus_init()
+        server_rc, minor_info = self.dsc(self._server.text_query, ["free_minor_nr"])
+        for text_line in minor_info:
+            sys.stdout.write(text_line + "\n")
+        fn_rc = self._list_rc_entries(server_rc)
         return fn_rc
 
     def cmd_server_version(self, args):

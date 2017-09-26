@@ -2998,7 +2998,7 @@ class DrbdManageServer(object):
                     if minor == MinorNr.MINOR_NR_AUTO:
                         occupied_minor_nrs = self.get_occupied_minor_nrs()
                         if occupied_minor_nrs is not None:
-                            minor = self.get_free_minor_nr(occupied_minor_nrs)
+                            minor = self.get_free_minor_nr(occupied_minor_nrs, True)
                         else:
                             raise InvalidMinorNrException
                     if minor == MinorNr.MINOR_NR_ERROR:
@@ -5056,7 +5056,7 @@ class DrbdManageServer(object):
                                     if occupied_minor_nrs is None:
                                         raise InvalidMinorNrException
                                     minor = self.get_free_minor_nr(
-                                        occupied_minor_nrs
+                                        occupied_minor_nrs, True
                                     )
                                 if minor == MinorNr.MINOR_NR_ERROR:
                                     raise InvalidMinorNrException
@@ -6132,6 +6132,24 @@ class DrbdManageServer(object):
                     r_node_id, secret]
         else:
             return [("Error: Generation of the join command failed")]
+
+
+    def TQ_free_port_nr(self):
+        port_info = "Automatic port number allocation failed"
+        free_port_nr = self.get_free_port_nr()
+        if free_port_nr != RES_PORT_NR_ERROR:
+            port_info = "Next free port number: %d" % (free_port_nr)
+        return [port_info]
+
+
+    def TQ_free_minor_nr(self):
+        minor_info = "Automatic minor number allocation failed"
+        occupied_list = self.get_occupied_minor_nrs()
+        if occupied_list is not None:
+            free_minor_nr = self.get_free_minor_nr(occupied_list, False)
+            if free_minor_nr != MinorNr.MINOR_NR_ERROR:
+                minor_info = "Next free minor number: %d" % (free_minor_nr)
+        return [minor_info]
 
 
     def TQ_version(self):
@@ -7694,7 +7712,7 @@ class DrbdManageServer(object):
             minor_list = None
         return minor_list
 
-    def get_free_minor_nr(self, occupied_list):
+    def get_free_minor_nr(self, occupied_list, update_next_number):
         """
         Retrieves a free (unused) minor number
 
@@ -7742,10 +7760,11 @@ class DrbdManageServer(object):
                     minor_nr = free_nr
 
             # Save the next potentially usable number
-            next_number = minor_nr + 1
-            if next_number > MinorNr.MINOR_NR_MAX:
-                next_number = min_nr
-            self._cluster_conf.set_prop(KEY_CUR_MINOR_NR, str(next_number))
+            if update_next_number:
+                next_number = minor_nr + 1
+                if next_number > MinorNr.MINOR_NR_MAX:
+                    next_number = min_nr
+                self._cluster_conf.set_prop(KEY_CUR_MINOR_NR, str(next_number))
         except ValueError:
             minor_nr = MinorNr.MINOR_NR_ERROR
         return minor_nr
