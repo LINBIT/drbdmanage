@@ -1,3 +1,14 @@
+drbdmanage (0.99.13-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Added free-port-nr and free-minor-nr commands
+  * Added query-port-nr, query-minor-nr commands
+
+  [ Roland Kammerer ]
+  * client helper: add retry logic
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Tue, 26 Sep 2017 11:18:46 +0200
+
 drbdmanage (0.99.12-1) experimental; urgency=medium
 
   * client: print "Waiting for" messages to stderr
