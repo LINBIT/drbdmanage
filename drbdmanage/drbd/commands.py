@@ -75,10 +75,10 @@ class DrbdAdm(object):
             return 1
 
         exec_args = [self.DRBDADM_UTIL, "-vvv"]
+        exec_args += self._direct_res(res_name)
         if assume_clean:
             exec_args.append("--")
             exec_args.append("--assume-clean")
-        exec_args += self._direct_res(res_name)
         exec_args.append("resize")
         exec_args.append(res_name + "/" + str(vol_id))
         return self._run_drbdutils(exec_args)
