@@ -1,3 +1,13 @@
+drbdmanage (0.99.14-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * README -> README.md for github
+
+  [ Robert Altnoeder ]
+  * Fixed drbdadm resize command arguments order
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Fri, 13 Oct 2017 14:29:47 +0200
+
 drbdmanage (0.99.13-1) experimental; urgency=medium
 
   [ Robert Altnoeder ]
