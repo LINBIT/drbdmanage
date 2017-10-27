@@ -3414,12 +3414,12 @@ Confirm:
 
         # Create the .drbdctrl LV
         self._ext_command(
-            ["lvcreate", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "-y", "-n", drbdctrl_lv_0, "-L", "4m", drbdctrl_vg]
         )
         wipefs(drbdctrl_blockdev_0)
 
         self._ext_command(
-            ["lvcreate", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
+            ["lvcreate", "-y", "-n", drbdctrl_lv_1, "-L", "4m", drbdctrl_vg]
         )
         wipefs(drbdctrl_blockdev_1)
 
