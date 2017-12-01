@@ -593,6 +593,7 @@ def load_server_conf_file(localonly=False):
                 in_file_cfg = dict(cfg.items(section))
                 if not cfg.has_option(section, 'force'):
                     final_config = filter_allowed(in_file_cfg.copy(), (KEY_DRBDCTRL_VG,
+                                                                       'storage-plugin',
                                                                        'extend-path',
                                                                        KEY_LOGLEVEL,
                                                                        KEY_SAT_CFG_ROLE,
