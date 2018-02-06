@@ -638,7 +638,7 @@ class LvmThinPool(lvmcom.LvmCommon):
             if pool_name is not None:
                 try:
                     exec_args = [
-                        self._cmd_lvchange, "-ay", "-kn", "-K",
+                        self._cmd_lvchange, "-ay", "-K",
                         self._conf[consts.KEY_VG_NAME] + "/" +
                         pool_name
                     ]
@@ -666,7 +666,7 @@ class LvmThinPool(lvmcom.LvmCommon):
                 )
             try:
                 exec_args = [
-                    self._cmd_lvchange, "-ay", "-kn", "-K",
+                    self._cmd_lvchange, "-ay", "-K",
                     self._conf[consts.KEY_VG_NAME] + "/" +
                     lv_name
                 ]
