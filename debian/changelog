@@ -1,3 +1,13 @@
+drbdmanage (0.99.15-1) experimental; urgency=medium
+
+  [ Lars Ellenberg ]
+  * fix thin snapshot activation on some platforms: don't change the activ [...]
+
+  [ Roland Kammerer ]
+  * satellite: make timeouts configurable
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Wed, 14 Feb 2018 13:44:56 +0100
+
 drbdmanage (0.99.14-1) experimental; urgency=medium
 
   [ Roland Kammerer ]
