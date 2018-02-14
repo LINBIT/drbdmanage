@@ -203,6 +203,8 @@ KEY_SAT_CFG_ROLE = 'ctrl-volume-access-mode'
 KEY_SAT_CFG_TCP_KEEPIDLE = 'tcp-keepidle'
 KEY_SAT_CFG_TCP_KEEPINTVL = 'tcp-keepintvl'
 KEY_SAT_CFG_TCP_KEEPCNT = 'tcp-keepcnt'
+KEY_SAT_CFG_TCP_SHORTTIMEOUT = 'tcp-shorttimeout'
+KEY_SAT_CFG_TCP_LONGTIMEOUT = 'tcp-longtimeout'
 
 # after 10 sec of no other traffic,
 # send a keep-alive every 7 seconds
@@ -210,6 +212,9 @@ KEY_SAT_CFG_TCP_KEEPCNT = 'tcp-keepcnt'
 DEFAULT_SAT_CFG_TCP_KEEPIDLE = 10
 DEFAULT_SAT_CFG_TCP_KEEPINTVL = 7
 DEFAULT_SAT_CFG_TCP_KEEPCNT = 5
+DEFAULT_SAT_CFG_TCP_SHORTTIMEOUT = 2.0
+DEFAULT_SAT_CFG_TCP_LONGTIMEOUT = 45.0
+
 # communication protocol
 KEY_S_CMD_INIT = 'CMD_INIT'
 KEY_S_CMD_UPDATE = 'CMD_UPDATE'

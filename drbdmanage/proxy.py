@@ -48,9 +48,13 @@ from drbdmanage.consts import (
     KEY_SAT_CFG_TCP_KEEPIDLE,
     KEY_SAT_CFG_TCP_KEEPINTVL,
     KEY_SAT_CFG_TCP_KEEPCNT,
+    KEY_SAT_CFG_TCP_SHORTTIMEOUT,
+    KEY_SAT_CFG_TCP_LONGTIMEOUT,
     DEFAULT_SAT_CFG_TCP_KEEPIDLE,
     DEFAULT_SAT_CFG_TCP_KEEPINTVL,
     DEFAULT_SAT_CFG_TCP_KEEPCNT,
+    DEFAULT_SAT_CFG_TCP_SHORTTIMEOUT,
+    DEFAULT_SAT_CFG_TCP_LONGTIMEOUT,
 )
 
 
@@ -429,8 +433,10 @@ class DrbdManageProxy(object):
     # to resend if the first attempt failed.
     def send_cmd(self, peer_name, cmd, port=_DEFAULT_PORT_NR, override_data='', override_ip=''):
         payload = override_data
-        short_timeout = 2.0
-        long_timeout = 45.0
+
+        conf = self._dmserver._conf
+        short_timeout = float(conf.get(KEY_SAT_CFG_TCP_SHORTTIMEOUT, DEFAULT_SAT_CFG_TCP_SHORTTIMEOUT))
+        long_timeout = float(conf.get(KEY_SAT_CFG_TCP_LONGTIMEOUT, DEFAULT_SAT_CFG_TCP_LONGTIMEOUT))
 
         if peer_name not in self._peersockets:
             if peer_name == FAKE_LEADER_NAME:
@@ -449,7 +455,6 @@ class DrbdManageProxy(object):
             except Exception:
                 return self.opcodes[KEY_S_ANS_E_COMM], 0, ''
 
-            conf = self._dmserver._conf
             idle = int(conf.get(KEY_SAT_CFG_TCP_KEEPIDLE, DEFAULT_SAT_CFG_TCP_KEEPIDLE))
             intvl = int(conf.get(KEY_SAT_CFG_TCP_KEEPINTVL, DEFAULT_SAT_CFG_TCP_KEEPINTVL))
             cnt = int(conf.get(KEY_SAT_CFG_TCP_KEEPCNT, DEFAULT_SAT_CFG_TCP_KEEPCNT))
