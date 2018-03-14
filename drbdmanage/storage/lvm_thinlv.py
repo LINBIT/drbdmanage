@@ -235,7 +235,7 @@ class LvmThinLv(lvmcom.LvmCommon):
                 self._cmd_lvs, "--noheadings", "--nosuffix",
                 "--units", "k", "--separator", ",",
                 "--options",
-                "size,data_percent,snap_percent",
+                "size,data_percent",
                 self._conf[consts.KEY_VG_NAME] + "/" +
                 self._conf[LvmThinLv.KEY_POOL_NAME]
             ]
@@ -249,7 +249,7 @@ class LvmThinLv(lvmcom.LvmCommon):
             if len(pool_data) > 0:
                 pool_data.strip()
                 try:
-                    size_data, data_part, snap_part = (
+                    size_data, data_part = (
                         pool_data.split(",")
                     )
                     size_data = self.discard_fraction(size_data)
@@ -263,19 +263,8 @@ class LvmThinLv(lvmcom.LvmCommon):
                         except ValueError:
                             pass
 
-                    # Snapshots percentage
-                    snap_perc = float(0)
-                    if len(snap_part) > 0:
-                        try:
-                            snap_perc = float(snap_part) / 100
-                        except ValueError:
-                            pass
-
                     # Calculate the amount of occupied space
-                    data_used = data_perc * space_size
-                    snap_used = snap_perc * space_size
-
-                    space_used = data_used + snap_used
+                    space_used = data_perc * space_size
 
                     space_free = int(space_size - space_used)
                     if space_free < 0:
