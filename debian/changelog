@@ -1,3 +1,10 @@
+drbdmanage (0.99.16-1) experimental; urgency=medium
+
+  [ Robert Altnoeder ]
+  * Changed LvmThinLv space calculation
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Thu, 15 Mar 2018 11:28:21 +0100
+
 drbdmanage (0.99.15-1) experimental; urgency=medium
 
   [ Lars Ellenberg ]
