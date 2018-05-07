@@ -1,3 +1,10 @@
+drbdmanage (0.99.17-1) experimental; urgency=medium
+
+  [ Roland Kammerer ]
+  * auto-deploy: fix case where resource ends in all diskless
+
+ -- Roland Kammerer <roland.kammerer@linbit.com>  Mon, 07 May 2018 11:33:42 +0200
+
 drbdmanage (0.99.16-1) experimental; urgency=medium
 
   [ Robert Altnoeder ]
