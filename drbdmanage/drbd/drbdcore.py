@@ -2485,14 +2485,16 @@ class DrbdResource(GenericDrbdObject):
         return len(self._assignments) > 0
 
 
-    def assigned_count(self):
+    def assigned_count(self, count_diskless=True):
         """
         Return the number of nodes this resource is assigned to
         (waiting for deployment or deployed)
         """
         count = 0
         for assg in self._assignments.itervalues():
-            if is_set(assg.get_tstate(), Assignment.FLAG_DEPLOY):
+            tstate = assg.get_tstate()
+            cd = True if count_diskless else is_unset(tstate, Assignment.FLAG_DISKLESS)
+            if is_set(tstate, Assignment.FLAG_DEPLOY) and cd:
                 count += 1
         return count
 

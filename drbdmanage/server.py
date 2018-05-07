@@ -3532,7 +3532,7 @@ class DrbdManageServer(object):
                 crtnodes = len(nodes)
                 maxcount = maxnodes if maxnodes < crtnodes else crtnodes
                 resource = self._resources[res_name]
-                assigned_count = resource.assigned_count()
+                assigned_count = resource.assigned_count(count_diskless=False)
 
                 # Calculate target node count
                 if delta != 0:
