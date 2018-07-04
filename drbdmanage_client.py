@@ -1183,6 +1183,7 @@ class DrbdManage(object):
         handlers = (
             'after-resync-target',  'before-resync-target', 'fence-peer', 'initial-split-brain',
             'local-io-error', 'pri-lost', 'pri-lost-after-sb', 'pri-on-incon-degr', 'split-brain',
+            'before-resync-source', 'out-of-sync', 'quorum-lost'
         )
         p_handlers = subp.add_parser('handlers',
                                      description='Set or unset event handlers.')
