@@ -1,5 +1,9 @@
 # DRBDManage
 
+NOTE: DRBD Manage is deprecated and not longer supported!  Its successor is LINSTOR server https://github.com/LINBIT/linstor-server and LINSTOR client https://github.com/LINBIT/linstor-client
+
+
+
 This repository contains the user space daemon and command line client to ease DRBD9 resource management.
 
 DRBDManage, developed by [LINBIT](https://www.linbit.com), is a software that that manages DRBD replicated
